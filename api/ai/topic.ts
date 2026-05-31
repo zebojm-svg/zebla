@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { handleTranslate } from '../../../lib/ai-handlers.js'
+import { handleGenerateTopic } from '../../lib/ai-handlers.js'
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Methode nicht erlaubt.' })
     return
   }
-  return handleTranslate(req, res)
+  return handleGenerateTopic(req, res)
 }

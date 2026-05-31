@@ -77,10 +77,12 @@ export async function handleGenerateChat(req: VercelRequest, res: VercelResponse
 export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
-    const dialogId = req.query.dialogId as string
-    const { targetLanguage } = req.body as { targetLanguage?: string }
-    if (!targetLanguage) {
-      res.status(400).json({ error: 'Zielsprache fehlt.' })
+    const { dialogId, targetLanguage } = req.body as {
+      dialogId?: string
+      targetLanguage?: string
+    }
+    if (!dialogId || !targetLanguage) {
+      res.status(400).json({ error: 'dialogId und Zielsprache fehlen.' })
       return
     }
     const dialog = await getDialog(dialogId, user.uid)
@@ -106,10 +108,12 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
 export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
-    const dialogId = req.query.dialogId as string
-    const { nativeLanguage } = req.body as { nativeLanguage?: string }
-    if (!nativeLanguage) {
-      res.status(400).json({ error: 'Muttersprache fehlt.' })
+    const { dialogId, nativeLanguage } = req.body as {
+      dialogId?: string
+      nativeLanguage?: string
+    }
+    if (!dialogId || !nativeLanguage) {
+      res.status(400).json({ error: 'dialogId und Muttersprache fehlen.' })
       return
     }
     const dialog = await getDialog(dialogId, user.uid)
@@ -135,7 +139,11 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
 export async function handleSplit(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
-    const dialogId = req.query.dialogId as string
+    const { dialogId } = req.body as { dialogId?: string }
+    if (!dialogId) {
+      res.status(400).json({ error: 'dialogId fehlt.' })
+      return
+    }
     const dialog = await getDialog(dialogId, user.uid)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
@@ -153,7 +161,11 @@ export async function handleSplit(req: VercelRequest, res: VercelResponse) {
 export async function handleImageAll(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
-    const dialogId = req.query.dialogId as string
+    const { dialogId } = req.body as { dialogId?: string }
+    if (!dialogId) {
+      res.status(400).json({ error: 'dialogId fehlt.' })
+      return
+    }
     const dialog = await getDialog(dialogId, user.uid)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
@@ -174,8 +186,14 @@ export async function handleImageAll(req: VercelRequest, res: VercelResponse) {
 export async function handleImage(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
-    const dialogId = req.query.dialogId as string
-    const sectionId = req.query.sectionId as string
+    const { dialogId, sectionId } = req.body as {
+      dialogId?: string
+      sectionId?: string
+    }
+    if (!dialogId || !sectionId) {
+      res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
+      return
+    }
     const dialog = await getDialog(dialogId, user.uid)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })

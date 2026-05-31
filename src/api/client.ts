@@ -93,7 +93,7 @@ export const api = {
       length: import('../types').DialogLength,
     ) =>
       request<{ title: string; sections: import('../types').DialogSection[] }>(
-        '/ai/generate/topic',
+        '/ai/topic',
         { method: 'POST', body: JSON.stringify({ topic, targetLanguage, length }) },
       ),
     sentences: (
@@ -102,7 +102,7 @@ export const api = {
       length: import('../types').DialogLength,
     ) =>
       request<{ title: string; sections: import('../types').DialogSection[] }>(
-        '/ai/generate/sentences',
+        '/ai/sentences',
         { method: 'POST', body: JSON.stringify({ sentences, targetLanguage, length }) },
       ),
     chat: (
@@ -113,32 +113,34 @@ export const api = {
       request<{
         reply: string
         dialog?: { title: string; sections: import('../types').DialogSection[] }
-      }>('/ai/generate/chat', {
+      }>('/ai/chat', {
         method: 'POST',
         body: JSON.stringify({ messages, targetLanguage, length }),
       }),
     translate: (dialogId: string, targetLanguage: string) =>
-      request<{ dialog: import('../types').Dialog }>(`/ai/translate/${dialogId}`, {
+      request<{ dialog: import('../types').Dialog }>('/ai/translate', {
         method: 'POST',
-        body: JSON.stringify({ targetLanguage }),
+        body: JSON.stringify({ dialogId, targetLanguage }),
       }),
     birkenbihl: (dialogId: string, nativeLanguage: string) =>
-      request<{ dialog: import('../types').Dialog }>(`/ai/birkenbihl/${dialogId}`, {
+      request<{ dialog: import('../types').Dialog }>('/ai/birkenbihl', {
         method: 'POST',
-        body: JSON.stringify({ nativeLanguage }),
+        body: JSON.stringify({ dialogId, nativeLanguage }),
       }),
     split: (dialogId: string) =>
-      request<{ dialog: import('../types').Dialog }>(`/ai/split/${dialogId}`, {
+      request<{ dialog: import('../types').Dialog }>('/ai/split', {
         method: 'POST',
+        body: JSON.stringify({ dialogId }),
       }),
     image: (dialogId: string, sectionId: string) =>
-      request<{ dialog: import('../types').Dialog; imageUrl: string }>(
-        `/ai/image/${dialogId}/${sectionId}`,
-        { method: 'POST' },
-      ),
-    imageAll: (dialogId: string) =>
-      request<{ dialog: import('../types').Dialog }>(`/ai/image-all/${dialogId}`, {
+      request<{ dialog: import('../types').Dialog; imageUrl: string }>('/ai/image', {
         method: 'POST',
+        body: JSON.stringify({ dialogId, sectionId }),
+      }),
+    imageAll: (dialogId: string) =>
+      request<{ dialog: import('../types').Dialog }>('/ai/image-all', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId }),
       }),
   },
 }

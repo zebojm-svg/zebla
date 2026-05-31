@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { handleBirkenbihl } from '../../../lib/ai-handlers.js'
+import { handleTranslate } from '../../lib/ai-handlers.js'
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Methode nicht erlaubt.' })
     return
   }
-  return handleBirkenbihl(req, res)
+  return handleTranslate(req, res)
 }
