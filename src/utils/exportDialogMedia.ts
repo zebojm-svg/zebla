@@ -5,10 +5,33 @@ import { api } from '../api/client'
 import type { Dialog, DialogLine } from '../types'
 import { isRtlLanguage } from '../types'
 
-const EXPORT_W = 1280
-const EXPORT_H = 720
 const FPS = 30
 const GAP_SEC = 0.4
+
+/** AVC Level 3.0 erlaubt max. 414720 Pixel – 1280×720 braucht Level 3.1+. */
+const VIDEO_PRESETS = [
+  { width: 1280, height: 720, codec: 'avc1.4D401F' },
+  { width: 854, height: 480, codec: 'avc1.42E01E' },
+  { width: 640, height: 360, codec: 'avc1.42E01E' },
+] as const
+
+async function resolveVideoPreset(): Promise<{
+  width: number
+  height: number
+  codec: string
+}> {
+  for (const preset of VIDEO_PRESETS) {
+    const check = await VideoEncoder.isConfigSupported({
+      codec: preset.codec,
+      width: preset.width,
+      height: preset.height,
+      bitrate: 2_000_000,
+      framerate: FPS,
+    })
+    if (check.supported) return preset
+  }
+  throw new Error('Video-Encoder wird von diesem Browser nicht unterstützt.')
+}
 
 export interface ExportSlide {
   lineId: string
@@ -174,76 +197,79 @@ function drawSlide(
   slide: ExportSlide,
   bitmap: ImageBitmap | null,
   options: ExportOptions,
+  width: number,
+  height: number,
 ) {
   const targetRtl = isRtlLanguage(options.targetLanguage)
+  const scale = height / 720
 
   ctx.fillStyle = '#020617'
-  ctx.fillRect(0, 0, EXPORT_W, EXPORT_H)
+  ctx.fillRect(0, 0, width, height)
 
-  const imgH = Math.floor(EXPORT_H * 0.62)
+  const imgH = Math.floor(height * 0.62)
   if (bitmap) {
-    const scale = Math.min(EXPORT_W / bitmap.width, imgH / bitmap.height)
-    const w = bitmap.width * scale
-    const h = bitmap.height * scale
-    const x = (EXPORT_W - w) / 2
+    const scaleImg = Math.min(width / bitmap.width, imgH / bitmap.height)
+    const w = bitmap.width * scaleImg
+    const h = bitmap.height * scaleImg
+    const x = (width - w) / 2
     const y = (imgH - h) / 2
     ctx.drawImage(bitmap, x, y, w, h)
   } else {
     ctx.fillStyle = '#1e293b'
-    ctx.fillRect(0, 0, EXPORT_W, imgH)
+    ctx.fillRect(0, 0, width, imgH)
     ctx.fillStyle = '#64748b'
-    ctx.font = '28px system-ui, sans-serif'
+    ctx.font = `${Math.round(28 * scale)}px system-ui, sans-serif`
     ctx.textAlign = 'center'
-    ctx.fillText(slide.sectionTitle, EXPORT_W / 2, imgH / 2)
+    ctx.fillText(slide.sectionTitle, width / 2, imgH / 2)
   }
 
   const panelY = imgH
-  const panelH = EXPORT_H - imgH
+  const panelH = height - imgH
   ctx.fillStyle = '#1e293b'
-  ctx.fillRect(0, panelY, EXPORT_W, panelH)
+  ctx.fillRect(0, panelY, width, panelH)
 
   ctx.fillStyle = '#a5b4fc'
-  ctx.font = 'bold 22px system-ui, sans-serif'
+  ctx.font = `bold ${Math.round(22 * scale)}px system-ui, sans-serif`
   ctx.textAlign = targetRtl ? 'right' : 'left'
-  const pad = 40
-  ctx.fillText(slide.speaker, targetRtl ? EXPORT_W - pad : pad, panelY + 36)
+  const pad = Math.round(40 * scale)
+  ctx.fillText(slide.speaker, targetRtl ? width - pad : pad, panelY + 36 * scale)
 
   const line = slide.line
   const words = line.birkenbihl?.length ? line.birkenbihl : null
   const startY = panelY + 70
 
   if (words) {
-    let x = targetRtl ? EXPORT_W - pad : pad
-    const maxX = EXPORT_W - pad
+    let x = targetRtl ? width - pad : pad
+    const maxX = width - pad
     for (const w of words) {
       ctx.textAlign = 'center'
-      const wordW = Math.max(56, w.text.length * 14)
+      const wordW = Math.max(48 * scale, w.text.length * 14 * scale)
       if (!targetRtl && x + wordW > maxX) x = pad
       const cx = targetRtl ? x - wordW / 2 : x + wordW / 2
 
       ctx.fillStyle = '#f1f5f9'
-      ctx.font = '22px system-ui, sans-serif'
+      ctx.font = `${Math.round(22 * scale)}px system-ui, sans-serif`
       ctx.fillText(w.text, cx, startY, wordW)
 
-      let subY = startY + 22
+      let subY = startY + 22 * scale
       if (options.showRomanization && w.romanization) {
         ctx.fillStyle = '#9ca3af'
-        ctx.font = 'italic 14px system-ui, sans-serif'
+        ctx.font = `italic ${Math.round(14 * scale)}px system-ui, sans-serif`
         ctx.fillText(w.romanization, cx, subY, wordW)
-        subY += 18
+        subY += 18 * scale
       }
       ctx.fillStyle = '#94a3b8'
-      ctx.font = '16px system-ui, sans-serif'
+      ctx.font = `${Math.round(16 * scale)}px system-ui, sans-serif`
       ctx.fillText(w.translation, cx, subY, wordW)
 
-      x = targetRtl ? x - wordW - 10 : x + wordW + 10
+      x = targetRtl ? x - wordW - 10 * scale : x + wordW + 10 * scale
     }
   } else {
     ctx.fillStyle = '#f1f5f9'
-    ctx.font = '26px system-ui, sans-serif'
+    ctx.font = `${Math.round(26 * scale)}px system-ui, sans-serif`
     ctx.textAlign = targetRtl ? 'right' : 'left'
-    const maxW = EXPORT_W - pad * 2
-    wrapText(ctx, line.text, targetRtl ? EXPORT_W - pad : pad, startY, maxW, 32)
+    const maxW = width - pad * 2
+    wrapText(ctx, line.text, targetRtl ? width - pad : pad, startY, maxW, 32 * scale)
   }
 }
 
@@ -302,15 +328,18 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
   options.onProgress?.('Bereite Audio vor …')
   const audioBuffer = await buildCombinedAudio(dialog.id, slides, options.rate, options.onProgress)
 
+  const videoPreset = await resolveVideoPreset()
+  const { width: vidW, height: vidH, codec: vidCodec } = videoPreset
+
   const canvas = document.createElement('canvas')
-  canvas.width = EXPORT_W
-  canvas.height = EXPORT_H
+  canvas.width = vidW
+  canvas.height = vidH
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas nicht verfügbar.')
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
-    video: { codec: 'avc', width: EXPORT_W, height: EXPORT_H },
+    video: { codec: 'avc', width: vidW, height: vidH },
     audio: { codec: 'aac', sampleRate: audioBuffer.sampleRate, numberOfChannels: 1 },
     fastStart: 'in-memory',
   })
@@ -325,9 +354,9 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
     },
   })
   videoEncoder.configure({
-    codec: 'avc1.42E01E',
-    width: EXPORT_W,
-    height: EXPORT_H,
+    codec: vidCodec,
+    width: vidW,
+    height: vidH,
     bitrate: 2_500_000,
     framerate: FPS,
   })
@@ -374,7 +403,7 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
     const bmp = bitmaps[i]
 
     for (let f = 0; f < frames; f++) {
-      drawSlide(ctx, slide, bmp, options)
+      drawSlide(ctx, slide, bmp, options, vidW, vidH)
       const frame = new VideoFrame(canvas, {
         timestamp: timestampUs,
         duration: Math.round(1_000_000 / FPS),
@@ -387,7 +416,7 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
     if (i < slides.length - 1) {
       const gapFrames = Math.round(GAP_SEC * FPS)
       for (let f = 0; f < gapFrames; f++) {
-        drawSlide(ctx, slide, bmp, options)
+        drawSlide(ctx, slide, bmp, options, vidW, vidH)
         const frame = new VideoFrame(canvas, {
           timestamp: timestampUs,
           duration: Math.round(1_000_000 / FPS),
