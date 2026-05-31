@@ -13,8 +13,15 @@ export interface TtsResult {
   voiceName: string
 }
 
-/** Google Cloud TTS – Sprachcode + bevorzugte Stimmen (Wavenet/Neural2). */
-const TTS_VOICES: Record<string, { locale: string; female: string; male: string }> = {
+export interface TtsHealth {
+  configured: boolean
+  working: boolean
+  provider: string
+  error?: string
+}
+
+/** Google Cloud TTS – bevorzugte Stimmen (mit Fallback auf nur languageCode). */
+const TTS_VOICES: Record<string, { locale: string; female?: string; male?: string }> = {
   de: { locale: 'de-DE', female: 'de-DE-Neural2-F', male: 'de-DE-Neural2-D' },
   en: { locale: 'en-US', female: 'en-US-Neural2-F', male: 'en-US-Neural2-D' },
   fr: { locale: 'fr-FR', female: 'fr-FR-Neural2-A', male: 'fr-FR-Neural2-B' },
@@ -27,7 +34,7 @@ const TTS_VOICES: Record<string, { locale: string; female: string; male: string 
   ja: { locale: 'ja-JP', female: 'ja-JP-Neural2-B', male: 'ja-JP-Neural2-D' },
   zh: { locale: 'cmn-CN', female: 'cmn-CN-Wavenet-A', male: 'cmn-CN-Wavenet-B' },
   ar: { locale: 'ar-XA', female: 'ar-XA-Wavenet-A', male: 'ar-XA-Wavenet-B' },
-  fa: { locale: 'fa-IR', female: 'fa-IR-Wavenet-A', male: 'fa-IR-Wavenet-B' },
+  fa: { locale: 'fa-IR', female: 'fa-IR-Standard-A', male: 'fa-IR-Standard-B' },
   ru: { locale: 'ru-RU', female: 'ru-RU-Wavenet-A', male: 'ru-RU-Wavenet-B' },
   sv: { locale: 'sv-SE', female: 'sv-SE-Wavenet-A', male: 'sv-SE-Wavenet-B' },
   da: { locale: 'da-DK', female: 'da-DK-Neural2-F', male: 'da-DK-Neural2-D' },
@@ -42,10 +49,10 @@ function resolveVoice(languageCode: string, gender: 'male' | 'female' = 'female'
   const key = languageCode.slice(0, 2).toLowerCase()
   const entry = TTS_VOICES[key]
   if (!entry) {
-    return {
-      languageCode: languageCode.includes('-') ? languageCode : `${key}-${key.toUpperCase()}`,
-      name: undefined as string | undefined,
-    }
+    const locale = languageCode.includes('-')
+      ? languageCode
+      : `${key}-${key.toUpperCase()}`
+    return { languageCode: locale, name: undefined as string | undefined }
   }
   return {
     languageCode: entry.locale,
@@ -53,24 +60,22 @@ function resolveVoice(languageCode: string, gender: 'male' | 'female' = 'female'
   }
 }
 
-export function isTtsConfigured(): boolean {
-  return isGoogleCloudConfigured()
+function formatApiError(msg: string): string {
+  if (msg.includes('billing') || msg.includes('BILLING')) {
+    return 'Cloud Text-to-Speech braucht ein aktives Abrechnungskonto im Google-Projekt (Blaze/Billing aktivieren).'
+  }
+  if (msg.includes('has not been used') || msg.includes('disabled') || msg.includes('PERMISSION_DENIED')) {
+    return 'Cloud Text-to-Speech API ist nicht aktiv oder keine Berechtigung. API in der Google Console aktivieren.'
+  }
+  return msg
 }
 
-export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
-  const text = req.text.trim()
-  if (!text) throw new Error('Text fehlt.')
-
-  const token = await getGoogleAccessToken()
-  if (!token) {
-    throw new Error(
-      'Cloud-TTS nicht konfiguriert. FIREBASE_* Zugangsdaten auf Vercel prüfen.',
-    )
-  }
-
-  const voice = resolveVoice(req.languageCode, req.gender ?? 'female')
-  const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
-
+async function callSynthesize(
+  token: string,
+  text: string,
+  voice: { languageCode: string; name?: string },
+  speakingRate: number,
+): Promise<TtsResult> {
   const body = {
     input: { text },
     voice: {
@@ -95,15 +100,8 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
 
   const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
   if (!res.ok) {
-    const msg = data.error?.message ?? `TTS-Fehler (${res.status})`
-    if (msg.includes('has not been used') || msg.includes('disabled')) {
-      throw new Error(
-        'Cloud Text-to-Speech API ist im Google-Projekt nicht aktiviert. Siehe README (TTS aktivieren).',
-      )
-    }
-    throw new Error(msg)
+    throw new Error(formatApiError(data.error?.message ?? `TTS-Fehler (${res.status})`))
   }
-
   if (!data.audioContent) throw new Error('Keine Audiodaten von TTS erhalten.')
 
   return {
@@ -111,4 +109,81 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
     mimeType: 'audio/mpeg',
     voiceName: voice.name ?? voice.languageCode,
   }
+}
+
+export function isTtsConfigured(): boolean {
+  return isGoogleCloudConfigured()
+}
+
+export async function checkTtsHealth(): Promise<TtsHealth> {
+  if (!isTtsConfigured()) {
+    return { configured: false, working: false, provider: 'google-cloud-tts' }
+  }
+
+  try {
+    const token = await getGoogleAccessToken()
+    if (!token) {
+      return {
+        configured: true,
+        working: false,
+        provider: 'google-cloud-tts',
+        error: 'Firebase-Zugangsdaten liefern kein Google-Token. FIREBASE_PRIVATE_KEY auf Vercel prüfen.',
+      }
+    }
+
+    const res = await fetch('https://texttospeech.googleapis.com/v1/voices', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = (await res.json()) as { voices?: unknown[]; error?: { message?: string } }
+    if (!res.ok) {
+      return {
+        configured: true,
+        working: false,
+        provider: 'google-cloud-tts',
+        error: formatApiError(data.error?.message ?? `Stimmen-Abfrage fehlgeschlagen (${res.status})`),
+      }
+    }
+
+    await callSynthesize(token, 'سلام', { languageCode: 'fa-IR' }, 1)
+
+    return { configured: true, working: true, provider: 'google-cloud-tts' }
+  } catch (err) {
+    return {
+      configured: true,
+      working: false,
+      provider: 'google-cloud-tts',
+      error: err instanceof Error ? err.message : 'TTS-Test fehlgeschlagen',
+    }
+  }
+}
+
+export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
+  const text = req.text.trim()
+  if (!text) throw new Error('Text fehlt.')
+
+  const token = await getGoogleAccessToken()
+  if (!token) {
+    throw new Error(
+      'Cloud-TTS nicht konfiguriert. FIREBASE_* Zugangsdaten auf Vercel prüfen.',
+    )
+  }
+
+  const resolved = resolveVoice(req.languageCode, req.gender ?? 'female')
+  const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
+
+  const attempts: { languageCode: string; name?: string }[] = [
+    { languageCode: resolved.languageCode, name: resolved.name },
+    { languageCode: resolved.languageCode },
+  ]
+
+  let lastError: Error | null = null
+  for (const voice of attempts) {
+    try {
+      return await callSynthesize(token, text, voice, speakingRate)
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+    }
+  }
+
+  throw lastError ?? new Error('Sprachausgabe fehlgeschlagen.')
 }

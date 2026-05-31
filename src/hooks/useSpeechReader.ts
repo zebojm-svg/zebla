@@ -317,6 +317,7 @@ export function useSpeechReader(languageCode: string) {
   const [activeLineId, setActiveLineId] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
   const [cloudTtsReady, setCloudTtsReady] = useState(false)
+  const [ttsError, setTtsError] = useState<string | null>(null)
   const stoppedRef = useRef(false)
   const speakerVoicesRef = useRef<Map<string, SpeechSynthesisVoice>>(new Map())
   const speakerPitchRef = useRef<Map<string, number>>(new Map())
@@ -326,8 +327,14 @@ export function useSpeechReader(languageCode: string) {
   useEffect(() => {
     api.tts
       .status()
-      .then((r) => setCloudTtsReady(r.configured))
-      .catch(() => setCloudTtsReady(false))
+      .then((r) => {
+        setCloudTtsReady(r.working)
+        setTtsError(r.working ? null : r.error ?? null)
+      })
+      .catch((err) => {
+        setCloudTtsReady(false)
+        setTtsError(err instanceof Error ? err.message : 'TTS-Status nicht erreichbar')
+      })
   }, [])
 
   useEffect(() => {
@@ -444,9 +451,13 @@ export function useSpeechReader(languageCode: string) {
       if (cloudTtsReady) {
         try {
           const ok = await speakCloud(text, rate, gender, line.id)
-          if (ok) return
-        } catch {
-          /* Browser-TTS als Fallback */
+          if (ok) {
+            setTtsError(null)
+            return
+          }
+          setTtsError('Audio konnte nicht abgespielt werden.')
+        } catch (err) {
+          setTtsError(err instanceof Error ? err.message : 'Cloud-Sprachausgabe fehlgeschlagen')
         }
         window.speechSynthesis.cancel()
         await sleep(80)
@@ -581,6 +592,7 @@ export function useSpeechReader(languageCode: string) {
     activeLineId,
     highlightIndex,
     cloudTtsReady,
+    ttsError,
   }
 }
 

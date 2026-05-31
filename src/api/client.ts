@@ -149,7 +149,9 @@ export const api = {
   },
   tts: {
     status: () =>
-      request<{ configured: boolean; provider: string }>('/tts-status'),
+      request<{ configured: boolean; working: boolean; provider: string; error?: string }>(
+        '/tts-status',
+      ),
     synthesize: (data: {
       text: string
       languageCode: string

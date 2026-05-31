@@ -16,7 +16,7 @@ export function SlideshowPage() {
   const [loading, setLoading] = useState(true)
   const [ttsHint, setTtsHint] = useState('')
 
-  const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady } =
+  const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
     useSpeechReader(dialog?.targetLanguage ?? 'en')
 
   useEffect(() => {
@@ -159,7 +159,8 @@ export function SlideshowPage() {
       </div>
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
-      {cloudTtsReady && (
+      {ttsError && <div className="alert alert-error slideshow-tts-hint">{ttsError}</div>}
+      {cloudTtsReady && !ttsError && (
         <div className="slideshow-cloud-tts">☁️ Cloud-Sprachausgabe (Google)</div>
       )}
 

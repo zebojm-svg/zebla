@@ -35,7 +35,7 @@ import {
   handleImageAll,
   handleImageLines,
 } from '../lib/ai-handlers.js'
-import { isTtsConfigured, synthesizeSpeech } from '../lib/tts.js'
+import { checkTtsHealth, synthesizeSpeech } from '../lib/tts.js'
 import type { DialogSection } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -314,7 +314,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if ((route === 'tts-status' || route === 'tts/status') && req.method === 'GET') {
-      res.json({ configured: isTtsConfigured(), provider: 'google-cloud-tts' })
+      const health = await checkTtsHealth()
+      res.json(health)
       return
     }
 
