@@ -28,6 +28,11 @@ import {
 import type { DialogSection } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
+  // Vercel: slug aus URL parsen (zuverlässiger als req.query.slug)
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const path = url.pathname.replace(/^\/api\/?/, '')
+  if (path) return path
+
   const slug = req.query.slug
   if (Array.isArray(slug)) return slug.join('/')
   if (typeof slug === 'string') return slug
