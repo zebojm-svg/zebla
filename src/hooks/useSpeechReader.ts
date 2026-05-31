@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const SPEECH_LANG_MAP: Record<string, string> = {
   de: 'de-DE',
@@ -23,11 +23,55 @@ const SPEECH_LANG_MAP: Record<string, string> = {
   ko: 'ko-KR',
 }
 
+export interface SpeakLine {
+  id: string
+  text: string
+  speaker: string
+}
+
+function isMaleVoice(v: SpeechSynthesisVoice): boolean {
+  const n = v.name.toLowerCase()
+  return (
+    (n.includes('male') && !n.includes('female')) ||
+    /\b(david|mark|james|daniel|thomas|hans|stefan|alex|paul|george|fred|male)\b/.test(n)
+  )
+}
+
+function isFemaleVoice(v: SpeechSynthesisVoice): boolean {
+  const n = v.name.toLowerCase()
+  return (
+    n.includes('female') ||
+    /\b(zira|samantha|anna|hazel|helena|katja|susan|linda|maria|victoria|female)\b/.test(n)
+  )
+}
+
+function guessSpeakerGender(speaker: string, speakerIndex: number): 'male' | 'female' {
+  const s = speaker.toLowerCase()
+  if (/\b(ben|max|tom|john|james|paul|mark|hans|peter|mike|david|alex|luke|tim|sam|chris|dan)\b/.test(s))
+    return 'male'
+  if (/\b(anna|maria|sarah|lisa|emma|julia|sophie|elena|kate|amy|linda|laura|nina|sara)\b/.test(s))
+    return 'female'
+  return speakerIndex % 2 === 0 ? 'female' : 'male'
+}
+
 export function useSpeechReader(languageCode: string) {
   const [speaking, setSpeaking] = useState(false)
   const [activeLineId, setActiveLineId] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
   const stoppedRef = useRef(false)
+  const speakerVoicesRef = useRef<Map<string, SpeechSynthesisVoice>>(new Map())
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([])
+
+  useEffect(() => {
+    const loadVoices = () => {
+      voicesRef.current = window.speechSynthesis.getVoices()
+    }
+    loadVoices()
+    window.speechSynthesis.onvoiceschanged = loadVoices
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null
+    }
+  }, [])
 
   const stop = useCallback(() => {
     stoppedRef.current = true
@@ -37,10 +81,32 @@ export function useSpeechReader(languageCode: string) {
     setHighlightIndex(null)
   }, [])
 
+  const getVoiceForSpeaker = useCallback(
+    (speaker: string, speakerIndex: number): SpeechSynthesisVoice | null => {
+      const cached = speakerVoicesRef.current.get(speaker)
+      if (cached) return cached
+
+      const lang = SPEECH_LANG_MAP[languageCode] ?? languageCode
+      const prefix = lang.slice(0, 2)
+      const voices = voicesRef.current.filter((v) => v.lang.replace('_', '-').startsWith(prefix))
+      const gender = guessSpeakerGender(speaker, speakerIndex)
+
+      const preferred =
+        gender === 'male'
+          ? voices.find(isMaleVoice) ?? voices.find((v) => !isFemaleVoice(v))
+          : voices.find(isFemaleVoice) ?? voices.find((v) => !isMaleVoice(v))
+
+      const voice = preferred ?? voices[0] ?? null
+      if (voice) speakerVoicesRef.current.set(speaker, voice)
+      return voice
+    },
+    [languageCode],
+  )
+
   const speakText = useCallback(
     (
-      text: string,
-      lineId: string,
+      line: SpeakLine,
+      speakerIndex: number,
       rate: number,
       highlightWords: boolean,
     ): Promise<void> =>
@@ -50,16 +116,18 @@ export function useSpeechReader(languageCode: string) {
           return
         }
 
-        const utterance = new SpeechSynthesisUtterance(text)
+        const utterance = new SpeechSynthesisUtterance(line.text)
         utterance.lang = SPEECH_LANG_MAP[languageCode] ?? languageCode
         utterance.rate = rate
+        const voice = getVoiceForSpeaker(line.speaker, speakerIndex)
+        if (voice) utterance.voice = voice
 
-        setActiveLineId(lineId)
+        setActiveLineId(line.id)
 
         if (highlightWords) {
           utterance.onboundary = (event) => {
             if (event.name === 'word') {
-              const before = text.slice(0, event.charIndex)
+              const before = line.text.slice(0, event.charIndex)
               const wordIdx = before.split(/\s+/).filter(Boolean).length
               setHighlightIndex(wordIdx)
             }
@@ -73,50 +141,54 @@ export function useSpeechReader(languageCode: string) {
         utterance.onerror = () => resolve()
         window.speechSynthesis.speak(utterance)
       }),
-    [languageCode],
+    [getVoiceForSpeaker, languageCode],
   )
 
-  const speakLines = useCallback(
+  const speakFrom = useCallback(
     async (
-      lines: { id: string; text: string }[],
+      lines: SpeakLine[],
+      speakerIndexMap: Map<string, number>,
+      startIndex: number,
       rate: number,
       highlightWords: boolean,
-    ) => {
+      onLineChange?: (index: number) => void,
+    ): Promise<boolean> => {
       stop()
       stoppedRef.current = false
       setSpeaking(true)
 
-      for (const line of lines) {
+      for (let i = startIndex; i < lines.length; i++) {
         if (stoppedRef.current) break
-        await speakText(line.text, line.id, rate, highlightWords)
+        onLineChange?.(i)
+        const line = lines[i]
+        await speakText(line, speakerIndexMap.get(line.speaker) ?? 0, rate, highlightWords)
+        if (!stoppedRef.current) onLineChange?.(i + 1)
       }
 
       setSpeaking(false)
       setActiveLineId(null)
       setHighlightIndex(null)
+      return stoppedRef.current
     },
     [speakText, stop],
   )
 
-  const speakSingle = useCallback(
-    (text: string, lineId: string, rate: number, highlightWords: boolean) => {
-      stop()
-      stoppedRef.current = false
-      setSpeaking(true)
-      speakText(text, lineId, rate, highlightWords).then(() => {
-        setSpeaking(false)
-        setActiveLineId(null)
-        setHighlightIndex(null)
-      })
-    },
-    [speakText, stop],
-  )
-
-  return { speakLines, speakSingle, stop, speaking, activeLineId, highlightIndex }
+  return {
+    speakFrom,
+    stop,
+    speaking,
+    activeLineId,
+    highlightIndex,
+  }
 }
 
-export const SPEECH_RATES = [
-  { label: 'Langsam', value: 0.6 },
-  { label: 'Normal', value: 0.85 },
-  { label: 'Schnell', value: 1.1 },
-] as const
+export function buildSpeakerIndexMap(lines: SpeakLine[]): Map<string, number> {
+  const map = new Map<string, number>()
+  let idx = 0
+  for (const line of lines) {
+    if (!map.has(line.speaker)) {
+      map.set(line.speaker, idx++)
+    }
+  }
+  return map
+}

@@ -359,72 +359,138 @@ textarea { resize: vertical; min-height: 120px; }
 
 .slideshow-page {
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background: #0f172a;
   color: #e2e8f0;
+  overflow: hidden;
 }
 
 .slideshow-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1.5rem;
   border-bottom: 1px solid #334155;
+  flex-shrink: 0;
 }
 
 .slideshow-back { color: #cbd5e1 !important; }
 .slideshow-title { font-weight: 600; }
 .slideshow-counter { color: #94a3b8; font-size: 0.875rem; }
 
-.slideshow-content {
+.slideshow-stage {
   flex: 1;
-  padding: 2rem 1.5rem;
-  max-width: 800px;
-  width: 100%;
-  margin: 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.slideshow-image-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  background: #020617;
 }
 
 .slideshow-image {
-  width: 100%;
-  max-height: 280px;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: var(--radius);
-  margin-bottom: 1.5rem;
 }
 
-.slideshow-section-title {
-  color: #f8fafc;
-  margin-bottom: 1.5rem;
+.slideshow-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #64748b;
+  font-size: 1.25rem;
 }
 
-.slideshow-lines { display: flex; flex-direction: column; gap: 1.25rem; }
-.slideshow-line {
+.slideshow-preview {
+  flex-shrink: 0;
+  padding: 1rem 1.5rem 0.5rem;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 8rem;
+}
+
+.slideshow-preview-line {
   background: #1e293b;
   border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.slideshow-preview-line.is-active {
+  border-color: #6366f1;
+}
+
+.slideshow-preview-line strong {
+  display: block;
+  color: #a5b4fc;
+  margin-bottom: 0.35rem;
+  font-size: 0.875rem;
+}
+
+.slideshow-preview-line .dialog-line-text,
+.slideshow-preview-line .birkenbihl-top {
+  color: #f1f5f9;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+.slideshow-preview-line .birkenbihl-bottom {
+  color: #94a3b8;
+  border-color: #475569;
+}
+
+.slideshow-preview-line .word-highlight {
+  background: #854d0e;
+  color: #fef08a;
+}
+
+.slideshow-done-hint {
+  color: #94a3b8;
+  text-align: center;
   padding: 1rem;
 }
-
-.slideshow-line-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.slideshow-line strong { color: #a5b4fc; }
-.slideshow-line .birkenbihl-top { color: #f1f5f9; }
-.slideshow-line .birkenbihl-bottom { color: #94a3b8; border-color: #475569; }
-.slideshow-line .word-highlight { background: #854d0e; color: #fef08a; }
 
 .slideshow-controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: center;
+  gap: 1.25rem;
   padding: 1rem 1.5rem;
   border-top: 1px solid #334155;
+  flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+.slideshow-nav-btn {
+  font-size: 1.25rem;
+  min-width: 3rem;
+  padding: 0.5rem 1rem;
+}
+
+.slideshow-play-btn {
+  font-size: 1.25rem;
+  min-width: 3rem;
+  padding: 0.5rem 1.25rem;
 }
 
 .slideshow-playback {
@@ -432,6 +498,33 @@ textarea { resize: vertical; min-height: 120px; }
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  justify-content: center;
+}
+
+.slideshow-rate {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #cbd5e1;
+  margin-bottom: 0;
+}
+
+.slideshow-rate input[type='range'] {
+  width: 120px;
+  accent-color: #6366f1;
+}
+
+.slideshow-rate-value {
+  min-width: 3rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.slideshow-checkbox {
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  margin-bottom: 0;
 }
 
 .slideshow-playback label {
