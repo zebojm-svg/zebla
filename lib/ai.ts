@@ -16,48 +16,28 @@ const IMAGE_MODEL =
     'gemini-2.5-flash-image',
   ) ?? 'gemini-2.5-flash-image'
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function parseGoogleRetryDelayMs(raw: string): number | null {
-  const secMatch = raw.match(/retry in ([\d.]+)s/i)
-  if (secMatch) return Math.ceil(parseFloat(secMatch[1]) * 1000)
+async function googleApiPost(url: string, body: object, timeoutMs = 45_000): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const json = JSON.parse(raw) as {
-      error?: { details?: { '@type'?: string; retryDelay?: string }[] }
-    }
-    for (const detail of json.error?.details ?? []) {
-      if (detail['@type']?.includes('RetryInfo') && detail.retryDelay) {
-        const delayMatch = String(detail.retryDelay).match(/([\d.]+)s/)
-        if (delayMatch) return Math.ceil(parseFloat(delayMatch[1]) * 1000)
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return null
-}
-
-async function googleApiPost(url: string, body: object): Promise<Response> {
-  const maxAttempts = 3
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     })
     if (res.ok) return res
 
     const errText = await res.text()
-    if (res.status === 429 && attempt < maxAttempts - 1) {
-      const retryMs = parseGoogleRetryDelayMs(errText) ?? 40_000
-      await sleep(Math.min(retryMs + 1000, 55_000))
-      continue
-    }
     throw new Error(errText)
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Zeitüberschreitung bei der Bildgenerierung (45 s).')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
   }
-  throw new Error('API-Anfrage fehlgeschlagen.')
 }
 
 function getApiKey(): string | null {
@@ -378,7 +358,10 @@ function imageGenerationErrorMessage(raw: string): string {
     raw.includes('quota') ||
     raw.includes('rate limit')
   ) {
-    return `Bild-Limit erreicht (Google Free-Tier, Modell: ${IMAGE_MODEL}). Bitte einige Minuten warten und erneut versuchen. In Vercel „GEMINI_IMAGE_MODEL“ entfernen oder auf gemini-2.5-flash-image setzen.`
+    return `Bild-Limit erreicht (Google Free-Tier, Modell: ${IMAGE_MODEL}). Bitte einige Minuten warten und nur ein Bild auf einmal generieren.`
+  }
+  if (raw.includes('FUNCTION_INVOCATION_TIMEOUT') || raw.includes('Zeitüberschreitung')) {
+    return 'Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.'
   }
   if (raw.includes('paid plans') || raw.includes('upgrade your account')) {
     return 'Imagen ist nur mit kostenpflichtigem Google-AI-Konto verfügbar. Entferne GEMINI_IMAGE_MODEL in Vercel oder setze gemini-2.5-flash-image.'

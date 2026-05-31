@@ -11,6 +11,7 @@ export function DialogEditorPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
   const [translateLang, setTranslateLang] = useState('en')
   const [birkenbihlLang, setBirkenbihlLang] = useState('de')
 
@@ -31,12 +32,14 @@ export function DialogEditorPage() {
   const runAction = async (key: string, fn: () => Promise<void>) => {
     setBusy(key)
     setError('')
+    setStatus('')
     try {
       await fn()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler')
     } finally {
       setBusy(null)
+      setStatus('')
     }
   }
 
@@ -73,6 +76,7 @@ export function DialogEditorPage() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+      {status && <div className="alert alert-warn">{status}</div>}
 
       <section className="panel toolbar-panel">
         <h2>KI-Werkzeuge</h2>
@@ -154,8 +158,19 @@ export function DialogEditorPage() {
               disabled={!!busy}
               onClick={() =>
                 runAction('images', async () => {
-                  const { dialog: d } = await api.ai.imageAll(dialog.id)
-                  setDialog(d)
+                  let current = dialog
+                  for (let i = 0; i < current.sections.length; i++) {
+                    const section = current.sections[i]
+                    setStatus(
+                      `Generiere Bild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
+                    )
+                    const { dialog: d } = await api.ai.image(current.id, section.id)
+                    current = d
+                    setDialog(d)
+                    if (i < current.sections.length - 1) {
+                      await new Promise((resolve) => setTimeout(resolve, 3000))
+                    }
+                  }
                 })
               }
             >
@@ -175,6 +190,7 @@ export function DialogEditorPage() {
               disabled={!!busy}
               onClick={() =>
                 runAction(`img-${section.id}`, async () => {
+                  setStatus('Bild wird generiert (ca. 15–30 Sekunden) …')
                   const { dialog: d } = await api.ai.image(dialog.id, section.id)
                   setDialog(d)
                 })

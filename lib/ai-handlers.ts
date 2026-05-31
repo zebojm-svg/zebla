@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requireAuth, sendError } from './api-utils.js'
 import { getDialog, updateDialog } from './firestore.js'
+import { uploadDialogImage } from './image-storage.js'
 import {
   generateDialogFromTopic,
   generateDialogFromSentences,
@@ -11,7 +12,7 @@ import {
   generateSectionImage,
   isAiConfigured,
 } from './ai.js'
-import type { ChatMessage, DialogLength } from '../shared/types.js'
+import type { ChatMessage, DialogLength, DialogSection } from '../shared/types.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
   res.json({ configured: isAiConfigured() })
@@ -76,6 +77,25 @@ export async function handleGenerateChat(req: VercelRequest, res: VercelResponse
 
 function dialogIdFromRequest(req: VercelRequest, body: { dialogId?: string }): string | undefined {
   return body.dialogId ?? (req.query.dialogId as string | undefined)
+}
+
+async function attachSectionImage(
+  dialog: NonNullable<Awaited<ReturnType<typeof getDialog>>>,
+  section: DialogSection,
+  userId: string,
+) {
+  const { imageUrl: dataUrl, prompt } = await generateSectionImage(section, dialog.title)
+  let imageUrl = dataUrl
+  try {
+    imageUrl = await uploadDialogImage(dataUrl, dialog.id, section.id)
+  } catch (storageErr) {
+    console.warn('Storage-Upload fehlgeschlagen, nutze Data-URL:', storageErr)
+  }
+  const sections = dialog.sections.map((s) =>
+    s.id === section.id ? { ...s, imageUrl, imagePrompt: prompt } : s,
+  )
+  const updated = await updateDialog(dialog.id, userId, { sections })
+  return { updated, imageUrl, sectionId: section.id }
 }
 
 export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
@@ -162,33 +182,14 @@ export async function handleSplit(req: VercelRequest, res: VercelResponse) {
 }
 
 export async function handleImageAll(req: VercelRequest, res: VercelResponse) {
-  try {
-    const user = await requireAuth(req)
-    const body = req.body as { dialogId?: string }
-    const dialogId = dialogIdFromRequest(req, body)
-    if (!dialogId) {
-      res.status(400).json({ error: 'dialogId fehlt.' })
-      return
-    }
-    const dialog = await getDialog(dialogId, user.uid)
-    if (!dialog) {
-      res.status(404).json({ error: 'Dialog nicht gefunden.' })
-      return
-    }
-    const sections = []
-    for (let i = 0; i < dialog.sections.length; i++) {
-      if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 3000))
-      }
-      const sec = dialog.sections[i]
-      const { imageUrl, prompt } = await generateSectionImage(sec, dialog.title)
-      sections.push({ ...sec, imageUrl, imagePrompt: prompt })
-    }
-    const updated = await updateDialog(dialog.id, user.uid, { sections })
-    res.json({ dialog: updated })
-  } catch (err) {
-    sendError(res, err)
+  const body = req.body as { dialogId?: string; sectionId?: string }
+  if (!body.sectionId) {
+    res.status(400).json({
+      error: 'Bitte Bilder einzeln generieren (ein Abschnitt pro Anfrage).',
+    })
+    return
   }
+  return handleImage(req, res)
 }
 
 export async function handleImage(req: VercelRequest, res: VercelResponse) {
@@ -211,12 +212,12 @@ export async function handleImage(req: VercelRequest, res: VercelResponse) {
       res.status(404).json({ error: 'Abschnitt nicht gefunden.' })
       return
     }
-    const { imageUrl, prompt } = await generateSectionImage(section, dialog.title)
-    const sections = dialog.sections.map((s) =>
-      s.id === section.id ? { ...s, imageUrl, imagePrompt: prompt } : s,
+    const { updated, imageUrl, sectionId: sid } = await attachSectionImage(
+      dialog,
+      section,
+      user.uid,
     )
-    const updated = await updateDialog(dialog.id, user.uid, { sections })
-    res.json({ dialog: updated, imageUrl })
+    res.json({ dialog: updated, imageUrl, sectionId: sid })
   } catch (err) {
     sendError(res, err)
   }

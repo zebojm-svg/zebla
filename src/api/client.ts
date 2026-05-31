@@ -9,6 +9,7 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  timeoutMs = 55_000,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -20,14 +21,35 @@ async function request<T>(
     if (token) headers.Authorization = `Bearer ${token}`
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(
+        'Zeitlimit überschritten (60 s). Bitte nur ein Bild auf einmal generieren.',
+      )
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 
   const text = await res.text()
   if (!text) {
     throw new Error(`Leere Antwort vom Server (${res.status}).`)
+  }
+  if (text.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+    throw new Error(
+      'Server-Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.',
+    )
   }
   let data: unknown
   try {

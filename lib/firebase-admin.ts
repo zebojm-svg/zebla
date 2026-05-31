@@ -1,6 +1,7 @@
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
+import { getStorage } from 'firebase-admin/storage'
 
 let app: App
 
@@ -21,6 +22,8 @@ function getFirebaseAdmin(): App {
 
   app = initializeApp({
     credential: cert({ projectId, clientEmail, privateKey }),
+    storageBucket:
+      process.env.FIREBASE_STORAGE_BUCKET ?? `${projectId}.firebasestorage.app`,
   })
 
   return app
@@ -32,4 +35,8 @@ export function adminAuth() {
 
 export function adminDb() {
   return getFirestore(getFirebaseAdmin())
+}
+
+export function adminStorage() {
+  return getStorage(getFirebaseAdmin())
 }
