@@ -9,7 +9,7 @@ import type {
 } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 
-const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash'
+const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'imagen-3.0-generate-001'
 
 function getApiKey(): string | null {
@@ -56,6 +56,9 @@ function geminiErrorMessage(err: unknown): string {
   if (err instanceof Error) {
     if (err.message.includes('API_KEY_INVALID') || err.message.includes('API key')) {
       return 'Ungültiger GEMINI_API_KEY. Bitte in Vercel prüfen und neu deployen.'
+    }
+    if (err.message.includes('is not found') || err.message.includes('404 Not Found')) {
+      return `Gemini-Modell „${TEXT_MODEL}“ ist nicht verfügbar. Setze GEMINI_MODEL auf z. B. gemini-2.5-flash in Vercel und deploye neu.`
     }
     return err.message
   }
