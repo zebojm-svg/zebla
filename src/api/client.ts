@@ -152,15 +152,22 @@ export const api = {
       request<{ configured: boolean; working: boolean; provider: string; error?: string }>(
         `/tts-status${languageCode ? `?lang=${encodeURIComponent(languageCode)}` : ''}`,
       ),
-    synthesize: (data: {
-      text: string
-      languageCode: string
-      rate?: number
-      gender?: 'male' | 'female'
-    }) =>
-      request<{ audioBase64: string; mimeType: string; voiceName: string }>('/tts', {
+    getOrCreate: (data: { dialogId: string; lineId: string; rate?: number }) =>
+      request<{ audioUrl: string; cached: boolean; dialog: import('../types').Dialog }>(
+        '/tts',
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        },
+      ),
+    ensureAll: (dialogId: string, rate?: number) =>
+      request<{
+        dialog: import('../types').Dialog
+        generated: number
+        skipped: number
+      }>('/dialog-ensure-audio', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ dialogId, rate }),
       }),
   },
   ai: {

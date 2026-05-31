@@ -75,6 +75,7 @@ export interface SpeakLine {
   id: string
   text: string
   speaker: string
+  audioUrl?: string
 }
 
 function normalizeVoiceLang(lang: string): string {
@@ -312,7 +313,11 @@ function pickVoicesForSpeakers(
   return result
 }
 
-export function useSpeechReader(languageCode: string) {
+export function useSpeechReader(
+  languageCode: string,
+  dialogId?: string,
+  onDialogUpdated?: (dialog: import('../types').Dialog) => void,
+) {
   const [speaking, setSpeaking] = useState(false)
   const [activeLineId, setActiveLineId] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
@@ -396,23 +401,12 @@ export function useSpeechReader(languageCode: string) {
     return speakerVoicesRef.current.get(speaker) ?? null
   }, [])
 
-  const speakCloud = useCallback(
-    async (
-      text: string,
-      rate: number,
-      gender: 'male' | 'female',
-      lineId: string,
-    ): Promise<boolean> => {
-      const { audioBase64, mimeType } = await api.tts.synthesize({
-        text,
-        languageCode,
-        rate,
-        gender,
-      })
-      if (stoppedRef.current) return false
+  const playAudioUrl = useCallback(
+    (audioUrl: string, lineId: string): Promise<boolean> => {
+      if (stoppedRef.current) return Promise.resolve(false)
 
       return new Promise<boolean>((resolve) => {
-        const audio = new Audio(`data:${mimeType};base64,${audioBase64}`)
+        const audio = new Audio(audioUrl)
         cloudAudioRef.current = audio
         setActiveLineId(lineId)
         setHighlightIndex(null)
@@ -427,7 +421,33 @@ export function useSpeechReader(languageCode: string) {
         audio.play().then(() => {}).catch(() => cleanup(false))
       })
     },
-    [languageCode],
+    [],
+  )
+
+  const speakCloud = useCallback(
+    async (line: SpeakLine, rate: number): Promise<boolean> => {
+      if (line.audioUrl) {
+        return playAudioUrl(line.audioUrl, line.id)
+      }
+
+      if (!dialogId) return false
+
+      const { audioUrl, dialog } = await api.tts.getOrCreate({
+        dialogId,
+        lineId: line.id,
+        rate,
+      })
+      onDialogUpdated?.(dialog)
+
+      const updatedLine = dialog.sections
+        .flatMap((s) => s.lines)
+        .find((l) => l.id === line.id)
+      if (updatedLine?.audioUrl) {
+        return playAudioUrl(updatedLine.audioUrl, line.id)
+      }
+      return playAudioUrl(audioUrl, line.id)
+    },
+    [dialogId, onDialogUpdated, playAudioUrl],
   )
 
   const speakText = useCallback(
@@ -445,12 +465,9 @@ export function useSpeechReader(languageCode: string) {
 
       ensureSpeakerVoices(allLines, speakerIndexMap)
 
-      const speakerIdx = speakerIndexMap.get(line.speaker) ?? 0
-      const gender = guessSpeakerGender(line.speaker, speakerIdx)
-
       if (cloudTtsReady) {
         try {
-          const ok = await speakCloud(text, rate, gender, line.id)
+          const ok = await speakCloud(line, rate)
           if (ok) {
             setTtsError(null)
             return

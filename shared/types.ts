@@ -14,6 +14,8 @@ export interface DialogLine {
   birkenbihl?: BirkenbihlWord[]
   imageUrl?: string
   imagePrompt?: string
+  /** Gespeicherte Cloud-TTS-Audiodatei (wird nur einmal generiert). */
+  audioUrl?: string
 }
 
 export interface LineImageBeat {

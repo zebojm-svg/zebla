@@ -49,6 +49,10 @@ Demo-Codes: `DEMO123`, `KLASSE7A`, `SCHUELER2024`
 
 Zebla nutzt die vorhandenen `FIREBASE_*`-Zugangsdaten. In der Diashow: **„☁️ Cloud-Sprachausgabe“** wenn alles funktioniert; bei Problemen erscheint eine **rote Fehlermeldung** mit Hinweis.
 
+**Kosten (grobe Orientierung):** APIs aktivieren ist kostenlos. Pro Dialogzeile fällt einmalig Cloud-TTS an (typisch wenige Cent pro kompletten Dialog mit ~20 Zeilen). Beim **Wiederabspielen** wird das gespeicherte MP3 aus Firebase Storage geladen – **keine erneute TTS-Abrechnung**. Storage/Firestore sind vernachlässigbar klein.
+
+**Audio-Cache:** Jede Zeile bekommt beim ersten Mal eine MP3 in Storage (`audioUrl` am Dialog). Diashow: **„Audio vorbereiten“** erzeugt alle fehlenden Dateien auf einmal; **MP3-ZIP** / **Gesamt-Audio (WAV)** zum Download.
+
 ---
 
 ## 2. Lokal entwickeln

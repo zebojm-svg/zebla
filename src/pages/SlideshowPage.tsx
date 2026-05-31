@@ -5,6 +5,10 @@ import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
 import { api } from '../api/client'
 import type { Dialog, DialogSection } from '../types'
 import { languageName } from '../types'
+import {
+  downloadDialogAudioCombined,
+  downloadDialogAudioZip,
+} from '../utils/downloadDialogAudio'
 
 export function SlideshowPage() {
   const { id } = useParams<{ id: string }>()
@@ -15,9 +19,12 @@ export function SlideshowPage() {
   const [highlightWords, setHighlightWords] = useState(true)
   const [loading, setLoading] = useState(true)
   const [ttsHint, setTtsHint] = useState('')
+  const [audioBusy, setAudioBusy] = useState(false)
+  const [exportBusy, setExportBusy] = useState(false)
+  const [audioStatus, setAudioStatus] = useState('')
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
-    useSpeechReader(dialog?.targetLanguage ?? 'en')
+    useSpeechReader(dialog?.targetLanguage ?? 'en', dialog?.id, setDialog)
 
   useEffect(() => {
     if (!id) return
@@ -129,6 +136,28 @@ export function SlideshowPage() {
     section &&
     (lineIndex < section.lines.length - 1 || slideIndex < dialog.sections.length - 1)
 
+  const allLines = dialog?.sections.flatMap((s) => s.lines) ?? []
+  const audioReadyCount = allLines.filter((l) => l.audioUrl).length
+
+  const handleEnsureAudio = async () => {
+    if (!dialog || !cloudTtsReady) return
+    setAudioBusy(true)
+    setAudioStatus('')
+    try {
+      const { dialog: updated, generated, skipped } = await api.tts.ensureAll(dialog.id, rate)
+      setDialog(updated)
+      setAudioStatus(
+        generated > 0
+          ? `${generated} neue Audiodatei${generated !== 1 ? 'n' : ''} erstellt (${skipped} bereits vorhanden).`
+          : `Alle ${skipped} Zeilen hatten bereits Audio.`,
+      )
+    } catch (err) {
+      setAudioStatus(err instanceof Error ? err.message : 'Audio-Vorbereitung fehlgeschlagen')
+    } finally {
+      setAudioBusy(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="slideshow-page page-center">
@@ -180,6 +209,61 @@ export function SlideshowPage() {
         <div className="slideshow-cloud-tts">
           ☁️ Cloud-Sprachausgabe
           {dialog.targetLanguage.startsWith('fa') ? ' (Gemini)' : ' (Google)'}
+          {audioReadyCount > 0 && (
+            <span className="slideshow-audio-count">
+              {' '}
+              · {audioReadyCount}/{allLines.length} Zeilen mit gespeichertem Audio
+            </span>
+          )}
+        </div>
+      )}
+
+      {audioStatus && <div className="alert alert-warn slideshow-tts-hint">{audioStatus}</div>}
+
+      {cloudTtsReady && !ttsError && (
+        <div className="slideshow-export-bar">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={audioBusy || speaking}
+            onClick={() => void handleEnsureAudio()}
+          >
+            {audioBusy ? 'Erzeuge Audio …' : 'Audio vorbereiten'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={exportBusy || audioReadyCount === 0}
+            onClick={async () => {
+              setExportBusy(true)
+              try {
+                await downloadDialogAudioZip(dialog)
+              } catch (err) {
+                setAudioStatus(err instanceof Error ? err.message : 'Download fehlgeschlagen')
+              } finally {
+                setExportBusy(false)
+              }
+            }}
+          >
+            MP3-ZIP
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={exportBusy || audioReadyCount === 0}
+            onClick={async () => {
+              setExportBusy(true)
+              try {
+                await downloadDialogAudioCombined(dialog)
+              } catch (err) {
+                setAudioStatus(err instanceof Error ? err.message : 'Download fehlgeschlagen')
+              } finally {
+                setExportBusy(false)
+              }
+            }}
+          >
+            Gesamt-Audio (WAV)
+          </button>
         </div>
       )}
 

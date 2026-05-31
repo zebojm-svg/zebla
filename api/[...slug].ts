@@ -35,7 +35,8 @@ import {
   handleImageAll,
   handleImageLines,
 } from '../lib/ai-handlers.js'
-import { checkTtsHealth, synthesizeSpeech } from '../lib/tts.js'
+import { checkTtsHealth } from '../lib/tts.js'
+import { ensureDialogAudio, getOrCreateLineAudio } from '../lib/dialog-audio.js'
 import type { DialogSection } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -321,24 +322,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (route === 'tts' && req.method === 'POST') {
-      await requireAuth(req)
-      const { text, languageCode, rate, gender } = req.body as {
-        text?: string
-        languageCode?: string
+      const user = await requireAuth(req)
+      const { dialogId, lineId, rate } = req.body as {
+        dialogId?: string
+        lineId?: string
         rate?: number
-        gender?: 'male' | 'female'
       }
-      if (!text?.trim() || !languageCode) {
-        res.status(400).json({ error: 'text und languageCode fehlen.' })
+      if (!dialogId || !lineId) {
+        res.status(400).json({ error: 'dialogId und lineId fehlen.' })
         return
       }
       try {
-        const result = await synthesizeSpeech({
-          text: text.trim(),
-          languageCode,
-          rate,
-          gender,
+        const result = await getOrCreateLineAudio(
+          dialogId,
+          user.uid,
+          lineId,
+          rate ?? 0.85,
+        )
+        res.json({
+          audioUrl: result.audioUrl,
+          cached: result.cached,
+          dialog: result.dialog,
         })
+      } catch (err) {
+        sendError(res, err)
+      }
+      return
+    }
+
+    if (route === 'dialog-ensure-audio' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { dialogId, rate } = req.body as { dialogId?: string; rate?: number }
+      if (!dialogId) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      try {
+        const result = await ensureDialogAudio(dialogId, user.uid, rate ?? 0.85)
         res.json(result)
       } catch (err) {
         sendError(res, err)
