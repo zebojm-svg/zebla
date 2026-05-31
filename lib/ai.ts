@@ -8,7 +8,7 @@ import type {
   ChatMessage,
   LineImageBeat,
 } from '../shared/types.js'
-import { isRtlLanguage, languageName } from '../shared/types.js'
+import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
@@ -260,6 +260,7 @@ export async function applyBirkenbihl(
   lines: DialogLine[],
   nativeLanguage: string,
   targetLanguage?: string,
+  includeRomanization = true,
 ): Promise<DialogLine[]> {
   const nativeName = languageName(nativeLanguage)
   const targetName = targetLanguage ? languageName(targetLanguage) : ''
@@ -267,19 +268,29 @@ export async function applyBirkenbihl(
     targetLanguage && isRtlLanguage(targetLanguage)
       ? `\nDie Zielsprache ${targetName} wird von rechts nach links gelesen. Gib die Wörter in natürlicher Lese-Reihenfolge im JSON-Array an (erstes Wort des Satzes zuerst). Jedes Wort bleibt ein eigenes Array-Element.\n`
       : ''
+  const wantRoman =
+    includeRomanization && targetLanguage && needsRomanization(targetLanguage)
+  const romanHint = wantRoman
+    ? `\nZusätzlich pro Wort "romanization": wie man das Wort in ${targetName} in lateinischen Buchstaben ausspricht (Lautumschrift zum Mitsprechen, z. B. Persisch/Dari: salām, chetoreh). Keine Übersetzung, nur Aussprache-Hilfe.\n`
+    : ''
 
   const result = await chatJson<{
-    lines: { text: string; words: { text: string; translation: string }[] }[]
+    lines: {
+      text: string
+      words: { text: string; translation: string; romanization?: string }[]
+    }[]
   }>(
     `Du wendest die Birkenbihl-Methode an: Unter jedem Wort oder sinnvollen Worteil
 steht die wörtliche Übersetzung in ${nativeName} (Muttersprache, Code: ${nativeLanguage}).
-Teile zusammengesetzte Wörter sinnvoll. Interpunktion bleibt am Wort.${rtlHint}
+Teile zusammengesetzte Wörter sinnvoll. Interpunktion bleibt am Wort.${rtlHint}${romanHint}
 Antworte als JSON:
 {
   "lines": [
     {
       "text": "Originalzeile",
-      "words": [{ "text": "Wort", "translation": "Übersetzung" }]
+      "words": [{ "text": "Wort", "translation": "Übersetzung"${
+        wantRoman ? ', "romanization": "lautschrift"' : ''
+      } }]
     }
   ]
 }`,
@@ -289,7 +300,11 @@ Antworte als JSON:
   return lines.map((line, i) => {
     const row = result.lines[i]
     const birkenbihl: BirkenbihlWord[] =
-      row?.words?.map((w) => ({ text: w.text, translation: w.translation })) ?? []
+      row?.words?.map((w) => ({
+        text: w.text,
+        translation: w.translation,
+        ...(w.romanization?.trim() ? { romanization: w.romanization.trim() } : {}),
+      })) ?? []
     return { ...line, birkenbihl }
   })
 }

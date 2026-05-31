@@ -134,9 +134,13 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
 export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
-    const body = req.body as { dialogId?: string; nativeLanguage?: string }
+    const body = req.body as {
+      dialogId?: string
+      nativeLanguage?: string
+      includeRomanization?: boolean
+    }
     const dialogId = dialogIdFromRequest(req, body)
-    const { nativeLanguage } = body
+    const { nativeLanguage, includeRomanization } = body
     if (!dialogId || !nativeLanguage) {
       res.status(400).json({ error: 'dialogId und Muttersprache fehlen.' })
       return
@@ -148,7 +152,12 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
     }
     const sections = []
     for (const sec of dialog.sections) {
-      const lines = await applyBirkenbihl(sec.lines, nativeLanguage, dialog.targetLanguage)
+      const lines = await applyBirkenbihl(
+        sec.lines,
+        nativeLanguage,
+        dialog.targetLanguage,
+        includeRomanization !== false,
+      )
       sections.push({ ...sec, lines })
     }
     const updated = await updateDialog(dialog.id, user.uid, {

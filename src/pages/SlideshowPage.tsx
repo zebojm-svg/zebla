@@ -4,7 +4,13 @@ import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
 import { api } from '../api/client'
 import type { Dialog, DialogSection } from '../types'
-import { languageName } from '../types'
+import { languageName, needsRomanization } from '../types'
+import {
+  getIncludeRomanization,
+  getUseCloudTts,
+  setIncludeRomanization,
+  setUseCloudTts,
+} from '../lib/preferences'
 import {
   downloadDialogAudioCombined,
   downloadDialogAudioZip,
@@ -22,9 +28,11 @@ export function SlideshowPage() {
   const [audioBusy, setAudioBusy] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [audioStatus, setAudioStatus] = useState('')
+  const [useCloudTts, setUseCloudTtsState] = useState(true)
+  const [showRomanization, setShowRomanizationState] = useState(true)
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
-    useSpeechReader(dialog?.targetLanguage ?? 'en', dialog?.id, setDialog)
+    useSpeechReader(dialog?.targetLanguage ?? 'en', dialog?.id, setDialog, { useCloudTts })
 
   useEffect(() => {
     if (!id) return
@@ -39,7 +47,13 @@ export function SlideshowPage() {
   }, [stop])
 
   useEffect(() => {
-    if (!dialog || !['fa', 'ar'].includes(dialog.targetLanguage)) {
+    if (!dialog) return
+    setUseCloudTtsState(getUseCloudTts(dialog.targetLanguage))
+    setShowRomanizationState(getIncludeRomanization())
+  }, [dialog?.id, dialog?.targetLanguage])
+
+  useEffect(() => {
+    if (!dialog || useCloudTts || !['fa', 'ar'].includes(dialog.targetLanguage)) {
       setTtsHint('')
       return
     }
@@ -67,7 +81,7 @@ export function SlideshowPage() {
       window.speechSynthesis.onvoiceschanged = null
       window.clearTimeout(timer)
     }
-  }, [dialog, cloudTtsReady, ttsError])
+  }, [dialog, cloudTtsReady, ttsError, useCloudTts])
 
   useEffect(() => {
     setLineIndex(0)
@@ -188,24 +202,78 @@ export function SlideshowPage() {
       </div>
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
-      {ttsError && (
+      <div className="slideshow-settings panel">
+        <label className="checkbox-label slideshow-setting">
+          <input
+            type="checkbox"
+            checked={useCloudTts}
+            onChange={(e) => {
+              const on = e.target.checked
+              setUseCloudTtsState(on)
+              setUseCloudTts(on)
+            }}
+          />
+          <span>
+            ☁️ Cloud-Sprachausgabe{' '}
+            <span className="muted slideshow-setting-hint">
+              (kostenpflichtig, ca. 1 Cent / 5 Zeilen; wird einmal gespeichert)
+            </span>
+          </span>
+        </label>
+        {needsRomanization(dialog.targetLanguage) && (
+          <label className="checkbox-label slideshow-setting">
+            <input
+              type="checkbox"
+              checked={showRomanization}
+              onChange={(e) => {
+                const on = e.target.checked
+                setShowRomanizationState(on)
+                setIncludeRomanization(on)
+              }}
+            />
+            <span>Lautschrift (lateinische Aussprache unter jedem Wort)</span>
+          </label>
+        )}
+        {!useCloudTts && (
+          <p className="muted slideshow-setting-note">
+            🖥️ Windows-Sprachausgabe (gratis). Bei Persisch/Arabisch ggf. Sprachpaket in den
+            Windows-Einstellungen installieren.
+          </p>
+        )}
+      </div>
+
+      {useCloudTts && ttsError && (
         <div className="alert alert-error slideshow-tts-hint">
           {ttsError}
-          {ttsError.includes('Vertex AI') && (
+          {(ttsError.includes('Vertex AI User') || ttsError.includes('Service-Account')) && (
             <p style={{ marginTop: '0.5rem', marginBottom: 0 }}>
               <a
-                href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=zebla-f517e"
+                href="https://console.cloud.google.com/iam-admin/iam?project=zebla-f517e"
                 target="_blank"
                 rel="noreferrer"
                 style={{ color: 'inherit' }}
               >
-                Vertex AI API aktivieren →
+                IAM: Rolle „Vertex AI User“ vergeben →
               </a>
             </p>
           )}
+          {ttsError.includes('Vertex AI') &&
+            !ttsError.includes('Vertex AI User') &&
+            !ttsError.includes('Service-Account') && (
+              <p style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+                <a
+                  href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=zebla-f517e"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: 'inherit' }}
+                >
+                  Vertex AI API aktivieren →
+                </a>
+              </p>
+            )}
         </div>
       )}
-      {cloudTtsReady && !ttsError && (
+      {useCloudTts && cloudTtsReady && !ttsError && (
         <div className="slideshow-cloud-tts">
           ☁️ Cloud-Sprachausgabe
           {dialog.targetLanguage.startsWith('fa') ? ' (Gemini)' : ' (Google)'}
@@ -220,7 +288,7 @@ export function SlideshowPage() {
 
       {audioStatus && <div className="alert alert-warn slideshow-tts-hint">{audioStatus}</div>}
 
-      {cloudTtsReady && !ttsError && (
+      {useCloudTts && cloudTtsReady && !ttsError && (
         <div className="slideshow-export-bar">
           <button
             type="button"
@@ -299,6 +367,7 @@ export function SlideshowPage() {
                   }
                   targetLanguage={dialog.targetLanguage}
                   nativeLanguage={dialog.sourceLanguage}
+                  showRomanization={showRomanization}
                 />
               </div>
             ))

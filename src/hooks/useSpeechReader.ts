@@ -313,11 +313,18 @@ function pickVoicesForSpeakers(
   return result
 }
 
+export interface SpeechReaderOptions {
+  /** Cloud-TTS (kostenpflichtig) statt Windows-Sprachausgabe. */
+  useCloudTts?: boolean
+}
+
 export function useSpeechReader(
   languageCode: string,
   dialogId?: string,
   onDialogUpdated?: (dialog: import('../types').Dialog) => void,
+  options?: SpeechReaderOptions,
 ) {
+  const useCloudTts = options?.useCloudTts !== false
   const [speaking, setSpeaking] = useState(false)
   const [activeLineId, setActiveLineId] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
@@ -330,6 +337,11 @@ export function useSpeechReader(
   const cloudAudioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
+    if (!useCloudTts) {
+      setCloudTtsReady(false)
+      setTtsError(null)
+      return
+    }
     api.tts
       .status(languageCode)
       .then((r) => {
@@ -340,7 +352,7 @@ export function useSpeechReader(
         setCloudTtsReady(false)
         setTtsError(err instanceof Error ? err.message : 'TTS-Status nicht erreichbar')
       })
-  }, [languageCode])
+  }, [languageCode, useCloudTts])
 
   useEffect(() => {
     speakerVoicesRef.current.clear()
@@ -402,11 +414,12 @@ export function useSpeechReader(
   }, [])
 
   const playAudioUrl = useCallback(
-    (audioUrl: string, lineId: string): Promise<boolean> => {
+    (audioUrl: string, lineId: string, rate: number): Promise<boolean> => {
       if (stoppedRef.current) return Promise.resolve(false)
 
       return new Promise<boolean>((resolve) => {
         const audio = new Audio(audioUrl)
+        audio.playbackRate = Math.min(1.3, Math.max(0.4, rate))
         cloudAudioRef.current = audio
         setActiveLineId(lineId)
         setHighlightIndex(null)
@@ -427,7 +440,7 @@ export function useSpeechReader(
   const speakCloud = useCallback(
     async (line: SpeakLine, rate: number): Promise<boolean> => {
       if (line.audioUrl) {
-        return playAudioUrl(line.audioUrl, line.id)
+        return playAudioUrl(line.audioUrl, line.id, rate)
       }
 
       if (!dialogId) return false
@@ -443,9 +456,9 @@ export function useSpeechReader(
         .flatMap((s) => s.lines)
         .find((l) => l.id === line.id)
       if (updatedLine?.audioUrl) {
-        return playAudioUrl(updatedLine.audioUrl, line.id)
+        return playAudioUrl(updatedLine.audioUrl, line.id, rate)
       }
-      return playAudioUrl(audioUrl, line.id)
+      return playAudioUrl(audioUrl, line.id, rate)
     },
     [dialogId, onDialogUpdated, playAudioUrl],
   )
@@ -465,7 +478,7 @@ export function useSpeechReader(
 
       ensureSpeakerVoices(allLines, speakerIndexMap)
 
-      if (cloudTtsReady) {
+      if (useCloudTts && cloudTtsReady) {
         try {
           const ok = await speakCloud(line, rate)
           if (ok) {
@@ -566,7 +579,7 @@ export function useSpeechReader(
         await sleep(estimateSpeechMs(text, rate))
       }
     },
-    [cloudTtsReady, ensureSpeakerVoices, getVoiceForSpeaker, languageCode, speakCloud],
+    [useCloudTts, cloudTtsReady, ensureSpeakerVoices, getVoiceForSpeaker, languageCode, speakCloud],
   )
 
   const speakFrom = useCallback(
@@ -610,6 +623,7 @@ export function useSpeechReader(
     highlightIndex,
     cloudTtsReady,
     ttsError,
+    useCloudTts,
   }
 }
 

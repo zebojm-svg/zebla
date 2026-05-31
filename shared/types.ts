@@ -5,6 +5,8 @@ export type CreateMode = 'chat' | 'topic' | 'dictate'
 export interface BirkenbihlWord {
   text: string
   translation: string
+  /** Lateinische Umschrift (z. B. Persisch: salām) – optional, nach Birkenbihl-Neuanwendung. */
+  romanization?: string
 }
 
 export interface DialogLine {
@@ -104,6 +106,25 @@ export const RTL_LANGUAGES = new Set(['ar', 'fa'])
 
 export function isRtlLanguage(code: string): boolean {
   return RTL_LANGUAGES.has(code)
+}
+
+/** Zielsprachen, für die Birkenbihl eine lateinische Aussprache-Hilfe liefert. */
+export const ROMANIZATION_LANGUAGES = new Set([
+  'fa',
+  'ar',
+  'ja',
+  'zh',
+  'ko',
+  'ru',
+  'el',
+  'he',
+  'th',
+  'hi',
+  'uk',
+])
+
+export function needsRomanization(code: string): boolean {
+  return ROMANIZATION_LANGUAGES.has(code.slice(0, 2).toLowerCase())
 }
 
 export function languageName(code: string): string {

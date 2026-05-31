@@ -37,6 +37,9 @@ import {
 } from '../lib/ai-handlers.js'
 import { checkTtsHealth } from '../lib/tts.js'
 import { ensureDialogAudio, getOrCreateLineAudio } from '../lib/dialog-audio.js'
+import { exportDialogAudioZip } from '../lib/dialog-audio-export.js'
+import { downloadLineAudio } from '../lib/audio-storage.js'
+import { findLineInDialog } from '../lib/dialog-audio.js'
 import type { DialogSection } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -344,6 +347,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cached: result.cached,
           dialog: result.dialog,
         })
+      } catch (err) {
+        sendError(res, err)
+      }
+      return
+    }
+
+    if (route === 'dialog-audio-export' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const dialogId = req.query.dialogId as string | undefined
+      const format = (req.query.format as string | undefined) ?? 'zip'
+      if (!dialogId) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      if (format !== 'zip') {
+        res.status(400).json({ error: 'Nur format=zip über die API. WAV wird im Browser erstellt.' })
+        return
+      }
+      try {
+        const { buffer, filename } = await exportDialogAudioZip(dialogId, user.uid)
+        res.setHeader('Content-Type', 'application/zip')
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+        res.send(buffer)
+      } catch (err) {
+        sendError(res, err)
+      }
+      return
+    }
+
+    if (route === 'dialog-audio-line' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const dialogId = req.query.dialogId as string | undefined
+      const lineId = req.query.lineId as string | undefined
+      if (!dialogId || !lineId) {
+        res.status(400).json({ error: 'dialogId und lineId fehlen.' })
+        return
+      }
+      try {
+        const dialog = await getDialog(dialogId, user.uid)
+        if (!dialog) {
+          res.status(404).json({ error: 'Dialog nicht gefunden.' })
+          return
+        }
+        const found = findLineInDialog(dialog, lineId)
+        if (!found?.line.audioUrl) {
+          res.status(404).json({ error: 'Keine Audiodatei für diese Zeile.' })
+          return
+        }
+        const buffer = await downloadLineAudio(dialogId, lineId)
+        res.setHeader('Content-Type', 'audio/mpeg')
+        res.setHeader('Cache-Control', 'private, max-age=3600')
+        res.send(buffer)
       } catch (err) {
         sendError(res, err)
       }

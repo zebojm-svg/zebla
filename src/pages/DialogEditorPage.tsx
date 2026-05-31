@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import type { Dialog } from '../types'
-import { LANGUAGES, languageName } from '../types'
+import { LANGUAGES, languageName, needsRomanization } from '../types'
+import { getIncludeRomanization, setIncludeRomanization } from '../lib/preferences'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -14,6 +15,7 @@ export function DialogEditorPage() {
   const [status, setStatus] = useState('')
   const [translateLang, setTranslateLang] = useState('en')
   const [birkenbihlLang, setBirkenbihlLang] = useState('de')
+  const [includeRomanization, setIncludeRomanizationState] = useState(true)
   const [shareBusy, setShareBusy] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
 
@@ -23,6 +25,7 @@ export function DialogEditorPage() {
     setDialog(d)
     setTranslateLang(d.targetLanguage)
     setBirkenbihlLang(d.sourceLanguage)
+    setIncludeRomanizationState(getIncludeRomanization())
   }
 
   useEffect(() => {
@@ -135,7 +138,7 @@ export function DialogEditorPage() {
             </div>
           </div>
 
-          <div className="tool-group">
+          <div className="tool-group tool-group--stack">
             <span className="tool-label">Birkenbihl (Muttersprache)</span>
             <div className="tool-controls">
               <select value={birkenbihlLang} onChange={(e) => setBirkenbihlLang(e.target.value)}>
@@ -151,7 +154,12 @@ export function DialogEditorPage() {
                 disabled={!!busy}
                 onClick={() =>
                   runAction('birkenbihl', async () => {
-                    const { dialog: d } = await api.ai.birkenbihl(dialog.id, birkenbihlLang)
+                    setIncludeRomanization(includeRomanization)
+                    const { dialog: d } = await api.ai.birkenbihl(
+                      dialog.id,
+                      birkenbihlLang,
+                      includeRomanization,
+                    )
                     setDialog(d)
                   })
                 }
@@ -159,6 +167,20 @@ export function DialogEditorPage() {
                 {busy === 'birkenbihl' ? '…' : 'Anwenden'}
               </button>
             </div>
+            {needsRomanization(dialog.targetLanguage) && (
+              <label className="checkbox-label tool-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includeRomanization}
+                  onChange={(e) => {
+                    const on = e.target.checked
+                    setIncludeRomanizationState(on)
+                    setIncludeRomanization(on)
+                  }}
+                />
+                Lautschrift (lateinische Aussprache) mit erzeugen
+              </label>
+            )}
           </div>
 
           <div className="tool-group">
@@ -329,6 +351,7 @@ export function DialogEditorPage() {
                     line={line}
                     targetLanguage={dialog.targetLanguage}
                     nativeLanguage={dialog.sourceLanguage}
+                    showRomanization={includeRomanization}
                   />
                 </div>
                 {line.imageUrl && (

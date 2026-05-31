@@ -68,6 +68,42 @@ async function request<T>(
   return data as T
 }
 
+async function requestBlob(path: string, timeoutMs = 120_000): Promise<Blob> {
+  const headers: Record<string, string> = {}
+  if (tokenGetter) {
+    const token = await tokenGetter()
+    if (token) headers.Authorization = `Bearer ${token}`
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, { headers, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Download-Zeitlimit überschritten. Bitte erneut versuchen.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (!res.ok) {
+    const text = await res.text()
+    let message = `Download fehlgeschlagen (${res.status}).`
+    try {
+      const data = JSON.parse(text) as { error?: string }
+      if (data.error) message = data.error
+    } catch {
+      if (text) message = text.slice(0, 200)
+    }
+    throw new Error(message)
+  }
+  return res.blob()
+}
+
 export const api = {
   auth: {
     student: (code: string, name?: string) =>
@@ -169,6 +205,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId, rate }),
       }),
+    lineAudio: (dialogId: string, lineId: string) =>
+      requestBlob(
+        `/dialog-audio-line?dialogId=${encodeURIComponent(dialogId)}&lineId=${encodeURIComponent(lineId)}`,
+      ),
+    exportZip: (dialogId: string) =>
+      requestBlob(
+        `/dialog-audio-export?dialogId=${encodeURIComponent(dialogId)}&format=zip`,
+        180_000,
+      ),
   },
   ai: {
     status: () => request<{ configured: boolean }>('/ai-status'),
@@ -207,10 +252,14 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId, targetLanguage }),
       }),
-    birkenbihl: (dialogId: string, nativeLanguage: string) =>
+    birkenbihl: (
+      dialogId: string,
+      nativeLanguage: string,
+      includeRomanization?: boolean,
+    ) =>
       request<{ dialog: import('../types').Dialog }>('/birkenbihl', {
         method: 'POST',
-        body: JSON.stringify({ dialogId, nativeLanguage }),
+        body: JSON.stringify({ dialogId, nativeLanguage, includeRomanization }),
       }),
     split: (dialogId: string) =>
       request<{ dialog: import('../types').Dialog }>('/split', {

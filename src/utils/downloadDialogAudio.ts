@@ -1,95 +1,74 @@
+import { api } from '../api/client'
 import type { Dialog } from '../types'
 
 function safeFilename(name: string): string {
   return name.replace(/[^\wäöüÄÖÜß\- ]+/g, '').trim() || 'dialog'
 }
 
-/** Lädt alle gespeicherten Zeilen-Audios als ZIP (MP3). */
-export async function downloadDialogAudioZip(dialog: Dialog): Promise<void> {
-  const entries: { path: string; url: string }[] = []
-  let index = 0
+function linesWithAudio(dialog: Dialog) {
+  const lines: { id: string }[] = []
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      if (!line.audioUrl) continue
-      index++
-      const num = String(index).padStart(2, '0')
-      const speaker = line.speaker.replace(/[^\w\-]+/g, '_').slice(0, 20)
-      entries.push({ path: `${num}-${speaker}.mp3`, url: line.audioUrl })
+      if (line.audioUrl) lines.push(line)
     }
   }
+  return lines
+}
 
-  if (entries.length === 0) {
-    throw new Error('Noch keine Audiodateien vorhanden. Zuerst „Audio vorbereiten“ ausführen.')
-  }
-
-  const { default: JSZip } = await import('jszip')
-  const zip = new JSZip()
-
-  for (const entry of entries) {
-    const res = await fetch(entry.url)
-    if (!res.ok) throw new Error(`Audio konnte nicht geladen werden: ${entry.path}`)
-    const blob = await res.blob()
-    zip.file(entry.path, blob)
-  }
-
-  const zipBlob = await zip.generateAsync({ type: 'blob' })
-  const url = URL.createObjectURL(zipBlob)
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${safeFilename(dialog.title)}-audio.zip`
+  a.download = filename
   a.click()
   URL.revokeObjectURL(url)
 }
 
-/** Eine zusammenhängende MP3 (Zeilen nacheinander, kurze Pause). */
-export async function downloadDialogAudioCombined(dialog: Dialog): Promise<void> {
-  const urls: string[] = []
-  for (const section of dialog.sections) {
-    for (const line of section.lines) {
-      if (line.audioUrl) urls.push(line.audioUrl)
-    }
+/** ZIP über die API (kein CORS-Problem mit Firebase Storage). */
+export async function downloadDialogAudioZip(dialog: Dialog): Promise<void> {
+  if (linesWithAudio(dialog).length === 0) {
+    throw new Error('Noch keine Audiodateien vorhanden. Zuerst „Audio vorbereiten“ ausführen.')
   }
-  if (urls.length === 0) {
+  const blob = await api.tts.exportZip(dialog.id)
+  triggerDownload(blob, `${safeFilename(dialog.title)}-audio.zip`)
+}
+
+/** Eine zusammenhängende WAV – Zeilen-Audios über die API laden. */
+export async function downloadDialogAudioCombined(dialog: Dialog): Promise<void> {
+  const lines = linesWithAudio(dialog)
+  if (lines.length === 0) {
     throw new Error('Noch keine Audiodateien vorhanden. Zuerst „Audio vorbereiten“ ausführen.')
   }
 
   const audioContext = new AudioContext()
   const buffers: AudioBuffer[] = []
-  for (const audioUrl of urls) {
-    const res = await fetch(audioUrl)
-    const arrayBuffer = await res.arrayBuffer()
-    buffers.push(await audioContext.decodeAudioData(arrayBuffer))
-  }
-
-  const gapSec = 0.4
-  const gapSamples = Math.floor(audioContext.sampleRate * gapSec)
-  const totalLength =
-    buffers.reduce((sum, b) => sum + b.length, 0) + gapSamples * Math.max(0, buffers.length - 1)
-  const combined = audioContext.createBuffer(
-    1,
-    totalLength,
-    audioContext.sampleRate,
-  )
-  const channel = combined.getChannelData(0)
-  let offset = 0
-  for (let i = 0; i < buffers.length; i++) {
-    const buf = buffers[i]
-    const mono = buf.numberOfChannels > 1 ? averageChannels(buf) : buf.getChannelData(0)
-    channel.set(mono, offset)
-    offset += buf.length
-    if (i < buffers.length - 1) {
-      offset += gapSamples
+  try {
+    for (const line of lines) {
+      const blob = await api.tts.lineAudio(dialog.id, line.id)
+      const arrayBuffer = await blob.arrayBuffer()
+      buffers.push(await audioContext.decodeAudioData(arrayBuffer))
     }
-  }
 
-  const wavBlob = audioBufferToWav(combined)
-  const url = URL.createObjectURL(wavBlob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${safeFilename(dialog.title)}-gesamt.wav`
-  a.click()
-  URL.revokeObjectURL(url)
-  await audioContext.close()
+    const gapSec = 0.4
+    const gapSamples = Math.floor(audioContext.sampleRate * gapSec)
+    const totalLength =
+      buffers.reduce((sum, b) => sum + b.length, 0) +
+      gapSamples * Math.max(0, buffers.length - 1)
+    const combined = audioContext.createBuffer(1, totalLength, audioContext.sampleRate)
+    const channel = combined.getChannelData(0)
+    let offset = 0
+    for (let i = 0; i < buffers.length; i++) {
+      const buf = buffers[i]
+      const mono = buf.numberOfChannels > 1 ? averageChannels(buf) : buf.getChannelData(0)
+      channel.set(mono, offset)
+      offset += buf.length
+      if (i < buffers.length - 1) offset += gapSamples
+    }
+
+    triggerDownload(audioBufferToWav(combined), `${safeFilename(dialog.title)}-gesamt.wav`)
+  } finally {
+    await audioContext.close()
+  }
 }
 
 function averageChannels(buffer: AudioBuffer): Float32Array {

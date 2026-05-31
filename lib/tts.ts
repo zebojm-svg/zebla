@@ -82,14 +82,23 @@ function resolveClassicVoice(languageCode: string, gender: 'male' | 'female' = '
 }
 
 function formatApiError(msg: string): string {
-  if (msg.includes('aiplatform.googleapis.com') || msg.includes('Agent Platform API')) {
-    return 'Vertex AI API ist nicht aktiv. Für Persisch/Dari in der Google Cloud Console „Vertex AI API“ aktivieren.'
+  if (msg.includes('aiplatform.endpoints.predict')) {
+    return (
+      'Gemini-Sprachausgabe (Persisch/Dari): Dem Firebase-Service-Account fehlt die Rolle ' +
+      '„Vertex AI User“ im Google-Projekt zebla-f517e (IAM → Mitglieder → Service-Account → Rolle hinzufügen).'
+    )
+  }
+  if (
+    msg.includes('SERVICE_DISABLED') ||
+    (msg.includes('has not been used') && msg.includes('aiplatform'))
+  ) {
+    return 'Vertex AI API ist nicht aktiv. In der Google Cloud Console „Vertex AI API“ aktivieren.'
   }
   if (msg.includes('billing') || msg.includes('BILLING')) {
     return 'Cloud-Sprachausgabe braucht ein aktives Abrechnungskonto im Google-Projekt.'
   }
-  if (msg.includes('has not been used') || msg.includes('disabled') || msg.includes('PERMISSION_DENIED')) {
-    return 'Google Cloud API nicht aktiv oder keine Berechtigung.'
+  if (msg.includes('has not been used') || msg.includes('disabled')) {
+    return 'Google Cloud API nicht aktiv. Text-to-Speech API bzw. Vertex AI API in der Cloud Console aktivieren.'
   }
   return msg
 }
@@ -237,9 +246,11 @@ export async function checkTtsHealth(languageCode?: string): Promise<TtsHealth> 
       geminiTts: false,
       provider: 'google-gemini-tts',
       error: geminiError,
-      hint: geminiError?.includes('Vertex AI')
-        ? 'https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=zebla-f517e'
-        : undefined,
+      hint: geminiError?.includes('Vertex AI User')
+        ? 'https://console.cloud.google.com/iam-admin/iam?project=zebla-f517e'
+        : geminiError?.includes('Vertex AI')
+          ? 'https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=zebla-f517e'
+          : undefined,
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'TTS-Test fehlgeschlagen'

@@ -46,6 +46,7 @@ Demo-Codes: `DEMO123`, `KLASSE7A`, `SCHUELER2024`
 1. [Cloud Text-to-Speech API](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com) aktivieren (Deutsch, Französisch, …)
 2. **[Vertex AI API](https://console.cloud.google.com/apis/library/aiplatform.googleapis.com)** aktivieren – **nötig für Persisch/Dari** (Gemini-TTS, kein klassisches `fa-IR`-Stimmenpaket)
 3. Abrechnungskonto im Google-Projekt verknüpft (Blaze/Firebase reicht oft)
+4. Dem **Firebase-Service-Account** (`FIREBASE_CLIENT_EMAIL` auf Vercel) die IAM-Rolle **[Vertex AI User](https://console.cloud.google.com/iam-admin/iam?project=zebla-f517e)** geben – sonst schlägt Gemini-TTS mit fehlender Berechtigung `aiplatform.endpoints.predict` fehl
 
 Zebla nutzt die vorhandenen `FIREBASE_*`-Zugangsdaten. In der Diashow: **„☁️ Cloud-Sprachausgabe“** wenn alles funktioniert; bei Problemen erscheint eine **rote Fehlermeldung** mit Hinweis.
 

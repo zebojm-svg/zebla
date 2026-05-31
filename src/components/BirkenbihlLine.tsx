@@ -6,6 +6,8 @@ interface BirkenbihlLineProps {
   targetLanguage?: string
   nativeLanguage?: string
   highlightWordIndex?: number | null
+  /** Lautschrift in lateinischen Buchstaben anzeigen (falls vorhanden). */
+  showRomanization?: boolean
 }
 
 export function BirkenbihlLine({
@@ -13,6 +15,7 @@ export function BirkenbihlLine({
   targetLanguage,
   nativeLanguage,
   highlightWordIndex,
+  showRomanization = true,
 }: BirkenbihlLineProps) {
   const targetRtl = targetLanguage ? isRtlLanguage(targetLanguage) : false
   const nativeRtl = nativeLanguage ? isRtlLanguage(nativeLanguage) : false
@@ -55,6 +58,11 @@ export function BirkenbihlLine({
             className={`birkenbihl-word ${highlightWordIndex === i ? 'word-highlight' : ''}`}
           >
             <span className="birkenbihl-top">{w.text}</span>
+            {showRomanization && w.romanization ? (
+              <span className="birkenbihl-roman" lang="de">
+                {w.romanization}
+              </span>
+            ) : null}
             <span
               className={`birkenbihl-bottom ${nativeRtl ? 'birkenbihl-bottom--rtl' : ''}`}
               dir={nativeRtl ? 'rtl' : 'ltr'}

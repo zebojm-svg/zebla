@@ -11,4 +11,12 @@ export type {
   ChatMessage,
 } from '../../shared/types'
 
-export { LENGTH_LABELS, LANGUAGES, languageName, isRtlLanguage, RTL_LANGUAGES } from '../../shared/types'
+export {
+  LENGTH_LABELS,
+  LANGUAGES,
+  languageName,
+  isRtlLanguage,
+  RTL_LANGUAGES,
+  needsRomanization,
+  ROMANIZATION_LANGUAGES,
+} from '../../shared/types'
