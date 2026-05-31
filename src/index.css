@@ -665,6 +665,12 @@ textarea { resize: vertical; min-height: 120px; }
 .slideshow-title { font-weight: 600; }
 .slideshow-counter { color: #94a3b8; font-size: 0.875rem; }
 
+.slideshow-tts-hint {
+  margin: 0 1.5rem 0.5rem;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
 .slideshow-stage {
   flex: 1;
   min-height: 0;

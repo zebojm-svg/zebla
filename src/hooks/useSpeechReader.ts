@@ -408,10 +408,14 @@ export function useSpeechReader(languageCode: string) {
           utterance.pitch = speakerPitchRef.current.get(line.speaker) ?? 1
 
           const localeVoice =
-            assignedVoice &&
-            normalizeVoiceLang(assignedVoice.lang).toLowerCase().startsWith(locale.slice(0, 2).toLowerCase())
+            pickVoiceForLocale(voicesRef.current, locale) ??
+            (assignedVoice &&
+            normalizeVoiceLang(assignedVoice.lang)
+              .toLowerCase()
+              .startsWith(locale.slice(0, 2).toLowerCase())
               ? assignedVoice
-              : pickVoiceForLocale(voicesRef.current, locale) ?? assignedVoice
+              : undefined)
+
           if (localeVoice) {
             utterance.voice = localeVoice
             utterance.lang = normalizeVoiceLang(localeVoice.lang)
@@ -419,6 +423,7 @@ export function useSpeechReader(languageCode: string) {
 
           let started = false
           let settled = false
+          const startTime = performance.now()
 
           const finish = (success: boolean) => {
             if (settled) return
@@ -445,9 +450,13 @@ export function useSpeechReader(languageCode: string) {
             setHighlightIndex(null)
           }
 
-          utterance.onend = () => finish(started)
+          utterance.onend = () =>
+            finish(started || performance.now() - startTime > 250)
           utterance.onerror = (event) => {
-            finish(event.error === 'interrupted' ? false : started)
+            finish(
+              event.error !== 'interrupted' &&
+                (started || performance.now() - startTime > 250),
+            )
           }
 
           window.speechSynthesis.speak(utterance)

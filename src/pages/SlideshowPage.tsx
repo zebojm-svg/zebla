@@ -4,6 +4,7 @@ import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
 import { api } from '../api/client'
 import type { Dialog, DialogSection } from '../types'
+import { languageName } from '../types'
 
 export function SlideshowPage() {
   const { id } = useParams<{ id: string }>()
@@ -13,6 +14,7 @@ export function SlideshowPage() {
   const [rate, setRate] = useState(0.85)
   const [highlightWords, setHighlightWords] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [ttsHint, setTtsHint] = useState('')
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex } = useSpeechReader(
     dialog?.targetLanguage ?? 'en',
@@ -29,6 +31,33 @@ export function SlideshowPage() {
   useEffect(() => {
     return () => stop()
   }, [stop])
+
+  useEffect(() => {
+    if (!dialog || !['fa', 'ar'].includes(dialog.targetLanguage)) {
+      setTtsHint('')
+      return
+    }
+    const checkVoices = () => {
+      const prefix = dialog.targetLanguage
+      const matched = window.speechSynthesis
+        .getVoices()
+        .filter((v) => v.lang.replace('_', '-').toLowerCase().startsWith(prefix))
+      if (matched.length === 0) {
+        setTtsHint(
+          `Keine Sprachausgabe-Stimme für ${languageName(prefix)} gefunden. Unter Windows: Einstellungen → Zeit und Sprache → Sprache → Sprachpaket mit „Sprachausgabe“ installieren, Browser neu starten.`,
+        )
+      } else {
+        setTtsHint('')
+      }
+    }
+    checkVoices()
+    window.speechSynthesis.onvoiceschanged = checkVoices
+    const timer = window.setTimeout(checkVoices, 500)
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null
+      window.clearTimeout(timer)
+    }
+  }, [dialog])
 
   useEffect(() => {
     setLineIndex(0)
@@ -125,6 +154,8 @@ export function SlideshowPage() {
           Abschnitt {slideIndex + 1}/{dialog.sections.length}
         </span>
       </div>
+
+      {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
 
       <div className="slideshow-stage">
         <div className="slideshow-image-wrap">
