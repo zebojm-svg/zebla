@@ -148,7 +148,7 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
     }
     const sections = []
     for (const sec of dialog.sections) {
-      const lines = await applyBirkenbihl(sec.lines, nativeLanguage)
+      const lines = await applyBirkenbihl(sec.lines, nativeLanguage, dialog.targetLanguage)
       sections.push({ ...sec, lines })
     }
     const updated = await updateDialog(dialog.id, user.uid, {

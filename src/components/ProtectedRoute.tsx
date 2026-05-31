@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export function ProtectedRoute() {
@@ -18,6 +18,7 @@ export function ProtectedRoute() {
 
 export function PublicOnlyRoute() {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -27,6 +28,9 @@ export function PublicOnlyRoute() {
     )
   }
 
-  if (user) return <Navigate to="/" replace />
+  if (user) {
+    const redirect = new URLSearchParams(location.search).get('redirect')
+    return <Navigate to={redirect || '/'} replace />
+  }
   return <Outlet />
 }

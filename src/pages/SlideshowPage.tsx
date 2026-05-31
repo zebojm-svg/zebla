@@ -156,6 +156,8 @@ export function SlideshowPage() {
                   highlightWordIndex={
                     speaking && activeLineId === line.id ? highlightIndex : null
                   }
+                  targetLanguage={dialog.targetLanguage}
+                  nativeLanguage={dialog.sourceLanguage}
                 />
               </div>
             ))

@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   LineImageBeat,
 } from '../shared/types.js'
+import { isRtlLanguage, languageName } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
@@ -258,13 +259,21 @@ Behalte Sprecher-Namen bei. Gleiche Anzahl Zeilen.`,
 export async function applyBirkenbihl(
   lines: DialogLine[],
   nativeLanguage: string,
+  targetLanguage?: string,
 ): Promise<DialogLine[]> {
+  const nativeName = languageName(nativeLanguage)
+  const targetName = targetLanguage ? languageName(targetLanguage) : ''
+  const rtlHint =
+    targetLanguage && isRtlLanguage(targetLanguage)
+      ? `\nDie Zielsprache ${targetName} wird von rechts nach links gelesen. Gib die Wörter in natürlicher Lese-Reihenfolge im JSON-Array an (erstes Wort des Satzes zuerst). Jedes Wort bleibt ein eigenes Array-Element.\n`
+      : ''
+
   const result = await chatJson<{
     lines: { text: string; words: { text: string; translation: string }[] }[]
   }>(
     `Du wendest die Birkenbihl-Methode an: Unter jedem Wort oder sinnvollen Worteil
-steht die wörtliche Übersetzung in ${nativeLanguage} (Muttersprache).
-Teile zusammengesetzte Wörter sinnvoll. Interpunktion bleibt am Wort.
+steht die wörtliche Übersetzung in ${nativeName} (Muttersprache, Code: ${nativeLanguage}).
+Teile zusammengesetzte Wörter sinnvoll. Interpunktion bleibt am Wort.${rtlHint}
 Antworte als JSON:
 {
   "lines": [

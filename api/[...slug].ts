@@ -12,6 +12,9 @@ import {
   getDialog,
   updateDialog,
   deleteDialog,
+  getDialogByShareToken,
+  setDialogSharing,
+  cloneDialog,
   upsertUserProfile,
 } from '../lib/firestore.js'
 import {
@@ -96,6 +99,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           authType: profile.authType,
         },
       })
+      return
+    }
+
+    if (route === 'shared' && req.method === 'GET') {
+      const token = req.query.token as string
+      if (!token?.trim()) {
+        res.status(400).json({ error: 'Freigabe-Link ungültig.' })
+        return
+      }
+      const dialog = await getDialogByShareToken(token.trim())
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden oder Freigabe beendet.' })
+        return
+      }
+      res.json({
+        dialog: {
+          title: dialog.title,
+          sourceLanguage: dialog.sourceLanguage,
+          targetLanguage: dialog.targetLanguage,
+          length: dialog.length,
+          sections: dialog.sections,
+        },
+      })
+      return
+    }
+
+    if (route === 'dialog-share' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { id, enabled } = req.body as { id?: string; enabled?: boolean }
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const dialog = await setDialogSharing(id, user.uid, enabled !== false)
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      res.json({ dialog, shareToken: dialog.shareToken ?? null })
+      return
+    }
+
+    if (route === 'dialog-clone' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { token, folderId } = req.body as {
+        token?: string
+        folderId?: string | null
+      }
+      if (!token?.trim()) {
+        res.status(400).json({ error: 'Freigabe-Link ungültig.' })
+        return
+      }
+      const source = await getDialogByShareToken(token.trim())
+      if (!source) {
+        res.status(404).json({ error: 'Dialog nicht gefunden oder Freigabe beendet.' })
+        return
+      }
+      const dialog = await cloneDialog(source, user.uid, folderId ?? null)
+      res.status(201).json({ dialog })
       return
     }
 

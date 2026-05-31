@@ -42,6 +42,7 @@ export interface Dialog {
   length: DialogLength
   sections: DialogSection[]
   folderId?: string | null
+  shareToken?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -86,6 +87,7 @@ export const LANGUAGES = [
   { code: 'ja', name: 'Japanisch' },
   { code: 'zh', name: 'Chinesisch' },
   { code: 'ar', name: 'Arabisch' },
+  { code: 'fa', name: 'Persisch/Dari' },
   { code: 'ru', name: 'Russisch' },
   { code: 'sv', name: 'Schwedisch' },
   { code: 'da', name: 'Dänisch' },
@@ -95,6 +97,12 @@ export const LANGUAGES = [
   { code: 'hu', name: 'Ungarisch' },
   { code: 'ko', name: 'Koreanisch' },
 ] as const
+
+export const RTL_LANGUAGES = new Set(['ar', 'fa'])
+
+export function isRtlLanguage(code: string): boolean {
+  return RTL_LANGUAGES.has(code)
+}
 
 export function languageName(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.name ?? code

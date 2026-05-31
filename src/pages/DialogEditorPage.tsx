@@ -14,6 +14,8 @@ export function DialogEditorPage() {
   const [status, setStatus] = useState('')
   const [translateLang, setTranslateLang] = useState('en')
   const [birkenbihlLang, setBirkenbihlLang] = useState('de')
+  const [shareBusy, setShareBusy] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
 
   const reload = async () => {
     if (!id) return
@@ -58,6 +60,32 @@ export function DialogEditorPage() {
         <Link to="/">Zurück</Link>
       </div>
     )
+  }
+
+  const shareUrl =
+    dialog.shareToken && typeof window !== 'undefined'
+      ? `${window.location.origin}/share/${dialog.shareToken}`
+      : ''
+
+  const toggleSharing = async (enabled: boolean) => {
+    setShareBusy(true)
+    setError('')
+    try {
+      const { dialog: d } = await api.dialogs.setSharing(dialog.id, enabled)
+      setDialog(d)
+      setShareCopied(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Freigabe fehlgeschlagen.')
+    } finally {
+      setShareBusy(false)
+    }
+  }
+
+  const copyShareLink = async () => {
+    if (!shareUrl) return
+    await navigator.clipboard.writeText(shareUrl)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2500)
   }
 
   return (
@@ -184,6 +212,51 @@ export function DialogEditorPage() {
         </div>
       </section>
 
+      <section className="panel share-panel">
+        <h2>Teilen</h2>
+        <p className="muted share-hint">
+          Erstelle einen Link, damit andere den Dialog in ihr Konto kopieren können. Der
+          Original-Dialog bleibt bei dir – es entsteht eine eigene Kopie.
+        </p>
+        {dialog.shareToken ? (
+          <div className="share-active">
+            <div className="share-link-row">
+              <input
+                className="share-link-input"
+                readOnly
+                value={shareUrl}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={shareBusy}
+                onClick={copyShareLink}
+              >
+                {shareCopied ? 'Kopiert!' : 'Link kopieren'}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger"
+              disabled={shareBusy}
+              onClick={() => toggleSharing(false)}
+            >
+              Freigabe beenden
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={shareBusy}
+            onClick={() => toggleSharing(true)}
+          >
+            {shareBusy ? '…' : 'Freigabe-Link erstellen'}
+          </button>
+        )}
+      </section>
+
       {dialog.sections.map((section) => (
         <section key={section.id} className="panel section-panel">
           <div className="section-header">
@@ -252,7 +325,11 @@ export function DialogEditorPage() {
               <div key={line.id} className="dialog-line">
                 <div className="dialog-line-body">
                   <strong className="speaker">{line.speaker}</strong>
-                  <BirkenbihlLine line={line} />
+                  <BirkenbihlLine
+                    line={line}
+                    targetLanguage={dialog.targetLanguage}
+                    nativeLanguage={dialog.sourceLanguage}
+                  />
                 </div>
                 {line.imageUrl && (
                   <img

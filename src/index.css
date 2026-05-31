@@ -421,6 +421,78 @@ textarea { resize: vertical; min-height: 120px; }
 .chat-input-row { display: flex; gap: 0.5rem; }
 .chat-input-row input { flex: 1; margin-bottom: 0; }
 
+.share-panel .share-hint {
+  margin: -0.5rem 0 1rem;
+  max-width: 52rem;
+}
+
+.share-link-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.share-link-input {
+  flex: 1;
+  min-width: 12rem;
+  margin-bottom: 0;
+  font-size: 0.875rem;
+}
+
+.share-active {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.share-import-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: var(--bg);
+}
+
+.share-import-card {
+  width: 100%;
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  box-shadow: var(--shadow);
+}
+
+.share-import-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin: 0 0 0.5rem;
+}
+
+.share-preview {
+  margin: 1.5rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.share-preview h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.share-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .panel h2 {
   margin: 0 0 1.25rem;
   font-size: 1.05rem;
@@ -527,6 +599,12 @@ textarea { resize: vertical; min-height: 120px; }
 .speaker { display: block; margin-bottom: 0.35rem; color: var(--accent); font-size: 0.875rem; }
 
 .birkenbihl-line { overflow-x: auto; }
+
+.birkenbihl-line--rtl .birkenbihl-words {
+  direction: rtl;
+  justify-content: flex-start;
+}
+
 .birkenbihl-words {
   display: flex;
   flex-wrap: wrap;
@@ -540,6 +618,7 @@ textarea { resize: vertical; min-height: 120px; }
   align-items: center;
   text-align: center;
   min-width: 1.5rem;
+  unicode-bidi: isolate;
 }
 
 .birkenbihl-top { font-size: 1rem; color: var(--text-h); }
@@ -550,6 +629,11 @@ textarea { resize: vertical; min-height: 120px; }
   padding-top: 0.15rem;
   margin-top: 0.15rem;
   width: 100%;
+  unicode-bidi: isolate;
+}
+
+.dialog-line-text[dir='rtl'] {
+  text-align: right;
 }
 
 .word-highlight {

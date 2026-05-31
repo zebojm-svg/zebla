@@ -18,6 +18,7 @@ interface DialogDoc {
   length: Dialog['length']
   sections: DialogSection[]
   folderId?: string | null
+  shareToken?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -50,6 +51,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     length: data.length,
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
+    shareToken: data.shareToken ?? null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -212,6 +214,7 @@ export async function updateDialog(
     length: existing.length,
     sections: sanitizeSections(data.sections ?? existing.sections),
     folderId: data.folderId !== undefined ? data.folderId : (existing.folderId ?? null),
+    shareToken: existing.shareToken ?? null,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
@@ -225,6 +228,58 @@ export async function deleteDialog(id: string, userId: string): Promise<boolean>
   if (!existing) return false
   await adminDb().collection('dialogs').doc(id).delete()
   return true
+}
+
+export async function getDialogByShareToken(token: string): Promise<Dialog | null> {
+  const snap = await adminDb()
+    .collection('dialogs')
+    .where('shareToken', '==', token)
+    .limit(1)
+    .get()
+  if (snap.empty) return null
+  const doc = snap.docs[0]
+  return docToDialog(doc.id, doc.data() as DialogDoc)
+}
+
+export async function setDialogSharing(
+  id: string,
+  userId: string,
+  enabled: boolean,
+): Promise<Dialog | null> {
+  const existing = await getDialog(id, userId)
+  if (!existing) return null
+
+  const shareToken = enabled ? randomUUID() : null
+  await adminDb()
+    .collection('dialogs')
+    .doc(id)
+    .update({
+      shareToken,
+      updatedAt: new Date().toISOString(),
+    })
+
+  return { ...existing, shareToken, updatedAt: new Date().toISOString() }
+}
+
+export async function cloneDialog(
+  source: Dialog,
+  userId: string,
+  folderId?: string | null,
+): Promise<Dialog> {
+  const now = new Date().toISOString()
+  const doc: DialogDoc = {
+    userId,
+    title: `${source.title} (Kopie)`,
+    sourceLanguage: source.sourceLanguage,
+    targetLanguage: source.targetLanguage,
+    length: source.length,
+    sections: sanitizeSections(JSON.parse(JSON.stringify(source.sections)) as DialogSection[]),
+    folderId: folderId ?? null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  const ref = await adminDb().collection('dialogs').add(doc)
+  return docToDialog(ref.id, doc)
 }
 
 export async function seedStudentCodes(codes: string[]): Promise<void> {

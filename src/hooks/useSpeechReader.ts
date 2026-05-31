@@ -13,6 +13,7 @@ const SPEECH_LANG_MAP: Record<string, string> = {
   ja: 'ja-JP',
   zh: 'zh-CN',
   ar: 'ar-SA',
+  fa: 'fa-IR',
   ru: 'ru-RU',
   sv: 'sv-SE',
   da: 'da-DK',

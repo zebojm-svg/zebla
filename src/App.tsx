@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { CreateDialogPage } from './pages/CreateDialogPage'
 import { DialogEditorPage } from './pages/DialogEditorPage'
 import { SlideshowPage } from './pages/SlideshowPage'
+import { ShareImportPage } from './pages/ShareImportPage'
 
 function AppRoutes() {
   return (
@@ -14,6 +15,8 @@ function AppRoutes() {
       <Route element={<PublicOnlyRoute />}>
         <Route path="/login" element={<LoginPage />} />
       </Route>
+
+      <Route path="/share/:token" element={<ShareImportPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route

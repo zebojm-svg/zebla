@@ -124,6 +124,28 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/dialog?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    setSharing: (id: string, enabled: boolean) =>
+      request<{ dialog: import('../types').Dialog; shareToken: string | null }>(
+        '/dialog-share',
+        {
+          method: 'POST',
+          body: JSON.stringify({ id, enabled }),
+        },
+      ),
+    cloneFromShare: (token: string, folderId?: string | null) =>
+      request<{ dialog: import('../types').Dialog }>('/dialog-clone', {
+        method: 'POST',
+        body: JSON.stringify({ token, folderId: folderId ?? null }),
+      }),
+  },
+  shared: {
+    get: (token: string) =>
+      request<{
+        dialog: Pick<
+          import('../types').Dialog,
+          'title' | 'sourceLanguage' | 'targetLanguage' | 'length' | 'sections'
+        >
+      }>(`/shared?token=${encodeURIComponent(token)}`),
   },
   ai: {
     status: () => request<{ configured: boolean }>('/ai-status'),
