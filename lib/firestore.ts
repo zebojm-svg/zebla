@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { adminAuth, adminDb } from './firebase-admin.js'
-import type { Dialog, DialogSection } from '../shared/types.js'
+import type { CharacterVisual, Dialog, DialogSection } from '../shared/types.js'
 
 export interface UserProfile {
   id: string
@@ -19,6 +19,7 @@ interface DialogDoc {
   sections: DialogSection[]
   folderId?: string | null
   shareToken?: string | null
+  characterBible?: CharacterVisual[]
   createdAt: string
   updatedAt: string
 }
@@ -52,6 +53,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
     shareToken: data.shareToken ?? null,
+    characterBible: data.characterBible,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -201,6 +203,7 @@ export async function updateDialog(
     targetLanguage: string
     sections: DialogSection[]
     folderId: string | null
+    characterBible: CharacterVisual[]
   }>,
 ): Promise<Dialog | null> {
   const existing = await getDialog(id, userId)
@@ -215,6 +218,8 @@ export async function updateDialog(
     sections: sanitizeSections(data.sections ?? existing.sections),
     folderId: data.folderId !== undefined ? data.folderId : (existing.folderId ?? null),
     shareToken: existing.shareToken ?? null,
+    characterBible:
+      data.characterBible !== undefined ? data.characterBible : existing.characterBible,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
@@ -275,6 +280,9 @@ export async function cloneDialog(
     length: source.length,
     sections: sanitizeSections(JSON.parse(JSON.stringify(source.sections)) as DialogSection[]),
     folderId: folderId ?? null,
+    characterBible: source.characterBible
+      ? JSON.parse(JSON.stringify(source.characterBible))
+      : undefined,
     createdAt: now,
     updatedAt: now,
   }

@@ -5,6 +5,16 @@ import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import type { Dialog } from '../types'
 import { LANGUAGES, languageName, needsRomanization } from '../types'
 import { getIncludeRomanization, setIncludeRomanization } from '../lib/preferences'
+import { CostConfirmDialog } from '../components/CostConfirmDialog'
+import { useCostConfirm } from '../hooks/useCostConfirm'
+import {
+  estimateAllSectionImages,
+  estimateBirkenbihl,
+  estimateSceneImages,
+  estimateSectionImage,
+  estimateTranslate,
+  lineCount,
+} from '../lib/costEstimates'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +28,7 @@ export function DialogEditorPage() {
   const [includeRomanization, setIncludeRomanizationState] = useState(true)
   const [shareBusy, setShareBusy] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
+  const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const reload = async () => {
     if (!id) return
@@ -126,12 +137,13 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={!!busy}
-                onClick={() =>
-                  runAction('translate', async () => {
+                onClick={async () => {
+                  if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
+                  await runAction('translate', async () => {
                     const { dialog: d } = await api.ai.translate(dialog.id, translateLang)
                     setDialog(d)
                   })
-                }
+                }}
               >
                 {busy === 'translate' ? '…' : 'Übersetzen'}
               </button>
@@ -152,8 +164,9 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={!!busy}
-                onClick={() =>
-                  runAction('birkenbihl', async () => {
+                onClick={async () => {
+                  if (!(await confirmCost(estimateBirkenbihl(lineCount(dialog))))) return
+                  await runAction('birkenbihl', async () => {
                     setIncludeRomanization(includeRomanization)
                     const { dialog: d } = await api.ai.birkenbihl(
                       dialog.id,
@@ -162,7 +175,7 @@ export function DialogEditorPage() {
                     )
                     setDialog(d)
                   })
-                }
+                }}
               >
                 {busy === 'birkenbihl' ? '…' : 'Anwenden'}
               </button>
@@ -209,8 +222,14 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={!!busy}
-                onClick={() =>
-                  runAction('images', async () => {
+                onClick={async () => {
+                  if (
+                    !(await confirmCost(
+                      estimateAllSectionImages(dialog.sections.length),
+                    ))
+                  )
+                    return
+                  await runAction('images', async () => {
                     let current = dialog
                     for (let i = 0; i < current.sections.length; i++) {
                       const section = current.sections[i]
@@ -225,7 +244,7 @@ export function DialogEditorPage() {
                       }
                     }
                   })
-                }
+                }}
               >
                 {busy === 'images' ? 'Generiere …' : 'Alle Bilder generieren'}
               </button>
@@ -288,13 +307,14 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary btn-sm"
                 disabled={!!busy}
-                onClick={() =>
-                  runAction(`img-${section.id}`, async () => {
+                onClick={async () => {
+                  if (!(await confirmCost(estimateSectionImage()))) return
+                  await runAction(`img-${section.id}`, async () => {
                     setStatus('Bild wird generiert (ca. 15–30 Sekunden) …')
                     const { dialog: d } = await api.ai.image(dialog.id, section.id)
                     setDialog(d)
                   })
-                }
+                }}
               >
                 {busy === `img-${section.id}` ? '…' : 'Titelbild'}
               </button>
@@ -302,8 +322,9 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary btn-sm"
                 disabled={!!busy}
-                onClick={() =>
-                  runAction(`scenes-${section.id}`, async () => {
+                onClick={async () => {
+                  if (!(await confirmCost(estimateSceneImages(4)))) return
+                  await runAction(`scenes-${section.id}`, async () => {
                     let beatIndex = 0
                     let replan = true
                     let current = dialog
@@ -331,7 +352,7 @@ export function DialogEditorPage() {
                     }
                     setStatus(`Fertig – ${beatIndex} Szenen-Bilder.`)
                   })
-                }
+                }}
               >
                 {busy === `scenes-${section.id}` ? '…' : 'Szenen-Bilder (KI)'}
               </button>
@@ -367,6 +388,15 @@ export function DialogEditorPage() {
           </div>
         </section>
       ))}
+
+      {costPending && (
+        <CostConfirmDialog
+          estimate={costPending.estimate}
+          busy={!!busy}
+          onConfirm={() => closeCost(true)}
+          onCancel={() => closeCost(false)}
+        />
+      )}
     </div>
   )
 }

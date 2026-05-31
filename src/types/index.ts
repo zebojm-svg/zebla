@@ -6,6 +6,7 @@ export type {
   LineImageBeat,
   DialogSection,
   DialogFolder,
+  CharacterVisual,
   Dialog,
   User,
   ChatMessage,

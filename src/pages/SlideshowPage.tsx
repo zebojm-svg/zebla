@@ -11,6 +11,9 @@ import {
   setIncludeRomanization,
   setUseCloudTts,
 } from '../lib/preferences'
+import { CostConfirmDialog } from '../components/CostConfirmDialog'
+import { useCostConfirm } from '../hooks/useCostConfirm'
+import { estimateMissingTts } from '../lib/costEstimates'
 import {
   downloadDialogAudioCombined,
   downloadDialogAudioZip,
@@ -30,6 +33,7 @@ export function SlideshowPage() {
   const [audioStatus, setAudioStatus] = useState('')
   const [useCloudTts, setUseCloudTtsState] = useState(true)
   const [showRomanization, setShowRomanizationState] = useState(true)
+  const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
     useSpeechReader(dialog?.targetLanguage ?? 'en', dialog?.id, setDialog, { useCloudTts })
@@ -155,6 +159,12 @@ export function SlideshowPage() {
 
   const handleEnsureAudio = async () => {
     if (!dialog || !cloudTtsReady) return
+    const missing = allLines.filter((l) => l.text.trim() && !l.audioUrl).length
+    if (missing === 0) {
+      setAudioStatus('Alle Zeilen haben bereits gespeichertes Audio – Abspielen kostet nichts.')
+      return
+    }
+    if (!(await confirmCost(estimateMissingTts(dialog)))) return
     setAudioBusy(true)
     setAudioStatus('')
     try {
@@ -280,7 +290,7 @@ export function SlideshowPage() {
           {audioReadyCount > 0 && (
             <span className="slideshow-audio-count">
               {' '}
-              · {audioReadyCount}/{allLines.length} Zeilen mit gespeichertem Audio
+              · {audioReadyCount}/{allLines.length} Zeilen gespeichert — Wiedergabe ohne neue KI-Kosten
             </span>
           )}
         </div>
@@ -289,7 +299,13 @@ export function SlideshowPage() {
       {audioStatus && <div className="alert alert-warn slideshow-tts-hint">{audioStatus}</div>}
 
       {useCloudTts && cloudTtsReady && !ttsError && (
-        <div className="slideshow-export-bar">
+        <div className="slideshow-export-block">
+          <p className="muted slideshow-export-info">
+            <strong>Hinweis:</strong> MP3-ZIP und Gesamt-WAV sind nur die Sprachausgabe — kein Video
+            mit Bildern und Text. Ein Video-Export (Diashow wie am Bildschirm) ist noch nicht
+            verfügbar.
+          </p>
+          <div className="slideshow-export-bar">
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -332,7 +348,17 @@ export function SlideshowPage() {
           >
             Gesamt-Audio (WAV)
           </button>
+          </div>
         </div>
+      )}
+
+      {costPending && (
+        <CostConfirmDialog
+          estimate={costPending.estimate}
+          busy={audioBusy}
+          onConfirm={() => closeCost(true)}
+          onCancel={() => closeCost(false)}
+        />
       )}
 
       <div className="slideshow-stage">

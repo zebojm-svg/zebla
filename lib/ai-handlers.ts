@@ -9,13 +9,14 @@ import {
   translateDialog,
   applyBirkenbihl,
   splitIntoSections,
+  buildCharacterBible,
   generateSectionImage,
   planLineImages,
   generateUploadedImage,
   applyLineImageBeats,
   isAiConfigured,
 } from './ai.js'
-import type { ChatMessage, DialogLength, DialogSection } from '../shared/types.js'
+import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
   res.json({ configured: isAiConfigured() })
@@ -82,12 +83,27 @@ function dialogIdFromRequest(req: VercelRequest, body: { dialogId?: string }): s
   return body.dialogId ?? (req.query.dialogId as string | undefined)
 }
 
+async function ensureCharacterBibleOnDialog(
+  dialog: Dialog,
+  userId: string,
+): Promise<Dialog> {
+  if (dialog.characterBible?.length) return dialog
+  const characterBible = await buildCharacterBible(dialog)
+  const updated = await updateDialog(dialog.id, userId, { characterBible })
+  return updated ?? { ...dialog, characterBible }
+}
+
 async function attachSectionImage(
-  dialog: NonNullable<Awaited<ReturnType<typeof getDialog>>>,
+  dialog: Dialog,
   section: DialogSection,
   userId: string,
 ) {
-  const { imageUrl: dataUrl, prompt } = await generateSectionImage(section, dialog.title)
+  const withBible = await ensureCharacterBibleOnDialog(dialog, userId)
+  const { imageUrl: dataUrl, prompt } = await generateSectionImage(
+    section,
+    withBible.title,
+    withBible.characterBible,
+  )
   let imageUrl = dataUrl
   try {
     imageUrl = await uploadDialogImage(dataUrl, dialog.id, section.id)
@@ -97,7 +113,10 @@ async function attachSectionImage(
   const sections = dialog.sections.map((s) =>
     s.id === section.id ? { ...s, imageUrl, imagePrompt: prompt } : s,
   )
-  const updated = await updateDialog(dialog.id, userId, { sections })
+  const updated = await updateDialog(dialog.id, userId, {
+    sections,
+    characterBible: withBible.characterBible,
+  })
   return { updated, imageUrl, sectionId: section.id }
 }
 
@@ -208,7 +227,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
       return
     }
-    const dialog = await getDialog(dialogId, user.uid)
+    let dialog = await getDialog(dialogId, user.uid)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
@@ -219,10 +238,12 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       return
     }
 
+    dialog = await ensureCharacterBibleOnDialog(dialog, user.uid)
+
     let beats = section.lineImageBeats
     const beatIndex = body.beatIndex ?? 0
     if (!beats?.length || body.replan) {
-      beats = await planLineImages(section, dialog.title)
+      beats = await planLineImages(section, dialog)
     }
     if (!beats.length) {
       res.status(400).json({ error: 'Keine Bildszenen geplant.' })
@@ -244,6 +265,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         beat.prompt,
         dialog.id,
         `${section.id}-beat-${beat.id}`,
+        dialog.characterBible,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
     }
@@ -259,7 +281,10 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
           }
         : s,
     )
-    const updated = await updateDialog(dialog.id, user.uid, { sections })
+    const updated = await updateDialog(dialog.id, user.uid, {
+      sections,
+      characterBible: dialog.characterBible,
+    })
     const done = beatIndex + 1 >= beats.length
     res.json({
       dialog: updated,

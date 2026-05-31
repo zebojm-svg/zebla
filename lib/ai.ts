@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { randomUUID } from 'crypto'
 import type {
+  CharacterVisual,
+  Dialog,
   DialogLength,
   DialogLine,
   DialogSection,
@@ -409,12 +411,76 @@ function imageGenerationErrorMessage(raw: string): string {
   return `Bildgenerierung fehlgeschlagen: ${raw.slice(0, 280)}`
 }
 
-function buildImagePrompt(section: DialogSection, dialogTitle: string): string {
+function dialogSummaryForImages(dialog: Dialog): string {
+  const parts: string[] = []
+  for (const sec of dialog.sections) {
+    parts.push(`[${sec.title}]`)
+    for (const line of sec.lines) {
+      parts.push(`${line.speaker}: ${line.text}`)
+    }
+  }
+  return parts.join('\n')
+}
+
+export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisual[]> {
+  const speakers = new Map<string, string[]>()
+  for (const sec of dialog.sections) {
+    for (const line of sec.lines) {
+      const list = speakers.get(line.speaker) ?? []
+      if (list.length < 3) list.push(line.text)
+      speakers.set(line.speaker, list)
+    }
+  }
+  const cast = [...speakers.entries()].map(([name, lines]) => ({
+    name,
+    sampleLines: lines,
+  }))
+
+  const result = await chatJson<{ characters: CharacterVisual[] }>(
+    `Du planst Illustrationen für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
+
+Regeln:
+- name: exakt wie im Dialog (z.B. Ramo, Shome)
+- description: 1–2 Sätze Englisch: Alter, Haare, Kleidung, Hautfarbe, unverwechselbare Merkmale
+- Nur Personen, die im Dialog vorkommen
+- Stil: freundliche flache Lern-App-Illustration
+
+JSON:
+{ "characters": [{ "name": "Ramo", "description": "young man with ..." }] }`,
+    `Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher mit Beispielzeilen:\n${JSON.stringify(cast)}`,
+  )
+
+  if (!result.characters?.length) {
+    throw new Error('KI konnte keine Figuren-Beschreibung erstellen.')
+  }
+  return result.characters
+}
+
+export function formatCharacterBibleForPrompt(bible: CharacterVisual[]): string {
+  return bible.map((c) => `${c.name}: ${c.description}`).join('; ')
+}
+
+function buildConsistentImagePrompt(scenePrompt: string, bible?: CharacterVisual[]): string {
+  const cast =
+    bible?.length ?
+      `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
+    : ''
+  return `${cast}${scenePrompt}. Friendly colorful flat educational illustration, warm style, no text or labels in the image.`
+}
+
+function buildImagePrompt(
+  section: DialogSection,
+  dialogTitle: string,
+  bible?: CharacterVisual[],
+): string {
   const snippet = section.lines
-    .slice(0, 3)
+    .slice(0, 5)
     .map((l) => `${l.speaker}: ${l.text}`)
     .join(' ')
-  return `Friendly colorful flat illustration for a language learning dialog "${dialogTitle}", scene "${section.title}". ${snippet}. Warm educational style, no text or labels in the image.`
+  return buildConsistentImagePrompt(
+    `Scene for language learning dialog "${dialogTitle}", section "${section.title}". ${snippet}`,
+    bible,
+  )
 }
 
 async function generateImageDataUrl(prompt: string): Promise<string> {
@@ -432,16 +498,19 @@ async function generateImageDataUrl(prompt: string): Promise<string> {
 export async function generateSectionImage(
   section: DialogSection,
   dialogTitle: string,
+  bible?: CharacterVisual[],
 ): Promise<{ imageUrl: string; prompt: string }> {
-  const prompt = buildImagePrompt(section, dialogTitle)
+  const prompt = buildImagePrompt(section, dialogTitle, bible)
   const imageUrl = await generateImageDataUrl(prompt)
   return { imageUrl, prompt }
 }
 
 export async function planLineImages(
   section: DialogSection,
-  dialogTitle: string,
+  dialog: Dialog,
 ): Promise<LineImageBeat[]> {
+  const dialogTitle = dialog.title
+  const bible = dialog.characterBible
   const indexed = section.lines.map((line, index) => ({
     index,
     speaker: line.speaker,
@@ -451,22 +520,22 @@ export async function planLineImages(
   const result = await chatJson<{
     beats: { lineIndices: number[]; reason: string; prompt: string }[]
   }>(
-    `Du planst Bilder für eine Sprachlern-Diashow. Lies den Dialog und entscheide, wann sich das Bild ändern soll.
+    `Du planst Bilder für eine Sprachlern-Diashow. Lies ZUERST den gesamten Dialog, dann plane die Bilder für diesen Abschnitt.
 
+${bible?.length ? `FESTE FIGUREN (müssen auf jedem Bild gleich aussehen):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
 Regeln:
-- Nicht jede Zeile braucht ein neues Bild – nur bei Szenenwechsel, neuer Requisite, Perspektivwechsel oder Sprecher-Fokus.
-- Mehrere aufeinanderfolgende Zeilen können dasselbe Bild teilen (gleiche lineIndices-Gruppe).
-- Wechsle z.B. zwischen Sprechern (Over-the-shoulder), zeige Requisiten wenn erwähnt (Speisekarte, Essen auf dem Tisch), oder leeren vs. gedeckten Tisch.
-- Jeder Index 0..${section.lines.length - 1} muss in genau einer Gruppe vorkommen.
-- prompt: prägnanter englischer Bild-Prompt, flache freundliche Illustration, KEIN Text im Bild.
+- Nicht jede Zeile braucht ein neues Bild – nur bei Szenenwechsel, Requisite, Perspektivwechsel.
+- Mehrere Zeilen können dasselbe Bild teilen.
+- Jeder Index 0..${section.lines.length - 1} genau einmal in einer Gruppe.
+- prompt: englischer Szenen-Prompt; nenne die Figuren beim Namen wie oben; KEIN Text im Bild.
 
-Antwort als JSON:
+JSON:
 {
   "beats": [
-    { "lineIndices": [0, 1], "reason": "kurz warum", "prompt": "English illustration prompt..." }
+    { "lineIndices": [0, 1], "reason": "kurz warum", "prompt": "English scene prompt with named characters..." }
   ]
 }`,
-    `Dialog: "${dialogTitle}"\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
+    `Gesamter Dialog:\n${dialogSummaryForImages(dialog)}\n\n---\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
   )
 
   if (!result.beats?.length) {
@@ -487,8 +556,10 @@ export async function generateUploadedImage(
   prompt: string,
   dialogId: string,
   storageKey: string,
+  bible?: CharacterVisual[],
 ): Promise<string> {
-  const dataUrl = await generateImageDataUrl(prompt)
+  const fullPrompt = buildConsistentImagePrompt(prompt, bible)
+  const dataUrl = await generateImageDataUrl(fullPrompt)
   const { uploadDialogImage } = await import('./image-storage.js')
   try {
     return await uploadDialogImage(dataUrl, dialogId, storageKey)

@@ -37,6 +37,12 @@ export interface DialogSection {
   lineImageBeats?: LineImageBeat[]
 }
 
+/** Feste Figuren-Beschreibung für konsistente KI-Bilder (englisch, für Bild-Prompts). */
+export interface CharacterVisual {
+  name: string
+  description: string
+}
+
 export interface Dialog {
   id: string
   userId: string
@@ -47,6 +53,8 @@ export interface Dialog {
   sections: DialogSection[]
   folderId?: string | null
   shareToken?: string | null
+  /** Einmalig aus dem ganzen Dialog geplant – gleiche Personen auf allen Bildern. */
+  characterBible?: CharacterVisual[]
   createdAt: string
   updatedAt: string
 }
