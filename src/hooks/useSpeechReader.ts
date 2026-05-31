@@ -13,7 +13,7 @@ const SPEECH_LANG_MAP: Record<string, string> = {
   ja: 'ja-JP',
   zh: 'zh-CN',
   ar: 'ar-SA',
-  fa: 'fa-IR',
+  fa: 'fa-AF',
   ru: 'ru-RU',
   sv: 'sv-SE',
   da: 'da-DK',
@@ -22,6 +22,12 @@ const SPEECH_LANG_MAP: Record<string, string> = {
   cs: 'cs-CZ',
   hu: 'hu-HU',
   ko: 'ko-KR',
+}
+
+/** Fallback-Reihenfolge wenn die Browser-Stimme ein anderes Locale nutzt (z. B. Dari = fa-AF). */
+const SPEECH_LANG_LOCALES: Record<string, string[]> = {
+  fa: ['fa-AF', 'fa-IR', 'fa'],
+  ar: ['ar-SA', 'ar-AE', 'ar-EG', 'ar'],
 }
 
 /** Bevorzugte Stimmen pro Sprache (Name-Fragmente, bessere Qualität zuerst). */
@@ -54,6 +60,14 @@ const PREFERRED_VOICES: Record<string, { female: string[]; male: string[] }> = {
     female: ['elvira', 'lucia', 'sabina'],
     male: ['alvaro', 'pablo', 'jorge'],
   },
+  fa: {
+    female: ['dari', 'farah', 'yasmin', 'hoda', 'zira', 'persian'],
+    male: ['dari', 'farid', 'malek', 'mehdi', 'naayf', 'persian'],
+  },
+  ar: {
+    female: ['hoda', 'salma', 'zira', 'layla'],
+    male: ['naayf', 'hamid', 'tarik', 'moaz'],
+  },
 }
 
 export interface SpeakLine {
@@ -62,12 +76,94 @@ export interface SpeakLine {
   speaker: string
 }
 
+function normalizeVoiceLang(lang: string): string {
+  return lang.replace('_', '-')
+}
+
 function langPrefix(languageCode: string): string {
-  return (SPEECH_LANG_MAP[languageCode] ?? languageCode).slice(0, 2)
+  return languageCode.slice(0, 2).toLowerCase()
 }
 
 function matchesLang(voice: SpeechSynthesisVoice, prefix: string): boolean {
-  return voice.lang.replace('_', '-').toLowerCase().startsWith(prefix.toLowerCase())
+  return voiceLangPrefix(voice) === prefix.toLowerCase()
+}
+
+function voiceLangPrefix(voice: SpeechSynthesisVoice): string {
+  return normalizeVoiceLang(voice.lang).split('-')[0].toLowerCase()
+}
+
+function localeRank(lang: string, languageCode: string): number {
+  const normalized = normalizeVoiceLang(lang).toLowerCase()
+  const preferred =
+    SPEECH_LANG_LOCALES[languageCode] ??
+    [SPEECH_LANG_MAP[languageCode] ?? languageCode].map((l) => l.toLowerCase())
+  const idx = preferred.findIndex(
+    (locale) => normalized === locale || normalized.startsWith(`${locale}-`),
+  )
+  return idx === -1 ? 99 : idx
+}
+
+function voicesForLanguage(
+  voices: SpeechSynthesisVoice[],
+  languageCode: string,
+): SpeechSynthesisVoice[] {
+  const prefix = langPrefix(languageCode)
+  const matched = voices.filter((v) => matchesLang(v, prefix))
+  return [...matched].sort(
+    (a, b) => localeRank(a.lang, languageCode) - localeRank(b.lang, languageCode),
+  )
+}
+
+function speechLocalesForLanguage(languageCode: string): string[] {
+  const fromMap = SPEECH_LANG_LOCALES[languageCode] ?? [
+    SPEECH_LANG_MAP[languageCode] ?? languageCode,
+  ]
+  return [...new Set(fromMap.map((l) => normalizeVoiceLang(l)))]
+}
+
+function pickVoiceForLocale(
+  voices: SpeechSynthesisVoice[],
+  locale: string,
+): SpeechSynthesisVoice | undefined {
+  const target = normalizeVoiceLang(locale).toLowerCase()
+  return (
+    voices.find((v) => normalizeVoiceLang(v.lang).toLowerCase() === target) ??
+    voices.find((v) => normalizeVoiceLang(v.lang).toLowerCase().startsWith(`${target}-`)) ??
+    voices.find((v) =>
+      normalizeVoiceLang(v.lang).toLowerCase().startsWith(target.slice(0, 2)),
+    )
+  )
+}
+
+function estimateSpeechMs(text: string, rate: number): number {
+  const chars = text.replace(/\s/g, '').length || text.length
+  return Math.min(12000, Math.max(1500, (chars / (9 * Math.max(rate, 0.4))) * 1000))
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function waitForVoices(): Promise<SpeechSynthesisVoice[]> {
+  const existing = window.speechSynthesis.getVoices()
+  if (existing.length > 0) return existing
+
+  return new Promise((resolve) => {
+    let timer: number | undefined
+    const finish = () => {
+      const loaded = window.speechSynthesis.getVoices()
+      if (loaded.length > 0) {
+        window.speechSynthesis.onvoiceschanged = null
+        if (timer !== undefined) window.clearTimeout(timer)
+        resolve(loaded)
+      }
+    }
+    window.speechSynthesis.onvoiceschanged = finish
+    timer = window.setTimeout(() => {
+      window.speechSynthesis.onvoiceschanged = null
+      resolve(window.speechSynthesis.getVoices())
+    }, 800)
+  })
 }
 
 function nameIncludes(name: string, fragments: string[]): boolean {
@@ -189,8 +285,7 @@ function pickVoicesForSpeakers(
   speakerIndexMap: Map<string, number>,
   languageCode: string,
 ): Map<string, SpeechSynthesisVoice> {
-  const prefix = langPrefix(languageCode)
-  const langVoices = voices.filter((v) => matchesLang(v, prefix))
+  const langVoices = voicesForLanguage(voices, languageCode)
   const pool = langVoices.length > 0 ? langVoices : voices
   const used = new Set<string>()
   const result = new Map<string, SpeechSynthesisVoice>()
@@ -280,47 +375,97 @@ export function useSpeechReader(languageCode: string) {
   }, [])
 
   const speakText = useCallback(
-    (
+    async (
       line: SpeakLine,
       speakerIndexMap: Map<string, number>,
       rate: number,
       highlightWords: boolean,
       allLines: SpeakLine[],
-    ): Promise<void> =>
-      new Promise((resolve) => {
-        if (stoppedRef.current) {
-          resolve()
-          return
-        }
+    ): Promise<void> => {
+      if (stoppedRef.current) return
 
-        ensureSpeakerVoices(allLines, speakerIndexMap)
+      const text = line.text.trim()
+      if (!text) return
 
-        const utterance = new SpeechSynthesisUtterance(line.text)
-        utterance.lang = SPEECH_LANG_MAP[languageCode] ?? languageCode
-        utterance.rate = rate
-        const voice = getVoiceForSpeaker(line.speaker)
-        if (voice) utterance.voice = voice
-        utterance.pitch = speakerPitchRef.current.get(line.speaker) ?? 1
+      ensureSpeakerVoices(allLines, speakerIndexMap)
 
-        setActiveLineId(line.id)
+      const assignedVoice = getVoiceForSpeaker(line.speaker)
+      const locales = [
+        assignedVoice ? normalizeVoiceLang(assignedVoice.lang) : null,
+        ...speechLocalesForLanguage(languageCode),
+      ].filter(Boolean) as string[]
+      const uniqueLocales = [...new Set(locales)]
 
-        if (highlightWords) {
-          utterance.onboundary = (event) => {
-            if (event.name === 'word') {
-              const before = line.text.slice(0, event.charIndex)
-              const wordIdx = before.split(/\s+/).filter(Boolean).length
-              setHighlightIndex(wordIdx)
-            }
+      setActiveLineId(line.id)
+
+      for (const locale of uniqueLocales) {
+        if (stoppedRef.current) return
+
+        const spoke = await new Promise<boolean>((resolve) => {
+          const utterance = new SpeechSynthesisUtterance(text)
+          utterance.lang = locale
+          utterance.rate = rate
+          utterance.pitch = speakerPitchRef.current.get(line.speaker) ?? 1
+
+          const localeVoice =
+            assignedVoice &&
+            normalizeVoiceLang(assignedVoice.lang).toLowerCase().startsWith(locale.slice(0, 2).toLowerCase())
+              ? assignedVoice
+              : pickVoiceForLocale(voicesRef.current, locale) ?? assignedVoice
+          if (localeVoice) {
+            utterance.voice = localeVoice
+            utterance.lang = normalizeVoiceLang(localeVoice.lang)
           }
-          utterance.onstart = () => setHighlightIndex(0)
-        } else {
-          setHighlightIndex(null)
-        }
 
-        utterance.onend = () => resolve()
-        utterance.onerror = () => resolve()
-        window.speechSynthesis.speak(utterance)
-      }),
+          let started = false
+          let settled = false
+
+          const finish = (success: boolean) => {
+            if (settled) return
+            settled = true
+            resolve(success)
+          }
+
+          if (highlightWords) {
+            utterance.onboundary = (event) => {
+              if (event.name === 'word') {
+                const before = text.slice(0, event.charIndex)
+                const wordIdx = before.split(/\s+/).filter(Boolean).length
+                setHighlightIndex(wordIdx)
+              }
+            }
+            utterance.onstart = () => {
+              started = true
+              setHighlightIndex(0)
+            }
+          } else {
+            utterance.onstart = () => {
+              started = true
+            }
+            setHighlightIndex(null)
+          }
+
+          utterance.onend = () => finish(started)
+          utterance.onerror = (event) => {
+            finish(event.error === 'interrupted' ? false : started)
+          }
+
+          window.speechSynthesis.speak(utterance)
+
+          window.setTimeout(() => {
+            if (!settled && !started) finish(false)
+          }, 500)
+        })
+
+        if (spoke) return
+        window.speechSynthesis.cancel()
+        await sleep(80)
+      }
+
+      if (!stoppedRef.current) {
+        await sleep(estimateSpeechMs(text, rate))
+      }
+    },
     [ensureSpeakerVoices, getVoiceForSpeaker, languageCode],
   )
 
@@ -334,7 +479,10 @@ export function useSpeechReader(languageCode: string) {
       onLineChange?: (index: number) => void,
     ): Promise<boolean> => {
       stop()
+      await sleep(120)
       stoppedRef.current = false
+
+      voicesRef.current = await waitForVoices()
       setSpeaking(true)
       ensureSpeakerVoices(lines, speakerIndexMap)
 
