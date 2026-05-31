@@ -1,6 +1,6 @@
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getFirestore, type Firestore } from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
 
 let app: App
@@ -33,8 +33,14 @@ export function adminAuth() {
   return getAuth(getFirebaseAdmin())
 }
 
+let dbInstance: Firestore | null = null
+
 export function adminDb() {
-  return getFirestore(getFirebaseAdmin())
+  if (!dbInstance) {
+    dbInstance = getFirestore(getFirebaseAdmin())
+    dbInstance.settings({ ignoreUndefinedProperties: true })
+  }
+  return dbInstance
 }
 
 export function adminStorage() {

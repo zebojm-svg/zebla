@@ -21,6 +21,24 @@ interface DialogDoc {
   updatedAt: string
 }
 
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [key, val] of Object.entries(value)) {
+      if (val !== undefined) out[key] = stripUndefined(val)
+    }
+    return out as T
+  }
+  return value
+}
+
+function sanitizeSections(sections: DialogSection[]): DialogSection[] {
+  return stripUndefined(sections)
+}
+
 function docToDialog(id: string, data: DialogDoc): Dialog {
   return {
     id,
@@ -29,7 +47,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     sourceLanguage: data.sourceLanguage,
     targetLanguage: data.targetLanguage,
     length: data.length,
-    sections: data.sections,
+    sections: sanitizeSections(data.sections),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -160,7 +178,7 @@ export async function createDialog(
     sourceLanguage: data.sourceLanguage,
     targetLanguage: data.targetLanguage,
     length: data.length,
-    sections: data.sections,
+    sections: sanitizeSections(data.sections),
     createdAt: now,
     updatedAt: now,
   }
@@ -187,7 +205,7 @@ export async function updateDialog(
     sourceLanguage: data.sourceLanguage ?? existing.sourceLanguage,
     targetLanguage: data.targetLanguage ?? existing.targetLanguage,
     length: existing.length,
-    sections: data.sections ?? existing.sections,
+    sections: sanitizeSections(data.sections ?? existing.sections),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }

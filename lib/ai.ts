@@ -251,7 +251,6 @@ Behalte Sprecher-Namen bei. Gleiche Anzahl Zeilen.`,
     id: lines[i]?.id ?? newLineId(),
     speaker: l.speaker,
     text: l.text,
-    birkenbihl: undefined,
   }))
 }
 
