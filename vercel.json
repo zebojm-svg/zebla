@@ -4,8 +4,11 @@
   "framework": "vite",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "functions": {
-    "api/ai/[...path].ts": {
-      "maxDuration": 60
-    }
+    "api/ai/generate/*.ts": { "maxDuration": 60 },
+    "api/ai/translate/*.ts": { "maxDuration": 60 },
+    "api/ai/birkenbihl/*.ts": { "maxDuration": 60 },
+    "api/ai/split/*.ts": { "maxDuration": 60 },
+    "api/ai/image/**/*.ts": { "maxDuration": 60 },
+    "api/ai/image-all/*.ts": { "maxDuration": 60 }
   }
 }
