@@ -326,7 +326,7 @@ export function useSpeechReader(languageCode: string) {
 
   useEffect(() => {
     api.tts
-      .status()
+      .status(languageCode)
       .then((r) => {
         setCloudTtsReady(r.working)
         setTtsError(r.working ? null : r.error ?? null)
@@ -335,7 +335,7 @@ export function useSpeechReader(languageCode: string) {
         setCloudTtsReady(false)
         setTtsError(err instanceof Error ? err.message : 'TTS-Status nicht erreichbar')
       })
-  }, [])
+  }, [languageCode])
 
   useEffect(() => {
     speakerVoicesRef.current.clear()

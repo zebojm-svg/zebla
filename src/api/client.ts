@@ -148,9 +148,9 @@ export const api = {
       }>(`/shared?token=${encodeURIComponent(token)}`),
   },
   tts: {
-    status: () =>
+    status: (languageCode?: string) =>
       request<{ configured: boolean; working: boolean; provider: string; error?: string }>(
-        '/tts-status',
+        `/tts-status${languageCode ? `?lang=${encodeURIComponent(languageCode)}` : ''}`,
       ),
     synthesize: (data: {
       text: string

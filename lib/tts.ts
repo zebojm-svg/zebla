@@ -17,11 +17,20 @@ export interface TtsHealth {
   configured: boolean
   working: boolean
   provider: string
+  geminiTts?: boolean
   error?: string
+  hint?: string
 }
 
-/** Google Cloud TTS – bevorzugte Stimmen (mit Fallback auf nur languageCode). */
-const TTS_VOICES: Record<string, { locale: string; female?: string; male?: string }> = {
+const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
+
+/** Sprachen ohne klassische Stimmen – nur über Gemini-TTS (Preview). */
+const GEMINI_ONLY_LANGS = new Set(['fa'])
+
+const GEMINI_VOICE = { female: 'Kore', male: 'Charon' } as const
+
+/** Google Cloud TTS – klassische Stimmen (Neural2/Wavenet). */
+const CLASSIC_VOICES: Record<string, { locale: string; female?: string; male?: string }> = {
   de: { locale: 'de-DE', female: 'de-DE-Neural2-F', male: 'de-DE-Neural2-D' },
   en: { locale: 'en-US', female: 'en-US-Neural2-F', male: 'en-US-Neural2-D' },
   fr: { locale: 'fr-FR', female: 'fr-FR-Neural2-A', male: 'fr-FR-Neural2-B' },
@@ -34,7 +43,6 @@ const TTS_VOICES: Record<string, { locale: string; female?: string; male?: strin
   ja: { locale: 'ja-JP', female: 'ja-JP-Neural2-B', male: 'ja-JP-Neural2-D' },
   zh: { locale: 'cmn-CN', female: 'cmn-CN-Wavenet-A', male: 'cmn-CN-Wavenet-B' },
   ar: { locale: 'ar-XA', female: 'ar-XA-Wavenet-A', male: 'ar-XA-Wavenet-B' },
-  fa: { locale: 'fa-IR', female: 'fa-IR-Standard-A', male: 'fa-IR-Standard-B' },
   ru: { locale: 'ru-RU', female: 'ru-RU-Wavenet-A', male: 'ru-RU-Wavenet-B' },
   sv: { locale: 'sv-SE', female: 'sv-SE-Wavenet-A', male: 'sv-SE-Wavenet-B' },
   da: { locale: 'da-DK', female: 'da-DK-Neural2-F', male: 'da-DK-Neural2-D' },
@@ -45,13 +53,26 @@ const TTS_VOICES: Record<string, { locale: string; female?: string; male?: strin
   ko: { locale: 'ko-KR', female: 'ko-KR-Neural2-A', male: 'ko-KR-Neural2-C' },
 }
 
-function resolveVoice(languageCode: string, gender: 'male' | 'female' = 'female') {
-  const key = languageCode.slice(0, 2).toLowerCase()
-  const entry = TTS_VOICES[key]
+function langKey(languageCode: string): string {
+  return languageCode.slice(0, 2).toLowerCase()
+}
+
+function usesGeminiTts(languageCode: string): boolean {
+  return GEMINI_ONLY_LANGS.has(langKey(languageCode))
+}
+
+function geminiLocale(languageCode: string): string {
+  const key = langKey(languageCode)
+  if (key === 'fa') return 'fa-ir'
+  return languageCode.toLowerCase()
+}
+
+function resolveClassicVoice(languageCode: string, gender: 'male' | 'female' = 'female') {
+  const entry = CLASSIC_VOICES[langKey(languageCode)]
   if (!entry) {
     const locale = languageCode.includes('-')
       ? languageCode
-      : `${key}-${key.toUpperCase()}`
+      : `${langKey(languageCode)}-${langKey(languageCode).toUpperCase()}`
     return { languageCode: locale, name: undefined as string | undefined }
   }
   return {
@@ -61,16 +82,23 @@ function resolveVoice(languageCode: string, gender: 'male' | 'female' = 'female'
 }
 
 function formatApiError(msg: string): string {
+  if (msg.includes('aiplatform.googleapis.com') || msg.includes('Agent Platform API')) {
+    return 'Vertex AI API ist nicht aktiv. Für Persisch/Dari in der Google Cloud Console „Vertex AI API“ aktivieren.'
+  }
   if (msg.includes('billing') || msg.includes('BILLING')) {
-    return 'Cloud Text-to-Speech braucht ein aktives Abrechnungskonto im Google-Projekt (Blaze/Billing aktivieren).'
+    return 'Cloud-Sprachausgabe braucht ein aktives Abrechnungskonto im Google-Projekt.'
   }
   if (msg.includes('has not been used') || msg.includes('disabled') || msg.includes('PERMISSION_DENIED')) {
-    return 'Cloud Text-to-Speech API ist nicht aktiv oder keine Berechtigung. API in der Google Console aktivieren.'
+    return 'Google Cloud API nicht aktiv oder keine Berechtigung.'
   }
   return msg
 }
 
-async function callSynthesize(
+function projectId(): string {
+  return process.env.FIREBASE_PROJECT_ID ?? ''
+}
+
+async function callClassicSynthesize(
   token: string,
   text: string,
   voice: { languageCode: string; name?: string },
@@ -82,11 +110,7 @@ async function callSynthesize(
       languageCode: voice.languageCode,
       ...(voice.name ? { name: voice.name } : {}),
     },
-    audioConfig: {
-      audioEncoding: 'MP3',
-      speakingRate,
-      pitch: 0,
-    },
+    audioConfig: { audioEncoding: 'MP3', speakingRate, pitch: 0 },
   }
 
   const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
@@ -99,9 +123,7 @@ async function callSynthesize(
   })
 
   const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
-  if (!res.ok) {
-    throw new Error(formatApiError(data.error?.message ?? `TTS-Fehler (${res.status})`))
-  }
+  if (!res.ok) throw new Error(formatApiError(data.error?.message ?? `TTS-Fehler (${res.status})`))
   if (!data.audioContent) throw new Error('Keine Audiodaten von TTS erhalten.')
 
   return {
@@ -111,11 +133,59 @@ async function callSynthesize(
   }
 }
 
+async function callGeminiSynthesize(
+  token: string,
+  text: string,
+  languageCode: string,
+  gender: 'male' | 'female',
+  speakingRate: number,
+): Promise<TtsResult> {
+  const locale = geminiLocale(languageCode)
+  const voiceName = gender === 'male' ? GEMINI_VOICE.male : GEMINI_VOICE.female
+
+  const body = {
+    input: {
+      text,
+      prompt:
+        'Read clearly and naturally for language learners. Moderate pace, friendly teaching tone.',
+    },
+    voice: {
+      languageCode: locale,
+      name: voiceName,
+      model_name: GEMINI_TTS_MODEL,
+    },
+    audioConfig: {
+      audioEncoding: 'MP3',
+      speakingRate,
+    },
+  }
+
+  const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'x-goog-user-project': projectId(),
+    },
+    body: JSON.stringify(body),
+  })
+
+  const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
+  if (!res.ok) throw new Error(formatApiError(data.error?.message ?? `Gemini-TTS-Fehler (${res.status})`))
+  if (!data.audioContent) throw new Error('Keine Audiodaten von Gemini-TTS erhalten.')
+
+  return {
+    audioBase64: data.audioContent,
+    mimeType: 'audio/mpeg',
+    voiceName: `${GEMINI_TTS_MODEL}/${voiceName}`,
+  }
+}
+
 export function isTtsConfigured(): boolean {
   return isGoogleCloudConfigured()
 }
 
-export async function checkTtsHealth(): Promise<TtsHealth> {
+export async function checkTtsHealth(languageCode?: string): Promise<TtsHealth> {
   if (!isTtsConfigured()) {
     return { configured: false, working: false, provider: 'google-cloud-tts' }
   }
@@ -127,46 +197,57 @@ export async function checkTtsHealth(): Promise<TtsHealth> {
         configured: true,
         working: false,
         provider: 'google-cloud-tts',
-        error: 'Firebase-Zugangsdaten liefern kein Google-Token. FIREBASE_PRIVATE_KEY auf Vercel prüfen.',
+        error: 'Firebase-Zugangsdaten liefern kein Google-Token.',
       }
     }
 
-    const res = await fetch('https://texttospeech.googleapis.com/v1/voices', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = (await res.json()) as {
-      voices?: { name: string; languageCodes: string[] }[]
-      error?: { message?: string }
+    const needsGemini = languageCode ? usesGeminiTts(languageCode) : true
+
+    if (!needsGemini) {
+      await callClassicSynthesize(
+        token,
+        'Test',
+        { languageCode: 'de-DE', name: 'de-DE-Neural2-F' },
+        1,
+      )
+      return { configured: true, working: true, provider: 'google-cloud-tts' }
     }
-    if (!res.ok) {
+
+    let geminiOk = false
+    let geminiError: string | undefined
+    try {
+      await callGeminiSynthesize(token, 'سلام', 'fa', 'female', 1)
+      geminiOk = true
+    } catch (err) {
+      geminiError = err instanceof Error ? err.message : 'Gemini-TTS fehlgeschlagen'
+    }
+
+    if (geminiOk) {
       return {
         configured: true,
-        working: false,
-        provider: 'google-cloud-tts',
-        error: formatApiError(data.error?.message ?? `Stimmen-Abfrage fehlgeschlagen (${res.status})`),
+        working: true,
+        geminiTts: true,
+        provider: 'google-gemini-tts',
       }
     }
 
-    const faVoice =
-      data.voices?.find((v) => v.languageCodes?.some((c) => c.startsWith('fa'))) ??
-      data.voices?.find((v) => v.name.startsWith('fa-IR'))
-
-    await callSynthesize(
-      token,
-      'سلام',
-      faVoice
-        ? { languageCode: faVoice.languageCodes[0] ?? 'fa-IR', name: faVoice.name }
-        : { languageCode: 'fa-IR', name: 'fa-IR-Standard-A' },
-      1,
-    )
-
-    return { configured: true, working: true, provider: 'google-cloud-tts' }
+    return {
+      configured: true,
+      working: false,
+      geminiTts: false,
+      provider: 'google-gemini-tts',
+      error: geminiError,
+      hint: geminiError?.includes('Vertex AI')
+        ? 'https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=zebla-f517e'
+        : undefined,
+    }
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'TTS-Test fehlgeschlagen'
     return {
       configured: true,
       working: false,
       provider: 'google-cloud-tts',
-      error: err instanceof Error ? err.message : 'TTS-Test fehlgeschlagen',
+      error: message,
     }
   }
 }
@@ -177,33 +258,32 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
 
   const token = await getGoogleAccessToken()
   if (!token) {
-    throw new Error(
-      'Cloud-TTS nicht konfiguriert. FIREBASE_* Zugangsdaten auf Vercel prüfen.',
-    )
+    throw new Error('Cloud-TTS nicht konfiguriert. FIREBASE_* auf Vercel prüfen.')
   }
 
-  const resolved = resolveVoice(req.languageCode, req.gender ?? 'female')
+  const gender = req.gender ?? 'female'
   const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
 
+  if (usesGeminiTts(req.languageCode)) {
+    return callGeminiSynthesize(token, text, req.languageCode, gender, speakingRate)
+  }
+
+  const resolved = resolveClassicVoice(req.languageCode, gender)
   const attempts: { languageCode: string; name?: string }[] = [
     ...(resolved.name
       ? [{ languageCode: resolved.languageCode, name: resolved.name }]
       : []),
-    { languageCode: resolved.languageCode, name: `${resolved.languageCode}-Standard-A` },
     { languageCode: resolved.languageCode },
   ]
   const seen = new Set<string>()
-  const uniqueAttempts = attempts.filter((a) => {
-    const key = `${a.languageCode}:${a.name ?? ''}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-
   let lastError: Error | null = null
-  for (const voice of uniqueAttempts) {
+
+  for (const voice of attempts) {
+    const key = `${voice.languageCode}:${voice.name ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
     try {
-      return await callSynthesize(token, text, voice, speakingRate)
+      return await callClassicSynthesize(token, text, voice, speakingRate)
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
     }

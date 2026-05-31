@@ -314,7 +314,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if ((route === 'tts-status' || route === 'tts/status') && req.method === 'GET') {
-      const health = await checkTtsHealth()
+      const lang = req.query.lang as string | undefined
+      const health = await checkTtsHealth(lang)
       res.json(health)
       return
     }

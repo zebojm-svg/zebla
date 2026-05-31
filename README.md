@@ -41,11 +41,13 @@ npm run seed
 
 Demo-Codes: `DEMO123`, `KLASSE7A`, `SCHUELER2024`
 
-### Cloud-Sprachausgabe (optional, empfohlen für Dari/Persisch)
+### Cloud-Sprachausgabe (empfohlen für Persisch/Dari)
 
-Im [Google Cloud Console](https://console.cloud.google.com/) dasselbe Projekt wie Firebase öffnen → **APIs & Dienste → Bibliothek** → **Cloud Text-to-Speech API** → **Aktivieren**.
+1. [Cloud Text-to-Speech API](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com) aktivieren (Deutsch, Französisch, …)
+2. **[Vertex AI API](https://console.cloud.google.com/apis/library/aiplatform.googleapis.com)** aktivieren – **nötig für Persisch/Dari** (Gemini-TTS, kein klassisches `fa-IR`-Stimmenpaket)
+3. Abrechnungskonto im Google-Projekt verknüpft (Blaze/Firebase reicht oft)
 
-Zebla nutzt die vorhandenen `FIREBASE_*`-Zugangsdaten. In der Diashow erscheint dann **„☁️ Cloud-Sprachausgabe (Google)“**. Ohne Aktivierung fällt die App auf Browser-Stimmen zurück.
+Zebla nutzt die vorhandenen `FIREBASE_*`-Zugangsdaten. In der Diashow: **„☁️ Cloud-Sprachausgabe“** wenn alles funktioniert; bei Problemen erscheint eine **rote Fehlermeldung** mit Hinweis.
 
 ---
 

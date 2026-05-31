@@ -159,9 +159,28 @@ export function SlideshowPage() {
       </div>
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
-      {ttsError && <div className="alert alert-error slideshow-tts-hint">{ttsError}</div>}
+      {ttsError && (
+        <div className="alert alert-error slideshow-tts-hint">
+          {ttsError}
+          {ttsError.includes('Vertex AI') && (
+            <p style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+              <a
+                href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project=zebla-f517e"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: 'inherit' }}
+              >
+                Vertex AI API aktivieren →
+              </a>
+            </p>
+          )}
+        </div>
+      )}
       {cloudTtsReady && !ttsError && (
-        <div className="slideshow-cloud-tts">☁️ Cloud-Sprachausgabe (Google)</div>
+        <div className="slideshow-cloud-tts">
+          ☁️ Cloud-Sprachausgabe
+          {dialog.targetLanguage.startsWith('fa') ? ' (Gemini)' : ' (Google)'}
+        </div>
       )}
 
       <div className="slideshow-stage">
