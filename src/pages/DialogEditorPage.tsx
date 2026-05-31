@@ -81,9 +81,9 @@ export function DialogEditorPage() {
       <section className="panel toolbar-panel">
         <h2>KI-Werkzeuge</h2>
         <div className="toolbar-grid">
-          <div className="toolbar-item">
-            <label>Übersetzen in</label>
-            <div className="inline-row">
+          <div className="tool-group">
+            <span className="tool-label">Übersetzen in</span>
+            <div className="tool-controls">
               <select value={translateLang} onChange={(e) => setTranslateLang(e.target.value)}>
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>
@@ -107,9 +107,9 @@ export function DialogEditorPage() {
             </div>
           </div>
 
-          <div className="toolbar-item">
-            <label>Birkenbihl (Muttersprache)</label>
-            <div className="inline-row">
+          <div className="tool-group">
+            <span className="tool-label">Birkenbihl (Muttersprache)</span>
+            <div className="tool-controls">
               <select value={birkenbihlLang} onChange={(e) => setBirkenbihlLang(e.target.value)}>
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>
@@ -128,54 +128,58 @@ export function DialogEditorPage() {
                   })
                 }
               >
-                {busy === 'birkenbihl' ? '…' : 'Birkenbihl anwenden'}
+                {busy === 'birkenbihl' ? '…' : 'Anwenden'}
               </button>
             </div>
           </div>
 
-          <div className="toolbar-item">
-            <label>Abschnitte</label>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={!!busy}
-              onClick={() =>
-                runAction('split', async () => {
-                  const { dialog: d } = await api.ai.split(dialog.id)
-                  setDialog(d)
-                })
-              }
-            >
-              {busy === 'split' ? '…' : 'In Abschnitte teilen'}
-            </button>
+          <div className="tool-group">
+            <span className="tool-label">Abschnitte</span>
+            <div className="tool-controls tool-controls--single">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!!busy}
+                onClick={() =>
+                  runAction('split', async () => {
+                    const { dialog: d } = await api.ai.split(dialog.id)
+                    setDialog(d)
+                  })
+                }
+              >
+                {busy === 'split' ? '…' : 'In Abschnitte teilen'}
+              </button>
+            </div>
           </div>
 
-          <div className="toolbar-item">
-            <label>Bilder</label>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={!!busy}
-              onClick={() =>
-                runAction('images', async () => {
-                  let current = dialog
-                  for (let i = 0; i < current.sections.length; i++) {
-                    const section = current.sections[i]
-                    setStatus(
-                      `Generiere Bild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
-                    )
-                    const { dialog: d } = await api.ai.image(current.id, section.id)
-                    current = d
-                    setDialog(d)
-                    if (i < current.sections.length - 1) {
-                      await new Promise((resolve) => setTimeout(resolve, 3000))
+          <div className="tool-group">
+            <span className="tool-label">Bilder</span>
+            <div className="tool-controls tool-controls--single">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!!busy}
+                onClick={() =>
+                  runAction('images', async () => {
+                    let current = dialog
+                    for (let i = 0; i < current.sections.length; i++) {
+                      const section = current.sections[i]
+                      setStatus(
+                        `Generiere Bild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
+                      )
+                      const { dialog: d } = await api.ai.image(current.id, section.id)
+                      current = d
+                      setDialog(d)
+                      if (i < current.sections.length - 1) {
+                        await new Promise((resolve) => setTimeout(resolve, 3000))
+                      }
                     }
-                  }
-                })
-              }
-            >
-              {busy === 'images' ? 'Generiere …' : 'Alle Bilder generieren'}
-            </button>
+                  })
+                }
+              >
+                {busy === 'images' ? 'Generiere …' : 'Alle Bilder generieren'}
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -184,57 +188,59 @@ export function DialogEditorPage() {
         <section key={section.id} className="panel section-panel">
           <div className="section-header">
             <h2>{section.title}</h2>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={!!busy}
-              onClick={() =>
-                runAction(`img-${section.id}`, async () => {
-                  setStatus('Bild wird generiert (ca. 15–30 Sekunden) …')
-                  const { dialog: d } = await api.ai.image(dialog.id, section.id)
-                  setDialog(d)
-                })
-              }
-            >
-              {busy === `img-${section.id}` ? '…' : 'Titelbild'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={!!busy}
-              onClick={() =>
-                runAction(`scenes-${section.id}`, async () => {
-                  let beatIndex = 0
-                  let replan = true
-                  let current = dialog
-                  let done = false
-                  while (!done) {
-                    setStatus(
-                      replan
-                        ? 'KI plant Szenen …'
-                        : `Generiere Szene ${beatIndex + 1} … (ca. 15–30 s)`,
-                    )
-                    const res = await api.ai.imageLines(
-                      current.id,
-                      section.id,
-                      beatIndex,
-                      replan,
-                    )
-                    current = res.dialog
-                    setDialog(res.dialog)
-                    done = res.done
-                    beatIndex++
-                    replan = false
-                    if (!done) {
-                      await new Promise((r) => setTimeout(r, 2500))
+            <div className="section-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={!!busy}
+                onClick={() =>
+                  runAction(`img-${section.id}`, async () => {
+                    setStatus('Bild wird generiert (ca. 15–30 Sekunden) …')
+                    const { dialog: d } = await api.ai.image(dialog.id, section.id)
+                    setDialog(d)
+                  })
+                }
+              >
+                {busy === `img-${section.id}` ? '…' : 'Titelbild'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={!!busy}
+                onClick={() =>
+                  runAction(`scenes-${section.id}`, async () => {
+                    let beatIndex = 0
+                    let replan = true
+                    let current = dialog
+                    let done = false
+                    while (!done) {
+                      setStatus(
+                        replan
+                          ? 'KI plant Szenen …'
+                          : `Generiere Szene ${beatIndex + 1} … (ca. 15–30 s)`,
+                      )
+                      const res = await api.ai.imageLines(
+                        current.id,
+                        section.id,
+                        beatIndex,
+                        replan,
+                      )
+                      current = res.dialog
+                      setDialog(res.dialog)
+                      done = res.done
+                      beatIndex++
+                      replan = false
+                      if (!done) {
+                        await new Promise((r) => setTimeout(r, 2500))
+                      }
                     }
-                  }
-                  setStatus(`Fertig – ${beatIndex} Szenen-Bilder.`)
-                })
-              }
-            >
-              {busy === `scenes-${section.id}` ? '…' : 'Szenen-Bilder (KI)'}
-            </button>
+                    setStatus(`Fertig – ${beatIndex} Szenen-Bilder.`)
+                  })
+                }
+              >
+                {busy === `scenes-${section.id}` ? '…' : 'Szenen-Bilder (KI)'}
+              </button>
+            </div>
           </div>
 
           {section.imageUrl && (
@@ -244,6 +250,10 @@ export function DialogEditorPage() {
           <div className="dialog-lines">
             {section.lines.map((line) => (
               <div key={line.id} className="dialog-line">
+                <div className="dialog-line-body">
+                  <strong className="speaker">{line.speaker}</strong>
+                  <BirkenbihlLine line={line} />
+                </div>
                 {line.imageUrl && (
                   <img
                     src={line.imageUrl}
@@ -252,8 +262,6 @@ export function DialogEditorPage() {
                     title="Szenen-Bild"
                   />
                 )}
-                <strong className="speaker">{line.speaker}</strong>
-                <BirkenbihlLine line={line} />
               </div>
             ))}
           </div>
