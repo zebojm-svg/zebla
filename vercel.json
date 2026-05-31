@@ -2,7 +2,15 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/api/ai/generate/:action", "destination": "/api/ai/:action" },
+    { "source": "/api/ai/translate/:dialogId", "destination": "/api/ai/translate?dialogId=:dialogId" },
+    { "source": "/api/ai/birkenbihl/:dialogId", "destination": "/api/ai/birkenbihl?dialogId=:dialogId" },
+    { "source": "/api/ai/split/:dialogId", "destination": "/api/ai/split?dialogId=:dialogId" },
+    { "source": "/api/ai/image-all/:dialogId", "destination": "/api/ai/image-all?dialogId=:dialogId" },
+    { "source": "/api/ai/image/:dialogId/:sectionId", "destination": "/api/ai/image?dialogId=:dialogId&sectionId=:sectionId" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
   "functions": {
     "api/**/*.ts": { "maxDuration": 60 }
   }
