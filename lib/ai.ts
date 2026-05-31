@@ -10,7 +10,7 @@ import type {
 import { linesFromRaw, newLineId } from './ids.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'imagen-4.0-fast-generate-001'
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image'
 
 function getApiKey(): string | null {
   return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
@@ -283,7 +283,7 @@ Jeder Index darf nur einmal vorkommen.`,
   }))
 }
 
-async function generateImageDataUrl(prompt: string): Promise<string> {
+async function generateImageWithImagen(prompt: string): Promise<string> {
   const apiKey = requireGeminiKey()
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`,
@@ -298,13 +298,7 @@ async function generateImageDataUrl(prompt: string): Promise<string> {
   )
 
   if (!res.ok) {
-    const err = await res.text()
-    if (err.includes('is not found') || err.includes('NOT_FOUND')) {
-      throw new Error(
-        `Bildmodell „${IMAGE_MODEL}“ ist nicht verfügbar. Setze GEMINI_IMAGE_MODEL auf z. B. imagen-4.0-fast-generate-001 in Vercel.`,
-      )
-    }
-    throw new Error(`Bildgenerierung fehlgeschlagen: ${err}`)
+    throw new Error(await res.text())
   }
 
   const data = (await res.json()) as {
@@ -313,6 +307,58 @@ async function generateImageDataUrl(prompt: string): Promise<string> {
   const b64 = data.predictions?.[0]?.bytesBase64Encoded
   if (!b64) throw new Error('Kein Bild generiert.')
   return `data:image/png;base64,${b64}`
+}
+
+async function generateImageWithGemini(prompt: string): Promise<string> {
+  const apiKey = requireGeminiKey()
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      }),
+    },
+  )
+
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+
+  const data = (await res.json()) as {
+    candidates?: {
+      content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }
+    }[]
+  }
+  const inlineData = data.candidates?.[0]?.content?.parts?.find(
+    (part) => part.inlineData?.data,
+  )?.inlineData
+  if (!inlineData?.data) throw new Error('Kein Bild generiert.')
+  return `data:${inlineData.mimeType ?? 'image/png'};base64,${inlineData.data}`
+}
+
+function imageGenerationErrorMessage(raw: string): string {
+  if (raw.includes('paid plans') || raw.includes('upgrade your account')) {
+    return 'Imagen ist nur mit kostenpflichtigem Google-AI-Konto verfügbar. Entferne GEMINI_IMAGE_MODEL in Vercel oder setze gemini-2.5-flash-image.'
+  }
+  if (raw.includes('is not found') || raw.includes('NOT_FOUND')) {
+    return `Bildmodell „${IMAGE_MODEL}“ ist nicht verfügbar. Setze GEMINI_IMAGE_MODEL auf gemini-2.5-flash-image.`
+  }
+  return `Bildgenerierung fehlgeschlagen: ${raw}`
+}
+
+async function generateImageDataUrl(prompt: string): Promise<string> {
+  try {
+    if (IMAGE_MODEL.startsWith('imagen')) {
+      return await generateImageWithImagen(prompt)
+    }
+    return await generateImageWithGemini(prompt)
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err)
+    throw new Error(imageGenerationErrorMessage(raw))
+  }
 }
 
 export async function generateSectionImage(
