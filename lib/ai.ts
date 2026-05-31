@@ -1,4 +1,4 @@
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { randomUUID } from 'crypto'
 import type {
   DialogLength,
@@ -9,17 +9,41 @@ import type {
 } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null
+const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash'
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'imagen-3.0-generate-001'
 
-function requireOpenAI(): OpenAI {
-  if (!openai) {
+function getApiKey(): string | null {
+  return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
+}
+
+function requireGeminiKey(): string {
+  const key = getApiKey()
+  if (!key) {
     throw new Error(
-      'OPENAI_API_KEY ist nicht gesetzt. Bitte in den Vercel-Umgebungsvariablen konfigurieren.',
+      'GEMINI_API_KEY ist nicht gesetzt. Bitte in Vercel einen Google AI Studio Key eintragen.',
     )
   }
-  return openai
+  return key
+}
+
+function getTextModel() {
+  const genAI = new GoogleGenerativeAI(requireGeminiKey())
+  return genAI.getGenerativeModel({
+    model: TEXT_MODEL,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.7,
+    },
+  })
+}
+
+function parseJson<T>(text: string): T {
+  const cleaned = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+  return JSON.parse(cleaned) as T
 }
 
 const LENGTH_HINTS: Record<DialogLength, string> = {
@@ -29,20 +53,19 @@ const LENGTH_HINTS: Record<DialogLength, string> = {
 }
 
 async function chatJson<T>(system: string, user: string): Promise<T> {
-  const client = requireOpenAI()
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
+  const model = getTextModel()
+  const result = await model.generateContent({
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: `${system}\n\n---\n\n${user}` }],
+      },
     ],
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
   })
 
-  const content = response.choices[0]?.message?.content
+  const content = result.response.text()
   if (!content) throw new Error('Keine Antwort von der KI erhalten.')
-  return JSON.parse(content) as T
+  return parseJson<T>(content)
 }
 
 interface RawDialogResponse {
@@ -114,39 +137,42 @@ export async function chatForDialog(
   targetLanguage: string,
   length: DialogLength,
 ): Promise<{ reply: string; dialog?: { title: string; sections: DialogSection[] } }> {
-  const client = requireOpenAI()
-
-  const systemPrompt = `${DIALOG_SYSTEM}
+  const genAI = new GoogleGenerativeAI(requireGeminiKey())
+  const model = genAI.getGenerativeModel({
+    model: TEXT_MODEL,
+    systemInstruction: `${DIALOG_SYSTEM}
 
 Du führst ein Gespräch mit dem Nutzer, um einen Dialog zu planen.
 Sprache des Dialogs: ${targetLanguage}. Ziel-Länge: ${LENGTH_HINTS[length]}.
 
-Wenn genug Informationen vorliegen, füge am Ende deiner Nachricht das Wort [FERTIG] ein
-und liefere zusätzlich im JSON-Feld dialog den fertigen Dialog.
+Wenn genug Informationen vorliegen, liefere im JSON-Feld dialog den fertigen Dialog.
 
 Antwortformat als JSON:
 {
   "reply": "Deine Nachricht an den Nutzer",
   "dialog": null oder { "title": "...", "lines": [...] }
-}`
-
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
+}`,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.7,
+    },
   })
 
-  const content = response.choices[0]?.message?.content
+  const history = messages.slice(0, -1).map((m) => ({
+    role: m.role === 'user' ? ('user' as const) : ('model' as const),
+    parts: [{ text: m.content }],
+  }))
+
+  const chat = model.startChat({ history })
+  const last = messages[messages.length - 1]
+  const result = await chat.sendMessage(last?.content ?? '')
+  const content = result.response.text()
   if (!content) throw new Error('Keine Antwort von der KI erhalten.')
 
-  const parsed = JSON.parse(content) as {
+  const parsed = parseJson<{
     reply: string
     dialog?: RawDialogResponse | null
-  }
+  }>(content)
 
   let dialog: { title: string; sections: DialogSection[] } | undefined
   if (parsed.dialog?.lines?.length) {
@@ -240,12 +266,37 @@ Jeder Index darf nur einmal vorkommen.`,
   }))
 }
 
+async function generateImageDataUrl(prompt: string): Promise<string> {
+  const apiKey = requireGeminiKey()
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: { sampleCount: 1 },
+      }),
+    },
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Bildgenerierung fehlgeschlagen: ${err}`)
+  }
+
+  const data = (await res.json()) as {
+    predictions?: { bytesBase64Encoded?: string }[]
+  }
+  const b64 = data.predictions?.[0]?.bytesBase64Encoded
+  if (!b64) throw new Error('Kein Bild generiert.')
+  return `data:image/png;base64,${b64}`
+}
+
 export async function generateSectionImage(
   section: DialogSection,
   dialogTitle: string,
 ): Promise<{ imageUrl: string; prompt: string }> {
-  const client = requireOpenAI()
-
   const promptResult = await chatJson<{ prompt: string }>(
     `Erstelle einen prägnanten Bild-Prompt (Englisch) für eine Illustration zu einem Sprachlern-Dialog.
 Stil: freundlich, farbenfroh, illustrativ, keine Text-Overlays.
@@ -253,19 +304,10 @@ Antworte als JSON: { "prompt": "..." }`,
     `Dialog: ${dialogTitle}\nAbschnitt: ${section.title}\nInhalt:\n${section.lines.map((l) => `${l.speaker}: ${l.text}`).join('\n')}`,
   )
 
-  const image = await client.images.generate({
-    model: 'dall-e-3',
-    prompt: promptResult.prompt,
-    size: '1024x1024',
-    n: 1,
-  })
-
-  const imageUrl = image.data[0]?.url
-  if (!imageUrl) throw new Error('Kein Bild generiert.')
-
+  const imageUrl = await generateImageDataUrl(promptResult.prompt)
   return { imageUrl, prompt: promptResult.prompt }
 }
 
 export function isAiConfigured(): boolean {
-  return !!process.env.OPENAI_API_KEY
+  return !!getApiKey()
 }

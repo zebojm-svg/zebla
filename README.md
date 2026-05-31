@@ -2,7 +2,7 @@
 
 Sprachlern-App zum Erstellen, Übersetzen und Üben von Dialogen – mit KI.
 
-**Cloud-Stack:** [Vercel](https://vercel.com) (Hosting + API) · [Firebase Auth](https://firebase.google.com/products/auth) · [Firestore](https://firebase.google.com/products/firestore) · OpenAI
+**Cloud-Stack:** [Vercel](https://vercel.com) (Hosting + API) · [Firebase Auth](https://firebase.google.com/products/auth) · [Firestore](https://firebase.google.com/products/firestore) · [Google Gemini](https://aistudio.google.com)
 
 ## Funktionen
 
@@ -47,7 +47,7 @@ Demo-Codes: `DEMO123`, `KLASSE7A`, `SCHUELER2024`
 ```bash
 npm install
 cp .env.example .env
-# .env ausfüllen (Firebase + OPENAI_API_KEY)
+# .env ausfüllen (Firebase + GEMINI_API_KEY)
 npm run seed
 npm run dev
 ```
@@ -73,7 +73,7 @@ npm run dev:client
 
 | Variable | Wo |
 |----------|-----|
-| `OPENAI_API_KEY` | Server |
+| `GEMINI_API_KEY` | Server (Google AI Studio, eigener Key „zebla“) |
 | `FIREBASE_PROJECT_ID` | Server |
 | `FIREBASE_CLIENT_EMAIL` | Server |
 | `FIREBASE_PRIVATE_KEY` | Server (kompletter Key mit `\n`) |
@@ -98,7 +98,7 @@ In Firebase Console → Authentication → Google → **Autorisierte Domains** h
 ```
 Zebla/
 ├── api/              # Vercel Serverless Functions
-├── lib/              # Firebase Admin, Firestore, OpenAI
+├── lib/              # Firebase Admin, Firestore, Gemini
 ├── shared/           # TypeScript-Typen
 ├── src/              # React Frontend
 ├── firestore.rules
@@ -116,6 +116,6 @@ Zebla/
 
 ## Hinweise
 
-- **DALL-E-Bilder:** URLs von OpenAI laufen nach einiger Zeit ab. Für dauerhafte Speicherung später Firebase Storage ergänzen.
-- **Kosten:** OpenAI (GPT + DALL-E) und Firebase (Free Tier reicht für Tests) können Kosten verursachen.
+- **KI-Bilder:** Werden als Base64 im Dialog gespeichert. Für dauerhafte Speicherung später Firebase Storage ergänzen.
+- **Kosten:** Google Gemini (eigener API-Key „zebla“) und Firebase – Nutzung getrennt von anderen Apps trackbar.
 - **Schülercodes:** Werden nur serverseitig geprüft (nicht aus Firestore-Client lesbar).

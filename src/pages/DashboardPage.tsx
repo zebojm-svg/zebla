@@ -46,7 +46,7 @@ export function DashboardPage() {
 
       {!aiReady && (
         <div className="alert alert-warn">
-          OPENAI_API_KEY ist nicht gesetzt – KI-Funktionen sind deaktiviert.
+          GEMINI_API_KEY ist nicht gesetzt – KI-Funktionen sind deaktiviert.
         </div>
       )}
 
