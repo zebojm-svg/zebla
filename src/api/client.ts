@@ -147,6 +147,20 @@ export const api = {
         >
       }>(`/shared?token=${encodeURIComponent(token)}`),
   },
+  tts: {
+    status: () =>
+      request<{ configured: boolean; provider: string }>('/tts-status'),
+    synthesize: (data: {
+      text: string
+      languageCode: string
+      rate?: number
+      gender?: 'male' | 'female'
+    }) =>
+      request<{ audioBase64: string; mimeType: string; voiceName: string }>('/tts', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
   ai: {
     status: () => request<{ configured: boolean }>('/ai-status'),
     topic: (

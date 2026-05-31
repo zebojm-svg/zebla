@@ -35,6 +35,7 @@ import {
   handleImageAll,
   handleImageLines,
 } from '../lib/ai-handlers.js'
+import { isTtsConfigured, synthesizeSpeech } from '../lib/tts.js'
 import type { DialogSection } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -309,6 +310,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       methodNotAllowed(res)
+      return
+    }
+
+    if ((route === 'tts-status' || route === 'tts/status') && req.method === 'GET') {
+      res.json({ configured: isTtsConfigured(), provider: 'google-cloud-tts' })
+      return
+    }
+
+    if (route === 'tts' && req.method === 'POST') {
+      await requireAuth(req)
+      const { text, languageCode, rate, gender } = req.body as {
+        text?: string
+        languageCode?: string
+        rate?: number
+        gender?: 'male' | 'female'
+      }
+      if (!text?.trim() || !languageCode) {
+        res.status(400).json({ error: 'text und languageCode fehlen.' })
+        return
+      }
+      try {
+        const result = await synthesizeSpeech({
+          text: text.trim(),
+          languageCode,
+          rate,
+          gender,
+        })
+        res.json(result)
+      } catch (err) {
+        sendError(res, err)
+      }
       return
     }
 

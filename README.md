@@ -10,6 +10,7 @@ Sprachlern-App zum Erstellen, Übersetzen und Üben von Dialogen – mit KI.
 - Dialoge per KI-Gespräch, Thema oder Diktat erstellen
 - Übersetzen, Birkenbihl-Methode, Abschnitte, KI-Bilder
 - Diashow mit Vorlesen und Wort-Markierung
+- **Cloud-Sprachausgabe** (Google Text-to-Speech) – natürliche Stimmen auch für Persisch/Dari, ohne Windows-Sprachpaket
 
 ---
 
@@ -39,6 +40,12 @@ npm run seed
 ```
 
 Demo-Codes: `DEMO123`, `KLASSE7A`, `SCHUELER2024`
+
+### Cloud-Sprachausgabe (optional, empfohlen für Dari/Persisch)
+
+Im [Google Cloud Console](https://console.cloud.google.com/) dasselbe Projekt wie Firebase öffnen → **APIs & Dienste → Bibliothek** → **Cloud Text-to-Speech API** → **Aktivieren**.
+
+Zebla nutzt die vorhandenen `FIREBASE_*`-Zugangsdaten. In der Diashow erscheint dann **„☁️ Cloud-Sprachausgabe (Google)“**. Ohne Aktivierung fällt die App auf Browser-Stimmen zurück.
 
 ---
 

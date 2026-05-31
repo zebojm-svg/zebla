@@ -671,6 +671,13 @@ textarea { resize: vertical; min-height: 120px; }
   flex-shrink: 0;
 }
 
+.slideshow-cloud-tts {
+  margin: 0 1.5rem 0.35rem;
+  font-size: 0.8125rem;
+  color: #86efac;
+  flex-shrink: 0;
+}
+
 .slideshow-stage {
   flex: 1;
   min-height: 0;

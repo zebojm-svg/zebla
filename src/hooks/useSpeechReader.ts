@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { api } from '../api/client'
 
 const SPEECH_LANG_MAP: Record<string, string> = {
   de: 'de-DE',
@@ -315,10 +316,19 @@ export function useSpeechReader(languageCode: string) {
   const [speaking, setSpeaking] = useState(false)
   const [activeLineId, setActiveLineId] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
+  const [cloudTtsReady, setCloudTtsReady] = useState(false)
   const stoppedRef = useRef(false)
   const speakerVoicesRef = useRef<Map<string, SpeechSynthesisVoice>>(new Map())
   const speakerPitchRef = useRef<Map<string, number>>(new Map())
   const voicesRef = useRef<SpeechSynthesisVoice[]>([])
+  const cloudAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    api.tts
+      .status()
+      .then((r) => setCloudTtsReady(r.configured))
+      .catch(() => setCloudTtsReady(false))
+  }, [])
 
   useEffect(() => {
     speakerVoicesRef.current.clear()
@@ -341,6 +351,11 @@ export function useSpeechReader(languageCode: string) {
   const stop = useCallback(() => {
     stoppedRef.current = true
     window.speechSynthesis.cancel()
+    if (cloudAudioRef.current) {
+      cloudAudioRef.current.pause()
+      cloudAudioRef.current.src = ''
+      cloudAudioRef.current = null
+    }
     setSpeaking(false)
     setActiveLineId(null)
     setHighlightIndex(null)
@@ -374,6 +389,40 @@ export function useSpeechReader(languageCode: string) {
     return speakerVoicesRef.current.get(speaker) ?? null
   }, [])
 
+  const speakCloud = useCallback(
+    async (
+      text: string,
+      rate: number,
+      gender: 'male' | 'female',
+      lineId: string,
+    ): Promise<boolean> => {
+      const { audioBase64, mimeType } = await api.tts.synthesize({
+        text,
+        languageCode,
+        rate,
+        gender,
+      })
+      if (stoppedRef.current) return false
+
+      return new Promise<boolean>((resolve) => {
+        const audio = new Audio(`data:${mimeType};base64,${audioBase64}`)
+        cloudAudioRef.current = audio
+        setActiveLineId(lineId)
+        setHighlightIndex(null)
+
+        const cleanup = (ok: boolean) => {
+          if (cloudAudioRef.current === audio) cloudAudioRef.current = null
+          resolve(ok)
+        }
+
+        audio.onended = () => cleanup(true)
+        audio.onerror = () => cleanup(false)
+        audio.play().then(() => {}).catch(() => cleanup(false))
+      })
+    },
+    [languageCode],
+  )
+
   const speakText = useCallback(
     async (
       line: SpeakLine,
@@ -388,6 +437,20 @@ export function useSpeechReader(languageCode: string) {
       if (!text) return
 
       ensureSpeakerVoices(allLines, speakerIndexMap)
+
+      const speakerIdx = speakerIndexMap.get(line.speaker) ?? 0
+      const gender = guessSpeakerGender(line.speaker, speakerIdx)
+
+      if (cloudTtsReady) {
+        try {
+          const ok = await speakCloud(text, rate, gender, line.id)
+          if (ok) return
+        } catch {
+          /* Browser-TTS als Fallback */
+        }
+        window.speechSynthesis.cancel()
+        await sleep(80)
+      }
 
       const assignedVoice = getVoiceForSpeaker(line.speaker)
       const locales = [
@@ -475,7 +538,7 @@ export function useSpeechReader(languageCode: string) {
         await sleep(estimateSpeechMs(text, rate))
       }
     },
-    [ensureSpeakerVoices, getVoiceForSpeaker, languageCode],
+    [cloudTtsReady, ensureSpeakerVoices, getVoiceForSpeaker, languageCode, speakCloud],
   )
 
   const speakFrom = useCallback(
@@ -517,6 +580,7 @@ export function useSpeechReader(languageCode: string) {
     speaking,
     activeLineId,
     highlightIndex,
+    cloudTtsReady,
   }
 }
 

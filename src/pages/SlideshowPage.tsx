@@ -16,9 +16,8 @@ export function SlideshowPage() {
   const [loading, setLoading] = useState(true)
   const [ttsHint, setTtsHint] = useState('')
 
-  const { speakFrom, stop, speaking, activeLineId, highlightIndex } = useSpeechReader(
-    dialog?.targetLanguage ?? 'en',
-  )
+  const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady } =
+    useSpeechReader(dialog?.targetLanguage ?? 'en')
 
   useEffect(() => {
     if (!id) return
@@ -34,6 +33,10 @@ export function SlideshowPage() {
 
   useEffect(() => {
     if (!dialog || !['fa', 'ar'].includes(dialog.targetLanguage)) {
+      setTtsHint('')
+      return
+    }
+    if (cloudTtsReady) {
       setTtsHint('')
       return
     }
@@ -57,7 +60,7 @@ export function SlideshowPage() {
       window.speechSynthesis.onvoiceschanged = null
       window.clearTimeout(timer)
     }
-  }, [dialog])
+  }, [dialog, cloudTtsReady])
 
   useEffect(() => {
     setLineIndex(0)
@@ -156,6 +159,9 @@ export function SlideshowPage() {
       </div>
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
+      {cloudTtsReady && (
+        <div className="slideshow-cloud-tts">☁️ Cloud-Sprachausgabe (Google)</div>
+      )}
 
       <div className="slideshow-stage">
         <div className="slideshow-image-wrap">
