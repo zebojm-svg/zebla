@@ -10,7 +10,7 @@ import type {
 import { linesFromRaw, newLineId } from './ids.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'imagen-3.0-generate-001'
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'imagen-4.0-fast-generate-001'
 
 function getApiKey(): string | null {
   return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
@@ -299,6 +299,11 @@ async function generateImageDataUrl(prompt: string): Promise<string> {
 
   if (!res.ok) {
     const err = await res.text()
+    if (err.includes('is not found') || err.includes('NOT_FOUND')) {
+      throw new Error(
+        `Bildmodell „${IMAGE_MODEL}“ ist nicht verfügbar. Setze GEMINI_IMAGE_MODEL auf z. B. imagen-4.0-fast-generate-001 in Vercel.`,
+      )
+    }
     throw new Error(`Bildgenerierung fehlgeschlagen: ${err}`)
   }
 
