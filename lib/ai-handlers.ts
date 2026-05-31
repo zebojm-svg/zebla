@@ -176,7 +176,11 @@ export async function handleImageAll(req: VercelRequest, res: VercelResponse) {
       return
     }
     const sections = []
-    for (const sec of dialog.sections) {
+    for (let i = 0; i < dialog.sections.length; i++) {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+      }
+      const sec = dialog.sections[i]
       const { imageUrl, prompt } = await generateSectionImage(sec, dialog.title)
       sections.push({ ...sec, imageUrl, imagePrompt: prompt })
     }

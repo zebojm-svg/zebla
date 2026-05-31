@@ -10,7 +10,55 @@ import type {
 import { linesFromRaw, newLineId } from './ids.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image'
+const IMAGE_MODEL =
+  process.env.GEMINI_IMAGE_MODEL?.replace(
+    'gemini-2.5-flash-preview-image',
+    'gemini-2.5-flash-image',
+  ) ?? 'gemini-2.5-flash-image'
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function parseGoogleRetryDelayMs(raw: string): number | null {
+  const secMatch = raw.match(/retry in ([\d.]+)s/i)
+  if (secMatch) return Math.ceil(parseFloat(secMatch[1]) * 1000)
+  try {
+    const json = JSON.parse(raw) as {
+      error?: { details?: { '@type'?: string; retryDelay?: string }[] }
+    }
+    for (const detail of json.error?.details ?? []) {
+      if (detail['@type']?.includes('RetryInfo') && detail.retryDelay) {
+        const delayMatch = String(detail.retryDelay).match(/([\d.]+)s/)
+        if (delayMatch) return Math.ceil(parseFloat(delayMatch[1]) * 1000)
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+async function googleApiPost(url: string, body: object): Promise<Response> {
+  const maxAttempts = 3
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return res
+
+    const errText = await res.text()
+    if (res.status === 429 && attempt < maxAttempts - 1) {
+      const retryMs = parseGoogleRetryDelayMs(errText) ?? 40_000
+      await sleep(Math.min(retryMs + 1000, 55_000))
+      continue
+    }
+    throw new Error(errText)
+  }
+  throw new Error('API-Anfrage fehlgeschlagen.')
+}
 
 function getApiKey(): string | null {
   return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? null
@@ -285,21 +333,13 @@ Jeder Index darf nur einmal vorkommen.`,
 
 async function generateImageWithImagen(prompt: string): Promise<string> {
   const apiKey = requireGeminiKey()
-  const res = await fetch(
+  const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: 1 },
-      }),
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1 },
     },
   )
-
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
 
   const data = (await res.json()) as {
     predictions?: { bytesBase64Encoded?: string }[]
@@ -311,21 +351,13 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
 
 async function generateImageWithGemini(prompt: string): Promise<string> {
   const apiKey = requireGeminiKey()
-  const res = await fetch(
+  const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-      }),
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
     },
   )
-
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
 
   const data = (await res.json()) as {
     candidates?: {
@@ -340,13 +372,29 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
 }
 
 function imageGenerationErrorMessage(raw: string): string {
+  if (
+    raw.includes('429') ||
+    raw.includes('RESOURCE_EXHAUSTED') ||
+    raw.includes('quota') ||
+    raw.includes('rate limit')
+  ) {
+    return `Bild-Limit erreicht (Google Free-Tier, Modell: ${IMAGE_MODEL}). Bitte einige Minuten warten und erneut versuchen. In Vercel „GEMINI_IMAGE_MODEL“ entfernen oder auf gemini-2.5-flash-image setzen.`
+  }
   if (raw.includes('paid plans') || raw.includes('upgrade your account')) {
     return 'Imagen ist nur mit kostenpflichtigem Google-AI-Konto verfügbar. Entferne GEMINI_IMAGE_MODEL in Vercel oder setze gemini-2.5-flash-image.'
   }
   if (raw.includes('is not found') || raw.includes('NOT_FOUND')) {
     return `Bildmodell „${IMAGE_MODEL}“ ist nicht verfügbar. Setze GEMINI_IMAGE_MODEL auf gemini-2.5-flash-image.`
   }
-  return `Bildgenerierung fehlgeschlagen: ${raw}`
+  return `Bildgenerierung fehlgeschlagen: ${raw.slice(0, 280)}`
+}
+
+function buildImagePrompt(section: DialogSection, dialogTitle: string): string {
+  const snippet = section.lines
+    .slice(0, 3)
+    .map((l) => `${l.speaker}: ${l.text}`)
+    .join(' ')
+  return `Friendly colorful flat illustration for a language learning dialog "${dialogTitle}", scene "${section.title}". ${snippet}. Warm educational style, no text or labels in the image.`
 }
 
 async function generateImageDataUrl(prompt: string): Promise<string> {
@@ -365,15 +413,9 @@ export async function generateSectionImage(
   section: DialogSection,
   dialogTitle: string,
 ): Promise<{ imageUrl: string; prompt: string }> {
-  const promptResult = await chatJson<{ prompt: string }>(
-    `Erstelle einen prägnanten Bild-Prompt (Englisch) für eine Illustration zu einem Sprachlern-Dialog.
-Stil: freundlich, farbenfroh, illustrativ, keine Text-Overlays.
-Antworte als JSON: { "prompt": "..." }`,
-    `Dialog: ${dialogTitle}\nAbschnitt: ${section.title}\nInhalt:\n${section.lines.map((l) => `${l.speaker}: ${l.text}`).join('\n')}`,
-  )
-
-  const imageUrl = await generateImageDataUrl(promptResult.prompt)
-  return { imageUrl, prompt: promptResult.prompt }
+  const prompt = buildImagePrompt(section, dialogTitle)
+  const imageUrl = await generateImageDataUrl(prompt)
+  return { imageUrl, prompt }
 }
 
 export function isAiConfigured(): boolean {
