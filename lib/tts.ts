@@ -134,7 +134,10 @@ export async function checkTtsHealth(): Promise<TtsHealth> {
     const res = await fetch('https://texttospeech.googleapis.com/v1/voices', {
       headers: { Authorization: `Bearer ${token}` },
     })
-    const data = (await res.json()) as { voices?: unknown[]; error?: { message?: string } }
+    const data = (await res.json()) as {
+      voices?: { name: string; languageCodes: string[] }[]
+      error?: { message?: string }
+    }
     if (!res.ok) {
       return {
         configured: true,
@@ -144,7 +147,18 @@ export async function checkTtsHealth(): Promise<TtsHealth> {
       }
     }
 
-    await callSynthesize(token, 'سلام', { languageCode: 'fa-IR' }, 1)
+    const faVoice =
+      data.voices?.find((v) => v.languageCodes?.some((c) => c.startsWith('fa'))) ??
+      data.voices?.find((v) => v.name.startsWith('fa-IR'))
+
+    await callSynthesize(
+      token,
+      'سلام',
+      faVoice
+        ? { languageCode: faVoice.languageCodes[0] ?? 'fa-IR', name: faVoice.name }
+        : { languageCode: 'fa-IR', name: 'fa-IR-Standard-A' },
+      1,
+    )
 
     return { configured: true, working: true, provider: 'google-cloud-tts' }
   } catch (err) {
@@ -172,12 +186,22 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
   const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
 
   const attempts: { languageCode: string; name?: string }[] = [
-    { languageCode: resolved.languageCode, name: resolved.name },
+    ...(resolved.name
+      ? [{ languageCode: resolved.languageCode, name: resolved.name }]
+      : []),
+    { languageCode: resolved.languageCode, name: `${resolved.languageCode}-Standard-A` },
     { languageCode: resolved.languageCode },
   ]
+  const seen = new Set<string>()
+  const uniqueAttempts = attempts.filter((a) => {
+    const key = `${a.languageCode}:${a.name ?? ''}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 
   let lastError: Error | null = null
-  for (const voice of attempts) {
+  for (const voice of uniqueAttempts) {
     try {
       return await callSynthesize(token, text, voice, speakingRate)
     } catch (err) {
