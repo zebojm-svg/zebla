@@ -9,7 +9,7 @@ import type {
 } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 
-const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash'
+const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash'
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'imagen-3.0-generate-001'
 
 function getApiKey(): string | null {
@@ -52,20 +52,34 @@ const LENGTH_HINTS: Record<DialogLength, string> = {
   long: '14–20 Zeilen',
 }
 
-async function chatJson<T>(system: string, user: string): Promise<T> {
-  const model = getTextModel()
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: `${system}\n\n---\n\n${user}` }],
-      },
-    ],
-  })
+function geminiErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.message.includes('API_KEY_INVALID') || err.message.includes('API key')) {
+      return 'Ungültiger GEMINI_API_KEY. Bitte in Vercel prüfen und neu deployen.'
+    }
+    return err.message
+  }
+  return 'KI-Anfrage fehlgeschlagen.'
+}
 
-  const content = result.response.text()
-  if (!content) throw new Error('Keine Antwort von der KI erhalten.')
-  return parseJson<T>(content)
+async function chatJson<T>(system: string, user: string): Promise<T> {
+  try {
+    const model = getTextModel()
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: `${system}\n\n---\n\n${user}` }],
+        },
+      ],
+    })
+
+    const content = result.response.text()
+    if (!content) throw new Error('Keine Antwort von der KI erhalten.')
+    return parseJson<T>(content)
+  } catch (err) {
+    throw new Error(geminiErrorMessage(err))
+  }
 }
 
 interface RawDialogResponse {

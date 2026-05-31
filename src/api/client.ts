@@ -25,9 +25,23 @@ async function request<T>(
     headers,
   })
 
-  const data = await res.json().catch(() => ({}))
+  const text = await res.text()
+  if (!text) {
+    throw new Error(`Leere Antwort vom Server (${res.status}).`)
+  }
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error(
+      text.slice(0, 300) || `Server-Fehler (${res.status}). Bitte später erneut versuchen.`,
+    )
+  }
   if (!res.ok) {
-    throw new Error((data as { error?: string }).error ?? 'Anfrage fehlgeschlagen')
+    const err = data as { error?: string }
+    throw new Error(
+      err.error ?? `Anfrage fehlgeschlagen (${res.status}). Prüfe GEMINI_API_KEY auf Vercel.`,
+    )
   }
   return data as T
 }
