@@ -81,6 +81,26 @@ export const api = {
         body: JSON.stringify({ name }),
       }),
   },
+  library: {
+    list: () =>
+      request<{ folders: import('../types').DialogFolder[]; dialogs: import('../types').Dialog[] }>(
+        '/library',
+      ),
+  },
+  folders: {
+    create: (name: string, parentId?: string | null) =>
+      request<{ folder: import('../types').DialogFolder }>('/folders', {
+        method: 'POST',
+        body: JSON.stringify({ name, parentId: parentId ?? null }),
+      }),
+    update: (id: string, data: { name?: string; parentId?: string | null }) =>
+      request<{ folder: import('../types').DialogFolder }>('/folder', {
+        method: 'PATCH',
+        body: JSON.stringify({ id, ...data }),
+      }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/folder?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  },
   dialogs: {
     list: () => request<{ dialogs: import('../types').Dialog[] }>('/dialogs'),
     get: (id: string) =>
@@ -91,6 +111,7 @@ export const api = {
       targetLanguage: string
       length: import('../types').DialogLength
       sections: import('../types').DialogSection[]
+      folderId?: string | null
     }) =>
       request<{ dialog: import('../types').Dialog }>('/dialogs', {
         method: 'POST',

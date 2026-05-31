@@ -17,6 +17,7 @@ interface DialogDoc {
   targetLanguage: string
   length: Dialog['length']
   sections: DialogSection[]
+  folderId?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -48,6 +49,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     targetLanguage: data.targetLanguage,
     length: data.length,
     sections: sanitizeSections(data.sections),
+    folderId: data.folderId ?? null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -169,6 +171,7 @@ export async function createDialog(
     targetLanguage: string
     length: Dialog['length']
     sections: DialogSection[]
+    folderId?: string | null
   },
 ): Promise<Dialog> {
   const now = new Date().toISOString()
@@ -179,6 +182,7 @@ export async function createDialog(
     targetLanguage: data.targetLanguage,
     length: data.length,
     sections: sanitizeSections(data.sections),
+    folderId: data.folderId ?? null,
     createdAt: now,
     updatedAt: now,
   }
@@ -194,6 +198,7 @@ export async function updateDialog(
     sourceLanguage: string
     targetLanguage: string
     sections: DialogSection[]
+    folderId: string | null
   }>,
 ): Promise<Dialog | null> {
   const existing = await getDialog(id, userId)
@@ -206,6 +211,7 @@ export async function updateDialog(
     targetLanguage: data.targetLanguage ?? existing.targetLanguage,
     length: existing.length,
     sections: sanitizeSections(data.sections ?? existing.sections),
+    folderId: data.folderId !== undefined ? data.folderId : (existing.folderId ?? null),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }

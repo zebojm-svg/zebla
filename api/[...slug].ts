@@ -15,6 +15,12 @@ import {
   upsertUserProfile,
 } from '../lib/firestore.js'
 import {
+  listFolders,
+  createFolder,
+  updateFolder,
+  deleteFolder,
+} from '../lib/folders.js'
+import {
   handleAiStatus,
   handleGenerateTopic,
   handleGenerateSentences,
@@ -93,6 +99,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (route === 'library' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const [folders, dialogs] = await Promise.all([
+        listFolders(user.uid),
+        listDialogs(user.uid),
+      ])
+      res.json({ folders, dialogs })
+      return
+    }
+
+    if (route === 'folders') {
+      const user = await requireAuth(req)
+      if (req.method === 'POST') {
+        const { name, parentId } = req.body as {
+          name?: string
+          parentId?: string | null
+        }
+        if (!name?.trim()) {
+          res.status(400).json({ error: 'Ordnername fehlt.' })
+          return
+        }
+        try {
+          const folder = await createFolder(user.uid, name, parentId ?? null)
+          res.status(201).json({ folder })
+        } catch (err) {
+          res.status(400).json({
+            error: err instanceof Error ? err.message : 'Ordner konnte nicht erstellt werden.',
+          })
+        }
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
+    if (route === 'folder') {
+      const user = await requireAuth(req)
+      const id = (req.query.id ?? (req.body as { id?: string })?.id) as string
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      if (req.method === 'PATCH') {
+        const { name, parentId } = req.body as {
+          name?: string
+          parentId?: string | null
+        }
+        try {
+          const folder = await updateFolder(id, user.uid, { name, parentId })
+          if (!folder) {
+            res.status(404).json({ error: 'Ordner nicht gefunden.' })
+            return
+          }
+          res.json({ folder })
+        } catch (err) {
+          res.status(400).json({
+            error: err instanceof Error ? err.message : 'Ordner konnte nicht aktualisiert werden.',
+          })
+        }
+        return
+      }
+      if (req.method === 'DELETE') {
+        const ok = await deleteFolder(id, user.uid)
+        if (!ok) {
+          res.status(404).json({ error: 'Ordner nicht gefunden.' })
+          return
+        }
+        res.json({ ok: true })
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
     if (route === 'dialogs') {
       const user = await requireAuth(req)
       if (req.method === 'GET') {
@@ -101,13 +181,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'POST') {
-        const { title, sourceLanguage, targetLanguage, length, sections } =
+        const { title, sourceLanguage, targetLanguage, length, sections, folderId } =
           req.body as {
             title?: string
             sourceLanguage?: string
             targetLanguage?: string
             length?: string
             sections?: DialogSection[]
+            folderId?: string | null
           }
         if (!title || !targetLanguage || !length || !sections?.length) {
           res.status(400).json({ error: 'Pflichtfelder fehlen.' })
@@ -119,6 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           targetLanguage,
           length: length as 'short' | 'medium' | 'long',
           sections,
+          folderId: folderId ?? null,
         })
         res.status(201).json({ dialog })
         return

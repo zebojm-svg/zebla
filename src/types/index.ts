@@ -5,6 +5,7 @@ export type {
   DialogLine,
   LineImageBeat,
   DialogSection,
+  DialogFolder,
   Dialog,
   User,
   ChatMessage,

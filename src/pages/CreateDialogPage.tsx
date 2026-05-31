@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ChatMessage, CreateMode, DialogLength } from '../types'
 import { LENGTH_LABELS, LANGUAGES } from '../types'
 
 export function CreateDialogPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const folderId = searchParams.get('folder')
   const [mode, setMode] = useState<CreateMode>('topic')
   const [targetLanguage, setTargetLanguage] = useState('en')
   const [length, setLength] = useState<DialogLength>('medium')
@@ -24,6 +26,7 @@ export function CreateDialogPage() {
       targetLanguage,
       length,
       sections,
+      folderId: folderId ?? null,
     })
     navigate(`/dialog/${dialog.id}`)
   }
