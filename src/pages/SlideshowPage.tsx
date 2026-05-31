@@ -43,7 +43,7 @@ export function SlideshowPage() {
       setTtsHint('')
       return
     }
-    if (cloudTtsReady) {
+    if (cloudTtsReady || ttsError) {
       setTtsHint('')
       return
     }
@@ -67,7 +67,7 @@ export function SlideshowPage() {
       window.speechSynthesis.onvoiceschanged = null
       window.clearTimeout(timer)
     }
-  }, [dialog, cloudTtsReady])
+  }, [dialog, cloudTtsReady, ttsError])
 
   useEffect(() => {
     setLineIndex(0)
