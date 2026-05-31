@@ -6,6 +6,7 @@ import type {
   DialogSection,
   BirkenbihlWord,
   ChatMessage,
+  LineImageBeat,
 } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 
@@ -411,6 +412,76 @@ export async function generateSectionImage(
   const prompt = buildImagePrompt(section, dialogTitle)
   const imageUrl = await generateImageDataUrl(prompt)
   return { imageUrl, prompt }
+}
+
+export async function planLineImages(
+  section: DialogSection,
+  dialogTitle: string,
+): Promise<LineImageBeat[]> {
+  const indexed = section.lines.map((line, index) => ({
+    index,
+    speaker: line.speaker,
+    text: line.text,
+  }))
+
+  const result = await chatJson<{
+    beats: { lineIndices: number[]; reason: string; prompt: string }[]
+  }>(
+    `Du planst Bilder für eine Sprachlern-Diashow. Lies den Dialog und entscheide, wann sich das Bild ändern soll.
+
+Regeln:
+- Nicht jede Zeile braucht ein neues Bild – nur bei Szenenwechsel, neuer Requisite, Perspektivwechsel oder Sprecher-Fokus.
+- Mehrere aufeinanderfolgende Zeilen können dasselbe Bild teilen (gleiche lineIndices-Gruppe).
+- Wechsle z.B. zwischen Sprechern (Over-the-shoulder), zeige Requisiten wenn erwähnt (Speisekarte, Essen auf dem Tisch), oder leeren vs. gedeckten Tisch.
+- Jeder Index 0..${section.lines.length - 1} muss in genau einer Gruppe vorkommen.
+- prompt: prägnanter englischer Bild-Prompt, flache freundliche Illustration, KEIN Text im Bild.
+
+Antwort als JSON:
+{
+  "beats": [
+    { "lineIndices": [0, 1], "reason": "kurz warum", "prompt": "English illustration prompt..." }
+  ]
+}`,
+    `Dialog: "${dialogTitle}"\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
+  )
+
+  if (!result.beats?.length) {
+    throw new Error('KI konnte keine Bildplanung erstellen.')
+  }
+
+  return result.beats.map((beat) => ({
+    id: randomUUID(),
+    lineIndices: beat.lineIndices.filter(
+      (i) => i >= 0 && i < section.lines.length,
+    ),
+    reason: beat.reason,
+    prompt: beat.prompt,
+  })).filter((b) => b.lineIndices.length > 0)
+}
+
+export async function generateUploadedImage(
+  prompt: string,
+  dialogId: string,
+  storageKey: string,
+): Promise<string> {
+  const dataUrl = await generateImageDataUrl(prompt)
+  const { uploadDialogImage } = await import('./image-storage.js')
+  try {
+    return await uploadDialogImage(dataUrl, dialogId, storageKey)
+  } catch {
+    return dataUrl
+  }
+}
+
+export function applyLineImageBeats(
+  lines: DialogLine[],
+  beats: LineImageBeat[],
+): DialogLine[] {
+  return lines.map((line, index) => {
+    const beat = beats.find((b) => b.lineIndices.includes(index) && b.imageUrl)
+    if (!beat?.imageUrl) return line
+    return { ...line, imageUrl: beat.imageUrl, imagePrompt: beat.prompt }
+  })
 }
 
 export function isAiConfigured(): boolean {

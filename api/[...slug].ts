@@ -24,6 +24,7 @@ import {
   handleSplit,
   handleImage,
   handleImageAll,
+  handleImageLines,
 } from '../lib/ai-handlers.js'
 import type { DialogSection } from '../shared/types.js'
 
@@ -208,6 +209,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if ((route === 'split' || route === 'ai/split') && req.method === 'POST') {
       return handleSplit(req, res)
+    }
+    if (
+      (route === 'image-lines' || route === 'ai/image-lines') &&
+      req.method === 'POST'
+    ) {
+      return handleImageLines(req, res)
     }
     if ((route === 'image' || route === 'ai/image') && req.method === 'POST') {
       return handleImage(req, res)

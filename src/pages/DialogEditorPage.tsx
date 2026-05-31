@@ -196,7 +196,44 @@ export function DialogEditorPage() {
                 })
               }
             >
-              {busy === `img-${section.id}` ? '…' : 'Bild generieren'}
+              {busy === `img-${section.id}` ? '…' : 'Titelbild'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!!busy}
+              onClick={() =>
+                runAction(`scenes-${section.id}`, async () => {
+                  let beatIndex = 0
+                  let replan = true
+                  let current = dialog
+                  let done = false
+                  while (!done) {
+                    setStatus(
+                      replan
+                        ? 'KI plant Szenen …'
+                        : `Generiere Szene ${beatIndex + 1} … (ca. 15–30 s)`,
+                    )
+                    const res = await api.ai.imageLines(
+                      current.id,
+                      section.id,
+                      beatIndex,
+                      replan,
+                    )
+                    current = res.dialog
+                    setDialog(res.dialog)
+                    done = res.done
+                    beatIndex++
+                    replan = false
+                    if (!done) {
+                      await new Promise((r) => setTimeout(r, 2500))
+                    }
+                  }
+                  setStatus(`Fertig – ${beatIndex} Szenen-Bilder.`)
+                })
+              }
+            >
+              {busy === `scenes-${section.id}` ? '…' : 'Szenen-Bilder (KI)'}
             </button>
           </div>
 
@@ -207,6 +244,14 @@ export function DialogEditorPage() {
           <div className="dialog-lines">
             {section.lines.map((line) => (
               <div key={line.id} className="dialog-line">
+                {line.imageUrl && (
+                  <img
+                    src={line.imageUrl}
+                    alt=""
+                    className="line-thumb"
+                    title="Szenen-Bild"
+                  />
+                )}
                 <strong className="speaker">{line.speaker}</strong>
                 <BirkenbihlLine line={line} />
               </div>

@@ -307,10 +307,26 @@ textarea { resize: vertical; min-height: 120px; }
 
 .section-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.5rem;
   justify-content: space-between;
-  gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.line-thumb {
+  float: right;
+  width: 72px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-left: 0.75rem;
+}
+
+.dialog-line::after {
+  content: '';
+  display: table;
+  clear: both;
 }
 
 .section-image {

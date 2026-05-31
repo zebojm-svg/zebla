@@ -39,6 +39,11 @@ export function SlideshowPage() {
   const previewLines = section?.lines.slice(lineIndex, lineIndex + 2) ?? []
   const atSectionEnd = section ? lineIndex >= section.lines.length : true
 
+  const displayLine =
+    section?.lines.find((l) => l.id === activeLineId) ??
+    section?.lines[lineIndex]
+  const displayImageUrl = displayLine?.imageUrl ?? section?.imageUrl
+
   const playContinuous = async (fromSection: number, fromLine: number) => {
     if (!dialog) return
     for (let si = fromSection; si < dialog.sections.length; si++) {
@@ -123,8 +128,8 @@ export function SlideshowPage() {
 
       <div className="slideshow-stage">
         <div className="slideshow-image-wrap">
-          {section.imageUrl ? (
-            <img src={section.imageUrl} alt={section.title} className="slideshow-image" />
+          {displayImageUrl ? (
+            <img src={displayImageUrl} alt={section.title} className="slideshow-image" />
           ) : (
             <div className="slideshow-image-placeholder">
               <p>{section.title}</p>

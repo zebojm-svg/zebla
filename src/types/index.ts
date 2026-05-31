@@ -3,6 +3,7 @@ export type {
   CreateMode,
   BirkenbihlWord,
   DialogLine,
+  LineImageBeat,
   DialogSection,
   Dialog,
   User,

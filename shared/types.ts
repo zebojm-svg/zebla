@@ -12,6 +12,16 @@ export interface DialogLine {
   speaker: string
   text: string
   birkenbihl?: BirkenbihlWord[]
+  imageUrl?: string
+  imagePrompt?: string
+}
+
+export interface LineImageBeat {
+  id: string
+  lineIndices: number[]
+  reason: string
+  prompt: string
+  imageUrl?: string
 }
 
 export interface DialogSection {
@@ -20,6 +30,7 @@ export interface DialogSection {
   lines: DialogLine[]
   imageUrl?: string
   imagePrompt?: string
+  lineImageBeats?: LineImageBeat[]
 }
 
 export interface Dialog {

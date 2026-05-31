@@ -10,6 +10,9 @@ import {
   applyBirkenbihl,
   splitIntoSections,
   generateSectionImage,
+  planLineImages,
+  generateUploadedImage,
+  applyLineImageBeats,
   isAiConfigured,
 } from './ai.js'
 import type { ChatMessage, DialogLength, DialogSection } from '../shared/types.js'
@@ -176,6 +179,86 @@ export async function handleSplit(req: VercelRequest, res: VercelResponse) {
     const sections = await splitIntoSections(allLines)
     const updated = await updateDialog(dialog.id, user.uid, { sections })
     res.json({ dialog: updated })
+  } catch (err) {
+    sendError(res, err)
+  }
+}
+
+export async function handleImageLines(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    const body = req.body as {
+      dialogId?: string
+      sectionId?: string
+      beatIndex?: number
+      replan?: boolean
+    }
+    const dialogId = dialogIdFromRequest(req, body)
+    const sectionId = body.sectionId
+    if (!dialogId || !sectionId) {
+      res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
+      return
+    }
+    const dialog = await getDialog(dialogId, user.uid)
+    if (!dialog) {
+      res.status(404).json({ error: 'Dialog nicht gefunden.' })
+      return
+    }
+    const section = dialog.sections.find((s) => s.id === sectionId)
+    if (!section) {
+      res.status(404).json({ error: 'Abschnitt nicht gefunden.' })
+      return
+    }
+
+    let beats = section.lineImageBeats
+    const beatIndex = body.beatIndex ?? 0
+    if (!beats?.length || body.replan) {
+      beats = await planLineImages(section, dialog.title)
+    }
+    if (!beats.length) {
+      res.status(400).json({ error: 'Keine Bildszenen geplant.' })
+      return
+    }
+    if (beatIndex >= beats.length) {
+      res.json({
+        dialog,
+        done: true,
+        totalBeats: beats.length,
+        currentBeat: beats.length,
+      })
+      return
+    }
+
+    const beat = beats[beatIndex]
+    if (!beat.imageUrl) {
+      const imageUrl = await generateUploadedImage(
+        beat.prompt,
+        dialog.id,
+        `${section.id}-beat-${beat.id}`,
+      )
+      beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
+    }
+
+    const lines = applyLineImageBeats(section.lines, beats)
+    const sections = dialog.sections.map((s) =>
+      s.id === section.id
+        ? {
+            ...s,
+            lines,
+            lineImageBeats: beats,
+            imageUrl: lines.find((l) => l.imageUrl)?.imageUrl ?? s.imageUrl,
+          }
+        : s,
+    )
+    const updated = await updateDialog(dialog.id, user.uid, { sections })
+    const done = beatIndex + 1 >= beats.length
+    res.json({
+      dialog: updated,
+      done,
+      totalBeats: beats.length,
+      currentBeat: beatIndex + 1,
+      reason: beat.reason,
+    })
   } catch (err) {
     sendError(res, err)
   }

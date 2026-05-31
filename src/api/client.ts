@@ -161,5 +161,21 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId }),
       }),
+    imageLines: (
+      dialogId: string,
+      sectionId: string,
+      beatIndex: number,
+      replan?: boolean,
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        done: boolean
+        totalBeats: number
+        currentBeat: number
+        reason?: string
+      }>('/image-lines', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan }),
+      }),
   },
 }
