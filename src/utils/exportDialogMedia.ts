@@ -375,7 +375,7 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
   })
 
   const channel = audioBuffer.getChannelData(0)
-  const chunkFrames = 1024
+  const chunkFrames = Math.min(channel.length, 480_000)
   let audioTimestamp = 0
   for (let offset = 0; offset < channel.length; offset += chunkFrames) {
     const frames = Math.min(chunkFrames, channel.length - offset)
@@ -395,40 +395,34 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
 
   let timestampUs = 0
   const totalSlides = slides.length
+  const totalSec = slides.reduce((s, sl) => s + sl.durationSec, 0) + GAP_SEC * Math.max(0, slides.length - 1)
+  options.onProgress?.(
+    `Video: ${totalSlides} Szenen (ca. ${Math.ceil(totalSec)} s) — bitte kurz warten …`,
+  )
+
+  /** Ein Frame pro Szene mit voller Dauer (statt 30/s) → Export in Sekunden statt Minuten. */
+  const pushFrame = (durationSec: number, keyFrame: boolean) => {
+    const durationUs = Math.max(1, Math.round(durationSec * 1_000_000))
+    const frame = new VideoFrame(canvas, { timestamp: timestampUs, duration: durationUs })
+    videoEncoder.encode(frame, { keyFrame })
+    frame.close()
+    timestampUs += durationUs
+  }
 
   for (let i = 0; i < slides.length; i++) {
     const slide = slides[i]
-    const frames = Math.max(1, Math.round(slide.durationSec * FPS))
-    options.onProgress?.(`Video: Szene ${i + 1}/${totalSlides} …`)
     const bmp = bitmaps[i]
-
-    for (let f = 0; f < frames; f++) {
-      drawSlide(ctx, slide, bmp, options, vidW, vidH)
-      const frame = new VideoFrame(canvas, {
-        timestamp: timestampUs,
-        duration: Math.round(1_000_000 / FPS),
-      })
-      videoEncoder.encode(frame, { keyFrame: f === 0 })
-      frame.close()
-      timestampUs += Math.round(1_000_000 / FPS)
-    }
-
+    options.onProgress?.(`Video: Szene ${i + 1}/${totalSlides} …`)
+    drawSlide(ctx, slide, bmp, options, vidW, vidH)
+    pushFrame(slide.durationSec, true)
     if (i < slides.length - 1) {
-      const gapFrames = Math.round(GAP_SEC * FPS)
-      for (let f = 0; f < gapFrames; f++) {
-        drawSlide(ctx, slide, bmp, options, vidW, vidH)
-        const frame = new VideoFrame(canvas, {
-          timestamp: timestampUs,
-          duration: Math.round(1_000_000 / FPS),
-        })
-        videoEncoder.encode(frame, { keyFrame: false })
-        frame.close()
-        timestampUs += Math.round(1_000_000 / FPS)
-      }
+      drawSlide(ctx, slide, bmp, options, vidW, vidH)
+      pushFrame(GAP_SEC, false)
     }
+    await new Promise((r) => setTimeout(r, 0))
   }
 
-  options.onProgress?.('Finalisiere MP4 …')
+  options.onProgress?.('Finalisiere MP4 (fast fertig) …')
   await videoEncoder.flush()
   await audioEncoder.flush()
   videoEncoder.close()
