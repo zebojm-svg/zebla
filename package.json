@@ -18,6 +18,8 @@
     "firebase": "^12.14.0",
     "firebase-admin": "^13.10.0",
     "jszip": "^3.10.1",
+    "lamejs": "^1.2.1",
+    "mp4-muxer": "^5.2.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.16.0"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
@@ -14,10 +14,6 @@ import {
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { estimateMissingTts } from '../lib/costEstimates'
-import {
-  downloadDialogAudioCombined,
-  downloadDialogAudioZip,
-} from '../utils/downloadDialogAudio'
 
 export function SlideshowPage() {
   const { id } = useParams<{ id: string }>()
@@ -30,6 +26,7 @@ export function SlideshowPage() {
   const [ttsHint, setTtsHint] = useState('')
   const [audioBusy, setAudioBusy] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
+  const [exportStatus, setExportStatus] = useState('')
   const [audioStatus, setAudioStatus] = useState('')
   const [useCloudTts, setUseCloudTtsState] = useState(true)
   const [showRomanization, setShowRomanizationState] = useState(true)
@@ -156,6 +153,16 @@ export function SlideshowPage() {
 
   const allLines = dialog?.sections.flatMap((s) => s.lines) ?? []
   const audioReadyCount = allLines.filter((l) => l.audioUrl).length
+  const exportError = useMemo(() => {
+    if (!dialog) return null
+    const lines = dialog.sections.flatMap((s) => s.lines).filter((l) => l.text.trim())
+    if (lines.length === 0) return 'Keine Zeilen.'
+    const missing = lines.filter((l) => !l.audioUrl).length
+    if (missing > 0) {
+      return `${missing} Zeile${missing !== 1 ? 'n' : ''} ohne Audio — zuerst „Audio vorbereiten“.`
+    }
+    return null
+  }, [dialog])
 
   const handleEnsureAudio = async () => {
     if (!dialog || !cloudTtsReady) return
@@ -300,55 +307,79 @@ export function SlideshowPage() {
 
       {useCloudTts && cloudTtsReady && !ttsError && (
         <div className="slideshow-export-block">
-          <p className="muted slideshow-export-info">
-            <strong>Hinweis:</strong> MP3-ZIP und Gesamt-WAV sind nur die Sprachausgabe — kein Video
-            mit Bildern und Text. Ein Video-Export (Diashow wie am Bildschirm) ist noch nicht
-            verfügbar.
-          </p>
           <div className="slideshow-export-bar">
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={audioBusy || speaking}
-            onClick={() => void handleEnsureAudio()}
-          >
-            {audioBusy ? 'Erzeuge Audio …' : 'Audio vorbereiten'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={exportBusy || audioReadyCount === 0}
-            onClick={async () => {
-              setExportBusy(true)
-              try {
-                await downloadDialogAudioZip(dialog)
-              } catch (err) {
-                setAudioStatus(err instanceof Error ? err.message : 'Download fehlgeschlagen')
-              } finally {
-                setExportBusy(false)
-              }
-            }}
-          >
-            MP3-ZIP
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={exportBusy || audioReadyCount === 0}
-            onClick={async () => {
-              setExportBusy(true)
-              try {
-                await downloadDialogAudioCombined(dialog)
-              } catch (err) {
-                setAudioStatus(err instanceof Error ? err.message : 'Download fehlgeschlagen')
-              } finally {
-                setExportBusy(false)
-              }
-            }}
-          >
-            Gesamt-Audio (WAV)
-          </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={audioBusy || speaking || exportBusy}
+              onClick={() => void handleEnsureAudio()}
+            >
+              {audioBusy ? 'Erzeuge Audio …' : 'Audio vorbereiten'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={exportBusy || speaking || !!exportError}
+              title={exportError ?? undefined}
+              onClick={async () => {
+                setExportBusy(true)
+                setExportStatus('')
+                setAudioStatus('')
+                try {
+                  const { exportDialogMp3 } = await import('../utils/exportDialogMedia')
+                  await exportDialogMp3(dialog, {
+                    rate,
+                    showRomanization,
+                    targetLanguage: dialog.targetLanguage,
+                    nativeLanguage: dialog.sourceLanguage,
+                    onProgress: setExportStatus,
+                  })
+                } catch (err) {
+                  setAudioStatus(err instanceof Error ? err.message : 'MP3-Export fehlgeschlagen')
+                } finally {
+                  setExportBusy(false)
+                  setExportStatus('')
+                }
+              }}
+            >
+              Export als MP3
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={exportBusy || speaking || !!exportError}
+              title={exportError ?? undefined}
+              onClick={async () => {
+                setExportBusy(true)
+                setExportStatus('')
+                setAudioStatus('')
+                try {
+                  const { exportDialogMp4 } = await import('../utils/exportDialogMedia')
+                  await exportDialogMp4(dialog, {
+                    rate,
+                    showRomanization,
+                    targetLanguage: dialog.targetLanguage,
+                    nativeLanguage: dialog.sourceLanguage,
+                    onProgress: setExportStatus,
+                  })
+                } catch (err) {
+                  setAudioStatus(err instanceof Error ? err.message : 'MP4-Export fehlgeschlagen')
+                } finally {
+                  setExportBusy(false)
+                  setExportStatus('')
+                }
+              }}
+            >
+              Export als MP4
+            </button>
           </div>
+          <p className="muted slideshow-export-info">
+            Export mit aktueller Geschwindigkeit ({rate.toFixed(2)}×). MP4 = Bilder + Text + Sprache
+            wie in der Diashow. MP3 = nur Audio.
+          </p>
+          {exportStatus && (
+            <p className="muted slideshow-export-info">{exportStatus}</p>
+          )}
         </div>
       )}
 
