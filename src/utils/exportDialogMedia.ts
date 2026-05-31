@@ -175,18 +175,15 @@ function audioBufferToMp3(buffer: AudioBuffer): Blob {
   return new Blob(chunks as BlobPart[], { type: 'audio/mpeg' })
 }
 
-async function loadBitmap(url: string | null): Promise<ImageBitmap | null> {
-  if (!url) return null
+/** Bilder über die API laden (Firebase-Storage blockiert Canvas-CORS im Browser). */
+async function loadSlideBitmap(
+  dialogId: string,
+  slide: ExportSlide,
+): Promise<ImageBitmap | null> {
+  if (!slide.imageUrl) return null
   try {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.decoding = 'async'
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Bild laden fehlgeschlagen'))
-      img.src = url
-    })
-    return createImageBitmap(img)
+    const blob = await api.tts.lineImage(dialogId, slide.lineId)
+    return createImageBitmap(blob)
   } catch {
     return null
   }
@@ -323,7 +320,11 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
 
   const slides = buildExportSlides(dialog)
   options.onProgress?.('Lade Bilder …')
-  const bitmaps = await Promise.all(slides.map((s) => loadBitmap(s.imageUrl)))
+  const bitmaps: (ImageBitmap | null)[] = []
+  for (let i = 0; i < slides.length; i++) {
+    options.onProgress?.(`Bild ${i + 1}/${slides.length} …`)
+    bitmaps.push(await loadSlideBitmap(dialog.id, slides[i]))
+  }
 
   options.onProgress?.('Bereite Audio vor …')
   const audioBuffer = await buildCombinedAudio(dialog.id, slides, options.rate, options.onProgress)

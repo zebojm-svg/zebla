@@ -40,6 +40,7 @@ import { ensureDialogAudio, getOrCreateLineAudio } from '../lib/dialog-audio.js'
 import { exportDialogAudioZip } from '../lib/dialog-audio-export.js'
 import { downloadLineAudio } from '../lib/audio-storage.js'
 import { findLineInDialog } from '../lib/dialog-audio.js'
+import { downloadImageByUrl } from '../lib/image-storage.js'
 import type { DialogSection } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -397,6 +398,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const buffer = await downloadLineAudio(dialogId, lineId)
         res.setHeader('Content-Type', 'audio/mpeg')
+        res.setHeader('Cache-Control', 'private, max-age=3600')
+        res.send(buffer)
+      } catch (err) {
+        sendError(res, err)
+      }
+      return
+    }
+
+    if (route === 'dialog-image' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const dialogId = req.query.dialogId as string | undefined
+      const lineId = req.query.lineId as string | undefined
+      if (!dialogId || !lineId) {
+        res.status(400).json({ error: 'dialogId und lineId fehlen.' })
+        return
+      }
+      try {
+        const dialog = await getDialog(dialogId, user.uid)
+        if (!dialog) {
+          res.status(404).json({ error: 'Dialog nicht gefunden.' })
+          return
+        }
+        const found = findLineInDialog(dialog, lineId)
+        if (!found) {
+          res.status(404).json({ error: 'Zeile nicht gefunden.' })
+          return
+        }
+        const imageUrl =
+          found.line.imageUrl ?? found.section.imageUrl ?? null
+        if (!imageUrl) {
+          res.status(404).json({ error: 'Kein Bild für diese Zeile.' })
+          return
+        }
+        const { buffer, contentType } = await downloadImageByUrl(imageUrl)
+        res.setHeader('Content-Type', contentType)
         res.setHeader('Cache-Control', 'private, max-age=3600')
         res.send(buffer)
       } catch (err) {

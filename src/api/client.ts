@@ -214,6 +214,11 @@ export const api = {
         `/dialog-audio-export?dialogId=${encodeURIComponent(dialogId)}&format=zip`,
         180_000,
       ),
+    lineImage: (dialogId: string, lineId: string) =>
+      requestBlob(
+        `/dialog-image?dialogId=${encodeURIComponent(dialogId)}&lineId=${encodeURIComponent(lineId)}`,
+        60_000,
+      ),
   },
   ai: {
     status: () => request<{ configured: boolean }>('/ai-status'),
