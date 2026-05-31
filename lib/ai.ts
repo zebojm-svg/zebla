@@ -351,6 +351,15 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
   return `data:${inlineData.mimeType ?? 'image/png'};base64,${inlineData.data}`
 }
 
+function parseRetryHint(raw: string): string {
+  const secMatch = raw.match(/retry in ([\d.]+)s/i)
+  if (secMatch) {
+    const sec = Math.ceil(parseFloat(secMatch[1]))
+    return ` Erneut versuchen in ca. ${sec} Sekunden.`
+  }
+  return ''
+}
+
 function imageGenerationErrorMessage(raw: string): string {
   if (
     raw.includes('429') ||
@@ -358,7 +367,11 @@ function imageGenerationErrorMessage(raw: string): string {
     raw.includes('quota') ||
     raw.includes('rate limit')
   ) {
-    return `Bild-Limit erreicht (Google Free-Tier, Modell: ${IMAGE_MODEL}). Bitte einige Minuten warten und nur ein Bild auf einmal generieren.`
+    return (
+      `Bild-Limit erreicht (Google Free-Tier, Modell: ${IMAGE_MODEL}).` +
+      parseRetryHint(raw) +
+      ' Nur ein Bild auf einmal generieren. Für mehr Bilder: Billing im Google-Cloud-Projekt deines API-Keys aktivieren (Tier 1, ca. 0 € bei wenig Nutzung) – https://aistudio.google.com/apikey'
+    )
   }
   if (raw.includes('FUNCTION_INVOCATION_TIMEOUT') || raw.includes('Zeitüberschreitung')) {
     return 'Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.'
