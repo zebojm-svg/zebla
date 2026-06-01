@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { estimateLineDurationSec, PORTRAIT_KEN_BURNS_ZOOM } from '../lib/kenBurns'
+import { estimateLineDurationSec } from '../lib/kenBurns'
 
 interface SlideshowKenBurnsImageProps {
   imageUrl: string
@@ -30,9 +30,8 @@ export function SlideshowKenBurnsImage({
         alt=""
         className={`slideshow-image slideshow-kenburns ${animate ? 'slideshow-kenburns--portrait' : 'slideshow-kenburns--still'}`}
         style={{
-          transformOrigin: '50% 42%',
+          transformOrigin: 'center center',
           animationDuration: animate ? `${Math.max(1.2, durationSec)}s` : undefined,
-          ['--kenburns-end-scale' as string]: String(1 + PORTRAIT_KEN_BURNS_ZOOM),
         }}
       />
     </div>

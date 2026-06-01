@@ -2,8 +2,8 @@ import type { Dialog } from '../types'
 
 export type SpeakerSide = 'left' | 'right' | 'center'
 
-/** Sanfter Zoom für Brust-/Ganzkörper-Aufnahmen (nicht Gesichts-Crop). */
-export const PORTRAIT_KEN_BURNS_ZOOM = 0.1
+/** Sanfter Ken-Burns-Endwert (relativ zur contain-Einpassung, ohne Crop). */
+export const PORTRAIT_KEN_BURNS_ZOOM = 0.04
 
 /** @deprecated Two-shot crop – Porträts nutzen drawPortraitKenBurns. */
 export const KEN_BURNS_ZOOM = 0.1
@@ -71,7 +71,7 @@ export function drawKenBurnsImage(
   drawPortraitKenBurns(ctx, bitmap, destX, destY, destW, destH, progress)
 }
 
-/** Brust-/Dreiviertel-Aufnahme: Fokus etwas höher, weniger Zoom. */
+/** Ganzes Bild einpassen (contain) mit leichtem Ken-Burns ohne Abschnitt. */
 export function drawPortraitKenBurns(
   ctx: CanvasRenderingContext2D,
   bitmap: ImageBitmap,
@@ -81,16 +81,14 @@ export function drawPortraitKenBurns(
   destH: number,
   progress: number,
 ): void {
-  const scale = 1 + Math.min(1, Math.max(0, progress)) * PORTRAIT_KEN_BURNS_ZOOM
-  const focusX = 0.5
-  const focusY = 0.42
-  const srcW = bitmap.width / scale
-  const srcH = bitmap.height / scale
-  let srcX = focusX * bitmap.width - srcW / 2
-  srcX = Math.max(0, Math.min(bitmap.width - srcW, srcX))
-  let srcY = focusY * bitmap.height - srcH / 2
-  srcY = Math.max(0, Math.min(bitmap.height - srcH, srcY))
-  ctx.drawImage(bitmap, srcX, srcY, srcW, srcH, destX, destY, destW, destH)
+  const t = Math.min(1, Math.max(0, progress))
+  const kenScale = 1 - PORTRAIT_KEN_BURNS_ZOOM + t * PORTRAIT_KEN_BURNS_ZOOM
+  const fit = Math.min(destW / bitmap.width, destH / bitmap.height) * kenScale
+  const drawW = bitmap.width * fit
+  const drawH = bitmap.height * fit
+  const x = destX + (destW - drawW) / 2
+  const y = destY + (destH - drawH) / 2
+  ctx.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, x, y, drawW, drawH)
 }
 
 export function twoShotLayoutHint(speakers: string[]): string {
