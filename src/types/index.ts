@@ -4,6 +4,8 @@ export type {
   BirkenbihlWord,
   DialogLine,
   LineImageBeat,
+  SpeakerPortrait,
+  SpeakerMood,
   DialogSection,
   DialogFolder,
   CharacterVisual,

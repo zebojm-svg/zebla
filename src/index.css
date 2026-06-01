@@ -732,35 +732,17 @@ textarea { resize: vertical; min-height: 120px; }
   border-radius: var(--radius);
 }
 
+@keyframes kenburns-portrait {
+  from { transform: scale(1); }
+  to { transform: scale(var(--kenburns-end-scale, 1.18)); }
+}
+
+.slideshow-kenburns--portrait {
+  animation: kenburns-portrait linear forwards;
+}
+
 .slideshow-kenburns--still {
-  transform: scale(1.04);
-}
-
-.slideshow-kenburns--left {
-  animation: kenburns-left linear forwards;
-}
-
-.slideshow-kenburns--right {
-  animation: kenburns-right linear forwards;
-}
-
-.slideshow-kenburns--center {
-  animation: kenburns-center linear forwards;
-}
-
-@keyframes kenburns-left {
-  from { transform: scale(1); }
-  to { transform: scale(1.1); }
-}
-
-@keyframes kenburns-right {
-  from { transform: scale(1); }
-  to { transform: scale(1.1); }
-}
-
-@keyframes kenburns-center {
-  from { transform: scale(1); }
-  to { transform: scale(1.08); }
+  transform: scale(1.06);
 }
 
 .slideshow-image {

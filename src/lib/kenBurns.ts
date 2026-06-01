@@ -2,7 +2,10 @@ import type { Dialog } from '../types'
 
 export type SpeakerSide = 'left' | 'right' | 'center'
 
-/** Langsamer Zoom bis zum nächsten Sprecherwechsel (1.0 → 1.0 + KEN_BURNS_ZOOM). */
+/** Langsamer Zoom auf Nahporträt (Gesicht). */
+export const PORTRAIT_KEN_BURNS_ZOOM = 0.18
+
+/** @deprecated Two-shot crop – Porträts nutzen drawPortraitKenBurns. */
 export const KEN_BURNS_ZOOM = 0.1
 
 export const KEN_BURNS_EXPORT_FRAMES = 8
@@ -62,16 +65,31 @@ export function drawKenBurnsImage(
   destY: number,
   destW: number,
   destH: number,
-  side: SpeakerSide,
+  _side: SpeakerSide,
   progress: number,
 ): void {
-  const scale = 1 + Math.min(1, Math.max(0, progress)) * KEN_BURNS_ZOOM
-  const focusX = kenBurnsFocusX(side)
+  drawPortraitKenBurns(ctx, bitmap, destX, destY, destW, destH, progress)
+}
+
+/** Nahporträt: Zoom von Mitte/Gesicht (kein seitlicher Crop). */
+export function drawPortraitKenBurns(
+  ctx: CanvasRenderingContext2D,
+  bitmap: ImageBitmap,
+  destX: number,
+  destY: number,
+  destW: number,
+  destH: number,
+  progress: number,
+): void {
+  const scale = 1 + Math.min(1, Math.max(0, progress)) * PORTRAIT_KEN_BURNS_ZOOM
+  const focusX = 0.5
+  const focusY = 0.38
   const srcW = bitmap.width / scale
   const srcH = bitmap.height / scale
   let srcX = focusX * bitmap.width - srcW / 2
   srcX = Math.max(0, Math.min(bitmap.width - srcW, srcX))
-  const srcY = Math.max(0, (bitmap.height - srcH) / 2)
+  let srcY = focusY * bitmap.height - srcH / 2
+  srcY = Math.max(0, Math.min(bitmap.height - srcH, srcY))
   ctx.drawImage(bitmap, srcX, srcY, srcW, srcH, destX, destY, destW, destH)
 }
 

@@ -15,7 +15,6 @@ import {
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { estimateMissingTts } from '../lib/costEstimates'
-import { buildSpeakerSideMap, collectSpeakersInOrder, speakerSideFor } from '../lib/kenBurns'
 
 export function SlideshowPage() {
   const { id } = useParams<{ id: string }>()
@@ -155,10 +154,6 @@ export function SlideshowPage() {
 
   const allLines = dialog?.sections.flatMap((s) => s.lines) ?? []
   const audioReadyCount = allLines.filter((l) => l.audioUrl).length
-  const speakerSideMap = useMemo(
-    () => (dialog ? buildSpeakerSideMap(collectSpeakersInOrder(dialog)) : new Map()),
-    [dialog],
-  )
   const exportError = useMemo(() => {
     if (!dialog) return null
     const lines = dialog.sections.flatMap((s) => s.lines).filter((l) => l.text.trim())
@@ -404,7 +399,6 @@ export function SlideshowPage() {
             <SlideshowKenBurnsImage
               imageUrl={displayImageUrl}
               speaker={displayLine.speaker}
-              speakerSide={speakerSideFor(speakerSideMap, displayLine.speaker)}
               lineText={displayLine.text}
               rate={rate}
               animate={speaking && activeLineId === displayLine.id}

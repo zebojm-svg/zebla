@@ -5,12 +5,8 @@ import { api } from '../api/client'
 import type { Dialog, DialogLine } from '../types'
 import { isRtlLanguage } from '../types'
 import {
-  buildSpeakerSideMap,
-  collectSpeakersInOrder,
-  drawKenBurnsImage,
+  drawPortraitKenBurns,
   KEN_BURNS_EXPORT_FRAMES,
-  speakerSideFor,
-  type SpeakerSide,
 } from '../lib/kenBurns'
 
 const FPS = 30
@@ -44,7 +40,6 @@ async function resolveVideoPreset(): Promise<{
 export interface ExportSlide {
   lineId: string
   speaker: string
-  speakerSide: SpeakerSide
   line: DialogLine
   imageUrl: string | null
   sectionTitle: string
@@ -73,7 +68,6 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export function buildExportSlides(dialog: Dialog): ExportSlide[] {
-  const sideMap = buildSpeakerSideMap(collectSpeakersInOrder(dialog))
   const slides: ExportSlide[] = []
   for (const section of dialog.sections) {
     const sectionImage = section.imageUrl ?? null
@@ -82,7 +76,6 @@ export function buildExportSlides(dialog: Dialog): ExportSlide[] {
       slides.push({
         lineId: line.id,
         speaker: line.speaker,
-        speakerSide: speakerSideFor(sideMap, line.speaker),
         line,
         imageUrl: line.imageUrl ?? sectionImage,
         sectionTitle: section.title,
@@ -217,16 +210,7 @@ function drawSlide(
 
   const imgH = Math.floor(height * 0.62)
   if (bitmap) {
-    drawKenBurnsImage(
-      ctx,
-      bitmap,
-      0,
-      0,
-      width,
-      imgH,
-      slide.speakerSide,
-      kenBurnsProgress,
-    )
+    drawPortraitKenBurns(ctx, bitmap, 0, 0, width, imgH, kenBurnsProgress)
   } else {
     ctx.fillStyle = '#1e293b'
     ctx.fillRect(0, 0, width, imgH)

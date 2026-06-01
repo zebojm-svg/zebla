@@ -69,17 +69,17 @@ export function estimateSectionImage(): CostEstimate {
   }
 }
 
-export function estimateSceneImages(beatCount = 3): CostEstimate {
-  const cents = Math.max(5, beatCount * 3)
+export function estimateSceneImages(portraitCount = 2): CostEstimate {
+  const cents = Math.max(4, portraitCount * 3)
   return {
-    title: 'Szenen-Bilder generieren',
-    description: `KI liest den Dialog, plant Szenen und erzeugt ca. ${beatCount} Bilder mit denselben Figuren.`,
+    title: 'Sprecher-Porträts generieren',
+    description: `KI erzeugt ${portraitCount} Nahporträts (direkter Blick, Mimik passend zum Dialog).`,
     items: [
-      { label: 'Geplante Szenen (typisch)', amount: `ca. ${beatCount}` },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 5} Cent` },
+      { label: 'Porträts pro Abschnitt', amount: String(portraitCount) },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 4} Cent` },
     ],
-    totalHint: `ca. ${cents}–${cents + 5} Cent`,
-    note: 'Figuren werden zuerst festgelegt (Ramo, Shome …), dann passende Szenen.',
+    totalHint: `ca. ${cents}–${cents + 4} Cent`,
+    note: 'Ein Porträt pro Sprecher – wechselt automatisch beim Sprechen.',
   }
 }
 

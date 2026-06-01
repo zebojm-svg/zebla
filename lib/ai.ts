@@ -9,6 +9,8 @@ import type {
   BirkenbihlWord,
   ChatMessage,
   LineImageBeat,
+  SpeakerMood,
+  SpeakerPortrait,
 } from '../shared/types.js'
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
@@ -529,6 +531,82 @@ export async function generateSectionImage(
   const prompt = buildImagePrompt(section, dialogTitle, bible)
   const imageUrl = await generateImageDataUrl(prompt)
   return { imageUrl, prompt }
+}
+
+export async function planSpeakerPortraits(
+  section: DialogSection,
+  dialog: Dialog,
+): Promise<SpeakerPortrait[]> {
+  const bible = dialog.characterBible
+  const bySpeaker = new Map<string, string[]>()
+  for (const line of section.lines) {
+    const list = bySpeaker.get(line.speaker) ?? []
+    list.push(line.text)
+    bySpeaker.set(line.speaker, list)
+  }
+  const speakerLines = [...bySpeaker.entries()].map(([speaker, texts]) => ({
+    speaker,
+    texts,
+  }))
+
+  const result = await chatJson<{
+    portraits: { speaker: string; mood: SpeakerMood; sceneHint: string }[]
+  }>(
+    `Du planst NAHPORTrÄTS für eine Sprachlern-Diashow – je EIN Porträt pro Sprecher in diesem Abschnitt.
+
+${bible?.length ? `FESTE FIGUREN:\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+Regeln:
+- Genau ein Eintrag pro Sprecher: ${speakerLines.map((s) => s.speaker).join(', ')}
+- mood: "neutral" | "surprised" | "sad" – passend zu den Zeilen dieses Sprechers (max. 2–3 Stimmungen im Abschnitt insgesamt)
+- sceneHint: kurzer englischer Kontext (Ort, Situation) für den Hintergrund
+- Die App zeigt beim Sprechen NUR das Porträt des aktiven Sprechers – direkter Blick in die Kamera
+
+JSON:
+{
+  "portraits": [
+    { "speaker": "Name", "mood": "neutral", "sceneHint": "casual conversation in a park" }
+  ]
+}`,
+    `Dialog: "${dialog.title}"\nAbschnitt: "${section.title}"\nSprecher und Zeilen:\n${JSON.stringify(speakerLines)}`,
+  )
+
+  if (!result.portraits?.length) {
+    throw new Error('KI konnte keine Sprecher-Porträts planen.')
+  }
+
+  const moodExpr: Record<SpeakerMood, string> = {
+    neutral: 'calm friendly expression, natural slight smile, relaxed eyes',
+    surprised: 'surprised expression, raised eyebrows, eyes wide',
+    sad: 'gentle sad or thoughtful expression, soft melancholy in the eyes',
+  }
+
+  return result.portraits
+    .filter((p) => bySpeaker.has(p.speaker))
+    .map((p) => {
+      const mood = (['neutral', 'surprised', 'sad'] as const).includes(p.mood as SpeakerMood)
+        ? (p.mood as SpeakerMood)
+        : 'neutral'
+      const scene = p.sceneHint?.trim() || section.title
+      const prompt =
+        `Close-up portrait of ${p.speaker}, looking directly at the camera with strong eye contact, ` +
+        `head and shoulders, face fills most of the frame. Expression: ${moodExpr[mood]}. ` +
+        `Setting: ${scene}. Single person only in frame, no other people.`
+      return { speaker: p.speaker, mood, prompt }
+    })
+}
+
+export function applySpeakerPortraits(
+  lines: DialogLine[],
+  portraits: SpeakerPortrait[],
+): DialogLine[] {
+  const bySpeaker = new Map(
+    portraits.filter((p) => p.imageUrl).map((p) => [p.speaker, p] as const),
+  )
+  return lines.map((line) => {
+    const portrait = bySpeaker.get(line.speaker)
+    if (!portrait?.imageUrl) return line
+    return { ...line, imageUrl: portrait.imageUrl, imagePrompt: portrait.prompt }
+  })
 }
 
 export async function planLineImages(

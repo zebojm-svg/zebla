@@ -28,6 +28,16 @@ export interface LineImageBeat {
   imageUrl?: string
 }
 
+export type SpeakerMood = 'neutral' | 'surprised' | 'sad'
+
+/** Nahporträt eines Sprechers (direkter Blick, Mimik). */
+export interface SpeakerPortrait {
+  speaker: string
+  mood: SpeakerMood
+  prompt: string
+  imageUrl?: string
+}
+
 export interface DialogSection {
   id: string
   title: string
@@ -35,6 +45,8 @@ export interface DialogSection {
   imageUrl?: string
   imagePrompt?: string
   lineImageBeats?: LineImageBeat[]
+  /** Ein Porträt pro Sprecher – wechselt in der Diashow beim Sprecher. */
+  speakerPortraits?: SpeakerPortrait[]
 }
 
 /** Feste Figuren-Beschreibung für konsistente KI-Bilder (englisch, für Bild-Prompts). */

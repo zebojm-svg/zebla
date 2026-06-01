@@ -10,10 +10,10 @@ import {
   applyBirkenbihl,
   splitIntoSections,
   buildCharacterBible,
+  planSpeakerPortraits,
+  applySpeakerPortraits,
   generateSectionImage,
-  planLineImages,
   generateUploadedImage,
-  applyLineImageBeats,
   isAiConfigured,
 } from './ai.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
@@ -240,44 +240,46 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid)
 
-    let beats = section.lineImageBeats
-    const beatIndex = body.beatIndex ?? 0
-    if (!beats?.length || body.replan) {
-      beats = await planLineImages(section, dialog)
+    let portraits = section.speakerPortraits
+    const portraitIndex = body.beatIndex ?? 0
+    if (!portraits?.length || body.replan) {
+      portraits = await planSpeakerPortraits(section, dialog)
     }
-    if (!beats.length) {
-      res.status(400).json({ error: 'Keine Bildszenen geplant.' })
+    if (!portraits.length) {
+      res.status(400).json({ error: 'Keine Sprecher-Porträts geplant.' })
       return
     }
-    if (beatIndex >= beats.length) {
+    if (portraitIndex >= portraits.length) {
       res.json({
         dialog,
         done: true,
-        totalBeats: beats.length,
-        currentBeat: beats.length,
+        totalBeats: portraits.length,
+        currentBeat: portraits.length,
       })
       return
     }
 
-    const beat = beats[beatIndex]
-    if (!beat.imageUrl) {
+    const portrait = portraits[portraitIndex]
+    if (!portrait.imageUrl) {
+      const slug = portrait.speaker.replace(/[^\w\-]+/g, '_').slice(0, 24)
       const imageUrl = await generateUploadedImage(
-        beat.prompt,
+        portrait.prompt,
         dialog.id,
-        `${section.id}-beat-${beat.id}`,
+        `${section.id}-portrait-${slug}`,
         dialog.characterBible,
       )
-      beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
+      portraits = portraits.map((p, i) => (i === portraitIndex ? { ...p, imageUrl } : p))
     }
 
-    const lines = applyLineImageBeats(section.lines, beats)
+    const lines = applySpeakerPortraits(section.lines, portraits)
     const sections = dialog.sections.map((s) =>
       s.id === section.id
         ? {
             ...s,
             lines,
-            lineImageBeats: beats,
-            imageUrl: lines.find((l) => l.imageUrl)?.imageUrl ?? s.imageUrl,
+            speakerPortraits: portraits,
+            lineImageBeats: undefined,
+            imageUrl: portraits.find((p) => p.imageUrl)?.imageUrl ?? s.imageUrl,
           }
         : s,
     )
@@ -285,13 +287,13 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       sections,
       characterBible: dialog.characterBible,
     })
-    const done = beatIndex + 1 >= beats.length
+    const done = portraitIndex + 1 >= portraits.length
     res.json({
       dialog: updated,
       done,
-      totalBeats: beats.length,
-      currentBeat: beatIndex + 1,
-      reason: beat.reason,
+      totalBeats: portraits.length,
+      currentBeat: portraitIndex + 1,
+      reason: `${portrait.speaker} (${portrait.mood})`,
     })
   } catch (err) {
     sendError(res, err)

@@ -323,7 +323,7 @@ export function DialogEditorPage() {
                 className="btn btn-secondary btn-sm"
                 disabled={!!busy}
                 onClick={async () => {
-                  if (!(await confirmCost(estimateSceneImages(4)))) return
+                  if (!(await confirmCost(estimateSceneImages(2)))) return
                   await runAction(`scenes-${section.id}`, async () => {
                     let beatIndex = 0
                     let replan = true
@@ -332,8 +332,8 @@ export function DialogEditorPage() {
                     while (!done) {
                       setStatus(
                         replan
-                          ? 'KI plant Szenen …'
-                          : `Generiere Szene ${beatIndex + 1} … (ca. 15–30 s)`,
+                          ? 'KI plant Sprecher-Porträts …'
+                          : `Porträt ${beatIndex + 1} … (ca. 15–30 s)`,
                       )
                       const res = await api.ai.imageLines(
                         current.id,
@@ -350,11 +350,11 @@ export function DialogEditorPage() {
                         await new Promise((r) => setTimeout(r, 2500))
                       }
                     }
-                    setStatus(`Fertig – ${beatIndex} Szenen-Bilder.`)
+                    setStatus(`Fertig – ${beatIndex} Sprecher-Porträt${beatIndex !== 1 ? 's' : ''}.`)
                   })
                 }}
               >
-                {busy === `scenes-${section.id}` ? '…' : 'Szenen-Bilder (KI)'}
+                {busy === `scenes-${section.id}` ? '…' : 'Sprecher-Porträts (KI)'}
               </button>
             </div>
           </div>

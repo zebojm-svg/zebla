@@ -1,24 +1,18 @@
 import { useMemo } from 'react'
-import {
-  estimateLineDurationSec,
-  kenBurnsFocusX,
-  type SpeakerSide,
-} from '../lib/kenBurns'
+import { estimateLineDurationSec, PORTRAIT_KEN_BURNS_ZOOM } from '../lib/kenBurns'
 
 interface SlideshowKenBurnsImageProps {
   imageUrl: string
   speaker: string
-  speakerSide: SpeakerSide
   lineText: string
   rate: number
-  /** Während Sprachausgabe: langsamer Zoom. */
+  /** Während Sprachausgabe: langsamer Zoom ins Gesicht. */
   animate: boolean
 }
 
 export function SlideshowKenBurnsImage({
   imageUrl,
   speaker,
-  speakerSide,
   lineText,
   rate,
   animate,
@@ -28,24 +22,17 @@ export function SlideshowKenBurnsImage({
     [lineText, rate],
   )
 
-  const origin = `${Math.round(kenBurnsFocusX(speakerSide) * 100)}% 50%`
-  const animClass =
-    speakerSide === 'left'
-      ? 'slideshow-kenburns--left'
-      : speakerSide === 'right'
-        ? 'slideshow-kenburns--right'
-        : 'slideshow-kenburns--center'
-
   return (
     <div className="slideshow-image-kenburns">
       <img
         key={`${imageUrl}-${speaker}-${animate ? 'play' : 'still'}`}
         src={imageUrl}
         alt=""
-        className={`slideshow-image slideshow-kenburns ${animate ? animClass : 'slideshow-kenburns--still'}`}
+        className={`slideshow-image slideshow-kenburns ${animate ? 'slideshow-kenburns--portrait' : 'slideshow-kenburns--still'}`}
         style={{
-          transformOrigin: origin,
+          transformOrigin: '50% 38%',
           animationDuration: animate ? `${Math.max(1.2, durationSec)}s` : undefined,
+          ['--kenburns-end-scale' as string]: String(1 + PORTRAIT_KEN_BURNS_ZOOM),
         }}
       />
     </div>
