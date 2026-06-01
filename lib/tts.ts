@@ -1,10 +1,13 @@
 import { getGoogleAccessToken, isGoogleCloudConfigured } from './google-auth-token.js'
+import { resolveClassicVoiceName, resolveGeminiVoiceName } from './speaker-voice.js'
 
 export interface TtsRequest {
   text: string
   languageCode: string
   rate?: number
   gender?: 'male' | 'female'
+  /** Sprecher-Index im Dialog – unterschiedliche Stimmen pro Person. */
+  speakerIndex?: number
 }
 
 export interface TtsResult {
@@ -26,8 +29,6 @@ const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
 
 /** Sprachen ohne klassische Stimmen – nur über Gemini-TTS (Preview). */
 const GEMINI_ONLY_LANGS = new Set(['fa'])
-
-const GEMINI_VOICE = { female: 'Kore', male: 'Charon' } as const
 
 /** Google Cloud TTS – klassische Stimmen (Neural2/Wavenet). */
 const CLASSIC_VOICES: Record<string, { locale: string; female?: string; male?: string }> = {
@@ -67,7 +68,15 @@ function geminiLocale(languageCode: string): string {
   return languageCode.toLowerCase()
 }
 
-function resolveClassicVoice(languageCode: string, gender: 'male' | 'female' = 'female') {
+function resolveClassicVoice(
+  languageCode: string,
+  gender: 'male' | 'female' = 'female',
+  speakerIndex = 0,
+) {
+  const resolved = resolveClassicVoiceName(languageCode, gender, speakerIndex)
+  if (resolved.name) {
+    return { languageCode: resolved.languageCode, name: resolved.name }
+  }
   const entry = CLASSIC_VOICES[langKey(languageCode)]
   if (!entry) {
     const locale = languageCode.includes('-')
@@ -148,9 +157,10 @@ async function callGeminiSynthesize(
   languageCode: string,
   gender: 'male' | 'female',
   speakingRate: number,
+  speakerIndex = 0,
 ): Promise<TtsResult> {
   const locale = geminiLocale(languageCode)
-  const voiceName = gender === 'male' ? GEMINI_VOICE.male : GEMINI_VOICE.female
+  const voiceName = resolveGeminiVoiceName(gender, speakerIndex)
 
   const body = {
     input: {
@@ -273,13 +283,21 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
   }
 
   const gender = req.gender ?? 'female'
+  const speakerIndex = req.speakerIndex ?? 0
   const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
 
   if (usesGeminiTts(req.languageCode)) {
-    return callGeminiSynthesize(token, text, req.languageCode, gender, speakingRate)
+    return callGeminiSynthesize(
+      token,
+      text,
+      req.languageCode,
+      gender,
+      speakingRate,
+      speakerIndex,
+    )
   }
 
-  const resolved = resolveClassicVoice(req.languageCode, gender)
+  const resolved = resolveClassicVoice(req.languageCode, gender, speakerIndex)
   const attempts: { languageCode: string; name?: string }[] = [
     ...(resolved.name
       ? [{ languageCode: resolved.languageCode, name: resolved.name }]

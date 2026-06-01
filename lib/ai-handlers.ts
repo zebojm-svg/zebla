@@ -261,11 +261,13 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 
     const portrait = portraits[portraitIndex]
     if (!portrait.imageUrl) {
-      const slug = portrait.speaker.replace(/[^\w\-]+/g, '_').slice(0, 24)
+      const storageKey = portrait.id
+        ? `${section.id}-portrait-${portrait.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}`
+        : `${section.id}-portrait-${portrait.speaker.replace(/[^\w\-]+/g, '_').slice(0, 24)}-${portraitIndex}`
       const imageUrl = await generateUploadedImage(
         portrait.prompt,
         dialog.id,
-        `${section.id}-portrait-${slug}`,
+        storageKey,
         dialog.characterBible,
       )
       portraits = portraits.map((p, i) => (i === portraitIndex ? { ...p, imageUrl } : p))
@@ -293,7 +295,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       done,
       totalBeats: portraits.length,
       currentBeat: portraitIndex + 1,
-      reason: `${portrait.speaker} (${portrait.mood})`,
+      reason: portrait.reason ?? `${portrait.speaker} (${portrait.mood})`,
     })
   } catch (err) {
     sendError(res, err)

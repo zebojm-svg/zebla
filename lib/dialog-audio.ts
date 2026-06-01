@@ -2,7 +2,7 @@ import type { Dialog, DialogLine, DialogSection } from '../shared/types.js'
 import { getDialog, updateDialog } from './firestore.js'
 import { uploadLineAudio } from './audio-storage.js'
 import { synthesizeSpeech } from './tts.js'
-import { guessSpeakerGenderFromName } from './speaker-gender.js'
+import { resolveSpeakerGender } from './speaker-voice.js'
 
 export function findLineInDialog(
   dialog: Dialog,
@@ -46,9 +46,11 @@ export async function getOrCreateLineAudio(
   }
 
   const speakers = speakerIndexMap(dialog)
-  const gender = guessSpeakerGenderFromName(
+  const speakerIdx = speakers.get(found.line.speaker) ?? 0
+  const gender = resolveSpeakerGender(
     found.line.speaker,
-    speakers.get(found.line.speaker) ?? 0,
+    speakerIdx,
+    dialog.characterBible,
   )
 
   const tts = await synthesizeSpeech({
@@ -56,6 +58,7 @@ export async function getOrCreateLineAudio(
     languageCode: dialog.targetLanguage,
     rate,
     gender,
+    speakerIndex: speakerIdx,
   })
 
   const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, lineId)
@@ -104,15 +107,18 @@ export async function ensureDialogAudio(
         continue
       }
 
-      const gender = guessSpeakerGenderFromName(
+      const speakerIdx = speakers.get(line.speaker) ?? 0
+      const gender = resolveSpeakerGender(
         line.speaker,
-        speakers.get(line.speaker) ?? 0,
+        speakerIdx,
+        dialog.characterBible,
       )
       const tts = await synthesizeSpeech({
         text: line.text,
         languageCode: dialog.targetLanguage,
         rate,
         gender,
+        speakerIndex: speakerIdx,
       })
       const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, line.id)
       generated++

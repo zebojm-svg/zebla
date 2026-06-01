@@ -236,13 +236,13 @@ function isFemaleVoice(v: SpeechSynthesisVoice): boolean {
 function guessSpeakerGender(speaker: string, speakerIndex: number): 'male' | 'female' {
   const s = speaker.toLowerCase()
   if (
-    /\b(ben|max|tom|john|james|paul|mark|hans|peter|mike|david|alex|luke|tim|sam|chris|dan|min|jun|jin|hyun|joon|ho|seo)\b/.test(
+    /\b(ben|max|tom|john|james|paul|mark|hans|peter|mike|david|alex|luke|tim|sam|chris|dan|min|jun|jin|hyun|joon|ho|seo|ramo|reza|ali|hassan|amir|mehdi)\b/.test(
       s,
     )
   )
     return 'male'
   if (
-    /\b(anna|maria|sarah|lisa|emma|julia|sophie|elena|kate|amy|linda|laura|nina|sara|ji|yuna|min|hee|su|young|mi)\b/.test(
+    /\b(anna|maria|sarah|lisa|emma|julia|sophie|elena|kate|amy|linda|laura|nina|sara|ji|yuna|min|hee|su|young|mi|shome|zahra|maryam|fatemeh)\b/.test(
       s,
     )
   )

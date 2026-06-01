@@ -30,12 +30,26 @@ export interface LineImageBeat {
 
 export type SpeakerMood = 'neutral' | 'surprised' | 'sad'
 
-/** Nahporträt eines Sprechers (direkter Blick, Mimik). */
+export type PortraitFraming = 'bust' | 'three_quarter' | 'full_body'
+
+/** Wohin der Sprecher schaut – nie direkt in die Kamera. */
+export type PortraitGaze = 'at_partner' | 'aside' | 'down' | 'away'
+
+/** Bild eines Sprechers aus Zuschauerperspektive neben dem Gegenüber. */
 export interface SpeakerPortrait {
+  id: string
   speaker: string
   mood: SpeakerMood
+  gaze: PortraitGaze
+  /** Gesprächspartner, den der Sprecher ansieht (off-camera). */
+  addressee?: string
+  /** Zeilen-Indizes (0-basiert im Abschnitt), die dieses Bild nutzen. */
+  lineIndices: number[]
+  framing: PortraitFraming
   prompt: string
   imageUrl?: string
+  /** Kurz warum diese Mimik (Anzeige / Debug). */
+  reason?: string
 }
 
 export interface DialogSection {
@@ -45,7 +59,7 @@ export interface DialogSection {
   imageUrl?: string
   imagePrompt?: string
   lineImageBeats?: LineImageBeat[]
-  /** Ein Porträt pro Sprecher – wechselt in der Diashow beim Sprecher. */
+  /** Bilder pro Sprecher/Mimik – wechseln in der Diashow beim Sprecher. */
   speakerPortraits?: SpeakerPortrait[]
 }
 
@@ -53,6 +67,8 @@ export interface DialogSection {
 export interface CharacterVisual {
   name: string
   description: string
+  /** Für unterschiedliche TTS-Stimmen pro Sprecher. */
+  gender?: 'male' | 'female'
 }
 
 export interface Dialog {

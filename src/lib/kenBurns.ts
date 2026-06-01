@@ -2,8 +2,8 @@ import type { Dialog } from '../types'
 
 export type SpeakerSide = 'left' | 'right' | 'center'
 
-/** Langsamer Zoom auf Nahporträt (Gesicht). */
-export const PORTRAIT_KEN_BURNS_ZOOM = 0.18
+/** Sanfter Zoom für Brust-/Ganzkörper-Aufnahmen (nicht Gesichts-Crop). */
+export const PORTRAIT_KEN_BURNS_ZOOM = 0.1
 
 /** @deprecated Two-shot crop – Porträts nutzen drawPortraitKenBurns. */
 export const KEN_BURNS_ZOOM = 0.1
@@ -71,7 +71,7 @@ export function drawKenBurnsImage(
   drawPortraitKenBurns(ctx, bitmap, destX, destY, destW, destH, progress)
 }
 
-/** Nahporträt: Zoom von Mitte/Gesicht (kein seitlicher Crop). */
+/** Brust-/Dreiviertel-Aufnahme: Fokus etwas höher, weniger Zoom. */
 export function drawPortraitKenBurns(
   ctx: CanvasRenderingContext2D,
   bitmap: ImageBitmap,
@@ -83,7 +83,7 @@ export function drawPortraitKenBurns(
 ): void {
   const scale = 1 + Math.min(1, Math.max(0, progress)) * PORTRAIT_KEN_BURNS_ZOOM
   const focusX = 0.5
-  const focusY = 0.38
+  const focusY = 0.42
   const srcW = bitmap.width / scale
   const srcH = bitmap.height / scale
   let srcX = focusX * bitmap.width - srcW / 2

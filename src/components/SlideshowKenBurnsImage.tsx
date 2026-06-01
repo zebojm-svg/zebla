@@ -6,7 +6,7 @@ interface SlideshowKenBurnsImageProps {
   speaker: string
   lineText: string
   rate: number
-  /** Während Sprachausgabe: langsamer Zoom ins Gesicht. */
+  /** Während Sprachausgabe: sanfter Zoom. */
   animate: boolean
 }
 
@@ -30,7 +30,7 @@ export function SlideshowKenBurnsImage({
         alt=""
         className={`slideshow-image slideshow-kenburns ${animate ? 'slideshow-kenburns--portrait' : 'slideshow-kenburns--still'}`}
         style={{
-          transformOrigin: '50% 38%',
+          transformOrigin: '50% 42%',
           animationDuration: animate ? `${Math.max(1.2, durationSec)}s` : undefined,
           ['--kenburns-end-scale' as string]: String(1 + PORTRAIT_KEN_BURNS_ZOOM),
         }}

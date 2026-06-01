@@ -11,6 +11,8 @@ import type {
   LineImageBeat,
   SpeakerMood,
   SpeakerPortrait,
+  PortraitFraming,
+  PortraitGaze,
 } from '../shared/types.js'
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
@@ -468,12 +470,13 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
 
 Regeln:
 - name: exakt wie im Dialog (z.B. Ramo, Shome)
+- gender: "male" | "female" – aus Kontext und Namen
 - description: 1–2 Sätze Englisch: young adult, attractive, well-groomed, Haare, Kleidung, Hautfarbe, unverwechselbare Merkmale
 - Nur Personen, die im Dialog vorkommen
 - Stil: photorealistic cinematic still (keine Cartoon-/Flat-Illustration)
 
 JSON:
-{ "characters": [{ "name": "Ramo", "description": "photorealistic young man with ..." }] }`,
+{ "characters": [{ "name": "Ramo", "gender": "male", "description": "photorealistic young man with ..." }] }`,
     `Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher mit Beispielzeilen:\n${JSON.stringify(cast)}`,
   )
 
@@ -538,72 +541,238 @@ export async function planSpeakerPortraits(
   dialog: Dialog,
 ): Promise<SpeakerPortrait[]> {
   const bible = dialog.characterBible
-  const bySpeaker = new Map<string, string[]>()
-  for (const line of section.lines) {
-    const list = bySpeaker.get(line.speaker) ?? []
-    list.push(line.text)
-    bySpeaker.set(line.speaker, list)
-  }
-  const speakerLines = [...bySpeaker.entries()].map(([speaker, texts]) => ({
-    speaker,
-    texts,
+  const sectionSpeakers = uniqueSpeakers(section)
+  const indexed = section.lines.map((line, index) => ({
+    lineIndex: index,
+    speaker: line.speaker,
+    text: line.text,
   }))
 
   const result = await chatJson<{
-    portraits: { speaker: string; mood: SpeakerMood; sceneHint: string }[]
+    lineMoods: {
+      lineIndex: number
+      mood: SpeakerMood
+      gaze: PortraitGaze
+      addressee: string
+      reason: string
+    }[]
+    sceneHint: string
+    defaultFraming: PortraitFraming
   }>(
-    `Du planst NAHPORTrÄTS für eine Sprachlern-Diashow – je EIN Porträt pro Sprecher in diesem Abschnitt.
+    `Du planst SPRECHER-BILDER für eine Sprachlern-Diashow – wie in einem echten Gespräch von der Seite mitzuerleben.
+
+PERSPEKTIVE (sehr wichtig):
+- Der Zuschauer sitzt NEBEN dem Gesprächspartner und sieht den aktiven Sprecher an.
+- Der Sprecher schaut seinen Gegenüber an (addressee) – NIEMALS in die Kamera / den Zuschauer.
+- Beim Sprecherwechsel wechselt die Perspektive klar zum jeweils anderen Sprecher.
+- Kein „Talking Head“ zum Betrachter – es soll sich wie ein Dialog zwischen zwei Personen anfühlen.
+
+WICHTIG – Zuerst den GESAMTEN Dialog lesen, dann für JEDE Zeile Mimik und Blick planen.
 
 ${bible?.length ? `FESTE FIGUREN:\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+Sprecher in diesem Abschnitt: ${sectionSpeakers.join(', ')}
+
+Schritt 1: Emotionaler Verlauf verstehen.
+Schritt 2: Pro Zeile (lineIndex 0..${section.lines.length - 1}) mood, gaze und addressee festlegen.
+
 Regeln:
-- Genau ein Eintrag pro Sprecher: ${speakerLines.map((s) => s.speaker).join(', ')}
-- mood: "neutral" | "surprised" | "sad" – passend zu den Zeilen dieses Sprechers (max. 2–3 Stimmungen im Abschnitt insgesamt)
-- sceneHint: kurzer englischer Kontext (Ort, Situation) für den Hintergrund
-- Die App zeigt beim Sprechen NUR das Porträt des aktiven Sprechers – direkter Blick in die Kamera
+- lineMoods: ein Eintrag pro Zeile mit lineIndex, mood, gaze, addressee, reason (Deutsch, kurz)
+- mood: "neutral" | "surprised" | "sad" – passend zum Zeileninhalt
+- Pro Sprecher dürfen 2–4 verschiedene Stimmungen/Blickrichtungen vorkommen (je nach Dialog)
+- gaze: "at_partner" (schaut Gegenüber an) | "aside" ( seitlich weg) | "down" ( nach unten, nachdenklich) | "away" ( in die Ferne / abgewandt)
+- addressee: Name des Gesprächspartners, den diese Zeile anspricht (aus dem Dialog, meist der andere Sprecher)
+- sceneHint: kurzer englischer Kontext (Ort, Situation)
+- defaultFraming: "three_quarter" | "full_body" | "bust" – Brustbild oder Ganzkörper, keine extreme Gesichtsnahaufnahme
 
 JSON:
 {
-  "portraits": [
-    { "speaker": "Name", "mood": "neutral", "sceneHint": "casual conversation in a park" }
-  ]
+  "lineMoods": [
+    { "lineIndex": 0, "mood": "neutral", "gaze": "at_partner", "addressee": "Shome", "reason": "Begrüßung an Partner" }
+  ],
+  "sceneHint": "two people talking at a café table",
+  "defaultFraming": "three_quarter"
 }`,
-    `Dialog: "${dialog.title}"\nAbschnitt: "${section.title}"\nSprecher und Zeilen:\n${JSON.stringify(speakerLines)}`,
+    `Gesamter Dialog:\n${dialogSummaryForImages(dialog)}\n\n---\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
   )
 
-  if (!result.portraits?.length) {
-    throw new Error('KI konnte keine Sprecher-Porträts planen.')
+  if (!result.lineMoods?.length) {
+    throw new Error('KI konnte keine Mimik pro Zeile planen.')
   }
 
   const moodExpr: Record<SpeakerMood, string> = {
-    neutral: 'calm friendly expression, natural slight smile, relaxed eyes',
-    surprised: 'surprised expression, raised eyebrows, eyes wide',
-    sad: 'gentle sad or thoughtful expression, soft melancholy in the eyes',
+    neutral: 'calm friendly expression while speaking, natural relaxed face',
+    surprised: 'surprised expression, raised eyebrows, reacting to what the partner just said',
+    sad: 'gentle sad or thoughtful expression, soft melancholy',
   }
 
-  return result.portraits
-    .filter((p) => bySpeaker.has(p.speaker))
-    .map((p) => {
-      const mood = (['neutral', 'surprised', 'sad'] as const).includes(p.mood as SpeakerMood)
-        ? (p.mood as SpeakerMood)
-        : 'neutral'
-      const scene = p.sceneHint?.trim() || section.title
-      const prompt =
-        `Close-up portrait of ${p.speaker}, looking directly at the camera with strong eye contact, ` +
-        `head and shoulders, face fills most of the frame. Expression: ${moodExpr[mood]}. ` +
-        `Setting: ${scene}. Single person only in frame, no other people.`
-      return { speaker: p.speaker, mood, prompt }
-    })
+  const gazeExpr: Record<PortraitGaze, string> = {
+    at_partner:
+      'looking at their conversation partner off-camera with engaged natural eye contact, facing the partner, NOT looking at the camera',
+    aside: 'glancing slightly to the side while speaking, natural conversational gesture, NOT looking at the camera',
+    down: 'looking down briefly with a thoughtful or hesitant expression, NOT looking at the camera',
+    away: 'gazing away into the distance or slightly turned away, reflective moment, NOT looking at the camera',
+  }
+
+  const framingExpr: Record<PortraitFraming, string> = {
+    bust: 'medium shot from chest up, head and shoulders visible, natural conversational distance, NOT a tight face-only close-up',
+    three_quarter:
+      'three-quarter shot from head to mid-thigh, full upper body visible, natural seated or standing dialogue pose',
+    full_body:
+      'full body shot, entire person visible from head to feet in the environment, natural conversational pose',
+  }
+
+  const validMoods = new Set<SpeakerMood>(['neutral', 'surprised', 'sad'])
+  const validGaze = new Set<PortraitGaze>(['at_partner', 'aside', 'down', 'away'])
+  const validFraming = new Set<PortraitFraming>(['bust', 'three_quarter', 'full_body'])
+  const defaultFraming = validFraming.has(result.defaultFraming as PortraitFraming)
+    ? (result.defaultFraming as PortraitFraming)
+    : 'three_quarter'
+  const scene = result.sceneHint?.trim() || section.title
+
+  const sorted = [...result.lineMoods]
+    .filter((lm) => lm.lineIndex >= 0 && lm.lineIndex < section.lines.length)
+    .sort((a, b) => a.lineIndex - b.lineIndex)
+
+  const covered = new Set(sorted.map((lm) => lm.lineIndex))
+  for (let i = 0; i < section.lines.length; i++) {
+    if (!covered.has(i)) {
+      const addressee = inferAddressee(section, i, sectionSpeakers)
+      sorted.push({
+        lineIndex: i,
+        mood: 'neutral',
+        gaze: 'at_partner',
+        addressee,
+        reason: 'Standard',
+      })
+    }
+  }
+  sorted.sort((a, b) => a.lineIndex - b.lineIndex)
+
+  const portraits: SpeakerPortrait[] = []
+  let group: {
+    speaker: string
+    mood: SpeakerMood
+    gaze: PortraitGaze
+    addressee: string
+    lineIndices: number[]
+    reasons: string[]
+  } | null = null
+
+  for (const lm of sorted) {
+    const line = section.lines[lm.lineIndex]
+    const mood = validMoods.has(lm.mood as SpeakerMood) ? (lm.mood as SpeakerMood) : 'neutral'
+    const gaze = validGaze.has(lm.gaze as PortraitGaze) ? (lm.gaze as PortraitGaze) : 'at_partner'
+    const addressee =
+      lm.addressee?.trim() ||
+      inferAddressee(section, lm.lineIndex, sectionSpeakers)
+    if (
+      group &&
+      group.speaker === line.speaker &&
+      group.mood === mood &&
+      group.gaze === gaze &&
+      group.addressee === addressee &&
+      group.lineIndices[group.lineIndices.length - 1] === lm.lineIndex - 1
+    ) {
+      group.lineIndices.push(lm.lineIndex)
+      if (lm.reason?.trim()) group.reasons.push(lm.reason.trim())
+    } else {
+      if (group) {
+        portraits.push(
+          buildPortraitGroup(group, defaultFraming, scene, bible, moodExpr, gazeExpr, framingExpr),
+        )
+      }
+      group = {
+        speaker: line.speaker,
+        mood,
+        gaze,
+        addressee,
+        lineIndices: [lm.lineIndex],
+        reasons: lm.reason?.trim() ? [lm.reason.trim()] : [],
+      }
+    }
+  }
+  if (group) {
+    portraits.push(
+      buildPortraitGroup(group, defaultFraming, scene, bible, moodExpr, gazeExpr, framingExpr),
+    )
+  }
+
+  if (!portraits.length) {
+    throw new Error('KI konnte keine Sprecher-Porträts planen.')
+  }
+  return portraits
+}
+
+function inferAddressee(
+  section: DialogSection,
+  lineIndex: number,
+  sectionSpeakers: string[],
+): string {
+  const speaker = section.lines[lineIndex]?.speaker
+  const prev = lineIndex > 0 ? section.lines[lineIndex - 1]?.speaker : undefined
+  if (prev && prev !== speaker) return prev
+  const next =
+    lineIndex < section.lines.length - 1 ? section.lines[lineIndex + 1]?.speaker : undefined
+  if (next && next !== speaker) return next
+  return sectionSpeakers.find((s) => s !== speaker) ?? sectionSpeakers[0] ?? 'partner'
+}
+
+function buildPortraitGroup(
+  group: {
+    speaker: string
+    mood: SpeakerMood
+    gaze: PortraitGaze
+    addressee: string
+    lineIndices: number[]
+    reasons: string[]
+  },
+  framing: PortraitFraming,
+  scene: string,
+  bible: CharacterVisual[] | undefined,
+  moodExpr: Record<SpeakerMood, string>,
+  gazeExpr: Record<PortraitGaze, string>,
+  framingExpr: Record<PortraitFraming, string>,
+): SpeakerPortrait {
+  const castHint = bible?.find((c) => c.name === group.speaker)?.description
+  const reason = group.reasons.join('; ') || undefined
+  const firstIdx = group.lineIndices[0]
+  const id = `${group.speaker.replace(/\s+/g, '_')}-${group.mood}-${group.gaze}-${firstIdx}`
+  const prompt =
+    `Over-the-shoulder cinematic dialogue shot: camera beside ${group.addressee}, as if the viewer sits next to ${group.addressee} watching the conversation. ` +
+    `${framingExpr[framing]} of ${group.speaker}${castHint ? ` (${castHint})` : ''}. ` +
+    `${group.speaker} is speaking to ${group.addressee}. ${gazeExpr[group.gaze]}. ` +
+    `Expression: ${moodExpr[group.mood]}. Third-person observer perspective, natural dialogue scene. ` +
+    `Setting: ${scene}. Only ${group.speaker} visible in frame; ${group.addressee} is off-camera beside the viewer, do not show a second person. ` +
+    `Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
+  return {
+    id,
+    speaker: group.speaker,
+    mood: group.mood,
+    gaze: group.gaze,
+    addressee: group.addressee,
+    lineIndices: group.lineIndices,
+    framing,
+    reason,
+    prompt,
+  }
 }
 
 export function applySpeakerPortraits(
   lines: DialogLine[],
   portraits: SpeakerPortrait[],
 ): DialogLine[] {
-  const bySpeaker = new Map(
-    portraits.filter((p) => p.imageUrl).map((p) => [p.speaker, p] as const),
+  const byLineIndex = new Map<number, SpeakerPortrait>()
+  for (const p of portraits) {
+    if (!p.imageUrl) continue
+    for (const idx of p.lineIndices ?? []) {
+      byLineIndex.set(idx, p)
+    }
+  }
+  const legacyBySpeaker = new Map(
+    portraits.filter((p) => p.imageUrl && !p.lineIndices?.length).map((p) => [p.speaker, p] as const),
   )
-  return lines.map((line) => {
-    const portrait = bySpeaker.get(line.speaker)
+  return lines.map((line, index) => {
+    const portrait = byLineIndex.get(index) ?? legacyBySpeaker.get(line.speaker)
     if (!portrait?.imageUrl) return line
     return { ...line, imageUrl: portrait.imageUrl, imagePrompt: portrait.prompt }
   })
