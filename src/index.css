@@ -712,6 +712,55 @@ textarea { resize: vertical; min-height: 120px; }
   justify-content: center;
   padding: 0.75rem 1rem;
   background: #020617;
+  overflow: hidden;
+}
+
+.slideshow-image-kenburns {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.slideshow-image-kenburns .slideshow-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  max-width: none;
+  max-height: none;
+  border-radius: var(--radius);
+}
+
+.slideshow-kenburns--still {
+  transform: scale(1.04);
+}
+
+.slideshow-kenburns--left {
+  animation: kenburns-left linear forwards;
+}
+
+.slideshow-kenburns--right {
+  animation: kenburns-right linear forwards;
+}
+
+.slideshow-kenburns--center {
+  animation: kenburns-center linear forwards;
+}
+
+@keyframes kenburns-left {
+  from { transform: scale(1); }
+  to { transform: scale(1.1); }
+}
+
+@keyframes kenburns-right {
+  from { transform: scale(1); }
+  to { transform: scale(1.1); }
+}
+
+@keyframes kenburns-center {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
 }
 
 .slideshow-image {

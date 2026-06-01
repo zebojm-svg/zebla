@@ -4,6 +4,14 @@ import lamejs from 'lamejs'
 import { api } from '../api/client'
 import type { Dialog, DialogLine } from '../types'
 import { isRtlLanguage } from '../types'
+import {
+  buildSpeakerSideMap,
+  collectSpeakersInOrder,
+  drawKenBurnsImage,
+  KEN_BURNS_EXPORT_FRAMES,
+  speakerSideFor,
+  type SpeakerSide,
+} from '../lib/kenBurns'
 
 const FPS = 30
 const GAP_SEC = 0.4
@@ -36,6 +44,7 @@ async function resolveVideoPreset(): Promise<{
 export interface ExportSlide {
   lineId: string
   speaker: string
+  speakerSide: SpeakerSide
   line: DialogLine
   imageUrl: string | null
   sectionTitle: string
@@ -64,6 +73,7 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export function buildExportSlides(dialog: Dialog): ExportSlide[] {
+  const sideMap = buildSpeakerSideMap(collectSpeakersInOrder(dialog))
   const slides: ExportSlide[] = []
   for (const section of dialog.sections) {
     const sectionImage = section.imageUrl ?? null
@@ -72,6 +82,7 @@ export function buildExportSlides(dialog: Dialog): ExportSlide[] {
       slides.push({
         lineId: line.id,
         speaker: line.speaker,
+        speakerSide: speakerSideFor(sideMap, line.speaker),
         line,
         imageUrl: line.imageUrl ?? sectionImage,
         sectionTitle: section.title,
@@ -196,6 +207,7 @@ function drawSlide(
   options: ExportOptions,
   width: number,
   height: number,
+  kenBurnsProgress = 0,
 ) {
   const targetRtl = isRtlLanguage(options.targetLanguage)
   const scale = height / 720
@@ -205,12 +217,16 @@ function drawSlide(
 
   const imgH = Math.floor(height * 0.62)
   if (bitmap) {
-    const scaleImg = Math.min(width / bitmap.width, imgH / bitmap.height)
-    const w = bitmap.width * scaleImg
-    const h = bitmap.height * scaleImg
-    const x = (width - w) / 2
-    const y = (imgH - h) / 2
-    ctx.drawImage(bitmap, x, y, w, h)
+    drawKenBurnsImage(
+      ctx,
+      bitmap,
+      0,
+      0,
+      width,
+      imgH,
+      slide.speakerSide,
+      kenBurnsProgress,
+    )
   } else {
     ctx.fillStyle = '#1e293b'
     ctx.fillRect(0, 0, width, imgH)
@@ -414,10 +430,17 @@ export async function exportDialogMp4(dialog: Dialog, options: ExportOptions): P
     const slide = slides[i]
     const bmp = bitmaps[i]
     options.onProgress?.(`Video: Szene ${i + 1}/${totalSlides} …`)
-    drawSlide(ctx, slide, bmp, options, vidW, vidH)
-    pushFrame(slide.durationSec, true)
+
+    const frameCount = Math.max(2, KEN_BURNS_EXPORT_FRAMES)
+    const frameDur = slide.durationSec / frameCount
+    for (let f = 0; f < frameCount; f++) {
+      const progress = frameCount > 1 ? f / (frameCount - 1) : 0
+      drawSlide(ctx, slide, bmp, options, vidW, vidH, progress)
+      pushFrame(frameDur, f === 0)
+    }
+
     if (i < slides.length - 1) {
-      drawSlide(ctx, slide, bmp, options, vidW, vidH)
+      drawSlide(ctx, slide, bmp, options, vidW, vidH, 1)
       pushFrame(GAP_SEC, false)
     }
     await new Promise((r) => setTimeout(r, 0))

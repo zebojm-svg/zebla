@@ -422,6 +422,31 @@ function dialogSummaryForImages(dialog: Dialog): string {
   return parts.join('\n')
 }
 
+function uniqueSpeakers(section: DialogSection): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const line of section.lines) {
+    if (!seen.has(line.speaker)) {
+      seen.add(line.speaker)
+      out.push(line.speaker)
+    }
+  }
+  return out
+}
+
+function twoShotLayoutHint(speakers: string[]): string {
+  if (speakers.length >= 2) {
+    return `Medium two-shot: ${speakers[0]} on the LEFT third of the frame, ${speakers[1]} on the RIGHT third, both facing slightly toward each other, equal prominence, full upper body visible. `
+  }
+  if (speakers.length === 1) {
+    return `Single subject ${speakers[0]} centered, medium shot, upper body visible. `
+  }
+  return ''
+}
+
+const PHOTOREALISTIC_STYLE =
+  'Photorealistic cinematic photograph, natural soft lighting, shallow depth of field, high detail, attractive well-groomed young adults, realistic skin texture. NOT cartoon, NOT illustration, NOT anime. No text or labels in the image.'
+
 export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisual[]> {
   const speakers = new Map<string, string[]>()
   for (const sec of dialog.sections) {
@@ -437,16 +462,16 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
   }))
 
   const result = await chatJson<{ characters: CharacterVisual[] }>(
-    `Du planst Illustrationen für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
+    `Du planst Fotos für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
 
 Regeln:
 - name: exakt wie im Dialog (z.B. Ramo, Shome)
-- description: 1–2 Sätze Englisch: Alter, Haare, Kleidung, Hautfarbe, unverwechselbare Merkmale
+- description: 1–2 Sätze Englisch: young adult, attractive, well-groomed, Haare, Kleidung, Hautfarbe, unverwechselbare Merkmale
 - Nur Personen, die im Dialog vorkommen
-- Stil: freundliche flache Lern-App-Illustration
+- Stil: photorealistic cinematic still (keine Cartoon-/Flat-Illustration)
 
 JSON:
-{ "characters": [{ "name": "Ramo", "description": "young man with ..." }] }`,
+{ "characters": [{ "name": "Ramo", "description": "photorealistic young man with ..." }] }`,
     `Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher mit Beispielzeilen:\n${JSON.stringify(cast)}`,
   )
 
@@ -465,7 +490,7 @@ function buildConsistentImagePrompt(scenePrompt: string, bible?: CharacterVisual
     bible?.length ?
       `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  return `${cast}${scenePrompt}. Friendly colorful flat educational illustration, warm style, no text or labels in the image.`
+  return `${cast}${scenePrompt}. ${PHOTOREALISTIC_STYLE}`
 }
 
 function buildImagePrompt(
@@ -473,12 +498,13 @@ function buildImagePrompt(
   dialogTitle: string,
   bible?: CharacterVisual[],
 ): string {
+  const speakers = uniqueSpeakers(section)
   const snippet = section.lines
     .slice(0, 5)
     .map((l) => `${l.speaker}: ${l.text}`)
     .join(' ')
   return buildConsistentImagePrompt(
-    `Scene for language learning dialog "${dialogTitle}", section "${section.title}". ${snippet}`,
+    `${twoShotLayoutHint(speakers)}Scene for language learning dialog "${dialogTitle}", section "${section.title}". ${snippet}`,
     bible,
   )
 }
@@ -517,22 +543,31 @@ export async function planLineImages(
     text: line.text,
   }))
 
+  const speakers = uniqueSpeakers(section)
+  const layoutHint = twoShotLayoutHint(speakers)
+  const allIndices = section.lines.map((_, i) => i)
+
   const result = await chatJson<{
     beats: { lineIndices: number[]; reason: string; prompt: string }[]
   }>(
     `Du planst Bilder für eine Sprachlern-Diashow. Lies ZUERST den gesamten Dialog, dann plane die Bilder für diesen Abschnitt.
 
 ${bible?.length ? `FESTE FIGUREN (müssen auf jedem Bild gleich aussehen):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+WICHTIG – Two-Shot für Sprecher-Fokus (Variante A):
+- Bei 2 Sprechern: bevorzuge EIN einziges Bild für den GANZEN Abschnitt (alle Zeilen: ${JSON.stringify(allIndices)}).
+- Layout im prompt: ${layoutHint || 'beide Sprecher klar getrennt links/rechts.'}
+- Die App schneidet später per Zoom auf links/rechts zu – beide Personen müssen von Anfang an sichtbar sein.
+- Nur bei echtem Szenenwechsel (Ort/Requisit) ein zweites Bild.
+
 Regeln:
-- Nicht jede Zeile braucht ein neues Bild – nur bei Szenenwechsel, Requisite, Perspektivwechsel.
-- Mehrere Zeilen können dasselbe Bild teilen.
+- Mehrere Zeilen teilen dasselbe Bild (lineIndices-Gruppe).
 - Jeder Index 0..${section.lines.length - 1} genau einmal in einer Gruppe.
-- prompt: englischer Szenen-Prompt; nenne die Figuren beim Namen wie oben; KEIN Text im Bild.
+- prompt: englisch, photorealistic two-shot, Figurennamen, KEIN Text im Bild.
 
 JSON:
 {
   "beats": [
-    { "lineIndices": [0, 1], "reason": "kurz warum", "prompt": "English scene prompt with named characters..." }
+    { "lineIndices": [0, 1, 2], "reason": "kurz warum", "prompt": "English photorealistic two-shot prompt..." }
   ]
 }`,
     `Gesamter Dialog:\n${dialogSummaryForImages(dialog)}\n\n---\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
