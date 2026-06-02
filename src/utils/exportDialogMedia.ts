@@ -3,6 +3,7 @@ import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
 import lamejs from 'lamejs'
 import { api } from '../api/client'
 import type { Dialog, DialogLine } from '../types'
+import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line-speech'
 import { isRtlLanguage } from '../types'
 import {
   drawPortraitKenBurns,
@@ -72,7 +73,7 @@ export function buildExportSlides(dialog: Dialog): ExportSlide[] {
   for (const section of dialog.sections) {
     const sectionImage = section.imageUrl ?? null
     for (const line of section.lines) {
-      if (!line.text.trim()) continue
+      if (!lineSpeechText(line)) continue
       slides.push({
         lineId: line.id,
         speaker: line.speaker,
@@ -89,7 +90,9 @@ export function buildExportSlides(dialog: Dialog): ExportSlide[] {
 export function validateDialogExport(dialog: Dialog): string | null {
   const slides = buildExportSlides(dialog)
   if (slides.length === 0) return 'Keine Dialogzeilen zum Exportieren.'
-  const missing = slides.filter((s) => !s.line.audioUrl)
+  const missing = slides.filter(
+    (s) => !s.line.audioUrl || speechTextDiffersFromLineText(s.line),
+  )
   if (missing.length > 0) {
     return `${missing.length} Zeile${missing.length !== 1 ? 'n' : ''} ohne Audio. Zuerst „Audio vorbereiten“ (Cloud-Sprachausgabe).`
   }
@@ -266,7 +269,7 @@ function drawSlide(
     ctx.font = `${Math.round(26 * scale)}px system-ui, sans-serif`
     ctx.textAlign = targetRtl ? 'right' : 'left'
     const maxW = width - pad * 2
-    wrapText(ctx, line.text, targetRtl ? width - pad : pad, startY, maxW, 32 * scale)
+    wrapText(ctx, lineSpeechText(line), targetRtl ? width - pad : pad, startY, maxW, 32 * scale)
   }
 }
 

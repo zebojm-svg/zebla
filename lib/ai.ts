@@ -16,6 +16,7 @@ import type {
 } from '../shared/types.js'
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
+import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL =
@@ -311,7 +312,11 @@ Antworte als JSON:
         translation: w.translation,
         ...(w.romanization?.trim() ? { romanization: w.romanization.trim() } : {}),
       })) ?? []
-    return { ...line, birkenbihl }
+    const updated = { ...line, birkenbihl }
+    if (line.audioUrl && speechTextDiffersFromLineText(updated)) {
+      return { ...updated, audioUrl: undefined }
+    }
+    return updated
   })
 }
 

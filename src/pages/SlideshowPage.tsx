@@ -15,6 +15,7 @@ import {
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { estimateMissingTts } from '../lib/costEstimates'
+import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line-speech'
 
 export function SlideshowPage() {
   const { id } = useParams<{ id: string }>()
@@ -153,12 +154,16 @@ export function SlideshowPage() {
     (lineIndex < section.lines.length - 1 || slideIndex < dialog.sections.length - 1)
 
   const allLines = dialog?.sections.flatMap((s) => s.lines) ?? []
-  const audioReadyCount = allLines.filter((l) => l.audioUrl).length
+  const lineNeedsAudio = (l: (typeof allLines)[number]) =>
+    Boolean(lineSpeechText(l)) && (!l.audioUrl || speechTextDiffersFromLineText(l))
+  const audioReadyCount = allLines.filter(
+    (l) => l.audioUrl && !speechTextDiffersFromLineText(l),
+  ).length
   const exportError = useMemo(() => {
     if (!dialog) return null
-    const lines = dialog.sections.flatMap((s) => s.lines).filter((l) => l.text.trim())
+    const lines = dialog.sections.flatMap((s) => s.lines).filter((l) => lineSpeechText(l))
     if (lines.length === 0) return 'Keine Zeilen.'
-    const missing = lines.filter((l) => !l.audioUrl).length
+    const missing = lines.filter((l) => lineNeedsAudio(l)).length
     if (missing > 0) {
       return `${missing} Zeile${missing !== 1 ? 'n' : ''} ohne Audio — zuerst „Audio vorbereiten“.`
     }
@@ -167,7 +172,7 @@ export function SlideshowPage() {
 
   const handleEnsureAudio = async () => {
     if (!dialog || !cloudTtsReady) return
-    const missing = allLines.filter((l) => l.text.trim() && !l.audioUrl).length
+    const missing = allLines.filter((l) => lineNeedsAudio(l)).length
     if (missing === 0) {
       setAudioStatus('Alle Zeilen haben bereits gespeichertes Audio – Abspielen kostet nichts.')
       return

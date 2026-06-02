@@ -1,4 +1,5 @@
 import type { Dialog, DialogLine, DialogSection } from '../shared/types.js'
+import { lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { getDialog, updateDialog } from './firestore.js'
 import { uploadLineAudio } from './audio-storage.js'
 import { synthesizeSpeech } from './tts.js'
@@ -41,7 +42,7 @@ export async function getOrCreateLineAudio(
   const found = findLineInDialog(dialog, lineId)
   if (!found) throw new Error('Zeile nicht gefunden.')
 
-  if (found.line.audioUrl) {
+  if (found.line.audioUrl && !speechTextDiffersFromLineText(found.line)) {
     return { audioUrl: found.line.audioUrl, cached: true, dialog }
   }
 
@@ -54,7 +55,7 @@ export async function getOrCreateLineAudio(
   )
 
   const tts = await synthesizeSpeech({
-    text: found.line.text,
+    text: lineSpeechText(found.line),
     languageCode: dialog.targetLanguage,
     rate,
     gender,
@@ -101,8 +102,9 @@ export async function ensureDialogAudio(
 
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      if (!line.text.trim()) continue
-      if (line.audioUrl) {
+      const speechText = lineSpeechText(line)
+      if (!speechText) continue
+      if (line.audioUrl && !speechTextDiffersFromLineText(line)) {
         skipped++
         continue
       }
@@ -114,7 +116,7 @@ export async function ensureDialogAudio(
         dialog.characterBible,
       )
       const tts = await synthesizeSpeech({
-        text: line.text,
+        text: speechText,
         languageCode: dialog.targetLanguage,
         rate,
         gender,

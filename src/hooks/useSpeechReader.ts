@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { lineSpeechText } from '../../shared/line-speech'
+import type { BirkenbihlWord } from '../types'
 
 const SPEECH_LANG_MAP: Record<string, string> = {
   de: 'de-DE',
@@ -76,6 +78,7 @@ export interface SpeakLine {
   text: string
   speaker: string
   audioUrl?: string
+  birkenbihl?: BirkenbihlWord[]
 }
 
 function normalizeVoiceLang(lang: string): string {
@@ -473,7 +476,7 @@ export function useSpeechReader(
     ): Promise<void> => {
       if (stoppedRef.current) return
 
-      const text = line.text.trim()
+      const text = lineSpeechText(line).trim()
       if (!text) return
 
       ensureSpeakerVoices(allLines, speakerIndexMap)
