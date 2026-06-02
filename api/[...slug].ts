@@ -443,13 +443,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-ensure-audio' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { dialogId, rate } = req.body as { dialogId?: string; rate?: number }
+      const { dialogId, rate, force } = req.body as {
+        dialogId?: string
+        rate?: number
+        force?: boolean
+      }
       if (!dialogId) {
         res.status(400).json({ error: 'dialogId fehlt.' })
         return
       }
       try {
-        const result = await ensureDialogAudio(dialogId, user.uid, rate ?? 0.85)
+        const result = await ensureDialogAudio(dialogId, user.uid, rate ?? 0.85, {
+          force: force === true,
+        })
         res.json(result)
       } catch (err) {
         sendError(res, err)

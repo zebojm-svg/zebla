@@ -196,14 +196,14 @@ export const api = {
           body: JSON.stringify(data),
         },
       ),
-    ensureAll: (dialogId: string, rate?: number) =>
+    ensureAll: (dialogId: string, rate?: number, options?: { force?: boolean }) =>
       request<{
         dialog: import('../types').Dialog
         generated: number
         skipped: number
       }>('/dialog-ensure-audio', {
         method: 'POST',
-        body: JSON.stringify({ dialogId, rate }),
+        body: JSON.stringify({ dialogId, rate, force: options?.force === true }),
       }),
     lineAudio: (dialogId: string, lineId: string) =>
       requestBlob(

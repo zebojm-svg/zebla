@@ -13,6 +13,33 @@ function lineCount(dialog: { sections: { lines: { text: string; audioUrl?: strin
   )
 }
 
+export function estimateRegenerateTts(dialog: {
+  sections: { lines: { text: string; audioUrl?: string; birkenbihl?: { text: string }[] }[] }[]
+}): CostEstimate {
+  const total = dialog.sections.reduce(
+    (n, s) =>
+      n +
+      s.lines.filter((l) => {
+        const t = l.birkenbihl?.length
+          ? l.birkenbihl.map((w) => w.text.trim()).filter(Boolean).join(' ')
+          : l.text.trim()
+        return Boolean(t)
+      }).length,
+    0,
+  )
+  const cents = Math.max(1, Math.round(total * 0.2))
+  return {
+    title: 'Audio neu erstellen',
+    description: `Alle ${total} Zeile${total !== 1 ? 'n' : ''} werden erneut mit Cloud-TTS erzeugt (bestehende MP3s werden ersetzt).`,
+    items: [
+      { label: 'Zeilen', amount: String(total) },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents} Cent` },
+    ],
+    totalHint: `ca. ${cents} Cent`,
+    note: 'Nur nötig nach Textänderung, Birkenbihl oder wenn die falsche Sprache gesprochen wurde.',
+  }
+}
+
 export function estimateMissingTts(dialog: {
   sections: { lines: { text: string; audioUrl?: string }[] }[]
 }): CostEstimate {

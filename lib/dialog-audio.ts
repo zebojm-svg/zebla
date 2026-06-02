@@ -92,7 +92,9 @@ export async function ensureDialogAudio(
   dialogId: string,
   userId: string,
   rate: number,
+  options?: { force?: boolean },
 ): Promise<{ dialog: Dialog; generated: number; skipped: number }> {
+  const force = options?.force === true
   let dialog = await getDialog(dialogId, userId)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
 
@@ -104,7 +106,7 @@ export async function ensureDialogAudio(
     for (const line of section.lines) {
       const speechText = lineSpeechText(line)
       if (!speechText) continue
-      if (line.audioUrl && !speechTextDiffersFromLineText(line)) {
+      if (!force && line.audioUrl && !speechTextDiffersFromLineText(line)) {
         skipped++
         continue
       }

@@ -14,7 +14,7 @@ import {
 } from '../lib/preferences'
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
-import { estimateMissingTts } from '../lib/costEstimates'
+import { estimateMissingTts, estimateRegenerateTts } from '../lib/costEstimates'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line-speech'
 
 export function SlideshowPage() {
@@ -159,6 +159,7 @@ export function SlideshowPage() {
   const audioReadyCount = allLines.filter(
     (l) => l.audioUrl && !speechTextDiffersFromLineText(l),
   ).length
+  const hasStoredAudio = allLines.some((l) => l.audioUrl)
   const exportError = useMemo(() => {
     if (!dialog) return null
     const lines = dialog.sections.flatMap((s) => s.lines).filter((l) => lineSpeechText(l))
@@ -170,6 +171,31 @@ export function SlideshowPage() {
     return null
   }, [dialog])
 
+  const runEnsureAudio = async (force: boolean) => {
+    if (!dialog || !cloudTtsReady) return
+    setAudioBusy(true)
+    setAudioStatus('')
+    try {
+      const { dialog: updated, generated, skipped } = await api.tts.ensureAll(
+        dialog.id,
+        rate,
+        { force },
+      )
+      setDialog(updated)
+      setAudioStatus(
+        force
+          ? `${generated} Audiodatei${generated !== 1 ? 'en' : ''} neu erstellt.`
+          : generated > 0
+            ? `${generated} neue Audiodatei${generated !== 1 ? 'n' : ''} erstellt (${skipped} bereits vorhanden).`
+            : `Alle ${skipped} Zeilen hatten bereits Audio.`,
+      )
+    } catch (err) {
+      setAudioStatus(err instanceof Error ? err.message : 'Audio-Vorbereitung fehlgeschlagen')
+    } finally {
+      setAudioBusy(false)
+    }
+  }
+
   const handleEnsureAudio = async () => {
     if (!dialog || !cloudTtsReady) return
     const missing = allLines.filter((l) => lineNeedsAudio(l)).length
@@ -178,21 +204,15 @@ export function SlideshowPage() {
       return
     }
     if (!(await confirmCost(estimateMissingTts(dialog)))) return
-    setAudioBusy(true)
-    setAudioStatus('')
-    try {
-      const { dialog: updated, generated, skipped } = await api.tts.ensureAll(dialog.id, rate)
-      setDialog(updated)
-      setAudioStatus(
-        generated > 0
-          ? `${generated} neue Audiodatei${generated !== 1 ? 'n' : ''} erstellt (${skipped} bereits vorhanden).`
-          : `Alle ${skipped} Zeilen hatten bereits Audio.`,
-      )
-    } catch (err) {
-      setAudioStatus(err instanceof Error ? err.message : 'Audio-Vorbereitung fehlgeschlagen')
-    } finally {
-      setAudioBusy(false)
-    }
+    await runEnsureAudio(false)
+  }
+
+  const handleRegenerateAudio = async () => {
+    if (!dialog || !cloudTtsReady) return
+    const withSpeech = allLines.filter((l) => lineSpeechText(l)).length
+    if (withSpeech === 0) return
+    if (!(await confirmCost(estimateRegenerateTts(dialog)))) return
+    await runEnsureAudio(true)
   }
 
   if (loading) {
@@ -322,6 +342,17 @@ export function SlideshowPage() {
             >
               {audioBusy ? 'Erzeuge Audio …' : 'Audio vorbereiten'}
             </button>
+            {hasStoredAudio && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={audioBusy || speaking || exportBusy}
+                onClick={() => void handleRegenerateAudio()}
+                title="Ersetzt alle gespeicherten MP3s (z. B. nach Textänderung)"
+              >
+                {audioBusy ? 'Erzeuge Audio …' : 'Audio neu erstellen'}
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary btn-sm"
