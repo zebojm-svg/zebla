@@ -1,23 +1,17 @@
-import type { CharacterVisual } from '../shared/types.js'
+import type { CharacterVisual, Dialog } from '../shared/types.js'
 import { guessSpeakerGenderFromName } from './speaker-gender.js'
 
-export function resolveSpeakerGender(
-  speaker: string,
-  speakerIndex: number,
-  characterBible?: CharacterVisual[],
-): 'male' | 'female' {
-  const fromBible = characterBible?.find((c) => c.name === speaker)?.gender
-  if (fromBible === 'male' || fromBible === 'female') return fromBible
-  return guessSpeakerGenderFromName(speaker, speakerIndex)
+export interface SpeakerVoiceProfile {
+  gender: 'male' | 'female'
+  voiceName: string
 }
 
-/** Gemini-TTS-Stimmen – mehrere pro Geschlecht für unterscheidbare Sprecher. */
+/** Gemini-TTS-Stimmen – je Geschlecht, feste Reihenfolge pro Sprecher. */
 const GEMINI_VOICES = {
   female: ['Kore', 'Aoede', 'Leda'],
   male: ['Charon', 'Puck', 'Fenrir'],
 } as const
 
-/** Klassische Cloud-TTS – Fallback-Stimmen wenn Neural2 für 2. Sprecher gleichen Typs. */
 const CLASSIC_VOICE_POOL: Record<
   string,
   { locale: string; female: string[]; male: string[] }
@@ -58,24 +52,131 @@ function langKey(languageCode: string): string {
   return languageCode.slice(0, 2).toLowerCase()
 }
 
+function usesGeminiTts(languageCode: string): boolean {
+  return langKey(languageCode) === 'fa'
+}
+
+export function resolveSpeakerGender(
+  speaker: string,
+  speakerIndex: number,
+  characterBible?: CharacterVisual[],
+): 'male' | 'female' {
+  const fromBible = characterBible?.find((c) => c.name === speaker)?.gender
+  if (fromBible === 'male' || fromBible === 'female') return fromBible
+  return guessSpeakerGenderFromName(speaker, speakerIndex)
+}
+
+function orderedSpeakers(dialog: Dialog): string[] {
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const section of dialog.sections) {
+    for (const line of section.lines) {
+      if (!seen.has(line.speaker)) {
+        seen.add(line.speaker)
+        order.push(line.speaker)
+      }
+    }
+  }
+  return order
+}
+
+function speakerIndexMap(dialog: Dialog): Map<string, number> {
+  const map = new Map<string, number>()
+  orderedSpeakers(dialog).forEach((name, idx) => map.set(name, idx))
+  return map
+}
+
+function pickGeminiVoice(gender: 'male' | 'female', genderSlot: number): string {
+  const list = GEMINI_VOICES[gender]
+  return list[genderSlot % list.length]
+}
+
+function pickClassicVoice(
+  languageCode: string,
+  gender: 'male' | 'female',
+  genderSlot: number,
+): string | undefined {
+  const pool = CLASSIC_VOICE_POOL[langKey(languageCode)]
+  if (!pool) return undefined
+  const names = gender === 'male' ? pool.male : pool.female
+  return names[genderSlot % names.length]
+}
+
+/** Weist jedem Sprecher EINMALIG eine feste Stimme zu (nach Geschlecht, nicht nach Zeilenindex). */
+export function buildSpeakerVoiceProfiles(dialog: Dialog): Record<string, SpeakerVoiceProfile> {
+  const indices = speakerIndexMap(dialog)
+  const bible = dialog.characterBible
+  const profiles: Record<string, SpeakerVoiceProfile> = {}
+  let femaleSlot = 0
+  let maleSlot = 0
+  const gemini = usesGeminiTts(dialog.targetLanguage)
+
+  for (const speaker of orderedSpeakers(dialog)) {
+    const fromBible = bible?.find((c) => c.name === speaker)
+    if (fromBible?.voiceName && fromBible.gender) {
+      profiles[speaker] = { gender: fromBible.gender, voiceName: fromBible.voiceName }
+      continue
+    }
+
+    const speakerIdx = indices.get(speaker) ?? 0
+    const gender = resolveSpeakerGender(speaker, speakerIdx, bible)
+    const genderSlot = gender === 'male' ? maleSlot++ : femaleSlot++
+    const voiceName = gemini
+      ? pickGeminiVoice(gender, genderSlot)
+      : pickClassicVoice(dialog.targetLanguage, gender, genderSlot) ??
+        (gender === 'male' ? 'Charon' : 'Kore')
+
+    profiles[speaker] = { gender, voiceName }
+  }
+  return profiles
+}
+
+export function getSpeakerVoice(
+  dialog: Dialog,
+  speaker: string,
+): SpeakerVoiceProfile {
+  const profiles = dialog.speakerVoices ?? buildSpeakerVoiceProfiles(dialog)
+  const profile = profiles[speaker]
+  if (profile) return profile
+  const idx = speakerIndexMap(dialog).get(speaker) ?? 0
+  const gender = resolveSpeakerGender(speaker, idx, dialog.characterBible)
+  return {
+    gender,
+    voiceName: usesGeminiTts(dialog.targetLanguage)
+      ? pickGeminiVoice(gender, 0)
+      : pickClassicVoice(dialog.targetLanguage, gender, 0) ?? 'Kore',
+  }
+}
+
+export function mergeVoiceProfilesIntoDialog(
+  dialog: Dialog,
+  profiles: Record<string, SpeakerVoiceProfile>,
+): { speakerVoices: Record<string, SpeakerVoiceProfile>; characterBible?: CharacterVisual[] } {
+  const characterBible = dialog.characterBible?.map((c) => {
+    const p = profiles[c.name]
+    if (!p) return c
+    return { ...c, gender: p.gender, voiceName: p.voiceName }
+  })
+  return { speakerVoices: profiles, characterBible }
+}
+
 export function resolveGeminiVoiceName(
   gender: 'male' | 'female',
-  speakerIndex: number,
+  genderSlot: number,
 ): string {
-  const list = GEMINI_VOICES[gender]
-  return list[speakerIndex % list.length]
+  return pickGeminiVoice(gender, genderSlot)
 }
 
 export function resolveClassicVoiceName(
   languageCode: string,
   gender: 'male' | 'female',
-  speakerIndex: number,
+  genderSlot: number,
 ): { languageCode: string; name?: string } {
   const key = langKey(languageCode)
   const pool = CLASSIC_VOICE_POOL[key]
   if (pool) {
     const names = gender === 'male' ? pool.male : pool.female
-    return { languageCode: pool.locale, name: names[speakerIndex % names.length] }
+    return { languageCode: pool.locale, name: names[genderSlot % names.length] }
   }
   const locale = languageCode.includes('-') ? languageCode : `${key}-${key.toUpperCase()}`
   return { languageCode: locale }

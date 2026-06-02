@@ -20,6 +20,7 @@ interface DialogDoc {
   folderId?: string | null
   shareToken?: string | null
   characterBible?: CharacterVisual[]
+  speakerVoices?: Dialog['speakerVoices']
   visualScript?: DialogVisualScript
   createdAt: string
   updatedAt: string
@@ -55,6 +56,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     folderId: data.folderId ?? null,
     shareToken: data.shareToken ?? null,
     characterBible: data.characterBible,
+    speakerVoices: data.speakerVoices,
     visualScript: data.visualScript,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
@@ -206,6 +208,7 @@ export async function updateDialog(
     sections: DialogSection[]
     folderId: string | null
     characterBible: CharacterVisual[]
+    speakerVoices: Dialog['speakerVoices']
     visualScript: DialogVisualScript
   }>,
 ): Promise<Dialog | null> {
@@ -223,6 +226,8 @@ export async function updateDialog(
     shareToken: existing.shareToken ?? null,
     characterBible:
       data.characterBible !== undefined ? data.characterBible : existing.characterBible,
+    speakerVoices:
+      data.speakerVoices !== undefined ? data.speakerVoices : existing.speakerVoices,
     visualScript:
       data.visualScript !== undefined ? data.visualScript : existing.visualScript,
     createdAt: existing.createdAt,

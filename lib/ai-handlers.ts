@@ -88,10 +88,22 @@ async function ensureCharacterBibleOnDialog(
   dialog: Dialog,
   userId: string,
 ): Promise<Dialog> {
-  if (dialog.characterBible?.length) return dialog
-  const characterBible = await buildCharacterBible(dialog)
-  const updated = await updateDialog(dialog.id, userId, { characterBible })
-  return updated ?? { ...dialog, characterBible }
+  let current = dialog
+  if (!current.characterBible?.length) {
+    const characterBible = await buildCharacterBible(current)
+    const updated = await updateDialog(current.id, userId, { characterBible })
+    current = updated ?? { ...current, characterBible }
+  }
+  if (!current.speakerVoices || !Object.keys(current.speakerVoices).length) {
+    const { buildSpeakerVoiceProfiles, mergeVoiceProfilesIntoDialog } = await import(
+      './speaker-voice.js'
+    )
+    const profiles = buildSpeakerVoiceProfiles(current)
+    const merged = mergeVoiceProfilesIntoDialog(current, profiles)
+    const updated = await updateDialog(current.id, userId, merged)
+    current = updated ?? { ...current, ...merged }
+  }
+  return current
 }
 
 async function attachSectionImage(

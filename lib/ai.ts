@@ -484,9 +484,9 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
 Regeln:
 - name: exakt wie im Dialog (z.B. Ramo, Shome)
 - gender: "male" | "female" – aus Kontext und Namen
-- description: 1–2 Sätze Englisch: young adult, attractive, well-groomed, Haare, Kleidung, Hautfarbe, unverwechselbare Merkmale
+- description: 2–3 Sätze Englisch, photorealistic: exakte Kleidung (Farbe, Stil), Frisur (Farbe, Länge), Hautfarbe, Alter, unverwechselbare Gesichtsmerkmale – diese Details dürfen auf KEINEM Bild wechseln
 - Nur Personen, die im Dialog vorkommen
-- Stil: photorealistic cinematic still (keine Cartoon-/Flat-Illustration)
+- Stil: photorealistic live-action photograph ONLY (never cartoon, comic, illustration, anime)
 
 JSON:
 { "characters": [{ "name": "Ramo", "gender": "male", "description": "photorealistic young man with ..." }] }`,

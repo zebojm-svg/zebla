@@ -6,8 +6,10 @@ export interface TtsRequest {
   languageCode: string
   rate?: number
   gender?: 'male' | 'female'
-  /** Sprecher-Index im Dialog – unterschiedliche Stimmen pro Person. */
+  /** Sprecher-Index im Dialog – Fallback wenn voiceName fehlt. */
   speakerIndex?: number
+  /** Feste Stimme pro Sprecher (z. B. Kore, Charon). */
+  voiceName?: string
 }
 
 export interface TtsResult {
@@ -158,9 +160,10 @@ async function callGeminiSynthesize(
   gender: 'male' | 'female',
   speakingRate: number,
   speakerIndex = 0,
+  voiceNameOverride?: string,
 ): Promise<TtsResult> {
   const locale = geminiLocale(languageCode)
-  const voiceName = resolveGeminiVoiceName(gender, speakerIndex)
+  const voiceName = voiceNameOverride ?? resolveGeminiVoiceName(gender, speakerIndex)
 
   const body = {
     input: {
@@ -294,10 +297,13 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
       gender,
       speakingRate,
       speakerIndex,
+      req.voiceName,
     )
   }
 
-  const resolved = resolveClassicVoice(req.languageCode, gender, speakerIndex)
+  const resolved = req.voiceName
+    ? { languageCode: resolveClassicVoice(req.languageCode, gender, speakerIndex).languageCode, name: req.voiceName }
+    : resolveClassicVoice(req.languageCode, gender, speakerIndex)
   const attempts: { languageCode: string; name?: string }[] = [
     ...(resolved.name
       ? [{ languageCode: resolved.languageCode, name: resolved.name }]

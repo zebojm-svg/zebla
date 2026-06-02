@@ -69,6 +69,8 @@ export interface CharacterVisual {
   description: string
   /** Für unterschiedliche TTS-Stimmen pro Sprecher. */
   gender?: 'male' | 'female'
+  /** Fest zugewiesene Cloud-TTS-Stimme – bleibt für diesen Sprecher konstant. */
+  voiceName?: string
 }
 
 /** Feste Szene (Ort, Hintergrund) – bleibt für mehrere Panels gleich. */
@@ -119,6 +121,8 @@ export interface Dialog {
   shareToken?: string | null
   /** Einmalig aus dem ganzen Dialog geplant – gleiche Personen auf allen Bildern. */
   characterBible?: CharacterVisual[]
+  /** Fest zugewiesene Stimmen pro Sprechername. */
+  speakerVoices?: Record<string, { gender: 'male' | 'female'; voiceName: string }>
   /** Comic-artiges Bilderskript: Szenen, Kamera, Mimik pro Zeile. */
   visualScript?: DialogVisualScript
   createdAt: string

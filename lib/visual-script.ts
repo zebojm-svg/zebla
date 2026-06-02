@@ -60,20 +60,23 @@ function buildBeatPrompt(
   bible: CharacterVisual[] | undefined,
 ): string {
   const cast = bible?.find((c) => c.name === beat.activeSpeaker)?.description
+  const allCast = bible?.length
+    ? `LOCKED CAST (identical in every frame): ${formatCharacterBibleForPrompt(bible)}. `
+    : ''
   const sceneBlock = scene
-    ? `Scene "${scene.id}" LOCKED: ${scene.settingEn}. Background LOCKED: ${scene.backgroundEn}. Lighting: ${scene.lightingEn}. `
+    ? `Scene "${scene.id}" LOCKED: ${scene.settingEn}. Background LOCKED: ${scene.backgroundEn}. Lighting LOCKED: ${scene.lightingEn}. `
     : ''
   const setupNote = beat.newSetup
-    ? 'Establish this visual setup for the comic panel. '
-    : 'SAME scene, background, outfits, hairstyles and camera angle as the established setup — ONLY facial expression changes. '
+    ? 'Establish this photorealistic dialog scene. '
+    : 'SAME photorealistic scene, background, outfits, hairstyles, body type and camera angle — ONLY facial expression may change. '
   return (
-    `Comic panel for language-learning dialog. ${setupNote}` +
+    `Photorealistic cinematic dialog still (live-action, NOT comic/cartoon). ${setupNote}` +
+    `${allCast}` +
     `${sceneBlock}` +
     `Over-the-shoulder shot: ${beat.cameraEn}. ` +
-    `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` (${cast})` : ''}, speaking to ${beat.addressee} off-camera. ` +
-    `${gazeExpr[beat.gaze]}. Expression: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
-    `Character appearance MUST match exactly across all panels (same clothes, hair, face). ` +
-    `Single visible speaker in frame; partner off-camera. No speech bubbles, no text. ` +
+    `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking to ${beat.addressee} off-camera. ` +
+    `${gazeExpr[beat.gaze]}. Expression ONLY: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
+    `Do not change clothing, hair color, face shape or age. Single visible speaker; partner off-camera. No speech bubbles, no captions. ` +
     `NOT looking at viewer. ${PHOTOREALISTIC_STYLE}`
   )
 }
@@ -111,33 +114,21 @@ export async function buildDialogVisualScript(
     }[]
     defaultFraming: PortraitFraming
   }>(
-    `Du erstellst ein BILDERSKRIPT für eine Sprachlern-Diashow – wie ein Comic OHNE Sprechblasen (Audio übernimmt den Text).
+    `Du erstellst ein BILDERSKRIPT für eine Sprachlern-Diashow – photorealistische Dialog-Szenen wie Film-Stills (KEIN Comic, KEINE Illustration).
 
 Zuerst den GESAMTEN Dialog lesen und verstehen (Handlung, Orte, wer wann dazukommt).
 
-${bible?.length ? `FESTE FIGUREN (Aussehen auf ALLEN Bildern identisch):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+${bible?.length ? `FESTE FIGUREN (Aussehen auf ALLEN Bildern IDENTISCH – Kleidung, Frisur, Gesicht):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
 
 SZENEN (scenes):
-- Definiere wenige wiederkehrende Schauplätze (z.B. "cafe-table", "park-bench").
-- settingEn, backgroundEn, lightingEn auf Englisch – diese bleiben pro sceneId GLEICH.
+- Wenige wiederkehrende Schauplätze mit festem Hintergrund und Licht.
 
 PRO ZEILE (linePlans):
-- sectionId + lineIndex wie im Input
-- sceneId: passende Szene
-- activeSpeaker, addressee: wer spricht, wen er/sie ansieht
-- mood: "neutral" | "surprised" | "sad"
-- gaze: "at_partner" | "aside" | "down" | "away"
-- newSetup: true wenn Szene, Kamera-Seite, neue Person im Bild oder Ort wechselt; false wenn NUR Mimik/Blick sich ändert
-- cameraEn: Englisch, feste Formulierung pro Gesprächspaar, z.B. "camera beside Shome watching Ubaid, viewer sits next to Shome"
-- expressionEn: kurz Englisch, nur Gesicht/Mimik
-- reason: Deutsch, kurz
+- newSetup: true nur bei Ortwechsel, neuer Person, neuer Kameraseite; false = nur Mimik ändert sich
+- cameraEn: feste englische Formulierung pro Blickwinkel-Paar
+- expressionEn: NUR Gesichtsausdruck
 
-KONSISTENZ (sehr wichtig):
-- Gleiche Kleidung, Frisur, Gesicht pro Person über den ganzen Dialog (nur Mimik ändert sich).
-- Beim Wechsel zwischen zwei Sprechern: Kamera immer neben dem Zuhörer, aktiver Sprecher sichtbar, schaut Partner an – NIEMALS in die Kamera.
-- newSetup nur bei echtem Wechsel (neue Person, anderer Ort, andere Kameraposition).
-
-defaultFraming: "three_quarter" | "full_body" | "bust"
+KONSISTENZ: Gleiche Kleidung, Frisur, Gesicht pro Person. Photorealistic only, never cartoon/comic style.
 
 JSON:
 {

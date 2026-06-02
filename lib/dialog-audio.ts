@@ -3,7 +3,11 @@ import { lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-sp
 import { getDialog, updateDialog } from './firestore.js'
 import { uploadLineAudio } from './audio-storage.js'
 import { synthesizeSpeech } from './tts.js'
-import { resolveSpeakerGender } from './speaker-voice.js'
+import {
+  buildSpeakerVoiceProfiles,
+  getSpeakerVoice,
+  mergeVoiceProfilesIntoDialog,
+} from './speaker-voice.js'
 
 export function findLineInDialog(
   dialog: Dialog,
@@ -30,14 +34,31 @@ function speakerIndexMap(dialog: Dialog): Map<string, number> {
   return map
 }
 
+async function ensureSpeakerVoicesOnDialog(
+  dialogId: string,
+  userId: string,
+  dialog: Dialog,
+): Promise<Dialog> {
+  const speakers = [...speakerIndexMap(dialog).keys()]
+  if (dialog.speakerVoices && speakers.every((s) => dialog.speakerVoices?.[s]?.voiceName)) {
+    return dialog
+  }
+  const profiles = buildSpeakerVoiceProfiles(dialog)
+  const merged = mergeVoiceProfilesIntoDialog(dialog, profiles)
+  const updated = await updateDialog(dialogId, userId, merged)
+  return updated ?? { ...dialog, ...merged }
+}
+
 export async function getOrCreateLineAudio(
   dialogId: string,
   userId: string,
   lineId: string,
   rate: number,
 ): Promise<{ audioUrl: string; cached: boolean; dialog: Dialog }> {
-  const dialog = await getDialog(dialogId, userId)
+  let dialog = await getDialog(dialogId, userId)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
+
+  dialog = await ensureSpeakerVoicesOnDialog(dialogId, userId, dialog)
 
   const found = findLineInDialog(dialog, lineId)
   if (!found) throw new Error('Zeile nicht gefunden.')
@@ -48,18 +69,15 @@ export async function getOrCreateLineAudio(
 
   const speakers = speakerIndexMap(dialog)
   const speakerIdx = speakers.get(found.line.speaker) ?? 0
-  const gender = resolveSpeakerGender(
-    found.line.speaker,
-    speakerIdx,
-    dialog.characterBible,
-  )
+  const voice = getSpeakerVoice(dialog, found.line.speaker)
 
   const tts = await synthesizeSpeech({
     text: lineSpeechText(found.line),
     languageCode: dialog.targetLanguage,
     rate,
-    gender,
+    gender: voice.gender,
     speakerIndex: speakerIdx,
+    voiceName: voice.voiceName,
   })
 
   const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, lineId)
@@ -98,6 +116,8 @@ export async function ensureDialogAudio(
   let dialog = await getDialog(dialogId, userId)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
 
+  dialog = await ensureSpeakerVoicesOnDialog(dialogId, userId, dialog)
+
   const speakers = speakerIndexMap(dialog)
   let generated = 0
   let skipped = 0
@@ -123,17 +143,14 @@ export async function ensureDialogAudio(
       }
 
       const speakerIdx = speakers.get(line.speaker) ?? 0
-      const gender = resolveSpeakerGender(
-        line.speaker,
-        speakerIdx,
-        dialog.characterBible,
-      )
+      const voice = getSpeakerVoice(dialog, line.speaker)
       const tts = await synthesizeSpeech({
         text: speechText,
         languageCode: dialog.targetLanguage,
         rate,
-        gender,
+        gender: voice.gender,
         speakerIndex: speakerIdx,
+        voiceName: voice.voiceName,
       })
       const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, line.id)
       generated++
