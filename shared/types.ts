@@ -71,6 +71,42 @@ export interface CharacterVisual {
   gender?: 'male' | 'female'
 }
 
+/** Feste Szene (Ort, Hintergrund) – bleibt für mehrere Panels gleich. */
+export interface VisualScene {
+  id: string
+  title: string
+  settingEn: string
+  backgroundEn: string
+  lightingEn: string
+}
+
+/** Ein Panel im Dialog-Comic – konsistente Figuren, wechselnde Mimik. */
+export interface VisualScriptBeat {
+  id: string
+  sectionId: string
+  lineIndices: number[]
+  sceneId: string
+  activeSpeaker: string
+  addressee: string
+  mood: SpeakerMood
+  gaze: PortraitGaze
+  framing: PortraitFraming
+  /** Neues Setup (Szene/Person/Kamera) vs. nur Mimik-Variante. */
+  newSetup: boolean
+  cameraEn: string
+  expressionEn: string
+  prompt: string
+  imageUrl?: string
+  reason?: string
+}
+
+/** Bilderskript für den ganzen Dialog (wie Comic ohne Sprechblasen). */
+export interface DialogVisualScript {
+  version: 1
+  scenes: VisualScene[]
+  beats: VisualScriptBeat[]
+}
+
 export interface Dialog {
   id: string
   userId: string
@@ -83,6 +119,8 @@ export interface Dialog {
   shareToken?: string | null
   /** Einmalig aus dem ganzen Dialog geplant – gleiche Personen auf allen Bildern. */
   characterBible?: CharacterVisual[]
+  /** Comic-artiges Bilderskript: Szenen, Kamera, Mimik pro Zeile. */
+  visualScript?: DialogVisualScript
   createdAt: string
   updatedAt: string
 }

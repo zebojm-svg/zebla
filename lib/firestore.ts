@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { adminAuth, adminDb } from './firebase-admin.js'
-import type { CharacterVisual, Dialog, DialogSection } from '../shared/types.js'
+import type { CharacterVisual, Dialog, DialogSection, DialogVisualScript } from '../shared/types.js'
 
 export interface UserProfile {
   id: string
@@ -20,6 +20,7 @@ interface DialogDoc {
   folderId?: string | null
   shareToken?: string | null
   characterBible?: CharacterVisual[]
+  visualScript?: DialogVisualScript
   createdAt: string
   updatedAt: string
 }
@@ -54,6 +55,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     folderId: data.folderId ?? null,
     shareToken: data.shareToken ?? null,
     characterBible: data.characterBible,
+    visualScript: data.visualScript,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -204,6 +206,7 @@ export async function updateDialog(
     sections: DialogSection[]
     folderId: string | null
     characterBible: CharacterVisual[]
+    visualScript: DialogVisualScript
   }>,
 ): Promise<Dialog | null> {
   const existing = await getDialog(id, userId)
@@ -220,6 +223,8 @@ export async function updateDialog(
     shareToken: existing.shareToken ?? null,
     characterBible:
       data.characterBible !== undefined ? data.characterBible : existing.characterBible,
+    visualScript:
+      data.visualScript !== undefined ? data.visualScript : existing.visualScript,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }

@@ -15,6 +15,7 @@ import {
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { estimateMissingTts, estimateRegenerateTts } from '../lib/costEstimates'
+import { exportDialogJson, exportDialogText } from '../utils/exportDialog'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line-speech'
 
 export function SlideshowPage() {
@@ -353,6 +354,22 @@ export function SlideshowPage() {
                 {audioBusy ? 'Erzeuge Audio …' : 'Audio neu erstellen'}
               </button>
             )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={exportBusy || speaking}
+              onClick={() => exportDialogText(dialog)}
+            >
+              Dialog (TXT)
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={exportBusy || speaking}
+              onClick={() => exportDialogJson(dialog)}
+            >
+              Dialog (JSON)
+            </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"

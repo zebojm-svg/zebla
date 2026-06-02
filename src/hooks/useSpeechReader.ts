@@ -421,7 +421,9 @@ export function useSpeechReader(
       if (stoppedRef.current) return Promise.resolve(false)
 
       return new Promise<boolean>((resolve) => {
-        const audio = new Audio(audioUrl)
+        const bust =
+          audioUrl.includes('?') ? `${audioUrl}&play=${Date.now()}` : `${audioUrl}?play=${Date.now()}`
+        const audio = new Audio(bust)
         audio.playbackRate = Math.min(1.3, Math.max(0.4, rate))
         cloudAudioRef.current = audio
         setActiveLineId(lineId)

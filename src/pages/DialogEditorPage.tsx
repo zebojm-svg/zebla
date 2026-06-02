@@ -354,7 +354,7 @@ export function DialogEditorPage() {
                   })
                 }}
               >
-                {busy === `scenes-${section.id}` ? '…' : 'Sprecher-Porträts (KI)'}
+                {busy === `scenes-${section.id}` ? '…' : 'Bilder / Bilderskript (KI)'}
               </button>
             </div>
           </div>

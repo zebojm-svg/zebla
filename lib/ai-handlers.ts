@@ -12,6 +12,7 @@ import {
   buildCharacterBible,
   planSpeakerPortraits,
   applySpeakerPortraits,
+  ensureDialogVisualScript,
   generateSectionImage,
   generateUploadedImage,
   isAiConfigured,
@@ -240,39 +241,77 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid)
 
-    let portraits = section.speakerPortraits
-    const portraitIndex = body.beatIndex ?? 0
-    if (!portraits?.length || body.replan) {
-      portraits = await planSpeakerPortraits(section, dialog)
+    if (!dialog.visualScript?.beats?.length || body.replan) {
+      const script = await ensureDialogVisualScript(dialog)
+      const withScript = await updateDialog(dialog.id, user.uid, { visualScript: script })
+      dialog = withScript ?? { ...dialog, visualScript: script }
     }
-    if (!portraits.length) {
-      res.status(400).json({ error: 'Keine Sprecher-Porträts geplant.' })
+
+    let beats = dialog.visualScript!.beats.filter((b) => b.sectionId === section.id)
+    if (!beats.length) {
+      const portraits = await planSpeakerPortraits(section, dialog)
+      beats = portraits.map((p) => ({
+        id: p.id,
+        sectionId: section.id,
+        lineIndices: p.lineIndices,
+        sceneId: 'main',
+        activeSpeaker: p.speaker,
+        addressee: p.addressee ?? '',
+        mood: p.mood,
+        gaze: p.gaze,
+        framing: p.framing,
+        newSetup: true,
+        cameraEn: `beside ${p.addressee ?? 'partner'} watching ${p.speaker}`,
+        expressionEn: p.mood,
+        prompt: p.prompt,
+        imageUrl: p.imageUrl,
+        reason: p.reason,
+      }))
+    }
+
+    const beatIndex = body.beatIndex ?? 0
+    if (!beats.length) {
+      res.status(400).json({ error: 'Kein Bilderskript geplant.' })
       return
     }
-    if (portraitIndex >= portraits.length) {
+    if (beatIndex >= beats.length) {
       res.json({
         dialog,
         done: true,
-        totalBeats: portraits.length,
-        currentBeat: portraits.length,
+        totalBeats: beats.length,
+        currentBeat: beats.length,
       })
       return
     }
 
-    const portrait = portraits[portraitIndex]
-    if (!portrait.imageUrl) {
-      const storageKey = portrait.id
-        ? `${section.id}-portrait-${portrait.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}`
-        : `${section.id}-portrait-${portrait.speaker.replace(/[^\w\-]+/g, '_').slice(0, 24)}-${portraitIndex}`
+    const beat = beats[beatIndex]
+    if (!beat.imageUrl) {
+      const storageKey = `${section.id}-beat-${beat.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}`
       const imageUrl = await generateUploadedImage(
-        portrait.prompt,
+        beat.prompt,
         dialog.id,
         storageKey,
         dialog.characterBible,
       )
-      portraits = portraits.map((p, i) => (i === portraitIndex ? { ...p, imageUrl } : p))
+      beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
     }
 
+    const allBeats = dialog.visualScript!.beats.map((b) =>
+      b.sectionId === section.id ? (beats.find((x) => x.id === b.id) ?? b) : b,
+    )
+    const visualScript = { ...dialog.visualScript!, beats: allBeats }
+    const portraits = beats.map((b) => ({
+      id: b.id,
+      speaker: b.activeSpeaker,
+      mood: b.mood,
+      gaze: b.gaze,
+      addressee: b.addressee,
+      lineIndices: b.lineIndices,
+      framing: b.framing,
+      prompt: b.prompt,
+      imageUrl: b.imageUrl,
+      reason: b.reason,
+    }))
     const lines = applySpeakerPortraits(section.lines, portraits)
     const sections = dialog.sections.map((s) =>
       s.id === section.id
@@ -288,14 +327,15 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
     const updated = await updateDialog(dialog.id, user.uid, {
       sections,
       characterBible: dialog.characterBible,
+      visualScript,
     })
-    const done = portraitIndex + 1 >= portraits.length
+    const done = beatIndex + 1 >= beats.length
     res.json({
       dialog: updated,
       done,
-      totalBeats: portraits.length,
-      currentBeat: portraitIndex + 1,
-      reason: portrait.reason ?? `${portrait.speaker} (${portrait.mood})`,
+      totalBeats: beats.length,
+      currentBeat: beatIndex + 1,
+      reason: beat.reason ?? `${beat.activeSpeaker} (${beat.mood})`,
     })
   } catch (err) {
     sendError(res, err)

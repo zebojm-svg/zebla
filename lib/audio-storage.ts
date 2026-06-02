@@ -22,8 +22,9 @@ export async function uploadLineAudio(
   const bucket = adminStorage().bucket()
   const file = bucket.file(path)
   await file.save(buffer, {
-    metadata: { contentType: 'audio/mpeg', cacheControl: 'public, max-age=31536000' },
+    metadata: { contentType: 'audio/mpeg', cacheControl: 'public, max-age=3600' },
   })
   await file.makePublic()
-  return `https://storage.googleapis.com/${bucket.name}/${path}`
+  const base = `https://storage.googleapis.com/${bucket.name}/${path}`
+  return `${base}?v=${Date.now()}`
 }

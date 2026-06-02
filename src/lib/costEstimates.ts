@@ -100,7 +100,7 @@ export function estimateSceneImages(portraitCount = 2): CostEstimate {
   const cents = Math.max(4, portraitCount * 3)
   return {
     title: 'Sprecher-Porträts generieren',
-    description: `KI plant Mimik und Blick pro Zeile und erzeugt ${portraitCount} Dialog-Bilder (Perspektive neben dem Gegenüber).`,
+    description: `KI erstellt zuerst ein Bilderskript (Szenen, Kamera, Mimik), dann ${portraitCount} konsistente Comic-Panels.`,
     items: [
       { label: 'Porträts pro Abschnitt', amount: String(portraitCount) },
       { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 4} Cent` },

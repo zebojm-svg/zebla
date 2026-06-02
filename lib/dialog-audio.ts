@@ -111,6 +111,17 @@ export async function ensureDialogAudio(
         continue
       }
 
+      if (force) {
+        const sections = dialog.sections.map((sec) => ({
+          ...sec,
+          lines: sec.lines.map((l) =>
+            l.id === line.id ? { ...l, audioUrl: undefined } : l,
+          ),
+        }))
+        const cleared = await updateDialog(dialogId, userId, { sections })
+        if (cleared) dialog = cleared
+      }
+
       const speakerIdx = speakers.get(line.speaker) ?? 0
       const gender = resolveSpeakerGender(
         line.speaker,

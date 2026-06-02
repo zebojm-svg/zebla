@@ -17,6 +17,13 @@ import type {
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
+import { PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
+import {
+  buildDialogVisualScript,
+  beatsForSection,
+  beatsToSpeakerPortraits,
+} from './visual-script.js'
+import type { DialogVisualScript } from '../shared/types.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL =
@@ -420,7 +427,7 @@ function imageGenerationErrorMessage(raw: string): string {
   return `Bildgenerierung fehlgeschlagen: ${raw.slice(0, 280)}`
 }
 
-function dialogSummaryForImages(dialog: Dialog): string {
+export function dialogSummaryForImages(dialog: Dialog): string {
   const parts: string[] = []
   for (const sec of dialog.sections) {
     parts.push(`[${sec.title}]`)
@@ -453,8 +460,9 @@ function twoShotLayoutHint(speakers: string[]): string {
   return ''
 }
 
-const PHOTOREALISTIC_STYLE =
-  'Photorealistic cinematic photograph, natural soft lighting, shallow depth of field, high detail, attractive well-groomed young adults, realistic skin texture. NOT cartoon, NOT illustration, NOT anime. No text or labels in the image.'
+export async function ensureDialogVisualScript(dialog: Dialog): Promise<DialogVisualScript> {
+  return buildDialogVisualScript(dialog, chatJson, dialogSummaryForImages(dialog))
+}
 
 export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisual[]> {
   const speakers = new Map<string, string[]>()
@@ -542,6 +550,19 @@ export async function generateSectionImage(
 }
 
 export async function planSpeakerPortraits(
+  section: DialogSection,
+  dialog: Dialog,
+): Promise<SpeakerPortrait[]> {
+  let script = dialog.visualScript
+  if (!script?.beats?.length) {
+    script = await ensureDialogVisualScript(dialog)
+  }
+  const beats = beatsForSection(script, section.id)
+  if (beats.length) return beatsToSpeakerPortraits(beats)
+  return planSpeakerPortraitsLegacy(section, dialog)
+}
+
+async function planSpeakerPortraitsLegacy(
   section: DialogSection,
   dialog: Dialog,
 ): Promise<SpeakerPortrait[]> {
