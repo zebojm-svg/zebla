@@ -390,6 +390,29 @@ textarea { resize: vertical; min-height: 120px; }
   font-size: 0.8125rem;
 }
 
+.speaker-gender-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.speaker-gender-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #f8fafc;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.speaker-gender-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
 .dialog-meta { font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem; }
 .dialog-card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
@@ -1025,10 +1048,115 @@ textarea { resize: vertical; min-height: 120px; }
 }
 
 @media (max-width: 640px) {
+  .main { padding: 1rem 0.75rem; max-width: 100%; }
+  h1 { font-size: 1.5rem; }
+  .btn {
+    min-height: 44px;
+    padding: 0.65rem 1rem;
+    font-size: 1rem;
+  }
+  .btn-sm { min-height: 40px; }
   .settings-row { grid-template-columns: 1fr; }
-  .page-header { flex-direction: column; }
-  .slideshow-controls { flex-direction: column; }
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .page-header .btn { width: 100%; text-align: center; }
+  .topbar {
+    flex-wrap: wrap;
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+  .mode-tabs {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .mode-tab {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  .chat-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .chat-input-row input { width: 100%; min-height: 44px; }
+  .chat-input-row .btn { width: 100%; }
+  .button-row { flex-direction: column; }
+  .button-row .btn { width: 100%; }
   .toolbar-panel .toolbar-grid { grid-template-columns: 1fr; }
-  .section-actions { width: 100%; margin-left: 0; }
-  .section-actions .btn { flex: 1; }
+  .tool-controls { flex-wrap: wrap; }
+  .tool-controls select { flex: 1; min-width: 0; min-height: 44px; }
+  .section-header { flex-direction: column; align-items: stretch; }
+  .section-actions { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .section-actions .btn { flex: 1 1 45%; min-width: 0; }
+  .dialog-line {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .line-thumb {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    margin-top: 0.5rem;
+  }
+  .speaker-gender-grid { grid-template-columns: 1fr; }
+  .speaker-gender-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .speaker-gender-row select { min-height: 44px; width: 100%; }
+  .slideshow-page { height: 100dvh; min-height: 100dvh; }
+  .slideshow-topbar {
+    flex-wrap: wrap;
+    padding: 0.5rem 0.75rem;
+    gap: 0.35rem;
+  }
+  .slideshow-title { font-size: 0.95rem; }
+  .slideshow-settings.panel { margin: 0 0.5rem; padding: 0.75rem; }
+  .slideshow-export-block { margin: 0 0.5rem; }
+  .slideshow-export-bar {
+    flex-direction: column;
+    margin: 0 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
+  .slideshow-export-bar .btn { width: 100%; }
+  .slideshow-cloud-tts,
+  .slideshow-tts-hint { margin-left: 0.75rem; margin-right: 0.75rem; font-size: 0.8125rem; }
+  .slideshow-image-wrap {
+    min-height: min(42dvh, 360px);
+    padding: 0.5rem;
+  }
+  .slideshow-preview {
+    max-height: min(32dvh, 220px);
+    padding: 0.65rem 0.75rem;
+  }
+  .slideshow-preview-line { padding: 0.65rem 0.75rem; }
+  .slideshow-controls {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .slideshow-playback {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+  .slideshow-rate { width: 100%; }
+  .slideshow-rate input[type='range'] { flex: 1; min-width: 0; }
+  .slideshow-nav-btn,
+  .slideshow-play-btn {
+    min-width: 48px;
+    min-height: 48px;
+  }
+  .dialog-meta-pre { max-height: 10rem; }
+  .create-image-direction textarea { min-height: 5rem; }
+}
+
+@media (max-width: 380px) {
+  .section-actions .btn { flex: 1 1 100%; }
+  .birkenbihl-word { min-width: 0; }
 }

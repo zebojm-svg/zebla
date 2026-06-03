@@ -17,7 +17,8 @@ import type {
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
-import { PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
+import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE } from './ken-burns-style.js'
+import { referenceAnchorForPrompt, buildReferenceImagePrompt } from './reference-image.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 import {
@@ -481,19 +482,27 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
     sampleLines: lines,
   }))
 
+  const genderHints = cast
+    .map((c) => {
+      const g = dialog.speakerProfiles?.[c.name]?.gender
+      return g ? `${c.name} (Nutzer: ${g === 'male' ? 'männlich' : 'weiblich'})` : c.name
+    })
+    .join(', ')
+
   const result = await chatJson<{ characters: CharacterVisual[] }>(
     `Du planst Fotos für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
 
 Regeln:
 - name: exakt wie im Dialog (z.B. Ramo, Shome)
-- gender: "male" | "female" – aus Kontext und Namen
-- description: 2–3 Sätze Englisch, photorealistic: exakte Kleidung (Farbe, Stil), Frisur (Farbe, Länge), Hautfarbe, Alter, unverwechselbare Gesichtsmerkmale – diese Details dürfen auf KEINEM Bild wechseln
+- gender: "male" | "female" – aus Kontext, Nutzer-Angabe oder Namen
+- description: 2–3 Sätze Englisch, photorealistic: exakte Kleidung (Farbe, Stil), Frisur, Brille optional, Hautfarbe, Alter, unverwechselbare Merkmale
+- Erscheinungsbild-Richtlinie: ${CAST_APPEARANCE_GUIDE}
 - Nur Personen, die im Dialog vorkommen
 - Stil: photorealistic live-action photograph ONLY (never cartoon, comic, illustration, anime)
 
 JSON:
 { "characters": [{ "name": "Ramo", "gender": "male", "description": "photorealistic young man with ..." }] }`,
-    `${imgCtx ? `${imgCtx}\n\n---\n` : ''}Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher mit Beispielzeilen:\n${JSON.stringify(cast)}`,
+    `${imgCtx ? `${imgCtx}\n\n---\n` : ''}Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher: ${genderHints}\nBeispielzeilen:\n${JSON.stringify(cast)}`,
   )
 
   if (!result.characters?.length) {
@@ -506,12 +515,17 @@ export function formatCharacterBibleForPrompt(bible: CharacterVisual[]): string 
   return bible.map((c) => `${c.name}: ${c.description}`).join('; ')
 }
 
-function buildConsistentImagePrompt(scenePrompt: string, bible?: CharacterVisual[]): string {
+function buildConsistentImagePrompt(
+  scenePrompt: string,
+  bible?: CharacterVisual[],
+  referencePrompt?: string,
+): string {
+  const ref = referenceAnchorForPrompt(referencePrompt)
   const cast =
     bible?.length ?
       `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  return `${cast}${scenePrompt}. ${PHOTOREALISTIC_STYLE}`
+  return `${ref}${cast}${scenePrompt}. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
 }
 
 function buildImagePrompt(
@@ -865,8 +879,9 @@ export async function generateUploadedImage(
   dialogId: string,
   storageKey: string,
   bible?: CharacterVisual[],
+  referencePrompt?: string,
 ): Promise<string> {
-  const fullPrompt = buildConsistentImagePrompt(prompt, bible)
+  const fullPrompt = buildConsistentImagePrompt(prompt, bible, referencePrompt)
   const dataUrl = await generateImageDataUrl(fullPrompt)
   const { uploadDialogImage } = await import('./image-storage.js')
   try {
@@ -885,6 +900,29 @@ export function applyLineImageBeats(
     if (!beat?.imageUrl) return line
     return { ...line, imageUrl: beat.imageUrl, imagePrompt: beat.prompt }
   })
+}
+
+export async function ensureReferenceImage(
+  dialog: Dialog,
+  userId: string,
+  force = false,
+): Promise<Dialog> {
+  if (dialog.referenceImageUrl && dialog.referenceImagePrompt && !force) {
+    return dialog
+  }
+  const prompt = buildReferenceImagePrompt(dialog, dialog.characterBible)
+  const { updateDialog } = await import('./firestore.js')
+  const imageUrl = await generateUploadedImage(
+    prompt,
+    dialog.id,
+    'reference-cast-0',
+    dialog.characterBible,
+  )
+  const updated = await updateDialog(dialog.id, userId, {
+    referenceImageUrl: imageUrl,
+    referenceImagePrompt: prompt,
+  })
+  return updated ?? { ...dialog, referenceImageUrl: imageUrl, referenceImagePrompt: prompt }
 }
 
 export function isAiConfigured(): boolean {

@@ -106,7 +106,7 @@ export function estimateSceneImages(portraitCount = 2): CostEstimate {
       { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 4} Cent` },
     ],
     totalHint: `ca. ${cents}–${cents + 4} Cent`,
-    note: '2–4 Varianten pro Sprecher möglich (Mimik/Blick) – klarer Wechsel beim Sprecherwechsel.',
+    note: '2–4 Varianten pro Sprecher möglich. Zuerst wird intern ein Referenz-Cast (Bild 0) erzeugt, danach die Panels.',
   }
 }
 

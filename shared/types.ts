@@ -134,6 +134,11 @@ export interface Dialog {
   creationChat?: ChatMessage[]
   /** Meta-Hinweise für Bilder (Setting, Emotionen wie Lachen/Weinen, Figuren). */
   imageDirection?: string
+  /** Bild 0: Cast-Referenz (intern, nicht in Diashow) – Standard für alle weiteren Bilder. */
+  referenceImageUrl?: string
+  referenceImagePrompt?: string
+  /** Geschlecht pro Sprecher (wenn nicht aus Namen erkennbar). */
+  speakerProfiles?: Record<string, { gender?: 'male' | 'female' }>
   /** Einmalig aus dem ganzen Dialog geplant – gleiche Personen auf allen Bildern. */
   characterBible?: CharacterVisual[]
   /** Fest zugewiesene Stimmen pro Sprechername. */

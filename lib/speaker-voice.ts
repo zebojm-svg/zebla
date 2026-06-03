@@ -60,7 +60,10 @@ export function resolveSpeakerGender(
   speaker: string,
   speakerIndex: number,
   characterBible?: CharacterVisual[],
+  speakerProfiles?: Record<string, { gender?: 'male' | 'female' }>,
 ): 'male' | 'female' {
+  const fromProfile = speakerProfiles?.[speaker]?.gender
+  if (fromProfile === 'male' || fromProfile === 'female') return fromProfile
   const fromBible = characterBible?.find((c) => c.name === speaker)?.gender
   if (fromBible === 'male' || fromBible === 'female') return fromBible
   return guessSpeakerGenderFromName(speaker, speakerIndex)
@@ -119,7 +122,7 @@ export function buildSpeakerVoiceProfiles(dialog: Dialog): Record<string, Speake
     }
 
     const speakerIdx = indices.get(speaker) ?? 0
-    const gender = resolveSpeakerGender(speaker, speakerIdx, bible)
+    const gender = resolveSpeakerGender(speaker, speakerIdx, bible, dialog.speakerProfiles)
     const genderSlot = gender === 'male' ? maleSlot++ : femaleSlot++
     const voiceName = gemini
       ? pickGeminiVoice(gender, genderSlot)
@@ -139,7 +142,7 @@ export function getSpeakerVoice(
   const profile = profiles[speaker]
   if (profile) return profile
   const idx = speakerIndexMap(dialog).get(speaker) ?? 0
-  const gender = resolveSpeakerGender(speaker, idx, dialog.characterBible)
+  const gender = resolveSpeakerGender(speaker, idx, dialog.characterBible, dialog.speakerProfiles)
   return {
     gender,
     voiceName: usesGeminiTts(dialog.targetLanguage)

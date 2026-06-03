@@ -23,6 +23,9 @@ interface DialogDoc {
   creationPrompt?: string
   creationChat?: Dialog['creationChat']
   imageDirection?: string
+  referenceImageUrl?: string
+  referenceImagePrompt?: string
+  speakerProfiles?: Dialog['speakerProfiles']
   characterBible?: CharacterVisual[]
   speakerVoices?: Dialog['speakerVoices']
   visualScript?: DialogVisualScript
@@ -63,6 +66,9 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
     imageDirection: data.imageDirection,
+    referenceImageUrl: data.referenceImageUrl,
+    referenceImagePrompt: data.referenceImagePrompt,
+    speakerProfiles: data.speakerProfiles,
     characterBible: data.characterBible,
     speakerVoices: data.speakerVoices,
     visualScript: data.visualScript,
@@ -192,6 +198,9 @@ export async function createDialog(
     creationPrompt?: string
     creationChat?: Dialog['creationChat']
     imageDirection?: string
+    referenceImageUrl?: string
+    referenceImagePrompt?: string
+    speakerProfiles?: Dialog['speakerProfiles']
   },
 ): Promise<Dialog> {
   const now = new Date().toISOString()
@@ -207,6 +216,9 @@ export async function createDialog(
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
     imageDirection: data.imageDirection,
+    referenceImageUrl: data.referenceImageUrl,
+    referenceImagePrompt: data.referenceImagePrompt,
+    speakerProfiles: data.speakerProfiles,
     createdAt: now,
     updatedAt: now,
   }
@@ -227,6 +239,9 @@ export async function updateDialog(
     creationPrompt: string
     creationChat: Dialog['creationChat']
     imageDirection: string
+    referenceImageUrl: string
+    referenceImagePrompt: string
+    speakerProfiles: Dialog['speakerProfiles']
     characterBible: CharacterVisual[]
     speakerVoices: Dialog['speakerVoices']
     visualScript: DialogVisualScript
@@ -250,6 +265,14 @@ export async function updateDialog(
     creationChat: data.creationChat !== undefined ? data.creationChat : existing.creationChat,
     imageDirection:
       data.imageDirection !== undefined ? data.imageDirection : existing.imageDirection,
+    referenceImageUrl:
+      data.referenceImageUrl !== undefined ? data.referenceImageUrl : existing.referenceImageUrl,
+    referenceImagePrompt:
+      data.referenceImagePrompt !== undefined
+        ? data.referenceImagePrompt
+        : existing.referenceImagePrompt,
+    speakerProfiles:
+      data.speakerProfiles !== undefined ? data.speakerProfiles : existing.speakerProfiles,
     characterBible:
       data.characterBible !== undefined ? data.characterBible : existing.characterBible,
     speakerVoices:
@@ -322,6 +345,11 @@ export async function cloneDialog(
       ? (JSON.parse(JSON.stringify(source.creationChat)) as Dialog['creationChat'])
       : undefined,
     imageDirection: source.imageDirection,
+    referenceImageUrl: source.referenceImageUrl,
+    referenceImagePrompt: source.referenceImagePrompt,
+    speakerProfiles: source.speakerProfiles
+      ? JSON.parse(JSON.stringify(source.speakerProfiles))
+      : undefined,
     characterBible: source.characterBible
       ? JSON.parse(JSON.stringify(source.characterBible))
       : undefined,

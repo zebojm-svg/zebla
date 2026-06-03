@@ -12,7 +12,7 @@ import type {
   VisualScene,
   VisualScriptBeat,
 } from '../shared/types.js'
-import { PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
+import { CAST_APPEARANCE_GUIDE, PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 
@@ -75,7 +75,7 @@ function buildBeatPrompt(
     `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking to ${beat.addressee} off-camera. ` +
     `${gazeExpr[beat.gaze]}. Expression ONLY: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
     `Do not change clothing, hair color, face shape or age. Single visible speaker; partner off-camera. No speech bubbles, no captions. ` +
-    `NOT looking at viewer. ${PHOTOREALISTIC_STYLE}`
+    `NOT looking at viewer. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
   )
 }
 

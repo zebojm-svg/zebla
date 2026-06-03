@@ -8,6 +8,7 @@ import { getIncludeRomanization, setIncludeRomanization } from '../lib/preferenc
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
+import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
 import {
   estimateAllSectionImages,
   estimateBirkenbihl,
@@ -160,6 +161,49 @@ export function DialogEditorPage() {
             plant passende Gesichtsausdrücke.
           </p>
         </label>
+
+        {uniqueSpeakersInDialog(dialog).length > 0 && (
+          <div className="dialog-meta-block speaker-gender-block">
+            <h3 className="dialog-meta-label">Geschlecht der Sprecher</h3>
+            <p className="muted dialog-meta-hint">
+              Falls die KI das Geschlecht aus dem Namen nicht erkennt – wichtig für Stimme und Erscheinungsbild.
+            </p>
+            <div className="speaker-gender-grid">
+              {uniqueSpeakersInDialog(dialog).map((speaker) => (
+                <label key={speaker} className="speaker-gender-row">
+                  <span className="speaker-gender-name">{speaker}</span>
+                  <select
+                    value={speakerGender(dialog, speaker) ?? ''}
+                    disabled={!!busy}
+                    onChange={(e) => {
+                      const val = e.target.value as 'male' | 'female' | ''
+                      void runAction(`gender-${speaker}`, async () => {
+                        const profiles = { ...(dialog.speakerProfiles ?? {}) }
+                        if (val) profiles[speaker] = { gender: val }
+                        else delete profiles[speaker]
+                        const characterBible = dialog.characterBible?.map((c) =>
+                          c.name === speaker && val ? { ...c, gender: val } : c,
+                        )
+                        const { dialog: d } = await api.dialogs.update(dialog.id, {
+                          speakerProfiles: profiles,
+                          characterBible,
+                        })
+                        setDialog(d)
+                        setStatus(
+                          'Geschlecht gespeichert. Bei Bedarf „Bilder / Bilderskript (KI)“ und Audio neu erstellen.',
+                        )
+                      })
+                    }}
+                  >
+                    <option value="">Automatisch</option>
+                    <option value="female">Weiblich</option>
+                    <option value="male">Männlich</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="panel toolbar-panel">
@@ -367,15 +411,17 @@ export function DialogEditorPage() {
                 onClick={async () => {
                   if (!(await confirmCost(estimateSceneImages(2)))) return
                   await runAction(`scenes-${section.id}`, async () => {
-                    let beatIndex = 0
+                    let beatIndex = -1
                     let replan = true
                     let current = dialog
                     let done = false
                     while (!done) {
                       setStatus(
-                        replan
-                          ? 'KI plant Sprecher-Porträts …'
-                          : `Porträt ${beatIndex + 1} … (ca. 15–30 s)`,
+                        beatIndex < 0
+                          ? 'Referenz-Cast wird erstellt (intern) …'
+                          : replan
+                            ? 'KI plant Bilderskript …'
+                            : `Bild ${beatIndex + 1} … (ca. 15–30 s)`,
                       )
                       const res = await api.ai.imageLines(
                         current.id,
@@ -385,6 +431,11 @@ export function DialogEditorPage() {
                       )
                       current = res.dialog
                       setDialog(res.dialog)
+                      if (beatIndex < 0) {
+                        beatIndex = 0
+                        replan = false
+                        continue
+                      }
                       done = res.done
                       beatIndex++
                       replan = false
@@ -392,7 +443,7 @@ export function DialogEditorPage() {
                         await new Promise((r) => setTimeout(r, 2500))
                       }
                     }
-                    setStatus(`Fertig – ${beatIndex} Sprecher-Porträt${beatIndex !== 1 ? 's' : ''}.`)
+                    setStatus(`Fertig – ${beatIndex} Bild${beatIndex !== 1 ? 'er' : ''}.`)
                   })
                 }}
               >

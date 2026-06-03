@@ -13,6 +13,7 @@ import {
   planSpeakerPortraits,
   applySpeakerPortraits,
   ensureDialogVisualScript,
+  ensureReferenceImage,
   generateSectionImage,
   generateUploadedImage,
   isAiConfigured,
@@ -254,9 +255,30 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid)
 
     if (!dialog.visualScript?.beats?.length || body.replan) {
+      if (body.replan) {
+        const cleared = await updateDialog(dialog.id, user.uid, {
+          visualScript: undefined,
+          referenceImageUrl: undefined,
+          referenceImagePrompt: undefined,
+        })
+        if (cleared) dialog = cleared
+      }
       const script = await ensureDialogVisualScript(dialog)
       const withScript = await updateDialog(dialog.id, user.uid, { visualScript: script })
       dialog = withScript ?? { ...dialog, visualScript: script }
+    }
+
+    dialog = await ensureReferenceImage(dialog, user.uid, body.replan === true)
+
+    if (body.beatIndex === -1) {
+      res.json({
+        dialog,
+        done: false,
+        totalBeats: dialog.visualScript?.beats.filter((b) => b.sectionId === section.id).length ?? 0,
+        currentBeat: 0,
+        reason: 'Referenz-Cast (intern)',
+      })
+      return
     }
 
     let beats = dialog.visualScript!.beats.filter((b) => b.sectionId === section.id)
@@ -304,6 +326,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         dialog.id,
         storageKey,
         dialog.characterBible,
+        dialog.referenceImagePrompt,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
     }
