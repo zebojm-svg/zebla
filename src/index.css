@@ -1107,7 +1107,28 @@ textarea { resize: vertical; min-height: 120px; }
     gap: 0.35rem;
   }
   .speaker-gender-row select { min-height: 44px; width: 100%; }
-  .slideshow-page { height: 100dvh; min-height: 100dvh; }
+  /* Diashow: nicht auf Viewport festkleben – sonst keine Scrollbar zu Play/Export-Hinweis */
+  .layout:has(.slideshow-page) {
+    min-height: 100dvh;
+    height: auto;
+  }
+  .main-full:has(.slideshow-page) {
+    flex: none;
+    overflow: visible;
+  }
+  .slideshow-page {
+    min-height: 100dvh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    padding-bottom: calc(11rem + env(safe-area-inset-bottom));
+  }
+  .slideshow-stage {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
   .slideshow-topbar {
     flex-wrap: wrap;
     padding: 0.5rem 0.75rem;
@@ -1125,15 +1146,26 @@ textarea { resize: vertical; min-height: 120px; }
   .slideshow-cloud-tts,
   .slideshow-tts-hint { margin-left: 0.75rem; margin-right: 0.75rem; font-size: 0.8125rem; }
   .slideshow-image-wrap {
-    min-height: min(42dvh, 360px);
+    flex: 0 0 auto;
+    min-height: min(28dvh, 240px);
+    max-height: min(36dvh, 320px);
     padding: 0.5rem;
   }
   .slideshow-preview {
-    max-height: min(32dvh, 220px);
+    flex-shrink: 0;
+    max-height: none;
     padding: 0.65rem 0.75rem;
   }
   .slideshow-preview-line { padding: 0.65rem 0.75rem; }
   .slideshow-controls {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    background: #0f172a;
+    border-top: 1px solid #334155;
+    box-shadow: 0 -8px 24px rgba(2, 6, 23, 0.65);
     flex-direction: column;
     gap: 0.75rem;
     padding: 0.75rem;
