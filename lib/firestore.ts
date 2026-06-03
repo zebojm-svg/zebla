@@ -19,6 +19,10 @@ interface DialogDoc {
   sections: DialogSection[]
   folderId?: string | null
   shareToken?: string | null
+  creationMode?: Dialog['creationMode']
+  creationPrompt?: string
+  creationChat?: Dialog['creationChat']
+  imageDirection?: string
   characterBible?: CharacterVisual[]
   speakerVoices?: Dialog['speakerVoices']
   visualScript?: DialogVisualScript
@@ -55,6 +59,10 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
     shareToken: data.shareToken ?? null,
+    creationMode: data.creationMode,
+    creationPrompt: data.creationPrompt,
+    creationChat: data.creationChat,
+    imageDirection: data.imageDirection,
     characterBible: data.characterBible,
     speakerVoices: data.speakerVoices,
     visualScript: data.visualScript,
@@ -180,6 +188,10 @@ export async function createDialog(
     length: Dialog['length']
     sections: DialogSection[]
     folderId?: string | null
+    creationMode?: Dialog['creationMode']
+    creationPrompt?: string
+    creationChat?: Dialog['creationChat']
+    imageDirection?: string
   },
 ): Promise<Dialog> {
   const now = new Date().toISOString()
@@ -191,6 +203,10 @@ export async function createDialog(
     length: data.length,
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
+    creationMode: data.creationMode,
+    creationPrompt: data.creationPrompt,
+    creationChat: data.creationChat,
+    imageDirection: data.imageDirection,
     createdAt: now,
     updatedAt: now,
   }
@@ -207,6 +223,10 @@ export async function updateDialog(
     targetLanguage: string
     sections: DialogSection[]
     folderId: string | null
+    creationMode: Dialog['creationMode']
+    creationPrompt: string
+    creationChat: Dialog['creationChat']
+    imageDirection: string
     characterBible: CharacterVisual[]
     speakerVoices: Dialog['speakerVoices']
     visualScript: DialogVisualScript
@@ -224,6 +244,12 @@ export async function updateDialog(
     sections: sanitizeSections(data.sections ?? existing.sections),
     folderId: data.folderId !== undefined ? data.folderId : (existing.folderId ?? null),
     shareToken: existing.shareToken ?? null,
+    creationMode: data.creationMode !== undefined ? data.creationMode : existing.creationMode,
+    creationPrompt:
+      data.creationPrompt !== undefined ? data.creationPrompt : existing.creationPrompt,
+    creationChat: data.creationChat !== undefined ? data.creationChat : existing.creationChat,
+    imageDirection:
+      data.imageDirection !== undefined ? data.imageDirection : existing.imageDirection,
     characterBible:
       data.characterBible !== undefined ? data.characterBible : existing.characterBible,
     speakerVoices:
@@ -290,6 +316,12 @@ export async function cloneDialog(
     length: source.length,
     sections: sanitizeSections(JSON.parse(JSON.stringify(source.sections)) as DialogSection[]),
     folderId: folderId ?? null,
+    creationMode: source.creationMode,
+    creationPrompt: source.creationPrompt,
+    creationChat: source.creationChat
+      ? (JSON.parse(JSON.stringify(source.creationChat)) as Dialog['creationChat'])
+      : undefined,
+    imageDirection: source.imageDirection,
     characterBible: source.characterBible
       ? JSON.parse(JSON.stringify(source.characterBible))
       : undefined,

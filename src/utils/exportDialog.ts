@@ -45,8 +45,14 @@ export function exportDialogText(dialog: Dialog) {
     }
   }
 
+  if (dialog.imageDirection?.trim()) {
+    lines.push('', '--- Bild-Hinweise ---', dialog.imageDirection.trim())
+  }
+  if (dialog.creationPrompt?.trim() && !dialog.creationChat?.length) {
+    lines.push('', '--- Auftrag ---', dialog.creationPrompt.trim())
+  }
+
   if (dialog.visualScript?.beats?.length) {
-    lines.push('--- Bilderskript ---', '')
     for (const beat of dialog.visualScript.beats) {
       lines.push(
         `[${beat.activeSpeaker} → ${beat.addressee}] Zeilen ${beat.lineIndices.map((i) => i + 1).join(', ')}: ${beat.reason ?? beat.expressionEn}`,

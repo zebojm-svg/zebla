@@ -13,14 +13,12 @@ import type {
   VisualScriptBeat,
 } from '../shared/types.js'
 import { PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
+import { imagePlanningContext } from '../shared/dialog-image-context.js'
+import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 
 type ChatJsonFn = <T>(system: string, user: string) => Promise<T>
 
-const moodExpr: Record<SpeakerMood, string> = {
-  neutral: 'calm friendly expression while speaking',
-  surprised: 'surprised expression, raised eyebrows, reacting to partner',
-  sad: 'gentle sad or thoughtful expression',
-}
+const moodExpr = MOOD_PROMPT_EN
 
 const gazeExpr: Record<PortraitGaze, string> = {
   at_partner:
@@ -86,7 +84,8 @@ export async function buildDialogVisualScript(
   chatJson: ChatJsonFn,
   dialogSummary: string,
 ): Promise<DialogVisualScript> {
-  const bible = dialog.characterBible
+  const imageContext = imagePlanningContext(dialog)
+  const moodList = SPEAKER_MOODS.join(' | ')
   const sectionsPayload = dialog.sections.map((sec) => ({
     sectionId: sec.id,
     title: sec.title,
@@ -96,6 +95,8 @@ export async function buildDialogVisualScript(
       text: line.text,
     })),
   }))
+
+  const bible = dialog.characterBible
 
   const result = await chatJson<{
     scenes: VisualScene[]
@@ -124,6 +125,7 @@ SZENEN (scenes):
 - Wenige wiederkehrende Schauplätze mit festem Hintergrund und Licht.
 
 PRO ZEILE (linePlans):
+- mood: ${moodList} – passend zum Zeileninhalt und zu den Bild-Hinweisen (z.B. laughing bei Humor, crying/sobbing bei Trauer)
 - newSetup: true nur bei Ortwechsel, neuer Person, neuer Kameraseite; false = nur Mimik ändert sich
 - cameraEn: feste englische Formulierung pro Blickwinkel-Paar
 - expressionEn: NUR Gesichtsausdruck
@@ -136,10 +138,10 @@ JSON:
   "linePlans": [{ "sectionId": "...", "lineIndex": 0, "sceneId": "cafe", "activeSpeaker": "Ubaid", "addressee": "Shome", "mood": "neutral", "gaze": "at_partner", "newSetup": true, "cameraEn": "...", "expressionEn": "...", "reason": "..." }],
   "defaultFraming": "three_quarter"
 }`,
-    `Dialog "${dialog.title}"\n\n${dialogSummary}\n\nAbschnitte:\n${JSON.stringify(sectionsPayload)}`,
+    `${imageContext ? `${imageContext}\n\n---\n` : ''}Dialog "${dialog.title}"\n\n${dialogSummary}\n\nAbschnitte:\n${JSON.stringify(sectionsPayload)}`,
   )
 
-  const validMoods = new Set<SpeakerMood>(['neutral', 'surprised', 'sad'])
+  const validMoods = new Set<SpeakerMood>(SPEAKER_MOODS)
   const validGaze = new Set<PortraitGaze>(['at_partner', 'aside', 'down', 'away'])
   const validFraming = new Set<PortraitFraming>(['bust', 'three_quarter', 'full_body'])
   const defaultFraming = validFraming.has(result.defaultFraming as PortraitFraming)
@@ -201,7 +203,7 @@ JSON:
 
     for (const plan of plans) {
       if (plan.lineIndex < 0 || plan.lineIndex >= section.lines.length) continue
-      const mood = validMoods.has(plan.mood as SpeakerMood) ? (plan.mood as SpeakerMood) : 'neutral'
+      const mood = normalizeSpeakerMood(plan.mood)
       const gaze = validGaze.has(plan.gaze as PortraitGaze) ? (plan.gaze as PortraitGaze) : 'at_partner'
       const addressee = plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers)
       const sceneId = plan.sceneId?.trim() || 'main'

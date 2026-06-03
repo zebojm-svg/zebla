@@ -148,6 +148,10 @@ export const api = {
       length: import('../types').DialogLength
       sections: import('../types').DialogSection[]
       folderId?: string | null
+      creationMode?: import('../types').CreateMode
+      creationPrompt?: string
+      creationChat?: import('../types').ChatMessage[]
+      imageDirection?: string
     }) =>
       request<{ dialog: import('../types').Dialog }>('/dialogs', {
         method: 'POST',

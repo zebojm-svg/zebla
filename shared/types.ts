@@ -28,7 +28,14 @@ export interface LineImageBeat {
   imageUrl?: string
 }
 
-export type SpeakerMood = 'neutral' | 'surprised' | 'sad'
+export type SpeakerMood =
+  | 'neutral'
+  | 'happy'
+  | 'surprised'
+  | 'laughing'
+  | 'sad'
+  | 'crying'
+  | 'sobbing'
 
 export type PortraitFraming = 'bust' | 'three_quarter' | 'full_body'
 
@@ -119,6 +126,14 @@ export interface Dialog {
   sections: DialogSection[]
   folderId?: string | null
   shareToken?: string | null
+  /** Wie der Dialog erstellt wurde: topic | dictate | chat */
+  creationMode?: CreateMode
+  /** Ursprüngliche Eingabe (Thema, Diktat, …). */
+  creationPrompt?: string
+  /** Vollständiger Chat-Verlauf bei KI-Gespräch. */
+  creationChat?: ChatMessage[]
+  /** Meta-Hinweise für Bilder (Setting, Emotionen wie Lachen/Weinen, Figuren). */
+  imageDirection?: string
   /** Einmalig aus dem ganzen Dialog geplant – gleiche Personen auf allen Bildern. */
   characterBible?: CharacterVisual[]
   /** Fest zugewiesene Stimmen pro Sprechername. */

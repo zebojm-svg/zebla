@@ -15,11 +15,20 @@ export function CreateDialogPage() {
   const [sentences, setSentences] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
+  const [imageDirection, setImageDirection] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [isListening, setIsListening] = useState(false)
 
-  const saveDialog = async (title: string, sections: import('../types').DialogSection[]) => {
+  const saveDialog = async (
+    title: string,
+    sections: import('../types').DialogSection[],
+    creation: {
+      creationMode: CreateMode
+      creationPrompt?: string
+      creationChat?: ChatMessage[]
+    },
+  ) => {
     const { dialog } = await api.dialogs.create({
       title,
       sourceLanguage: 'de',
@@ -27,6 +36,10 @@ export function CreateDialogPage() {
       length,
       sections,
       folderId: folderId ?? null,
+      creationMode: creation.creationMode,
+      creationPrompt: creation.creationPrompt,
+      creationChat: creation.creationChat,
+      imageDirection: imageDirection.trim() || undefined,
     })
     navigate(`/dialog/${dialog.id}`)
   }
@@ -37,7 +50,10 @@ export function CreateDialogPage() {
     setError('')
     try {
       const result = await api.ai.topic(topic.trim(), targetLanguage, length)
-      await saveDialog(result.title, result.sections)
+      await saveDialog(result.title, result.sections, {
+        creationMode: 'topic',
+        creationPrompt: topic.trim(),
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler')
       setLoading(false)
@@ -54,7 +70,10 @@ export function CreateDialogPage() {
     setError('')
     try {
       const result = await api.ai.sentences(list, targetLanguage, length)
-      await saveDialog(result.title, result.sections)
+      await saveDialog(result.title, result.sections, {
+        creationMode: 'dictate',
+        creationPrompt: list.join('\n'),
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler')
       setLoading(false)
@@ -75,7 +94,11 @@ export function CreateDialogPage() {
       const result = await api.ai.chat(newMessages, targetLanguage, length)
       setChatMessages([...newMessages, { role: 'assistant', content: result.reply }])
       if (result.dialog) {
-        await saveDialog(result.dialog.title, result.dialog.sections)
+        await saveDialog(result.dialog.title, result.dialog.sections, {
+          creationMode: 'chat',
+          creationChat: newMessages,
+          creationPrompt: newMessages.map((m) => m.content).join('\n'),
+        })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler')
@@ -145,6 +168,19 @@ export function CreateDialogPage() {
           </select>
         </label>
       </div>
+
+      <label className="create-image-direction">
+        Bild-Hinweise (optional)
+        <textarea
+          rows={3}
+          value={imageDirection}
+          onChange={(e) => setImageDirection(e.target.value)}
+          placeholder="z.B. Café in Teheran, zwei junge Freunde, bei Zeile 4 lacht Ubaid, bei Zeile 7 weint Shome leise …"
+        />
+        <span className="muted create-image-direction-hint">
+          Hilft der KI bei Bildern: Ort, Kleidung, Lachen, Weinen, Stimmung. Bleibt am Dialog gespeichert.
+        </span>
+      </label>
 
       <div className="mode-tabs">
         {(

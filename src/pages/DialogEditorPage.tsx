@@ -7,6 +7,7 @@ import { LANGUAGES, languageName, needsRomanization } from '../types'
 import { getIncludeRomanization, setIncludeRomanization } from '../lib/preferences'
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
+import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import {
   estimateAllSectionImages,
   estimateBirkenbihl,
@@ -28,6 +29,7 @@ export function DialogEditorPage() {
   const [includeRomanization, setIncludeRomanizationState] = useState(true)
   const [shareBusy, setShareBusy] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
+  const [imageDirectionDraft, setImageDirectionDraft] = useState('')
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const reload = async () => {
@@ -37,6 +39,7 @@ export function DialogEditorPage() {
     setTranslateLang(d.targetLanguage)
     setBirkenbihlLang(d.sourceLanguage)
     setIncludeRomanizationState(getIncludeRomanization())
+    setImageDirectionDraft(d.imageDirection ?? '')
   }
 
   useEffect(() => {
@@ -119,6 +122,45 @@ export function DialogEditorPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-warn">{status}</div>}
+
+      <section className="panel dialog-meta-panel">
+        <h2>Dialog-Auftrag &amp; Bilder</h2>
+        {formatCreationPromptForDisplay(dialog) && (
+          <div className="dialog-meta-block">
+            <h3 className="dialog-meta-label">Ursprüngliche Eingabe</h3>
+            <pre className="dialog-meta-pre">{formatCreationPromptForDisplay(dialog)}</pre>
+          </div>
+        )}
+        <label className="dialog-meta-block">
+          <span className="dialog-meta-label">Bild-Hinweise für die KI</span>
+          <textarea
+            rows={4}
+            value={imageDirectionDraft}
+            onChange={(e) => setImageDirectionDraft(e.target.value)}
+            placeholder="Setting, Figuren, Emotionen pro Stelle (z.B. lachen, schluchzen, weinen), Licht …"
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!!busy}
+            onClick={() =>
+              void runAction('image-direction', async () => {
+                const { dialog: d } = await api.dialogs.update(dialog.id, {
+                  imageDirection: imageDirectionDraft.trim(),
+                })
+                setDialog(d)
+                setStatus('Bild-Hinweise gespeichert. Beim nächsten „Bilder / Bilderskript (KI)“ werden sie berücksichtigt.')
+              })
+            }
+          >
+            {busy === 'image-direction' ? '…' : 'Bild-Hinweise speichern'}
+          </button>
+          <p className="muted dialog-meta-hint">
+            Emotionen wie lachen, weinen oder schluchzen kannst du hier oder im Dialogtext beschreiben – die KI
+            plant passende Gesichtsausdrücke.
+          </p>
+        </label>
+      </section>
 
       <section className="panel toolbar-panel">
         <h2>KI-Werkzeuge</h2>

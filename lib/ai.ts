@@ -18,6 +18,8 @@ import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
+import { imagePlanningContext } from '../shared/dialog-image-context.js'
+import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 import {
   buildDialogVisualScript,
   beatsForSection,
@@ -465,6 +467,7 @@ export async function ensureDialogVisualScript(dialog: Dialog): Promise<DialogVi
 }
 
 export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisual[]> {
+  const imgCtx = imagePlanningContext(dialog)
   const speakers = new Map<string, string[]>()
   for (const sec of dialog.sections) {
     for (const line of sec.lines) {
@@ -490,7 +493,7 @@ Regeln:
 
 JSON:
 { "characters": [{ "name": "Ramo", "gender": "male", "description": "photorealistic young man with ..." }] }`,
-    `Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher mit Beispielzeilen:\n${JSON.stringify(cast)}`,
+    `${imgCtx ? `${imgCtx}\n\n---\n` : ''}Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher mit Beispielzeilen:\n${JSON.stringify(cast)}`,
   )
 
   if (!result.characters?.length) {
@@ -568,6 +571,8 @@ async function planSpeakerPortraitsLegacy(
 ): Promise<SpeakerPortrait[]> {
   const bible = dialog.characterBible
   const sectionSpeakers = uniqueSpeakers(section)
+  const imageCtx = imagePlanningContext(dialog)
+  const moodList = SPEAKER_MOODS.join(' | ')
   const indexed = section.lines.map((line, index) => ({
     lineIndex: index,
     speaker: line.speaker,
@@ -603,7 +608,7 @@ Schritt 2: Pro Zeile (lineIndex 0..${section.lines.length - 1}) mood, gaze und a
 
 Regeln:
 - lineMoods: ein Eintrag pro Zeile mit lineIndex, mood, gaze, addressee, reason (Deutsch, kurz)
-- mood: "neutral" | "surprised" | "sad" – passend zum Zeileninhalt
+- mood: ${moodList} – passend zum Inhalt und zu Bild-Hinweisen (z.B. laughing, crying, sobbing)
 - Pro Sprecher dürfen 2–4 verschiedene Stimmungen/Blickrichtungen vorkommen (je nach Dialog)
 - gaze: "at_partner" (schaut Gegenüber an) | "aside" ( seitlich weg) | "down" ( nach unten, nachdenklich) | "away" ( in die Ferne / abgewandt)
 - addressee: Name des Gesprächspartners, den diese Zeile anspricht (aus dem Dialog, meist der andere Sprecher)
@@ -618,18 +623,14 @@ JSON:
   "sceneHint": "two people talking at a café table",
   "defaultFraming": "three_quarter"
 }`,
-    `Gesamter Dialog:\n${dialogSummaryForImages(dialog)}\n\n---\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
+    `${imageCtx ? `${imageCtx}\n\n---\n` : ''}Gesamter Dialog:\n${dialogSummaryForImages(dialog)}\n\n---\nAbschnitt: "${section.title}"\nZeilen:\n${JSON.stringify(indexed)}`,
   )
 
   if (!result.lineMoods?.length) {
     throw new Error('KI konnte keine Mimik pro Zeile planen.')
   }
 
-  const moodExpr: Record<SpeakerMood, string> = {
-    neutral: 'calm friendly expression while speaking, natural relaxed face',
-    surprised: 'surprised expression, raised eyebrows, reacting to what the partner just said',
-    sad: 'gentle sad or thoughtful expression, soft melancholy',
-  }
+  const moodExpr = MOOD_PROMPT_EN
 
   const gazeExpr: Record<PortraitGaze, string> = {
     at_partner:
@@ -647,7 +648,6 @@ JSON:
       'full body shot, entire person visible from head to feet in the environment, natural conversational pose',
   }
 
-  const validMoods = new Set<SpeakerMood>(['neutral', 'surprised', 'sad'])
   const validGaze = new Set<PortraitGaze>(['at_partner', 'aside', 'down', 'away'])
   const validFraming = new Set<PortraitFraming>(['bust', 'three_quarter', 'full_body'])
   const defaultFraming = validFraming.has(result.defaultFraming as PortraitFraming)
@@ -686,7 +686,7 @@ JSON:
 
   for (const lm of sorted) {
     const line = section.lines[lm.lineIndex]
-    const mood = validMoods.has(lm.mood as SpeakerMood) ? (lm.mood as SpeakerMood) : 'neutral'
+    const mood = normalizeSpeakerMood(lm.mood)
     const gaze = validGaze.has(lm.gaze as PortraitGaze) ? (lm.gaze as PortraitGaze) : 'at_partner'
     const addressee =
       lm.addressee?.trim() ||

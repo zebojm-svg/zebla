@@ -41,7 +41,7 @@ import { exportDialogAudioZip } from '../lib/dialog-audio-export.js'
 import { downloadLineAudio } from '../lib/audio-storage.js'
 import { findLineInDialog } from '../lib/dialog-audio.js'
 import { downloadImageByUrl } from '../lib/image-storage.js'
-import type { DialogSection } from '../shared/types.js'
+import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
   const url = new URL(req.url ?? '/', 'http://localhost')
@@ -249,15 +249,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'POST') {
-        const { title, sourceLanguage, targetLanguage, length, sections, folderId } =
-          req.body as {
-            title?: string
-            sourceLanguage?: string
-            targetLanguage?: string
-            length?: string
-            sections?: DialogSection[]
-            folderId?: string | null
-          }
+        const {
+          title,
+          sourceLanguage,
+          targetLanguage,
+          length,
+          sections,
+          folderId,
+          creationMode,
+          creationPrompt,
+          creationChat,
+          imageDirection,
+        } = req.body as {
+          title?: string
+          sourceLanguage?: string
+          targetLanguage?: string
+          length?: string
+          sections?: DialogSection[]
+          folderId?: string | null
+          creationMode?: string
+          creationPrompt?: string
+          creationChat?: Dialog['creationChat']
+          imageDirection?: string
+        }
         if (!title || !targetLanguage || !length || !sections?.length) {
           res.status(400).json({ error: 'Pflichtfelder fehlen.' })
           return
@@ -269,6 +283,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           length: length as 'short' | 'medium' | 'long',
           sections,
           folderId: folderId ?? null,
+          creationMode: creationMode as Dialog['creationMode'] | undefined,
+          creationPrompt,
+          creationChat,
+          imageDirection,
         })
         res.status(201).json({ dialog })
         return
