@@ -10,6 +10,8 @@ export interface TtsRequest {
   speakerIndex?: number
   /** Feste Stimme pro Sprecher (z. B. Kore, Charon). */
   voiceName?: string
+  /** Nur Gemini-TTS: Stil-Hinweis (z. B. „tiefe männliche Stimme“). */
+  voicePrompt?: string
 }
 
 export interface TtsResult {
@@ -161,15 +163,19 @@ async function callGeminiSynthesize(
   speakingRate: number,
   speakerIndex = 0,
   voiceNameOverride?: string,
+  voiceStylePrompt?: string,
 ): Promise<TtsResult> {
   const locale = geminiLocale(languageCode)
   const voiceName = voiceNameOverride ?? resolveGeminiVoiceName(gender, speakerIndex)
+  const styleHint = voiceStylePrompt?.trim()
+  const basePrompt =
+    'Read clearly and naturally for language learners. Moderate pace, friendly teaching tone.'
+  const prompt = styleHint ? `${basePrompt} Voice character: ${styleHint}.` : basePrompt
 
   const body = {
     input: {
       text,
-      prompt:
-        'Read clearly and naturally for language learners. Moderate pace, friendly teaching tone.',
+      prompt,
     },
     voice: {
       languageCode: locale,
@@ -298,6 +304,7 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
       speakingRate,
       speakerIndex,
       req.voiceName,
+      req.voicePrompt,
     )
   }
 

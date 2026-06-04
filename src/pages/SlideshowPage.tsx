@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { SlideshowKenBurnsImage } from '../components/SlideshowKenBurnsImage'
+import { SlideshowVoicePanel } from '../components/SlideshowVoicePanel'
+import { usePinchZoom } from '../hooks/usePinchZoom'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
 import { api } from '../api/client'
 import type { Dialog, DialogSection } from '../types'
@@ -33,6 +35,13 @@ export function SlideshowPage() {
   const [audioStatus, setAudioStatus] = useState('')
   const [useCloudTts, setUseCloudTtsState] = useState(true)
   const [showRomanization, setShowRomanizationState] = useState(true)
+  const [holdLastImage, setHoldLastImage] = useState(true)
+  const imageZoomRef = useRef<HTMLDivElement>(null)
+  const dialogZoomRef = useRef<HTMLDivElement>(null)
+  const stageZoomRef = useRef<HTMLDivElement>(null)
+  usePinchZoom(imageZoomRef)
+  usePinchZoom(dialogZoomRef)
+  usePinchZoom(stageZoomRef)
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
@@ -93,12 +102,19 @@ export function SlideshowPage() {
 
   const section: DialogSection | undefined = dialog?.sections[slideIndex]
 
-  const previewLines = section?.lines.slice(lineIndex, lineIndex + 2) ?? []
+  const lastLineInSection = section?.lines[section.lines.length - 1]
   const atSectionEnd = section ? lineIndex >= section.lines.length : true
+  const holdEnd = holdLastImage && atSectionEnd && !!lastLineInSection
 
-  const displayLine =
-    section?.lines.find((l) => l.id === activeLineId) ??
-    section?.lines[lineIndex]
+  const previewLines = holdEnd
+    ? lastLineInSection
+      ? [lastLineInSection]
+      : []
+    : (section?.lines.slice(lineIndex, lineIndex + 2) ?? [])
+
+  const displayLine = holdEnd
+    ? lastLineInSection
+    : (section?.lines.find((l) => l.id === activeLineId) ?? section?.lines[lineIndex])
   const displayImageUrl = displayLine?.imageUrl ?? section?.imageUrl
 
   const playContinuous = async (fromSection: number, fromLine: number) => {
@@ -146,6 +162,12 @@ export function SlideshowPage() {
       setSlideIndex((i) => i + 1)
       setLineIndex(0)
     }
+  }
+
+  const goToStart = () => {
+    stop()
+    setSlideIndex(0)
+    setLineIndex(0)
   }
 
   const canGoPrev = slideIndex > 0 || lineIndex > 0
@@ -246,6 +268,9 @@ export function SlideshowPage() {
       </div>
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
+
+      <details className="slideshow-tools panel">
+        <summary className="slideshow-tools-summary">Einstellungen, Stimmen & Export</summary>
       <div className="slideshow-settings panel">
         <label className="checkbox-label slideshow-setting">
           <input
@@ -429,13 +454,24 @@ export function SlideshowPage() {
           </div>
           <p className="muted slideshow-export-info">
             Export mit aktueller Geschwindigkeit ({rate.toFixed(2)}×). MP4 = Bilder + Text + Sprache
-            wie in der Diashow. MP3 = nur Audio.
+            wie in der Diashow. MP3 = nur Audio. Klingt die Stimme zu tief? Einmal „Audio neu
+            erstellen“ (Tempo wird nur einmal angewendet).
           </p>
           {exportStatus && (
             <p className="muted slideshow-export-info">{exportStatus}</p>
           )}
         </div>
       )}
+
+      {useCloudTts && cloudTtsReady && !ttsError && (
+        <SlideshowVoicePanel
+          dialog={dialog}
+          setDialog={setDialog}
+          disabled={audioBusy || speaking || exportBusy}
+          onStatus={setAudioStatus}
+        />
+      )}
+      </details>
 
       {costPending && (
         <CostConfirmDialog
@@ -446,8 +482,10 @@ export function SlideshowPage() {
         />
       )}
 
-      <div className="slideshow-stage">
-        <div className="slideshow-image-wrap">
+      <p className="muted slideshow-zoom-hint">Zwei Finger auf Bild oder Dialog zum Zoomen · Doppelklick = zurücksetzen</p>
+
+      <div className="slideshow-stage" ref={stageZoomRef}>
+        <div className="slideshow-image-wrap slideshow-zoom-target" ref={imageZoomRef}>
           {displayImageUrl && displayLine ? (
             <SlideshowKenBurnsImage
               imageUrl={displayImageUrl}
@@ -463,8 +501,8 @@ export function SlideshowPage() {
           )}
         </div>
 
-        <div className="slideshow-preview">
-          {atSectionEnd ? (
+        <div className="slideshow-preview slideshow-zoom-target" ref={dialogZoomRef}>
+          {atSectionEnd && !holdEnd ? (
             <p className="slideshow-done-hint">
               {slideIndex < dialog.sections.length - 1
                 ? 'Abschnitt zu Ende — weiter für nächsten Abschnitt.'
@@ -492,18 +530,26 @@ export function SlideshowPage() {
         </div>
       </div>
 
-      <div className="slideshow-controls">
-        <button
-          type="button"
-          className="btn btn-secondary slideshow-nav-btn"
-          disabled={!canGoPrev}
-          onClick={goPrev}
-          aria-label="Zurück"
-        >
-          ←
-        </button>
-
-        <div className="slideshow-playback">
+      <div className="slideshow-controls slideshow-controls--dock">
+        <div className="slideshow-nav-row">
+          <button
+            type="button"
+            className="btn btn-secondary slideshow-nav-btn"
+            onClick={goToStart}
+            aria-label="Zum Anfang"
+            title="Zum Anfang"
+          >
+            ⏮
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary slideshow-nav-btn"
+            disabled={!canGoPrev}
+            onClick={goPrev}
+            aria-label="Zurück"
+          >
+            ←
+          </button>
           {speaking ? (
             <button
               type="button"
@@ -532,7 +578,26 @@ export function SlideshowPage() {
               ▶
             </button>
           )}
-
+          <button
+            type="button"
+            className="btn btn-secondary slideshow-nav-btn"
+            disabled={!canGoNext}
+            onClick={goNext}
+            aria-label="Weiter"
+          >
+            →
+          </button>
+          <button
+            type="button"
+            className={`btn btn-secondary slideshow-nav-btn ${holdLastImage ? 'is-active' : ''}`}
+            onClick={() => setHoldLastImage((v) => !v)}
+            aria-pressed={holdLastImage}
+            title="Am letzten Bild bleiben"
+          >
+            📌
+          </button>
+        </div>
+        <div className="slideshow-playback-row">
           <label className="slideshow-rate">
             <span>🐢</span>
             <input
@@ -545,26 +610,15 @@ export function SlideshowPage() {
             />
             <span className="slideshow-rate-value">{rate.toFixed(2)}×</span>
           </label>
-
           <label className="checkbox-label slideshow-checkbox">
             <input
               type="checkbox"
               checked={highlightWords}
               onChange={(e) => setHighlightWords(e.target.checked)}
             />
-            Wörter markieren
+            Wörter
           </label>
         </div>
-
-        <button
-          type="button"
-          className="btn btn-secondary slideshow-nav-btn"
-          disabled={!canGoNext}
-          onClick={goNext}
-          aria-label="Weiter"
-        >
-          →
-        </button>
       </div>
     </div>
   )

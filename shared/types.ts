@@ -138,11 +138,17 @@ export interface Dialog {
   referenceImageUrl?: string
   referenceImagePrompt?: string
   /** Geschlecht pro Sprecher (wenn nicht aus Namen erkennbar). */
-  speakerProfiles?: Record<string, { gender?: 'male' | 'female' }>
+  speakerProfiles?: Record<
+    string,
+    { gender?: 'male' | 'female'; voiceName?: string; voicePrompt?: string }
+  >
   /** Einmalig aus dem ganzen Dialog geplant – gleiche Personen auf allen Bildern. */
   characterBible?: CharacterVisual[]
   /** Fest zugewiesene Stimmen pro Sprechername. */
-  speakerVoices?: Record<string, { gender: 'male' | 'female'; voiceName: string }>
+  speakerVoices?: Record<
+    string,
+    { gender: 'male' | 'female'; voiceName: string; voicePrompt?: string }
+  >
   /** Comic-artiges Bilderskript: Szenen, Kamera, Mimik pro Zeile. */
   visualScript?: DialogVisualScript
   createdAt: string

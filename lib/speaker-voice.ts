@@ -4,6 +4,7 @@ import { guessSpeakerGenderFromName } from './speaker-gender.js'
 export interface SpeakerVoiceProfile {
   gender: 'male' | 'female'
   voiceName: string
+  voicePrompt?: string
 }
 
 /** Gemini-TTS-Stimmen – je Geschlecht, feste Reihenfolge pro Sprecher. */
@@ -45,6 +46,16 @@ const CLASSIC_VOICE_POOL: Record<
     locale: 'ar-XA',
     female: ['ar-XA-Wavenet-A', 'ar-XA-Wavenet-C'],
     male: ['ar-XA-Wavenet-B', 'ar-XA-Wavenet-D'],
+  },
+  ko: {
+    locale: 'ko-KR',
+    female: ['ko-KR-Neural2-A', 'ko-KR-Wavenet-A'],
+    male: ['ko-KR-Neural2-C', 'ko-KR-Neural2-B'],
+  },
+  ja: {
+    locale: 'ja-JP',
+    female: ['ja-JP-Neural2-B', 'ja-JP-Wavenet-A'],
+    male: ['ja-JP-Neural2-D', 'ja-JP-Neural2-C'],
   },
 }
 
@@ -115,21 +126,32 @@ export function buildSpeakerVoiceProfiles(dialog: Dialog): Record<string, Speake
   const gemini = usesGeminiTts(dialog.targetLanguage)
 
   for (const speaker of orderedSpeakers(dialog)) {
+    const userProfile = dialog.speakerProfiles?.[speaker]
     const fromBible = bible?.find((c) => c.name === speaker)
-    if (fromBible?.voiceName && fromBible.gender) {
-      profiles[speaker] = { gender: fromBible.gender, voiceName: fromBible.voiceName }
+    if (fromBible?.voiceName && fromBible.gender && !userProfile?.voiceName) {
+      profiles[speaker] = {
+        gender: fromBible.gender,
+        voiceName: fromBible.voiceName,
+        voicePrompt: userProfile?.voicePrompt,
+      }
       continue
     }
 
     const speakerIdx = indices.get(speaker) ?? 0
     const gender = resolveSpeakerGender(speaker, speakerIdx, bible, dialog.speakerProfiles)
     const genderSlot = gender === 'male' ? maleSlot++ : femaleSlot++
-    const voiceName = gemini
-      ? pickGeminiVoice(gender, genderSlot)
-      : pickClassicVoice(dialog.targetLanguage, gender, genderSlot) ??
-        (gender === 'male' ? 'Charon' : 'Kore')
+    const voiceName =
+      userProfile?.voiceName ??
+      (gemini
+        ? pickGeminiVoice(gender, genderSlot)
+        : pickClassicVoice(dialog.targetLanguage, gender, genderSlot) ??
+          (gender === 'male' ? 'Charon' : 'Kore'))
 
-    profiles[speaker] = { gender, voiceName }
+    profiles[speaker] = {
+      gender,
+      voiceName,
+      voicePrompt: userProfile?.voicePrompt?.trim() || undefined,
+    }
   }
   return profiles
 }
@@ -139,16 +161,21 @@ export function getSpeakerVoice(
   speaker: string,
 ): SpeakerVoiceProfile {
   const profiles = dialog.speakerVoices ?? buildSpeakerVoiceProfiles(dialog)
-  const profile = profiles[speaker]
-  if (profile) return profile
+  const base = profiles[speaker]
+  const user = dialog.speakerProfiles?.[speaker]
   const idx = speakerIndexMap(dialog).get(speaker) ?? 0
-  const gender = resolveSpeakerGender(speaker, idx, dialog.characterBible, dialog.speakerProfiles)
-  return {
-    gender,
-    voiceName: usesGeminiTts(dialog.targetLanguage)
+  const gender =
+    user?.gender ??
+    base?.gender ??
+    resolveSpeakerGender(speaker, idx, dialog.characterBible, dialog.speakerProfiles)
+  const voiceName =
+    user?.voiceName ??
+    base?.voiceName ??
+    (usesGeminiTts(dialog.targetLanguage)
       ? pickGeminiVoice(gender, 0)
-      : pickClassicVoice(dialog.targetLanguage, gender, 0) ?? 'Kore',
-  }
+      : pickClassicVoice(dialog.targetLanguage, gender, 0) ?? 'Kore')
+  const voicePrompt = user?.voicePrompt?.trim() || base?.voicePrompt
+  return { gender, voiceName, voicePrompt: voicePrompt || undefined }
 }
 
 export function mergeVoiceProfilesIntoDialog(

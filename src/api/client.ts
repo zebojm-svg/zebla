@@ -209,6 +209,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId, rate, force: options?.force === true }),
       }),
+    regenerateSpeaker: (dialogId: string, speaker: string) =>
+      request<{ dialog: import('../types').Dialog; generated: number }>(
+        '/dialog-regenerate-speaker-audio',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, speaker }),
+        },
+        300_000,
+      ),
     lineAudio: (dialogId: string, lineId: string) =>
       requestBlob(
         `/dialog-audio-line?dialogId=${encodeURIComponent(dialogId)}&lineId=${encodeURIComponent(lineId)}`,

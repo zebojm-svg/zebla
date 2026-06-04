@@ -8,6 +8,7 @@ import {
   getSpeakerVoice,
   mergeVoiceProfilesIntoDialog,
 } from './speaker-voice.js'
+import { TTS_STORAGE_SPEAKING_RATE } from './tts-storage.js'
 
 export function findLineInDialog(
   dialog: Dialog,
@@ -74,10 +75,11 @@ export async function getOrCreateLineAudio(
   const tts = await synthesizeSpeech({
     text: lineSpeechText(found.line),
     languageCode: dialog.targetLanguage,
-    rate,
+    rate: TTS_STORAGE_SPEAKING_RATE,
     gender: voice.gender,
     speakerIndex: speakerIdx,
     voiceName: voice.voiceName,
+    voicePrompt: voice.voicePrompt,
   })
 
   const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, lineId)
@@ -147,10 +149,11 @@ export async function ensureDialogAudio(
       const tts = await synthesizeSpeech({
         text: speechText,
         languageCode: dialog.targetLanguage,
-        rate,
+        rate: TTS_STORAGE_SPEAKING_RATE,
         gender: voice.gender,
         speakerIndex: speakerIdx,
         voiceName: voice.voiceName,
+        voicePrompt: voice.voicePrompt,
       })
       const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, line.id)
       generated++
@@ -165,4 +168,49 @@ export async function ensureDialogAudio(
   }
 
   return { dialog, generated, skipped }
+}
+
+/** Ersetzt Audio nur für einen Sprecher (z. B. nach Stimm-/Geschlechtsänderung). */
+export async function regenerateSpeakerAudio(
+  dialogId: string,
+  userId: string,
+  speaker: string,
+): Promise<{ dialog: Dialog; generated: number }> {
+  let dialog = await getDialog(dialogId, userId)
+  if (!dialog) throw new Error('Dialog nicht gefunden.')
+
+  dialog = await ensureSpeakerVoicesOnDialog(dialogId, userId, dialog)
+  const speakers = speakerIndexMap(dialog)
+  const speakerIdx = speakers.get(speaker) ?? 0
+  const voice = getSpeakerVoice(dialog, speaker)
+
+  let generated = 0
+  for (const section of dialog.sections) {
+    for (const line of section.lines) {
+      if (line.speaker !== speaker) continue
+      const speechText = lineSpeechText(line)
+      if (!speechText) continue
+
+      const tts = await synthesizeSpeech({
+        text: speechText,
+        languageCode: dialog.targetLanguage,
+        rate: TTS_STORAGE_SPEAKING_RATE,
+        gender: voice.gender,
+        speakerIndex: speakerIdx,
+        voiceName: voice.voiceName,
+        voicePrompt: voice.voicePrompt,
+      })
+      const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, line.id)
+      generated++
+
+      const sections = dialog.sections.map((sec) => ({
+        ...sec,
+        lines: sec.lines.map((l) => (l.id === line.id ? { ...l, audioUrl } : l)),
+      }))
+      const updated = await updateDialog(dialogId, userId, { sections })
+      if (updated) dialog = updated
+    }
+  }
+
+  return { dialog, generated }
 }

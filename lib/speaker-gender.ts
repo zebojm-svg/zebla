@@ -4,13 +4,13 @@ export function guessSpeakerGenderFromName(
 ): 'male' | 'female' {
   const s = speaker.toLowerCase()
   if (
-    /\b(ben|max|tom|john|james|paul|mark|hans|peter|mike|david|alex|luke|tim|sam|chris|dan|min|jun|jin|hyun|joon|ho|seo|ramo|reza|ali|hassan|amir|mehdi|kellner|waiter|garçon)\b/.test(
+    /\b(ben|max|tom|john|james|paul|mark|hans|peter|mike|david|alex|luke|tim|sam|chris|dan|jun|jin|hyun|joon|ho|seo|minho|taehyung|ramo|reza|ali|hassan|amir|mehdi|kellner|waiter|garçon)\b/.test(
       s,
     )
   )
     return 'male'
   if (
-    /\b(anna|maria|sarah|lisa|emma|julia|sophie|elena|kate|amy|linda|laura|nina|sara|ji|yuna|min|hee|su|young|mi|shome|zahra|maryam|fatemeh|kellnerin)\b/.test(
+    /\b(anna|maria|sarah|lisa|emma|julia|sophie|elena|kate|amy|linda|laura|nina|sara|yuna|hee|su|young|mi|shome|zahra|maryam|fatemeh|kellnerin|soojin|mina)\b/.test(
       s,
     )
   )

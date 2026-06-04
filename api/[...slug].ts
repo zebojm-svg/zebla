@@ -36,7 +36,11 @@ import {
   handleImageLines,
 } from '../lib/ai-handlers.js'
 import { checkTtsHealth } from '../lib/tts.js'
-import { ensureDialogAudio, getOrCreateLineAudio } from '../lib/dialog-audio.js'
+import {
+  ensureDialogAudio,
+  getOrCreateLineAudio,
+  regenerateSpeakerAudio,
+} from '../lib/dialog-audio.js'
 import { exportDialogAudioZip } from '../lib/dialog-audio-export.js'
 import { downloadLineAudio } from '../lib/audio-storage.js'
 import { findLineInDialog } from '../lib/dialog-audio.js'
@@ -474,6 +478,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await ensureDialogAudio(dialogId, user.uid, rate ?? 0.85, {
           force: force === true,
         })
+        res.json(result)
+      } catch (err) {
+        sendError(res, err)
+      }
+      return
+    }
+
+    if (route === 'dialog-regenerate-speaker-audio' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { dialogId, speaker } = req.body as { dialogId?: string; speaker?: string }
+      if (!dialogId || !speaker?.trim()) {
+        res.status(400).json({ error: 'dialogId und speaker fehlen.' })
+        return
+      }
+      try {
+        const result = await regenerateSpeakerAudio(dialogId, user.uid, speaker.trim())
         res.json(result)
       } catch (err) {
         sendError(res, err)
