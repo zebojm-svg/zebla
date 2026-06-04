@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { SlideshowKenBurnsImage } from '../components/SlideshowKenBurnsImage'
 import { SlideshowVoicePanel } from '../components/SlideshowVoicePanel'
-import { usePinchZoom } from '../hooks/usePinchZoom'
+import { PinchZoomSurface } from '../components/PinchZoomSurface'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
 import { api } from '../api/client'
 import type { Dialog, DialogSection } from '../types'
@@ -35,13 +35,6 @@ export function SlideshowPage() {
   const [audioStatus, setAudioStatus] = useState('')
   const [useCloudTts, setUseCloudTtsState] = useState(true)
   const [showRomanization, setShowRomanizationState] = useState(true)
-  const [holdLastImage, setHoldLastImage] = useState(true)
-  const imageZoomRef = useRef<HTMLDivElement>(null)
-  const dialogZoomRef = useRef<HTMLDivElement>(null)
-  const stageZoomRef = useRef<HTMLDivElement>(null)
-  usePinchZoom(imageZoomRef)
-  usePinchZoom(dialogZoomRef)
-  usePinchZoom(stageZoomRef)
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
@@ -101,21 +94,26 @@ export function SlideshowPage() {
   }, [slideIndex])
 
   const section: DialogSection | undefined = dialog?.sections[slideIndex]
-
-  const lastLineInSection = section?.lines[section.lines.length - 1]
+  const lastSection = dialog?.sections[dialog.sections.length - 1]
+  const lastLineOfDialog = lastSection?.lines[lastSection.lines.length - 1]
   const atSectionEnd = section ? lineIndex >= section.lines.length : true
-  const holdEnd = holdLastImage && atSectionEnd && !!lastLineInSection
+  const dialogFinished =
+    !!dialog &&
+    dialog.sections.length > 0 &&
+    slideIndex >= dialog.sections.length - 1 &&
+    atSectionEnd
 
-  const previewLines = holdEnd
-    ? lastLineInSection
-      ? [lastLineInSection]
-      : []
-    : (section?.lines.slice(lineIndex, lineIndex + 2) ?? [])
+  const previewLines = dialogFinished && lastLineOfDialog
+    ? [lastLineOfDialog]
+    : atSectionEnd && slideIndex < (dialog?.sections.length ?? 1) - 1
+      ? []
+      : (section?.lines.slice(lineIndex, lineIndex + 2) ?? [])
 
-  const displayLine = holdEnd
-    ? lastLineInSection
+  const displayLine = dialogFinished && lastLineOfDialog
+    ? lastLineOfDialog
     : (section?.lines.find((l) => l.id === activeLineId) ?? section?.lines[lineIndex])
-  const displayImageUrl = displayLine?.imageUrl ?? section?.imageUrl
+  const displayImageUrl =
+    displayLine?.imageUrl ?? section?.imageUrl ?? lastSection?.imageUrl
 
   const playContinuous = async (fromSection: number, fromLine: number) => {
     if (!dialog) return
@@ -482,33 +480,35 @@ export function SlideshowPage() {
         />
       )}
 
-      <p className="muted slideshow-zoom-hint">Zwei Finger auf Bild oder Dialog zum Zoomen · Doppelklick = zurücksetzen</p>
+      <p className="muted slideshow-zoom-hint">
+        Zwei Finger auf Bild oder Dialog zum Zoomen · Doppelklick = zurücksetzen
+      </p>
 
-      <div className="slideshow-stage" ref={stageZoomRef}>
-        <div className="slideshow-image-wrap slideshow-zoom-target" ref={imageZoomRef}>
-          {displayImageUrl && displayLine ? (
-            <SlideshowKenBurnsImage
-              imageUrl={displayImageUrl}
-              speaker={displayLine.speaker}
-              lineText={displayLine.text}
-              rate={rate}
-              animate={speaking && activeLineId === displayLine.id}
-            />
-          ) : (
-            <div className="slideshow-image-placeholder">
-              <p>{section.title}</p>
-            </div>
-          )}
+      <div className="slideshow-stage">
+        <div className="slideshow-image-wrap">
+          <PinchZoomSurface className="slideshow-image-zoom">
+            {displayImageUrl && displayLine ? (
+              <SlideshowKenBurnsImage
+                imageUrl={displayImageUrl}
+                speaker={displayLine.speaker}
+                lineText={displayLine.text}
+                rate={rate}
+                animate={speaking && activeLineId === displayLine.id}
+              />
+            ) : (
+              <div className="slideshow-image-placeholder">
+                <p>{section.title}</p>
+              </div>
+            )}
+          </PinchZoomSurface>
         </div>
 
-        <div className="slideshow-preview slideshow-zoom-target" ref={dialogZoomRef}>
-          {atSectionEnd && !holdEnd ? (
+        <PinchZoomSurface className="slideshow-preview">
+          {atSectionEnd && !dialogFinished ? (
             <p className="slideshow-done-hint">
-              {slideIndex < dialog.sections.length - 1
-                ? 'Abschnitt zu Ende — weiter für nächsten Abschnitt.'
-                : 'Dialog zu Ende.'}
+              Abschnitt zu Ende — weiter für nächsten Abschnitt.
             </p>
-          ) : (
+          ) : previewLines.length > 0 ? (
             previewLines.map((line) => (
               <div
                 key={line.id}
@@ -526,8 +526,8 @@ export function SlideshowPage() {
                 />
               </div>
             ))
-          )}
-        </div>
+          ) : null}
+        </PinchZoomSurface>
       </div>
 
       <div className="slideshow-controls slideshow-controls--dock">
@@ -586,15 +586,6 @@ export function SlideshowPage() {
             aria-label="Weiter"
           >
             →
-          </button>
-          <button
-            type="button"
-            className={`btn btn-secondary slideshow-nav-btn ${holdLastImage ? 'is-active' : ''}`}
-            onClick={() => setHoldLastImage((v) => !v)}
-            aria-pressed={holdLastImage}
-            title="Am letzten Bild bleiben"
-          >
-            📌
           </button>
         </div>
         <div className="slideshow-playback-row">
