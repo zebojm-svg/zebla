@@ -101,7 +101,8 @@ export function LoginPage() {
             </button>
           </form>
           <p className="hint">
-            Demo-Codes: <code>DEMO123</code>, <code>KLASSE7A</code>
+            Standard-Schülercodes:{' '}
+            <code>DEMO123</code>, <code>KLASSE7A</code>, <code>SCHUELER2024</code>
           </p>
         </section>
       </div>
