@@ -100,10 +100,14 @@ npm run dev:client
 
 ### Google-Anmeldung in Production
 
-In Firebase Console → Authentication → Google → **Autorisierte Domains** hinzufügen:
+**Wichtig:** Ohne freigeschaltete Domain schlägt „Mit Google anmelden“ fehl (`auth/unauthorized-domain`).
 
-- `dein-projekt.vercel.app`
+Firebase Console → **Authentication → Settings → Authorized domains** → Domain hinzufügen:
+
+- `zebla.vercel.app` (oder deine Vercel-URL)
 - Eigene Domain (falls vorhanden)
+
+Bis die Domain freigeschaltet ist, mit Schülercode einloggen: `DEMO123`, `KLASSE7A`, `SCHUELER2024`.
 
 ---
 
