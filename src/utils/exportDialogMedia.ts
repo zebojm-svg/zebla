@@ -49,7 +49,9 @@ export interface ExportSlide {
 
 export interface ExportOptions {
   rate: number
+  showTargetText?: boolean
   showRomanization: boolean
+  showTranslation?: boolean
   targetLanguage: string
   nativeLanguage: string
   onProgress?: (message: string) => void
@@ -211,7 +213,7 @@ function drawSlide(
   ctx.fillStyle = '#020617'
   ctx.fillRect(0, 0, width, height)
 
-  const imgH = Math.floor(height * 0.62)
+  const imgH = Math.floor(height * 0.55)
   if (bitmap) {
     drawPortraitKenBurns(ctx, bitmap, 0, 0, width, imgH, kenBurnsProgress)
   } else {
@@ -229,47 +231,57 @@ function drawSlide(
   ctx.fillRect(0, panelY, width, panelH)
 
   ctx.fillStyle = '#a5b4fc'
-  ctx.font = `bold ${Math.round(22 * scale)}px system-ui, sans-serif`
+  ctx.font = `bold ${Math.round(24 * scale)}px system-ui, sans-serif`
   ctx.textAlign = targetRtl ? 'right' : 'left'
   const pad = Math.round(40 * scale)
-  ctx.fillText(slide.speaker, targetRtl ? width - pad : pad, panelY + 36 * scale)
+  ctx.fillText(slide.speaker, targetRtl ? width - pad : pad, panelY + 40 * scale)
 
   const line = slide.line
   const words = line.birkenbihl?.length ? line.birkenbihl : null
-  const startY = panelY + 70
+  const startY = panelY + 78 * scale
+  const showTarget = options.showTargetText !== false
+  const showTranslation = options.showTranslation !== false
+  const targetSize = Math.round(32 * scale)
+  const romanSize = Math.round(18 * scale)
+  const translationSize = Math.round(22 * scale)
 
   if (words) {
     let x = targetRtl ? width - pad : pad
     const maxX = width - pad
     for (const w of words) {
       ctx.textAlign = 'center'
-      const wordW = Math.max(48 * scale, w.text.length * 14 * scale)
+      const sample = showTarget ? w.text : w.romanization || w.translation || w.text
+      const wordW = Math.max(56 * scale, sample.length * 16 * scale)
       if (!targetRtl && x + wordW > maxX) x = pad
       const cx = targetRtl ? x - wordW / 2 : x + wordW / 2
 
-      ctx.fillStyle = '#f1f5f9'
-      ctx.font = `${Math.round(22 * scale)}px system-ui, sans-serif`
-      ctx.fillText(w.text, cx, startY, wordW)
-
-      let subY = startY + 22 * scale
+      let subY = startY
+      if (showTarget) {
+        ctx.fillStyle = '#f1f5f9'
+        ctx.font = `${targetSize}px system-ui, sans-serif`
+        ctx.fillText(w.text, cx, subY, wordW)
+        subY += targetSize + 4 * scale
+      }
       if (options.showRomanization && w.romanization) {
         ctx.fillStyle = '#9ca3af'
-        ctx.font = `italic ${Math.round(14 * scale)}px system-ui, sans-serif`
+        ctx.font = `italic ${romanSize}px system-ui, sans-serif`
         ctx.fillText(w.romanization, cx, subY, wordW)
-        subY += 18 * scale
+        subY += romanSize + 4 * scale
       }
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = `${Math.round(16 * scale)}px system-ui, sans-serif`
-      ctx.fillText(w.translation, cx, subY, wordW)
+      if (showTranslation) {
+        ctx.fillStyle = '#94a3b8'
+        ctx.font = `${translationSize}px system-ui, sans-serif`
+        ctx.fillText(w.translation, cx, subY, wordW)
+      }
 
-      x = targetRtl ? x - wordW - 10 * scale : x + wordW + 10 * scale
+      x = targetRtl ? x - wordW - 12 * scale : x + wordW + 12 * scale
     }
-  } else {
+  } else if (showTarget) {
     ctx.fillStyle = '#f1f5f9'
-    ctx.font = `${Math.round(26 * scale)}px system-ui, sans-serif`
+    ctx.font = `${Math.round(30 * scale)}px system-ui, sans-serif`
     ctx.textAlign = targetRtl ? 'right' : 'left'
     const maxW = width - pad * 2
-    wrapText(ctx, lineSpeechText(line), targetRtl ? width - pad : pad, startY, maxW, 32 * scale)
+    wrapText(ctx, lineSpeechText(line), targetRtl ? width - pad : pad, startY, maxW, 36 * scale)
   }
 }
 

@@ -9,6 +9,7 @@ import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
+import { useI18n } from '../i18n/I18nContext'
 import {
   estimateAllSectionImages,
   estimateBirkenbihl,
@@ -20,6 +21,7 @@ import {
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
+  const { t } = useI18n()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -117,7 +119,7 @@ export function DialogEditorPage() {
           </p>
         </div>
         <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
-          Diashow starten
+          {t('editor.slideshow')}
         </Link>
       </div>
 

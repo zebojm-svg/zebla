@@ -1,5 +1,8 @@
+export const IMAGE_ASPECT_RATIO = '16:9' as const
+
 export const PHOTOREALISTIC_STYLE =
-  'Photorealistic cinematic photograph, live-action movie still, natural soft lighting, shallow depth of field, high detail, realistic skin texture. ' +
+  'Photorealistic cinematic photograph, live-action movie still, widescreen 16:9 landscape frame, natural soft lighting, shallow depth of field, high detail, realistic skin texture. ' +
+  'Compose for a wide horizontal frame with room for faces and environment; avoid tall portrait crops. ' +
   'NOT comic book, NOT cartoon, NOT illustration, NOT anime, NOT drawn, NOT sketch, NOT cel-shaded, NOT graphic novel. No text or labels in the image.'
 
 /** Erscheinungsbild für Figuren – ansprechend, aber nicht explizit (Sprachlern-Kontext). */

@@ -8,8 +8,9 @@ Sprachlern-App zum Erstellen, Übersetzen und Üben von Dialogen – mit KI.
 
 - Anmeldung mit **Google** oder **Schülercode** (ohne Passwort)
 - Dialoge per KI-Gespräch, Thema oder Diktat erstellen
-- Übersetzen, Birkenbihl-Methode, Abschnitte, KI-Bilder
-- Diashow mit Vorlesen und Wort-Markierung
+- Übersetzen, Birkenbihl-Methode, Abschnitte, KI-Bilder (**16:9 Breitbild**)
+- Diashow mit Vorlesen, Wort-Markierung und wählbaren Schriften (Zielschrift / Romanisierung / Übersetzung)
+- Oberfläche auf **Deutsch, English, Français, فارسی**
 - **Cloud-Sprachausgabe** (Google Text-to-Speech) – natürliche Stimmen auch für Persisch/Dari, ohne Windows-Sprachpaket
 
 ---

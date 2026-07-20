@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Dialog, DialogFolder } from '../types'
 import { languageName } from '../types'
+import { useI18n } from '../i18n/I18nContext'
 
 function folderPath(
   folderId: string | null,
@@ -45,9 +46,10 @@ function folderLabel(folderId: string, folders: DialogFolder[]): string {
 
 function moveTargets(
   folders: DialogFolder[],
+  rootLabel: string,
   excludeFolderId?: string,
 ): MoveTarget[] {
-  const targets: MoveTarget[] = [{ kind: 'folder', id: null, label: 'Hauptverzeichnis' }]
+  const targets: MoveTarget[] = [{ kind: 'folder', id: null, label: rootLabel }]
   for (const folder of folders) {
     if (excludeFolderId && folder.id === excludeFolderId) continue
     if (excludeFolderId && isDescendantFolder(folder.id, excludeFolderId, folders)) continue
@@ -57,6 +59,7 @@ function moveTargets(
 }
 
 export function DashboardPage() {
+  const { t } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
   const currentFolderId = searchParams.get('folder')
 
@@ -219,6 +222,7 @@ export function DashboardPage() {
   const moveOptions = moveItem
     ? moveTargets(
         folders,
+        t('dashboard.root'),
         moveItem.type === 'folder' ? moveItem.id : undefined,
       )
     : []
@@ -227,22 +231,22 @@ export function DashboardPage() {
     <div className="dashboard">
       <div className="page-header">
         <div>
-          <h1>Meine Dialoge</h1>
+          <h1>{t('dashboard.title')}</h1>
           <p className="muted">Ordne Dialoge in Ordnern – erstellen, verschieben, umbenennen.</p>
         </div>
         <div className="header-actions">
           <button type="button" className="btn btn-secondary" onClick={createFolder}>
-            + Ordner
+            + {t('dashboard.newFolder')}
           </button>
           <Link to={createLink} className="btn btn-primary">
-            + Neuer Dialog
+            + {t('dashboard.newDialog')}
           </Link>
         </div>
       </div>
 
       <nav className="breadcrumb" aria-label="Ordnerpfad">
         <button type="button" className="breadcrumb-link" onClick={goToRoot}>
-          Hauptverzeichnis
+          {t('dashboard.root')}
         </button>
         {breadcrumbs.map((folder) => (
           <span key={folder.id} className="breadcrumb-segment">
@@ -332,17 +336,17 @@ export function DashboardPage() {
               </p>
               <div className="library-card-actions">
                 <Link to={`/dialog/${d.id}`} className="btn btn-secondary btn-sm">
-                  Bearbeiten
+                  {t('dashboard.open')}
                 </Link>
                 <Link to={`/dialog/${d.id}/slideshow`} className="btn btn-secondary btn-sm">
-                  Diashow
+                  {t('dashboard.slideshow')}
                 </Link>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={() => renameDialog(d)}
                 >
-                  Umbenennen
+                  {t('dashboard.rename')}
                 </button>
                 <button
                   type="button"

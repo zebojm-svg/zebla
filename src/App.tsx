@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { I18nProvider } from './i18n/I18nContext'
 import { Layout } from './components/Layout'
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
@@ -51,10 +52,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <I18nProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </I18nProvider>
   )
 }

@@ -17,7 +17,7 @@ import type {
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
-import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE } from './ken-burns-style.js'
+import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO } from './ken-burns-style.js'
 import { referenceAnchorForPrompt, buildReferenceImagePrompt } from './reference-image.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
@@ -362,7 +362,7 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`,
     {
       instances: [{ prompt }],
-      parameters: { sampleCount: 1 },
+      parameters: { sampleCount: 1, aspectRatio: IMAGE_ASPECT_RATIO },
     },
   )
 
@@ -380,7 +380,10 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
     {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      generationConfig: {
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: { aspectRatio: IMAGE_ASPECT_RATIO },
+      },
     },
   )
 
@@ -783,7 +786,7 @@ function buildPortraitGroup(
     `${group.speaker} is speaking to ${group.addressee}. ${gazeExpr[group.gaze]}. ` +
     `Expression: ${moodExpr[group.mood]}. Third-person observer perspective, natural dialogue scene. ` +
     `Setting: ${scene}. Only ${group.speaker} visible in frame; ${group.addressee} is off-camera beside the viewer, do not show a second person. ` +
-    `Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
+    `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
   return {
     id,
     speaker: group.speaker,

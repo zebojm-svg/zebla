@@ -75,6 +75,7 @@ function buildBeatPrompt(
     `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking to ${beat.addressee} off-camera. ` +
     `${gazeExpr[beat.gaze]}. Expression ONLY: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
     `Do not change clothing, hair color, face shape or age. Single visible speaker; partner off-camera. No speech bubbles, no captions. ` +
+    `Widescreen 16:9 landscape composition filling the frame horizontally. ` +
     `NOT looking at viewer. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
   )
 }
