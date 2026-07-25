@@ -13,11 +13,13 @@ import {
   planSpeakerPortraits,
   applySpeakerPortraits,
   ensureDialogVisualScript,
+  ensureCharacterPortraits,
   ensureReferenceImage,
   generateSectionImage,
   generateUploadedImage,
   isAiConfigured,
 } from './ai.js'
+import { referenceUrlsForScene } from './reference-image.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
@@ -112,11 +114,18 @@ async function attachSectionImage(
   section: DialogSection,
   userId: string,
 ) {
-  const withBible = await ensureCharacterBibleOnDialog(dialog, userId)
+  let withBible = await ensureCharacterBibleOnDialog(dialog, userId)
+  withBible = await ensureCharacterPortraits(withBible, userId, false)
+  withBible = await ensureReferenceImage(withBible, userId, false)
+  const speakers = [...new Set(section.lines.map((l) => l.speaker))]
+  const activeSpeaker = speakers[0]
   const { imageUrl: dataUrl, prompt } = await generateSectionImage(
     section,
     withBible.title,
     withBible.characterBible,
+    referenceUrlsForScene(withBible, activeSpeaker),
+    withBible.referenceImagePrompt,
+    activeSpeaker,
   )
   let imageUrl = dataUrl
   try {
@@ -130,6 +139,8 @@ async function attachSectionImage(
   const updated = await updateDialog(dialog.id, userId, {
     sections,
     characterBible: withBible.characterBible,
+    referenceImageUrl: withBible.referenceImageUrl,
+    referenceImagePrompt: withBible.referenceImagePrompt,
   })
   return { updated, imageUrl, sectionId: section.id }
 }
@@ -256,10 +267,27 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 
     if (!dialog.visualScript?.beats?.length || body.replan) {
       if (body.replan) {
+        const clearedBible = dialog.characterBible?.map((c) => ({
+          ...c,
+          portraitUrl: undefined,
+          portraitPrompt: undefined,
+        }))
         const cleared = await updateDialog(dialog.id, user.uid, {
           visualScript: undefined,
           referenceImageUrl: undefined,
           referenceImagePrompt: undefined,
+          characterBible: clearedBible,
+          // Szenenbilder zurücksetzen, damit sie neu abgeleitet werden
+          sections: dialog.sections.map((s) => ({
+            ...s,
+            speakerPortraits: undefined,
+            lineImageBeats: undefined,
+            lines: s.lines.map((l) => ({
+              ...l,
+              imageUrl: undefined,
+              imagePrompt: undefined,
+            })),
+          })),
         })
         if (cleared) dialog = cleared
       }
@@ -268,6 +296,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       dialog = withScript ?? { ...dialog, visualScript: script }
     }
 
+    dialog = await ensureCharacterPortraits(dialog, user.uid, body.replan === true)
     dialog = await ensureReferenceImage(dialog, user.uid, body.replan === true)
 
     if (body.beatIndex === -1) {
@@ -276,7 +305,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         done: false,
         totalBeats: dialog.visualScript?.beats.filter((b) => b.sectionId === section.id).length ?? 0,
         currentBeat: 0,
-        reason: 'Referenz-Cast (intern)',
+        reason: 'Figuren-Portraits & Referenz-Cast (intern)',
       })
       return
     }
@@ -327,6 +356,8 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         storageKey,
         dialog.characterBible,
         dialog.referenceImagePrompt,
+        referenceUrlsForScene(dialog, beat.activeSpeaker),
+        beat.activeSpeaker,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
     }

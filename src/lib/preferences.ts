@@ -38,10 +38,10 @@ export function setShowTranslation(value: boolean): void {
   localStorage.setItem(KEY_SHOW_TRANSLATION, value ? '1' : '0')
 }
 
-/** Standard: Cloud für Persisch/Arabisch (Windows oft unzuverlässig), sonst Windows. */
+/** Standard: Cloud für Sprachen mit Gemini-TTS (fa/ko/ja/zh/ar) und Arabisch. */
 export function defaultUseCloudTts(languageCode: string): boolean {
   const p = languageCode.slice(0, 2).toLowerCase()
-  return p === 'fa' || p === 'ar'
+  return p === 'fa' || p === 'ar' || p === 'ko' || p === 'ja' || p === 'zh'
 }
 
 export function getUseCloudTts(languageCode: string): boolean {

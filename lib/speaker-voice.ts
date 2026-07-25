@@ -1,5 +1,10 @@
 import type { CharacterVisual, Dialog } from '../shared/types.js'
 import { guessSpeakerGenderFromName } from './speaker-gender.js'
+import {
+  GEMINI_TTS_VOICE_NAMES,
+  isGeminiTtsVoiceName,
+  usesGeminiTts,
+} from '../shared/tts-routing.js'
 
 export interface SpeakerVoiceProfile {
   gender: 'male' | 'female'
@@ -8,10 +13,7 @@ export interface SpeakerVoiceProfile {
 }
 
 /** Gemini-TTS-Stimmen – je Geschlecht, feste Reihenfolge pro Sprecher. */
-const GEMINI_VOICES = {
-  female: ['Kore', 'Aoede', 'Leda'],
-  male: ['Charon', 'Puck', 'Fenrir'],
-} as const
+const GEMINI_VOICES = GEMINI_TTS_VOICE_NAMES
 
 const CLASSIC_VOICE_POOL: Record<
   string,
@@ -44,27 +46,28 @@ const CLASSIC_VOICE_POOL: Record<
   },
   ar: {
     locale: 'ar-XA',
-    female: ['ar-XA-Wavenet-A', 'ar-XA-Wavenet-C'],
-    male: ['ar-XA-Wavenet-B', 'ar-XA-Wavenet-D'],
+    female: ['Kore', 'Aoede'],
+    male: ['Charon', 'Puck'],
   },
   ko: {
     locale: 'ko-KR',
-    female: ['ko-KR-Neural2-A', 'ko-KR-Wavenet-A'],
-    male: ['ko-KR-Neural2-C', 'ko-KR-Neural2-B'],
+    female: ['Kore', 'Aoede'],
+    male: ['Charon', 'Puck'],
   },
   ja: {
     locale: 'ja-JP',
-    female: ['ja-JP-Neural2-B', 'ja-JP-Wavenet-A'],
-    male: ['ja-JP-Neural2-D', 'ja-JP-Neural2-C'],
+    female: ['Kore', 'Aoede'],
+    male: ['Charon', 'Puck'],
+  },
+  zh: {
+    locale: 'cmn-CN',
+    female: ['Kore', 'Aoede'],
+    male: ['Charon', 'Puck'],
   },
 }
 
 function langKey(languageCode: string): string {
   return languageCode.slice(0, 2).toLowerCase()
-}
-
-function usesGeminiTts(languageCode: string): boolean {
-  return langKey(languageCode) === 'fa'
 }
 
 export function resolveSpeakerGender(
@@ -140,12 +143,16 @@ export function buildSpeakerVoiceProfiles(dialog: Dialog): Record<string, Speake
     const speakerIdx = indices.get(speaker) ?? 0
     const gender = resolveSpeakerGender(speaker, speakerIdx, bible, dialog.speakerProfiles)
     const genderSlot = gender === 'male' ? maleSlot++ : femaleSlot++
-    const voiceName =
+    let voiceName =
       userProfile?.voiceName ??
       (gemini
         ? pickGeminiVoice(gender, genderSlot)
         : pickClassicVoice(dialog.targetLanguage, gender, genderSlot) ??
           (gender === 'male' ? 'Charon' : 'Kore'))
+    // Alte Neural2-Namen nach Gemini-Umstellung ersetzen
+    if (gemini && !isGeminiTtsVoiceName(voiceName)) {
+      voiceName = pickGeminiVoice(gender, genderSlot)
+    }
 
     profiles[speaker] = {
       gender,
@@ -168,12 +175,15 @@ export function getSpeakerVoice(
     user?.gender ??
     base?.gender ??
     resolveSpeakerGender(speaker, idx, dialog.characterBible, dialog.speakerProfiles)
-  const voiceName =
+  let voiceName =
     user?.voiceName ??
     base?.voiceName ??
     (usesGeminiTts(dialog.targetLanguage)
       ? pickGeminiVoice(gender, 0)
       : pickClassicVoice(dialog.targetLanguage, gender, 0) ?? 'Kore')
+  if (usesGeminiTts(dialog.targetLanguage) && !isGeminiTtsVoiceName(voiceName)) {
+    voiceName = pickGeminiVoice(gender, 0)
+  }
   const voicePrompt = user?.voicePrompt?.trim() || base?.voicePrompt
   return { gender, voiceName, voicePrompt: voicePrompt || undefined }
 }

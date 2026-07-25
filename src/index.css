@@ -647,6 +647,16 @@ html[dir='rtl'] .slideshow-topbar {
   text-align: center;
 }
 
+.tool-controls--stack {
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+
+.tool-controls--stack .btn {
+  width: 100%;
+}
+
 .section-header {
   display: flex;
   flex-wrap: wrap;

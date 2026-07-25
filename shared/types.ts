@@ -78,6 +78,9 @@ export interface CharacterVisual {
   gender?: 'male' | 'female'
   /** Fest zugewiesene Cloud-TTS-Stimme – bleibt für diesen Sprecher konstant. */
   voiceName?: string
+  /** Individuelles Portrait (Bild 0 pro Figur) – Vorlage für alle Szenenbilder. */
+  portraitUrl?: string
+  portraitPrompt?: string
 }
 
 /** Feste Szene (Ort, Hintergrund) – bleibt für mehrere Panels gleich. */

@@ -1,5 +1,10 @@
 import { getGoogleAccessToken, isGoogleCloudConfigured } from './google-auth-token.js'
 import { resolveClassicVoiceName, resolveGeminiVoiceName } from './speaker-voice.js'
+import {
+  geminiTtsLocale,
+  isGeminiTtsVoiceName,
+  usesGeminiTts,
+} from '../shared/tts-routing.js'
 
 export interface TtsRequest {
   text: string
@@ -31,9 +36,6 @@ export interface TtsHealth {
 
 const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
 
-/** Sprachen ohne klassische Stimmen – nur über Gemini-TTS (Preview). */
-const GEMINI_ONLY_LANGS = new Set(['fa'])
-
 /** Google Cloud TTS – klassische Stimmen (Neural2/Wavenet). */
 const CLASSIC_VOICES: Record<string, { locale: string; female?: string; male?: string }> = {
   de: { locale: 'de-DE', female: 'de-DE-Neural2-F', male: 'de-DE-Neural2-D' },
@@ -62,16 +64,6 @@ function langKey(languageCode: string): string {
   return languageCode.slice(0, 2).toLowerCase()
 }
 
-function usesGeminiTts(languageCode: string): boolean {
-  return GEMINI_ONLY_LANGS.has(langKey(languageCode))
-}
-
-function geminiLocale(languageCode: string): string {
-  const key = langKey(languageCode)
-  if (key === 'fa') return 'fa-ir'
-  return languageCode.toLowerCase()
-}
-
 function resolveClassicVoice(
   languageCode: string,
   gender: 'male' | 'female' = 'female',
@@ -97,7 +89,7 @@ function resolveClassicVoice(
 function formatApiError(msg: string): string {
   if (msg.includes('aiplatform.endpoints.predict')) {
     return (
-      'Gemini-Sprachausgabe (Persisch/Dari): Dem Firebase-Service-Account fehlt die Rolle ' +
+      'Gemini-Sprachausgabe: Dem Firebase-Service-Account fehlt die Rolle ' +
       '„Vertex AI User“ im Google-Projekt zebla-f517e (IAM → Mitglieder → Service-Account → Rolle hinzufügen).'
     )
   }
@@ -165,8 +157,13 @@ async function callGeminiSynthesize(
   voiceNameOverride?: string,
   voiceStylePrompt?: string,
 ): Promise<TtsResult> {
-  const locale = geminiLocale(languageCode)
-  const voiceName = voiceNameOverride ?? resolveGeminiVoiceName(gender, speakerIndex)
+  const locale = geminiTtsLocale(languageCode)
+  const voiceName =
+    voiceNameOverride && isGeminiTtsVoiceName(voiceNameOverride)
+      ? voiceNameOverride.includes('/')
+        ? voiceNameOverride.split('/').pop()!
+        : voiceNameOverride
+      : resolveGeminiVoiceName(gender, speakerIndex)
   const styleHint = voiceStylePrompt?.trim()
   const basePrompt =
     'Read clearly and naturally for language learners. Moderate pace, friendly teaching tone.'
@@ -296,6 +293,8 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
   const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
 
   if (usesGeminiTts(req.languageCode)) {
+    const voiceOverride =
+      req.voiceName && isGeminiTtsVoiceName(req.voiceName) ? req.voiceName : undefined
     return callGeminiSynthesize(
       token,
       text,
@@ -303,7 +302,7 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
       gender,
       speakingRate,
       speakerIndex,
-      req.voiceName,
+      voiceOverride,
       req.voicePrompt,
     )
   }

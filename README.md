@@ -11,6 +11,8 @@ Sprachlern-App zum Erstellen, Übersetzen und Üben von Dialogen – mit KI.
 - Übersetzen, Birkenbihl-Methode, Abschnitte, KI-Bilder (**16:9 Breitbild**)
 - Diashow mit Vorlesen, Wort-Markierung und wählbaren Schriften (Zielschrift / Romanisierung / Übersetzung)
 - Oberfläche auf **Deutsch, English, Français, فارسی**
+- **Cloud-Sprachausgabe**: Gemini-TTS für Persisch/Dari, Koreanisch, Japanisch, Chinesisch, Arabisch; sonst Google Neural2
+- Figuren zuerst als **Einzelportraits**, danach Szenenbilder davon abgeleitet (Gesicht bleibt gleich)
 - **Cloud-Sprachausgabe** (Google Text-to-Speech) – natürliche Stimmen auch für Persisch/Dari, ohne Windows-Sprachpaket
 
 ---

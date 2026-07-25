@@ -11,6 +11,7 @@ import { formatCreationPromptForDisplay } from '../../shared/dialog-image-contex
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
 import { useI18n } from '../i18n/I18nContext'
 import {
+  estimateAllSceneImages,
   estimateAllSectionImages,
   estimateBirkenbihl,
   estimateSceneImages,
@@ -305,7 +306,60 @@ export function DialogEditorPage() {
 
           <div className="tool-group">
             <span className="tool-label">Bilder</span>
-            <div className="tool-controls tool-controls--single">
+            <div className="tool-controls tool-controls--stack">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!!busy}
+                onClick={async () => {
+                  if (
+                    !(await confirmCost(
+                      estimateAllSceneImages(dialog.sections.length),
+                    ))
+                  )
+                    return
+                  await runAction('scenes-all', async () => {
+                    let current = dialog
+                    for (let si = 0; si < current.sections.length; si++) {
+                      const section = current.sections[si]
+                      let beatIndex = -1
+                      let replan = si === 0
+                      let done = false
+                      while (!done) {
+                        setStatus(
+                          beatIndex < 0
+                            ? `Abschnitt ${si + 1}/${current.sections.length}: Figuren-Portraits & Referenz …`
+                            : `Abschnitt ${si + 1}/${current.sections.length}: Bild ${beatIndex + 1} …`,
+                        )
+                        const res = await api.ai.imageLines(
+                          current.id,
+                          section.id,
+                          beatIndex,
+                          replan,
+                        )
+                        current = res.dialog
+                        setDialog(res.dialog)
+                        if (beatIndex < 0) {
+                          beatIndex = 0
+                          replan = false
+                          continue
+                        }
+                        done = res.done
+                        beatIndex++
+                        replan = false
+                        if (!done) {
+                          await new Promise((r) => setTimeout(r, 2500))
+                        }
+                      }
+                    }
+                    setStatus(
+                      'Fertig – alle Dialogbilder neu (Portraits → Szenen). In der Diashow ggf. „Audio neu erstellen“.',
+                    )
+                  })
+                }}
+              >
+                {busy === 'scenes-all' ? 'Generiere …' : 'Alle Dialogbilder neu'}
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -322,7 +376,7 @@ export function DialogEditorPage() {
                     for (let i = 0; i < current.sections.length; i++) {
                       const section = current.sections[i]
                       setStatus(
-                        `Generiere Bild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
+                        `Generiere Titelbild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
                       )
                       const { dialog: d } = await api.ai.image(current.id, section.id)
                       current = d
@@ -334,7 +388,7 @@ export function DialogEditorPage() {
                   })
                 }}
               >
-                {busy === 'images' ? 'Generiere …' : 'Alle Bilder generieren'}
+                {busy === 'images' ? 'Generiere …' : 'Alle Titelbilder'}
               </button>
             </div>
           </div>
@@ -418,12 +472,12 @@ export function DialogEditorPage() {
                     let current = dialog
                     let done = false
                     while (!done) {
-                      setStatus(
+                        setStatus(
                         beatIndex < 0
-                          ? 'Referenz-Cast wird erstellt (intern) …'
+                          ? 'Figuren-Portraits & Referenz-Cast (intern) …'
                           : replan
                             ? 'KI plant Bilderskript …'
-                            : `Bild ${beatIndex + 1} … (ca. 15–30 s)`,
+                            : `Bild ${beatIndex + 1} … (abgeleitet vom Portrait, ca. 15–30 s)`,
                       )
                       const res = await api.ai.imageLines(
                         current.id,

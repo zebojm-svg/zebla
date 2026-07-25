@@ -18,7 +18,13 @@ import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO } from './ken-burns-style.js'
-import { referenceAnchorForPrompt, buildReferenceImagePrompt } from './reference-image.js'
+import {
+  referenceAnchorForPrompt,
+  buildReferenceImagePrompt,
+  buildCharacterPortraitPrompt,
+  portraitAnchorForPrompt,
+  referenceUrlsForScene,
+} from './reference-image.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 import {
@@ -374,12 +380,58 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
   return `data:image/png;base64,${b64}`
 }
 
-async function generateImageWithGemini(prompt: string): Promise<string> {
+export type InlineImageRef = { mimeType: string; data: string }
+
+async function fetchImageAsInline(url: string): Promise<InlineImageRef | null> {
+  try {
+    if (url.startsWith('data:')) {
+      const match = url.match(/^data:([^;]+);base64,(.+)$/)
+      if (!match) return null
+      return { mimeType: match[1], data: match[2] }
+    }
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    const mimeType = res.headers.get('content-type')?.split(';')[0] || 'image/png'
+    return { mimeType, data: buf.toString('base64') }
+  } catch {
+    return null
+  }
+}
+
+async function loadInlineImages(urls: string[] | undefined): Promise<InlineImageRef[]> {
+  if (!urls?.length) return []
+  const out: InlineImageRef[] = []
+  for (const url of urls.slice(0, 3)) {
+    const img = await fetchImageAsInline(url)
+    if (img) out.push(img)
+  }
+  return out
+}
+
+async function generateImageWithGemini(
+  prompt: string,
+  referenceImages?: InlineImageRef[],
+): Promise<string> {
   const apiKey = requireGeminiKey()
+  const parts: Record<string, unknown>[] = []
+  if (referenceImages?.length) {
+    for (const img of referenceImages) {
+      parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
+    }
+    parts.push({
+      text:
+        'The image(s) above are LOCKED character identity references. ' +
+        'Reproduce the same faces, hair, skin tone, age, and outfits exactly in the new scene described below. ' +
+        'Only change pose, expression, camera angle, and environment as requested.',
+    })
+  }
+  parts.push({ text: prompt })
+
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
     {
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ parts }],
       generationConfig: {
         responseModalities: ['TEXT', 'IMAGE'],
         imageConfig: { aspectRatio: IMAGE_ASPECT_RATIO },
@@ -391,7 +443,9 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
     candidates?: {
       content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }
     }[]
+    error?: { message?: string }
   }
+  if (data.error?.message) throw new Error(data.error.message)
   const inlineData = data.candidates?.[0]?.content?.parts?.find(
     (part) => part.inlineData?.data,
   )?.inlineData
@@ -522,13 +576,21 @@ function buildConsistentImagePrompt(
   scenePrompt: string,
   bible?: CharacterVisual[],
   referencePrompt?: string,
+  activeSpeaker?: string,
 ): string {
+  const portrait = activeSpeaker
+    ? bible?.find((c) => c.name === activeSpeaker)
+    : undefined
+  const portraitRef = portraitAnchorForPrompt(
+    activeSpeaker ?? '',
+    portrait?.portraitPrompt,
+  )
   const ref = referenceAnchorForPrompt(referencePrompt)
   const cast =
     bible?.length ?
       `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  return `${ref}${cast}${scenePrompt}. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
+  return `${portraitRef}${ref}${cast}${scenePrompt}. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
 }
 
 function buildImagePrompt(
@@ -547,12 +609,17 @@ function buildImagePrompt(
   )
 }
 
-async function generateImageDataUrl(prompt: string): Promise<string> {
+async function generateImageDataUrl(
+  prompt: string,
+  referenceImageUrls?: string[],
+): Promise<string> {
   try {
+    const refs = await loadInlineImages(referenceImageUrls)
     if (IMAGE_MODEL.startsWith('imagen')) {
+      // Imagen predict path has no multimodal refs — prompt-only fallback
       return await generateImageWithImagen(prompt)
     }
-    return await generateImageWithGemini(prompt)
+    return await generateImageWithGemini(prompt, refs)
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err)
     throw new Error(imageGenerationErrorMessage(raw))
@@ -563,9 +630,22 @@ export async function generateSectionImage(
   section: DialogSection,
   dialogTitle: string,
   bible?: CharacterVisual[],
+  referenceImageUrls?: string[],
+  referencePrompt?: string,
+  activeSpeaker?: string,
 ): Promise<{ imageUrl: string; prompt: string }> {
-  const prompt = buildImagePrompt(section, dialogTitle, bible)
-  const imageUrl = await generateImageDataUrl(prompt)
+  const speakers = uniqueSpeakers(section)
+  const snippet = section.lines
+    .slice(0, 5)
+    .map((l) => `${l.speaker}: ${l.text}`)
+    .join(' ')
+  const prompt = buildConsistentImagePrompt(
+    `${twoShotLayoutHint(speakers)}Scene for language learning dialog "${dialogTitle}", section "${section.title}". ${snippet}`,
+    bible,
+    referencePrompt,
+    activeSpeaker,
+  )
+  const imageUrl = await generateImageDataUrl(prompt, referenceImageUrls)
   return { imageUrl, prompt }
 }
 
@@ -883,9 +963,16 @@ export async function generateUploadedImage(
   storageKey: string,
   bible?: CharacterVisual[],
   referencePrompt?: string,
+  referenceImageUrls?: string[],
+  activeSpeaker?: string,
 ): Promise<string> {
-  const fullPrompt = buildConsistentImagePrompt(prompt, bible, referencePrompt)
-  const dataUrl = await generateImageDataUrl(fullPrompt)
+  const fullPrompt = buildConsistentImagePrompt(
+    prompt,
+    bible,
+    referencePrompt,
+    activeSpeaker,
+  )
+  const dataUrl = await generateImageDataUrl(fullPrompt, referenceImageUrls)
   const { uploadDialogImage } = await import('./image-storage.js')
   try {
     return await uploadDialogImage(dataUrl, dialogId, storageKey)
@@ -905,6 +992,41 @@ export function applyLineImageBeats(
   })
 }
 
+/** Erzeugt zuerst Einzelportraits aller Figuren (Identitäts-Anker). */
+export async function ensureCharacterPortraits(
+  dialog: Dialog,
+  userId: string,
+  force = false,
+): Promise<Dialog> {
+  const bible = dialog.characterBible
+  if (!bible?.length) return dialog
+
+  const needsWork = force || bible.some((c) => !c.portraitUrl)
+  if (!needsWork) return dialog
+
+  const { updateDialog } = await import('./firestore.js')
+  const nextBible: CharacterVisual[] = []
+
+  for (const character of bible) {
+    if (character.portraitUrl && !force) {
+      nextBible.push(character)
+      continue
+    }
+    const prompt = buildCharacterPortraitPrompt(character, dialog)
+    const storageKey = `portrait-${character.name.replace(/[^\w\-]+/g, '_').slice(0, 40)}`
+    const portraitUrl = await generateUploadedImage(
+      prompt,
+      dialog.id,
+      storageKey,
+      [character],
+    )
+    nextBible.push({ ...character, portraitUrl, portraitPrompt: prompt })
+  }
+
+  const updated = await updateDialog(dialog.id, userId, { characterBible: nextBible })
+  return updated ?? { ...dialog, characterBible: nextBible }
+}
+
 export async function ensureReferenceImage(
   dialog: Dialog,
   userId: string,
@@ -915,11 +1037,15 @@ export async function ensureReferenceImage(
   }
   const prompt = buildReferenceImagePrompt(dialog, dialog.characterBible)
   const { updateDialog } = await import('./firestore.js')
+  const portraitUrls =
+    dialog.characterBible?.map((c) => c.portraitUrl).filter((u): u is string => !!u) ?? []
   const imageUrl = await generateUploadedImage(
     prompt,
     dialog.id,
     'reference-cast-0',
     dialog.characterBible,
+    undefined,
+    portraitUrls,
   )
   const updated = await updateDialog(dialog.id, userId, {
     referenceImageUrl: imageUrl,
