@@ -299,6 +299,7 @@ export const api = {
       sectionId: string,
       beatIndex: number,
       replan?: boolean,
+      forceImages?: boolean,
     ) =>
       request<{
         dialog: import('../types').Dialog
@@ -308,7 +309,7 @@ export const api = {
         reason?: string
       }>('/image-lines', {
         method: 'POST',
-        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan }),
+        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, forceImages }),
       }),
   },
 }

@@ -320,6 +320,7 @@ export function DialogEditorPage() {
                     return
                   await runAction('scenes-all', async () => {
                     let current = dialog
+                    let generated = 0
                     for (let si = 0; si < current.sections.length; si++) {
                       const section = current.sections[si]
                       let beatIndex = -1
@@ -329,13 +330,14 @@ export function DialogEditorPage() {
                         setStatus(
                           beatIndex < 0
                             ? `Abschnitt ${si + 1}/${current.sections.length}: Figuren-Portraits & Referenz …`
-                            : `Abschnitt ${si + 1}/${current.sections.length}: Bild ${beatIndex + 1} …`,
+                            : `Abschnitt ${si + 1}/${current.sections.length}: neues Bild ${beatIndex + 1} …`,
                         )
                         const res = await api.ai.imageLines(
                           current.id,
                           section.id,
                           beatIndex,
                           replan,
+                          true,
                         )
                         current = res.dialog
                         setDialog(res.dialog)
@@ -344,6 +346,7 @@ export function DialogEditorPage() {
                           replan = false
                           continue
                         }
+                        generated++
                         done = res.done
                         beatIndex++
                         replan = false
@@ -353,7 +356,7 @@ export function DialogEditorPage() {
                       }
                     }
                     setStatus(
-                      'Fertig – alle Dialogbilder neu (Portraits → Szenen). In der Diashow ggf. „Audio neu erstellen“.',
+                      `Fertig – ${generated} Dialogbild${generated !== 1 ? 'er' : ''} neu erzeugt. Seite ggf. einmal hart neu laden (Strg+F5), falls der Browser noch alte Vorschaubilder zeigt.`,
                     )
                   })
                 }}
@@ -471,19 +474,21 @@ export function DialogEditorPage() {
                     let replan = true
                     let current = dialog
                     let done = false
+                    let generated = 0
                     while (!done) {
-                        setStatus(
+                      setStatus(
                         beatIndex < 0
                           ? 'Figuren-Portraits & Referenz-Cast (intern) …'
                           : replan
                             ? 'KI plant Bilderskript …'
-                            : `Bild ${beatIndex + 1} … (abgeleitet vom Portrait, ca. 15–30 s)`,
+                            : `Neues Bild ${beatIndex + 1} … (ca. 15–30 s)`,
                       )
                       const res = await api.ai.imageLines(
                         current.id,
                         section.id,
                         beatIndex,
                         replan,
+                        true,
                       )
                       current = res.dialog
                       setDialog(res.dialog)
@@ -492,6 +497,7 @@ export function DialogEditorPage() {
                         replan = false
                         continue
                       }
+                      generated++
                       done = res.done
                       beatIndex++
                       replan = false
@@ -499,7 +505,9 @@ export function DialogEditorPage() {
                         await new Promise((r) => setTimeout(r, 2500))
                       }
                     }
-                    setStatus(`Fertig – ${beatIndex} Bild${beatIndex !== 1 ? 'er' : ''}.`)
+                    setStatus(
+                      `Fertig – ${generated} Bild${generated !== 1 ? 'er' : ''} neu. Bei Bedarf Strg+F5.`,
+                    )
                   })
                 }}
               >

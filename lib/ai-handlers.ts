@@ -245,6 +245,8 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       sectionId?: string
       beatIndex?: number
       replan?: boolean
+      /** Immer neu rendern, auch wenn beat.imageUrl schon gesetzt ist. */
+      forceImages?: boolean
     }
     const dialogId = dialogIdFromRequest(req, body)
     const sectionId = body.sectionId
@@ -265,29 +267,31 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid)
 
-    if (!dialog.visualScript?.beats?.length || body.replan) {
-      if (body.replan) {
-        const clearedBible = dialog.characterBible?.map((c) => ({
-          ...c,
-          portraitUrl: undefined,
-          portraitPrompt: undefined,
-        }))
+    const clearAndReplan = body.replan === true
+    const forceImages = body.forceImages === true || clearAndReplan
+
+    if (!dialog.visualScript?.beats?.length || clearAndReplan) {
+      if (clearAndReplan) {
+        const clearedBible = dialog.characterBible?.map((c) => {
+          const { portraitUrl: _p, portraitPrompt: _pp, ...rest } = c
+          return rest
+        })
+        const clearedSections = dialog.sections.map((s) => {
+          const { speakerPortraits: _sp, lineImageBeats: _lb, ...secRest } = s
+          return {
+            ...secRest,
+            lines: s.lines.map((l) => {
+              const { imageUrl: _iu, imagePrompt: _ip, ...lineRest } = l
+              return lineRest
+            }),
+          }
+        })
         const cleared = await updateDialog(dialog.id, user.uid, {
-          visualScript: undefined,
-          referenceImageUrl: undefined,
-          referenceImagePrompt: undefined,
+          visualScript: null,
+          referenceImageUrl: null,
+          referenceImagePrompt: null,
           characterBible: clearedBible,
-          // Szenenbilder zurücksetzen, damit sie neu abgeleitet werden
-          sections: dialog.sections.map((s) => ({
-            ...s,
-            speakerPortraits: undefined,
-            lineImageBeats: undefined,
-            lines: s.lines.map((l) => ({
-              ...l,
-              imageUrl: undefined,
-              imagePrompt: undefined,
-            })),
-          })),
+          sections: clearedSections,
         })
         if (cleared) dialog = cleared
       }
@@ -296,8 +300,8 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       dialog = withScript ?? { ...dialog, visualScript: script }
     }
 
-    dialog = await ensureCharacterPortraits(dialog, user.uid, body.replan === true)
-    dialog = await ensureReferenceImage(dialog, user.uid, body.replan === true)
+    dialog = await ensureCharacterPortraits(dialog, user.uid, clearAndReplan)
+    dialog = await ensureReferenceImage(dialog, user.uid, clearAndReplan)
 
     if (body.beatIndex === -1) {
       res.json({
@@ -327,7 +331,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         cameraEn: `from empty seat of ${p.addressee ?? 'partner'} looking at ${p.speaker}, partner completely out of frame`,
         expressionEn: p.mood,
         prompt: p.prompt,
-        imageUrl: p.imageUrl,
+        imageUrl: undefined,
         reason: p.reason,
       }))
     }
@@ -348,7 +352,8 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
     }
 
     const beat = beats[beatIndex]
-    if (!beat.imageUrl) {
+    // Bei Neuaufbau / force immer neu erzeugen – alte imageUrl nie wiederverwenden
+    if (!beat.imageUrl || forceImages) {
       const storageKey = `${section.id}-beat-${beat.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}`
       const imageUrl = await generateUploadedImage(
         beat.prompt,
