@@ -324,7 +324,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         gaze: p.gaze,
         framing: p.framing,
         newSetup: true,
-        cameraEn: `beside ${p.addressee ?? 'partner'} watching ${p.speaker}`,
+        cameraEn: `from empty seat of ${p.addressee ?? 'partner'} looking at ${p.speaker}, partner completely out of frame`,
         expressionEn: p.mood,
         prompt: p.prompt,
         imageUrl: p.imageUrl,

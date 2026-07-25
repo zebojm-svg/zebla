@@ -106,7 +106,7 @@ export function estimateSceneImages(portraitCount = 2): CostEstimate {
       { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 6} Cent` },
     ],
     totalHint: `ca. ${cents}–${cents + 6} Cent`,
-    note: 'Figuren werden zuerst einzeln fotografiert; alle weiteren Bilder leiten sich davon ab.',
+    note: 'Figuren-Portraits zuerst; Szenen zeigen nur den sprechenden Charakter (kein Hinterkopf, keine Extra-Personen).',
   }
 }
 

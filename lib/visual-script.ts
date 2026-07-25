@@ -12,7 +12,7 @@ import type {
   VisualScene,
   VisualScriptBeat,
 } from '../shared/types.js'
-import { CAST_APPEARANCE_GUIDE, PHOTOREALISTIC_STYLE } from './ken-burns-style.js'
+import { CAST_APPEARANCE_GUIDE, PHOTOREALISTIC_STYLE, castIntegrityRules } from './ken-burns-style.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 
@@ -58,6 +58,7 @@ function buildBeatPrompt(
   bible: CharacterVisual[] | undefined,
 ): string {
   const cast = bible?.find((c) => c.name === beat.activeSpeaker)?.description
+  const castNames = bible?.map((c) => c.name) ?? [beat.activeSpeaker, beat.addressee].filter(Boolean)
   const allCast = bible?.length
     ? `LOCKED CAST (identical in every frame): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
@@ -71,10 +72,15 @@ function buildBeatPrompt(
     `Photorealistic cinematic dialog still (live-action, NOT comic/cartoon). ${setupNote}` +
     `${allCast}` +
     `${sceneBlock}` +
-    `Over-the-shoulder shot: ${beat.cameraEn}. ` +
-    `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking to ${beat.addressee} off-camera. ` +
+    castIntegrityRules({
+      castNames: [...new Set(castNames.filter(Boolean))],
+      visibleSpeaker: beat.activeSpeaker,
+      addressee: beat.addressee,
+    }) +
+    `Viewpoint: ${beat.cameraEn}. ` +
+    `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking toward ${beat.addressee} who is out of frame. ` +
     `${gazeExpr[beat.gaze]}. Expression ONLY: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
-    `Do not change clothing, hair color, face shape or age. Single visible speaker; partner off-camera. No speech bubbles, no captions. ` +
+    `Do not change clothing, hair color, face shape or age of ${beat.activeSpeaker}. No speech bubbles, no captions. ` +
     `Widescreen 16:9 landscape composition filling the frame horizontally. ` +
     `NOT looking at viewer. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
   )
@@ -122,13 +128,19 @@ Zuerst den GESAMTEN Dialog lesen und verstehen (Handlung, Orte, wer wann dazukom
 
 ${bible?.length ? `FESTE FIGUREN (Aussehen auf ALLEN Bildern IDENTISCH – Kleidung, Frisur, Gesicht):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
 
+PERSONENZAHL (sehr wichtig):
+- Es gibt GENAU ${bible?.length ?? 'die genannten'} Dialogfiguren. Niemals Extra-Personen erfinden.
+- Kamera: Blick vom Platz des Gesprächspartners auf den aktiven Sprecher.
+- Der Partner ist KOMPLETT außerhalb des Bildes (kein Hinterkopf, keine Schulter im Vordergrund).
+- cameraEn z.B. "from empty seat of Addressee looking at ActiveSpeaker across the table"
+
 SZENEN (scenes):
 - Wenige wiederkehrende Schauplätze mit festem Hintergrund und Licht.
 
 PRO ZEILE (linePlans):
 - mood: ${moodList} – passend zum Zeileninhalt und zu den Bild-Hinweisen (z.B. laughing bei Humor, crying/sobbing bei Trauer)
 - newSetup: true nur bei Ortwechsel, neuer Person, neuer Kameraseite; false = nur Mimik ändert sich
-- cameraEn: feste englische Formulierung pro Blickwinkel-Paar
+- cameraEn: feste englische Formulierung – Partner nie als Hinterkopf im Bild
 - expressionEn: NUR Gesichtsausdruck
 
 KONSISTENZ: Gleiche Kleidung, Frisur, Gesicht pro Person. Photorealistic only, never cartoon/comic style.
@@ -208,7 +220,9 @@ JSON:
       const gaze = validGaze.has(plan.gaze as PortraitGaze) ? (plan.gaze as PortraitGaze) : 'at_partner'
       const addressee = plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers)
       const sceneId = plan.sceneId?.trim() || 'main'
-      const cameraEn = plan.cameraEn?.trim() || `beside ${addressee} watching ${plan.activeSpeaker}`
+      const cameraEn =
+        plan.cameraEn?.trim() ||
+        `from empty seat of ${addressee} looking across at ${plan.activeSpeaker}, ${addressee} completely out of frame`
 
       if (
         group &&

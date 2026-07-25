@@ -17,7 +17,7 @@ import type {
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
-import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO } from './ken-burns-style.js'
+import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO, castIntegrityRules } from './ken-burns-style.js'
 import {
   referenceAnchorForPrompt,
   buildReferenceImagePrompt,
@@ -421,8 +421,10 @@ async function generateImageWithGemini(
     }
     parts.push({
       text:
-        'The image(s) above are LOCKED character identity references. ' +
-        'Reproduce the same faces, hair, skin tone, age, and outfits exactly in the new scene described below. ' +
+        'The image(s) above are LOCKED character identity references for the people who appear in THIS dialog. ' +
+        'Reproduce the same faces, hair, skin tone, age, and outfits exactly when those characters are shown. ' +
+        'CRITICAL: do not invent extra people. The new scene must contain only the single speaking character described in the text prompt — ' +
+        'no over-the-shoulder back-of-head, no third person at the table, no bystanders with faces. ' +
         'Only change pose, expression, camera angle, and environment as requested.',
     })
   }
@@ -512,10 +514,14 @@ function uniqueSpeakers(section: DialogSection): string[] {
 
 function twoShotLayoutHint(speakers: string[]): string {
   if (speakers.length >= 2) {
-    return `Medium two-shot: ${speakers[0]} on the LEFT third of the frame, ${speakers[1]} on the RIGHT third, both facing slightly toward each other, equal prominence, full upper body visible. `
+    return (
+      `Exactly TWO people only (${speakers[0]} and ${speakers[1]}), no third person: ` +
+      `${speakers[0]} on the LEFT third of the frame, ${speakers[1]} on the RIGHT third, ` +
+      `both facing slightly toward each other, equal prominence, full upper body visible. `
+    )
   }
   if (speakers.length === 1) {
-    return `Single subject ${speakers[0]} centered, medium shot, upper body visible. `
+    return `Single subject ${speakers[0]} centered, medium shot, upper body visible. No other people. `
   }
   return ''
 }
@@ -861,11 +867,16 @@ function buildPortraitGroup(
   const firstIdx = group.lineIndices[0]
   const id = `${group.speaker.replace(/\s+/g, '_')}-${group.mood}-${group.gaze}-${firstIdx}`
   const prompt =
-    `Over-the-shoulder cinematic dialogue shot: camera beside ${group.addressee}, as if the viewer sits next to ${group.addressee} watching the conversation. ` +
+    castIntegrityRules({
+      castNames: bible?.map((c) => c.name) ?? [group.speaker, group.addressee].filter(Boolean),
+      visibleSpeaker: group.speaker,
+      addressee: group.addressee,
+    }) +
+    `Viewpoint: camera from empty seat of ${group.addressee} looking at ${group.speaker}. ` +
     `${framingExpr[framing]} of ${group.speaker}${castHint ? ` (${castHint})` : ''}. ` +
-    `${group.speaker} is speaking to ${group.addressee}. ${gazeExpr[group.gaze]}. ` +
-    `Expression: ${moodExpr[group.mood]}. Third-person observer perspective, natural dialogue scene. ` +
-    `Setting: ${scene}. Only ${group.speaker} visible in frame; ${group.addressee} is off-camera beside the viewer, do not show a second person. ` +
+    `${group.speaker} is speaking to ${group.addressee} who is completely out of frame. ${gazeExpr[group.gaze]}. ` +
+    `Expression: ${moodExpr[group.mood]}. Natural dialogue scene. ` +
+    `Setting: ${scene}. ` +
     `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
   return {
     id,

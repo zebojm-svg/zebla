@@ -11,3 +11,30 @@ export const CAST_APPEARANCE_GUIDE =
   'Women: feminine soft curves and graceful proportions, warm natural beauty. ' +
   'Men: lean athletic build with visible Adam\'s apple and strong masculine jaw. ' +
   'Stylish eyeglasses welcome when they suit the character. Photorealistic, approachable, well-groomed.'
+
+/**
+ * Harte Regeln gegen erfundene Extra-Personen und falsche Hinterköpfe.
+ * castNames = alle Dialog-Sprecher; visibleSpeaker = wer im Bild klar zu sehen ist.
+ */
+export function castIntegrityRules(opts: {
+  castNames: string[]
+  visibleSpeaker: string
+  addressee?: string
+}): string {
+  const n = opts.castNames.length
+  const castList = opts.castNames.join(', ')
+  const partner = opts.addressee?.trim()
+  return (
+    `CAST INTEGRITY (CRITICAL): This dialog has EXACTLY ${n} named character${n === 1 ? '' : 's'}: ${castList}. ` +
+    `Show EXACTLY ONE person in the frame: ${opts.visibleSpeaker} (face clearly visible). ` +
+    `Do NOT invent extra people. Do NOT add a third diner, waiter, bystander, child, or crowd. ` +
+    `Empty chairs / table space may exist, but no additional human figures. ` +
+    (partner
+      ? `${partner} is the conversation partner and must be COMPLETELY OUT OF FRAME ` +
+        `(no shoulder, no back of head, no blurry hair silhouette in the foreground). ` +
+        `Camera sits where ${partner} would sit, looking at ${opts.visibleSpeaker} — ` +
+        `as if ${partner} left the seat empty so we only see ${opts.visibleSpeaker}. `
+      : '') +
+    `Never show an over-the-shoulder back-of-head of another person — that causes identity errors. `
+  )
+}
