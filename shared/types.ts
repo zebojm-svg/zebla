@@ -90,6 +90,16 @@ export interface VisualScene {
   settingEn: string
   backgroundEn: string
   lightingEn: string
+  /**
+   * Feste 3D-Geografie der Szene (Sitze links/rechts, Blickachsen, was hinter wem liegt).
+   * Wird für Reverse-Shots / 180°-Regel in jedem Beat wiederholt.
+   */
+  spatialEn?: string
+  /**
+   * locked = Sitzgespräch, Hintergrund darf sich nicht ändern.
+   * gradual = Spaziergang o.ä., Hintergrund darf sich langsam verschieben.
+   */
+  continuity?: 'locked' | 'gradual'
 }
 
 /** Ein Panel im Dialog-Comic – konsistente Figuren, wechselnde Mimik. */

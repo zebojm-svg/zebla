@@ -20,6 +20,7 @@ import {
   isAiConfigured,
 } from './ai.js'
 import { referenceUrlsForScene } from './reference-image.js'
+import { previousSceneImageUrl } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
@@ -355,13 +356,18 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
     // Bei Neuaufbau / force immer neu erzeugen – alte imageUrl nie wiederverwenden
     if (!beat.imageUrl || forceImages) {
       const storageKey = `${section.id}-beat-${beat.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}`
+      const prevSceneUrl = previousSceneImageUrl(
+        dialog.visualScript,
+        beat.sceneId,
+        beat.id,
+      )
       const imageUrl = await generateUploadedImage(
         beat.prompt,
         dialog.id,
         storageKey,
         dialog.characterBible,
         dialog.referenceImagePrompt,
-        referenceUrlsForScene(dialog, beat.activeSpeaker),
+        referenceUrlsForScene(dialog, beat.activeSpeaker, prevSceneUrl),
         beat.activeSpeaker,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))

@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto'
 import type {
   CharacterVisual,
   Dialog,
@@ -52,26 +51,142 @@ function inferAddressee(
   return speakers.find((s) => s !== speaker) ?? speakers[0] ?? 'partner'
 }
 
+/** Pro Szene: wer sitzt links/rechts (erste Erwähnung = links). */
+export type SceneSeating = {
+  left: string
+  right: string
+  others: string[]
+}
+
+export function seatingForScene(
+  sceneId: string,
+  plans: { sceneId: string; activeSpeaker: string; addressee: string }[],
+): SceneSeating | null {
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const p of plans) {
+    if (p.sceneId !== sceneId) continue
+    for (const name of [p.activeSpeaker, p.addressee]) {
+      const n = name?.trim()
+      if (!n || seen.has(n)) continue
+      seen.add(n)
+      order.push(n)
+    }
+  }
+  if (order.length < 2) {
+    if (order.length === 1) return { left: order[0], right: order[0], others: [] }
+    return null
+  }
+  return { left: order[0], right: order[1], others: order.slice(2) }
+}
+
+/**
+ * Deterministische Kamera nach 180°-Regel:
+ * Linker Platz → wird von rechts gefilmt, schaut nach screen-right.
+ * Rechter Platz → wird von links gefilmt, schaut nach screen-left.
+ */
+export function cameraEnForSeating(
+  activeSpeaker: string,
+  addressee: string,
+  seating: SceneSeating | null,
+  continuity: 'locked' | 'gradual',
+): string {
+  if (!seating) {
+    return (
+      `from empty seat of ${addressee} looking across at ${activeSpeaker}, ` +
+      `${addressee} completely out of frame, keep identical room geography`
+    )
+  }
+
+  const onLeft = activeSpeaker === seating.left
+  const onRight = activeSpeaker === seating.right
+  const partner =
+    onLeft ? seating.right : onRight ? seating.left : addressee
+
+  if (onLeft) {
+    return (
+      `REVERSE SHOT / 180-degree rule: camera sits at ${partner}'s RIGHT-side seat looking LEFTWARD across the same table at ${activeSpeaker}. ` +
+      `${activeSpeaker} occupies the LEFT half of the frame and looks toward screen-RIGHT (toward ${partner}). ` +
+      `${partner} is completely out of frame. ` +
+      (continuity === 'gradual'
+        ? `Same continuous location as other shots in this scene; background may drift only slightly.`
+        : `IDENTICAL room, furniture, window/wall placement and lighting as every other shot in this scene.`)
+    )
+  }
+
+  if (onRight) {
+    return (
+      `REVERSE SHOT / 180-degree rule: camera sits at ${partner}'s LEFT-side seat looking RIGHTWARD across the same table at ${activeSpeaker}. ` +
+      `${activeSpeaker} occupies the RIGHT half of the frame and looks toward screen-LEFT (toward ${partner}). ` +
+      `${partner} is completely out of frame. ` +
+      (continuity === 'gradual'
+        ? `Same continuous location as other shots in this scene; background may drift only slightly.`
+        : `IDENTICAL room, furniture, window/wall placement and lighting as every other shot in this scene.`)
+    )
+  }
+
+  return (
+    `from empty seat of ${addressee} looking at ${activeSpeaker}, ${addressee} out of frame, ` +
+    `keep the locked spatial layout (${seating.left} left / ${seating.right} right)`
+  )
+}
+
+function spatialBlockForScene(scene: VisualScene | undefined, seating: SceneSeating | null): string {
+  if (!scene && !seating) return ''
+  const continuity = scene?.continuity === 'gradual' ? 'gradual' : 'locked'
+  const parts: string[] = []
+  if (scene) {
+    parts.push(
+      `SCENE LOCK "${scene.id}": setting=${scene.settingEn}. background=${scene.backgroundEn}. lighting=${scene.lightingEn}.`,
+    )
+    if (scene.spatialEn?.trim()) {
+      parts.push(`SPATIAL MAP: ${scene.spatialEn.trim()}`)
+    }
+  }
+  if (seating) {
+    parts.push(
+      `SEATING LOCK: ${seating.left} ALWAYS on the LEFT side of the shared space; ` +
+        `${seating.right} ALWAYS on the RIGHT side` +
+        (seating.others.length ? `; also present: ${seating.others.join(', ')}` : '') +
+        `. Never swap left/right between shots.`,
+    )
+  }
+  if (continuity === 'locked') {
+    parts.push(
+      `CONTINUITY=locked: This is a stationary conversation. ` +
+        `Do NOT change indoor↔outdoor, time of day, weather, or room. ` +
+        `Background architecture and props must match prior frames of this scene.`,
+    )
+  } else {
+    parts.push(
+      `CONTINUITY=gradual: Characters may be walking/moving. ` +
+        `Background may shift slowly along the same path, but keep same weather, time of day, and outfit. ` +
+        `No sudden teleport indoor↔outdoor.`,
+    )
+  }
+  return parts.join(' ') + ' '
+}
+
 function buildBeatPrompt(
   beat: Omit<VisualScriptBeat, 'id' | 'prompt' | 'imageUrl'>,
   scene: VisualScene | undefined,
   bible: CharacterVisual[] | undefined,
+  seating: SceneSeating | null,
 ): string {
   const cast = bible?.find((c) => c.name === beat.activeSpeaker)?.description
   const castNames = bible?.map((c) => c.name) ?? [beat.activeSpeaker, beat.addressee].filter(Boolean)
   const allCast = bible?.length
     ? `LOCKED CAST (identical in every frame): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  const sceneBlock = scene
-    ? `Scene "${scene.id}" LOCKED: ${scene.settingEn}. Background LOCKED: ${scene.backgroundEn}. Lighting LOCKED: ${scene.lightingEn}. `
-    : ''
-  const setupNote = beat.newSetup
-    ? 'Establish this photorealistic dialog scene. '
-    : 'SAME photorealistic scene, background, outfits, hairstyles, body type and camera angle — ONLY facial expression may change. '
+  const continuity = scene?.continuity === 'gradual' ? 'gradual' : 'locked'
+  const setupNote =
+    continuity === 'locked'
+      ? 'Same locked photorealistic dialog location as sibling shots — ONLY expression/pose of the visible speaker may change. '
+      : 'Same continuous photorealistic journey as sibling shots — background may drift slightly; outfits and lighting stay consistent. '
   return (
     `Photorealistic cinematic dialog still (live-action, NOT comic/cartoon). ${setupNote}` +
     `${allCast}` +
-    `${sceneBlock}` +
+    spatialBlockForScene(scene, seating) +
     castIntegrityRules({
       castNames: [...new Set(castNames.filter(Boolean))],
       visibleSpeaker: beat.activeSpeaker,
@@ -104,6 +219,9 @@ export async function buildDialogVisualScript(
   }))
 
   const bible = dialog.characterBible
+  const allSpeakers = [
+    ...new Set(dialog.sections.flatMap((s) => s.lines.map((l) => l.speaker))),
+  ]
 
   const result = await chatJson<{
     scenes: VisualScene[]
@@ -122,39 +240,49 @@ export async function buildDialogVisualScript(
     }[]
     defaultFraming: PortraitFraming
   }>(
-    `Du erstellst ein BILDERSKRIPT für eine Sprachlern-Diashow – photorealistische Dialog-Szenen wie Film-Stills (KEIN Comic, KEINE Illustration).
+    `Du erstellst ein BILDERSKRIPT für eine Sprachlern-Diashow – photorealistische Dialog-Szenen wie Film-Stills (KEIN Comic).
 
-Zuerst den GESAMTEN Dialog lesen und verstehen (Handlung, Orte, wer wann dazukommt).
+Zuerst den GESAMTEN Dialog lesen (Handlung, Orte, Bewegung).
 
-${bible?.length ? `FESTE FIGUREN (Aussehen auf ALLEN Bildern IDENTISCH – Kleidung, Frisur, Gesicht):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+${bible?.length ? `FESTE FIGUREN:\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+Sprecher: ${allSpeakers.join(', ')}
 
-PERSONENZAHL (sehr wichtig):
-- Es gibt GENAU ${bible?.length ?? 'die genannten'} Dialogfiguren. Niemals Extra-Personen erfinden.
-- Kamera: Blick vom Platz des Gesprächspartners auf den aktiven Sprecher.
-- Der Partner ist KOMPLETT außerhalb des Bildes (kein Hinterkopf, keine Schulter im Vordergrund).
-- cameraEn z.B. "from empty seat of Addressee looking at ActiveSpeaker across the table"
+=== 3D-RAUM & KONTINUITÄT (kritisch) ===
+1) Plane WENIGE Szenen. Ein normales Sitzgespräch = EINE scene für den ganzen Dialog (oder pro klar getrenntem Ort).
+2) Wechsle NICHT zwischen drinnen/draußen nur weil ein anderer Sprecher redet.
+3) continuity:
+   - "locked" = sitzen/stehen an einem Ort (Café, Wohnzimmer, Parkbank) – Hintergrund IDENTISCH in allen Shots dieser Szene
+   - "gradual" = Spaziergang/Fahrt – Hintergrund darf sich langsam ändern, gleiches Wetter/Tageszeit
+4) spatialEn (englisch, 2–4 Sätze): feste Geografie, z.B. wer links/rechts am Tisch sitzt, was hinter wem ist (Fenster, Theke, Straße). Das gilt für ALLE Reverse-Shots.
+5) 180°-Regel: Wenn A links sitzt und B rechts, bleibt das so. Blickachsen bleiben gespiegelt konsistent.
+6) newSetup=true nur bei echtem Ortswechsel oder klarer Bewegungsetappe – NICHT bei jedem Sprecherwechsel.
 
-SZENEN (scenes):
-- Wenige wiederkehrende Schauplätze mit festem Hintergrund und Licht.
+PERSONENZAHL:
+- Genau die Dialogfiguren. Kamera vom Platz des Partners; Partner komplett außerhalb des Bildes (kein Hinterkopf).
 
-PRO ZEILE (linePlans):
-- mood: ${moodList} – passend zum Zeileninhalt und zu den Bild-Hinweisen (z.B. laughing bei Humor, crying/sobbing bei Trauer)
-- newSetup: true nur bei Ortwechsel, neuer Person, neuer Kameraseite; false = nur Mimik ändert sich
-- cameraEn: feste englische Formulierung – Partner nie als Hinterkopf im Bild
-- expressionEn: NUR Gesichtsausdruck
-
-KONSISTENZ: Gleiche Kleidung, Frisur, Gesicht pro Person. Photorealistic only, never cartoon/comic style.
+PRO ZEILE:
+- mood: ${moodList}
+- sceneId muss zu scenes[].id passen und über Sprecherwechsel hinweg GLEICH bleiben, solange der Ort gleich ist
+- cameraEn wird serverseitig noch normalisiert – trotzdem Ort und Blickrichtung konsistent beschreiben
+- expressionEn: nur Mimik
 
 JSON:
 {
-  "scenes": [{ "id": "cafe", "title": "Café", "settingEn": "...", "backgroundEn": "...", "lightingEn": "..." }],
+  "scenes": [{
+    "id": "cafe",
+    "title": "Café",
+    "settingEn": "small cafe booth",
+    "backgroundEn": "brick wall and street window behind left seat, service counter behind right seat",
+    "lightingEn": "warm afternoon window light from the left",
+    "spatialEn": "Person on left seat faces right across small table; person on right seat faces left; window always behind left seat",
+    "continuity": "locked"
+  }],
   "linePlans": [{ "sectionId": "...", "lineIndex": 0, "sceneId": "cafe", "activeSpeaker": "Ubaid", "addressee": "Shome", "mood": "neutral", "gaze": "at_partner", "newSetup": true, "cameraEn": "...", "expressionEn": "...", "reason": "..." }],
   "defaultFraming": "three_quarter"
 }`,
     `${imageContext ? `${imageContext}\n\n---\n` : ''}Dialog "${dialog.title}"\n\n${dialogSummary}\n\nAbschnitte:\n${JSON.stringify(sectionsPayload)}`,
   )
 
-  const validMoods = new Set<SpeakerMood>(SPEAKER_MOODS)
   const validGaze = new Set<PortraitGaze>(['at_partner', 'aside', 'down', 'away'])
   const validFraming = new Set<PortraitFraming>(['bust', 'three_quarter', 'full_body'])
   const defaultFraming = validFraming.has(result.defaultFraming as PortraitFraming)
@@ -163,8 +291,29 @@ JSON:
 
   const sceneMap = new Map<string, VisualScene>()
   for (const s of result.scenes ?? []) {
-    if (s?.id) sceneMap.set(s.id, s)
+    if (!s?.id) continue
+    const continuity = s.continuity === 'gradual' ? 'gradual' : 'locked'
+    sceneMap.set(s.id, {
+      ...s,
+      continuity,
+      spatialEn: s.spatialEn?.trim() || undefined,
+    })
   }
+  if (!sceneMap.size) {
+    sceneMap.set('main', {
+      id: 'main',
+      title: 'Main',
+      settingEn: 'shared conversation space',
+      backgroundEn: 'consistent interior or outdoor setting matching the dialog',
+      lightingEn: 'natural even light',
+      spatialEn: `${allSpeakers[0] ?? 'Speaker A'} on the left, ${allSpeakers[1] ?? 'Speaker B'} on the right, facing each other`,
+      continuity: 'locked',
+    })
+  }
+
+  // Wenn das Modell zu viele Szenen ohne Ortswechsel erzeugt: auf erste Szene zusammenziehen,
+  // außer continuity=gradual oder Titel deutet klar auf Ortswechsel hin.
+  const primarySceneId = [...sceneMap.keys()][0]
 
   const beats: VisualScriptBeat[] = []
   const plansBySection = new Map<string, typeof result.linePlans>()
@@ -173,6 +322,21 @@ JSON:
     const list = plansBySection.get(plan.sectionId) ?? []
     list.push(plan)
     plansBySection.set(plan.sectionId, list)
+  }
+
+  // Globale Sitzordnung aus allen Plänen (erste Erwähnung = links)
+  const flatPlans = result.linePlans ?? []
+  const seatingByScene = new Map<string, SceneSeating | null>()
+  for (const id of sceneMap.keys()) {
+    seatingByScene.set(id, seatingForScene(id, flatPlans.length ? flatPlans : [
+      ...dialog.sections.flatMap((sec) =>
+        sec.lines.map((line, lineIndex) => ({
+          sceneId: primarySceneId,
+          activeSpeaker: line.speaker,
+          addressee: inferAddressee(sec, lineIndex, [...new Set(sec.lines.map((l) => l.speaker))]),
+        })),
+      ),
+    ]))
   }
 
   for (const section of dialog.sections) {
@@ -187,19 +351,43 @@ JSON:
         plans.push({
           sectionId: section.id,
           lineIndex: i,
-          sceneId: result.scenes?.[0]?.id ?? 'main',
+          sceneId: primarySceneId,
           activeSpeaker: section.lines[i].speaker,
           addressee: inferAddressee(section, i, speakers),
           mood: 'neutral',
           gaze: 'at_partner',
           newSetup: i === 0,
-          cameraEn: `camera beside ${inferAddressee(section, i, speakers)} watching ${section.lines[i].speaker}`,
+          cameraEn: '',
           expressionEn: 'neutral friendly',
           reason: 'Standard',
         })
       }
     }
     plans.sort((a, b) => a.lineIndex - b.lineIndex)
+
+    // Ortssprünge dämpfen: gleiche continuity=locked-Szenen zusammenführen wenn Modell wild wechselt
+    let lastLockedSceneId: string | null = null
+    for (const plan of plans) {
+      let sceneId = plan.sceneId?.trim() || primarySceneId
+      if (!sceneMap.has(sceneId)) sceneId = primarySceneId
+      const scene = sceneMap.get(sceneId)!
+      if (scene.continuity !== 'gradual') {
+        if (lastLockedSceneId && sceneId !== lastLockedSceneId) {
+          // Behalte die bisherige locked scene statt hin und her zu springen
+          sceneId = lastLockedSceneId
+        }
+        lastLockedSceneId = sceneId
+      }
+      plan.sceneId = sceneId
+      const seating = seatingByScene.get(sceneId) ?? seatingForScene(sceneId, plans)
+      if (!seatingByScene.has(sceneId)) seatingByScene.set(sceneId, seating)
+      plan.cameraEn = cameraEnForSeating(
+        plan.activeSpeaker,
+        plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers),
+        seating,
+        scene.continuity === 'gradual' ? 'gradual' : 'locked',
+      )
+    }
 
     let group: {
       sceneId: string
@@ -219,10 +407,17 @@ JSON:
       const mood = normalizeSpeakerMood(plan.mood)
       const gaze = validGaze.has(plan.gaze as PortraitGaze) ? (plan.gaze as PortraitGaze) : 'at_partner'
       const addressee = plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers)
-      const sceneId = plan.sceneId?.trim() || 'main'
+      const sceneId = plan.sceneId?.trim() || primarySceneId
+      const scene = sceneMap.get(sceneId)
+      const seating = seatingByScene.get(sceneId) ?? null
       const cameraEn =
         plan.cameraEn?.trim() ||
-        `from empty seat of ${addressee} looking across at ${plan.activeSpeaker}, ${addressee} completely out of frame`
+        cameraEnForSeating(
+          plan.activeSpeaker,
+          addressee,
+          seating,
+          scene?.continuity === 'gradual' ? 'gradual' : 'locked',
+        )
 
       if (
         group &&
@@ -239,7 +434,14 @@ JSON:
       } else {
         if (group) {
           beats.push(
-            finalizeBeat(section.id, group, defaultFraming, sceneMap, bible),
+            finalizeBeat(
+              section.id,
+              group,
+              defaultFraming,
+              sceneMap,
+              bible,
+              seatingByScene.get(group.sceneId) ?? null,
+            ),
           )
         }
         group = {
@@ -257,11 +459,30 @@ JSON:
       }
     }
     if (group) {
-      beats.push(finalizeBeat(section.id, group, defaultFraming, sceneMap, bible))
+      beats.push(
+        finalizeBeat(
+          section.id,
+          group,
+          defaultFraming,
+          sceneMap,
+          bible,
+          seatingByScene.get(group.sceneId) ?? null,
+        ),
+      )
     }
   }
 
   if (!beats.length) throw new Error('KI konnte kein Bilderskript erstellen.')
+
+  // Enrich spatialEn if missing
+  for (const [id, scene] of sceneMap) {
+    if (scene.spatialEn?.trim()) continue
+    const seating = seatingByScene.get(id)
+    if (!seating) continue
+    scene.spatialEn =
+      `${seating.left} sits/stands on the LEFT; ${seating.right} on the RIGHT; they face each other; ` +
+      `reverse shots keep this geography (180-degree rule).`
+  }
 
   return { version: 1, scenes: [...sceneMap.values()], beats }
 }
@@ -283,6 +504,7 @@ function finalizeBeat(
   framing: PortraitFraming,
   sceneMap: Map<string, VisualScene>,
   bible: CharacterVisual[] | undefined,
+  seating: SceneSeating | null,
 ): VisualScriptBeat {
   const firstIdx = group.lineIndices[0]
   const id = `${group.activeSpeaker.replace(/\s+/g, '_')}-${group.sceneId}-${group.mood}-${firstIdx}`
@@ -303,7 +525,7 @@ function finalizeBeat(
   return {
     id,
     ...partial,
-    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible),
+    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, seating),
   }
 }
 
@@ -344,4 +566,19 @@ export function beatsToSpeakerPortraits(beats: VisualScriptBeat[]): SpeakerPortr
     imageUrl: b.imageUrl,
     reason: b.reason,
   }))
+}
+
+/** Früheres Bild derselben Szene – für Hintergrund-Kontinuität. */
+export function previousSceneImageUrl(
+  script: DialogVisualScript | undefined,
+  sceneId: string,
+  currentBeatId: string,
+): string | undefined {
+  if (!script?.beats?.length) return undefined
+  let last: string | undefined
+  for (const b of script.beats) {
+    if (b.id === currentBeatId) break
+    if (b.sceneId === sceneId && b.imageUrl) last = b.imageUrl
+  }
+  return last
 }

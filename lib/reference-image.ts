@@ -85,19 +85,22 @@ export function portraitAnchorForPrompt(
   )
 }
 
-/** Referenz-URLs für eine Szenenbild-Generierung (Portrait des sichtbaren Sprechers + Gruppen-Cast). */
+/** Referenz-URLs für eine Szenenbild-Generierung. */
 export function referenceUrlsForScene(
   dialog: Dialog,
   activeSpeaker?: string,
-  _addressee?: string,
+  previousSceneUrl?: string,
 ): string[] {
   const urls: string[] = []
-  // Nur das Portrait der sichtbaren Person – Partner-Portraits verleiten das Modell,
-  // eine zweite Figur / einen Hinterkopf einzublenden.
+  // 1) Portrait der sichtbaren Person (Identität)
   if (activeSpeaker) {
     const portrait = dialog.characterBible?.find((c) => c.name === activeSpeaker)?.portraitUrl
     if (portrait) urls.push(portrait)
   }
-  if (dialog.referenceImageUrl) urls.push(dialog.referenceImageUrl)
-  return [...new Set(urls)]
+  // 2) Vorheriges Bild derselben Szene (Raum/Hintergrund-Kontinuität) – vor Gruppen-Cast,
+  //    damit der Ort stärker verankert wird.
+  if (previousSceneUrl) urls.push(previousSceneUrl)
+  // 3) Gruppen-Cast nur wenn noch Platz (max. 3 Inline-Bilder)
+  if (dialog.referenceImageUrl && urls.length < 3) urls.push(dialog.referenceImageUrl)
+  return [...new Set(urls)].slice(0, 3)
 }

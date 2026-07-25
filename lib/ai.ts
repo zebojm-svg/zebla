@@ -421,11 +421,13 @@ async function generateImageWithGemini(
     }
     parts.push({
       text:
-        'The image(s) above are LOCKED character identity references for the people who appear in THIS dialog. ' +
-        'Reproduce the same faces, hair, skin tone, age, and outfits exactly when those characters are shown. ' +
-        'CRITICAL: do not invent extra people. The new scene must contain only the single speaking character described in the text prompt — ' +
-        'no over-the-shoulder back-of-head, no third person at the table, no bystanders with faces. ' +
-        'Only change pose, expression, camera angle, and environment as requested.',
+        'Reference images: (1) locked face/identity of the speaking character; ' +
+        '(2) if present, a PREVIOUS frame from the SAME scene — match that room/location, furniture, lighting, and background geography exactly (or only gradual drift if the prompt says gradual continuity); ' +
+        '(3) optional group cast sheet. ' +
+        'CRITICAL: do not invent extra people. Show only the single speaking character from the text prompt — ' +
+        'no over-the-shoulder back-of-head, no third person at the table. ' +
+        'Keep left/right seating and look direction consistent with the spatial map in the prompt. ' +
+        'Only change the visible speaker pose/expression as requested; do not teleport indoor↔outdoor between reverse shots.',
     })
   }
   parts.push({ text: prompt })
@@ -872,7 +874,8 @@ function buildPortraitGroup(
       visibleSpeaker: group.speaker,
       addressee: group.addressee,
     }) +
-    `Viewpoint: camera from empty seat of ${group.addressee} looking at ${group.speaker}. ` +
+    `SPATIAL CONTINUITY: Keep the same room/location geography as other shots of this conversation; do not switch indoor↔outdoor between speakers. ` +
+    `Viewpoint: camera from empty seat of ${group.addressee} looking at ${group.speaker} with consistent left/right seating (180-degree rule). ` +
     `${framingExpr[framing]} of ${group.speaker}${castHint ? ` (${castHint})` : ''}. ` +
     `${group.speaker} is speaking to ${group.addressee} who is completely out of frame. ${gazeExpr[group.gaze]}. ` +
     `Expression: ${moodExpr[group.mood]}. Natural dialogue scene. ` +
