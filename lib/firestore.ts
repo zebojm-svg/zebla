@@ -19,6 +19,7 @@ interface DialogDoc {
   sections: DialogSection[]
   folderId?: string | null
   shareToken?: string | null
+  visibility?: 'private' | 'public'
   creationMode?: Dialog['creationMode']
   creationPrompt?: string
   creationChat?: Dialog['creationChat']
@@ -62,6 +63,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
     shareToken: data.shareToken ?? null,
+    visibility: data.visibility === 'public' ? 'public' : 'private',
     creationMode: data.creationMode,
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
@@ -177,12 +179,37 @@ export async function listDialogs(userId: string): Promise<Dialog[]> {
   return snap.docs.map((doc) => docToDialog(doc.id, doc.data() as DialogDoc))
 }
 
+export async function listPublicDialogs(): Promise<Dialog[]> {
+  const snap = await adminDb()
+    .collection('dialogs')
+    .where('visibility', '==', 'public')
+    .get()
+
+  return snap.docs
+    .map((doc) => docToDialog(doc.id, doc.data() as DialogDoc))
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+}
+
 export async function getDialog(id: string, userId: string): Promise<Dialog | null> {
   const snap = await adminDb().collection('dialogs').doc(id).get()
   if (!snap.exists) return null
   const data = snap.data() as DialogDoc
   if (data.userId !== userId) return null
   return docToDialog(snap.id, data)
+}
+
+/** Eigentümer oder öffentlich sichtbarer Dialog. */
+export async function getDialogForViewer(
+  id: string,
+  userId?: string | null,
+): Promise<Dialog | null> {
+  const snap = await adminDb().collection('dialogs').doc(id).get()
+  if (!snap.exists) return null
+  const data = snap.data() as DialogDoc
+  const dialog = docToDialog(snap.id, data)
+  if (userId && data.userId === userId) return dialog
+  if (data.visibility === 'public') return dialog
+  return null
 }
 
 export async function createDialog(
@@ -212,6 +239,7 @@ export async function createDialog(
     length: data.length,
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
+    visibility: 'private',
     creationMode: data.creationMode,
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
@@ -235,6 +263,7 @@ export async function updateDialog(
     targetLanguage: string
     sections: DialogSection[]
     folderId: string | null
+    visibility: 'private' | 'public'
     creationMode: Dialog['creationMode']
     creationPrompt: string
     creationChat: Dialog['creationChat']
@@ -266,6 +295,10 @@ export async function updateDialog(
     sections: sanitizeSections(data.sections ?? existing.sections),
     folderId: data.folderId !== undefined ? data.folderId : (existing.folderId ?? null),
     shareToken: existing.shareToken ?? null,
+    visibility:
+      data.visibility !== undefined
+        ? data.visibility
+        : (existing.visibility === 'public' ? 'public' : 'private'),
     creationMode: data.creationMode !== undefined ? data.creationMode : existing.creationMode,
     creationPrompt:
       data.creationPrompt !== undefined ? data.creationPrompt : existing.creationPrompt,
@@ -328,6 +361,26 @@ export async function setDialogSharing(
   return { ...existing, shareToken, updatedAt: new Date().toISOString() }
 }
 
+/** Veröffentlicht Dialog in der öffentlichen Bibliothek; macht Ordnerpfad mit sichtbar. */
+export async function setDialogVisibility(
+  id: string,
+  userId: string,
+  visibility: 'private' | 'public',
+): Promise<Dialog | null> {
+  const existing = await getDialog(id, userId)
+  if (!existing) return null
+
+  const now = new Date().toISOString()
+  await adminDb().collection('dialogs').doc(id).update({ visibility, updatedAt: now })
+
+  if (visibility === 'public' && existing.folderId) {
+    const { publishFolderChain } = await import('./folders.js')
+    await publishFolderChain(existing.folderId, userId)
+  }
+
+  return { ...existing, visibility, updatedAt: now }
+}
+
 export async function cloneDialog(
   source: Dialog,
   userId: string,
@@ -342,6 +395,7 @@ export async function cloneDialog(
     length: source.length,
     sections: sanitizeSections(JSON.parse(JSON.stringify(source.sections)) as DialogSection[]),
     folderId: folderId ?? null,
+    visibility: 'private',
     creationMode: source.creationMode,
     creationPrompt: source.creationPrompt,
     creationChat: source.creationChat

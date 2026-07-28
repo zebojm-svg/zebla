@@ -8,17 +8,21 @@ import {
 import {
   loginWithStudentCode,
   listDialogs,
+  listPublicDialogs,
   createDialog,
   getDialog,
+  getDialogForViewer,
   updateDialog,
   deleteDialog,
   getDialogByShareToken,
   setDialogSharing,
+  setDialogVisibility,
   cloneDialog,
   upsertUserProfile,
 } from '../lib/firestore.js'
 import {
   listFolders,
+  listPublicFolders,
   createFolder,
   updateFolder,
   deleteFolder,
@@ -153,21 +157,117 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-clone' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { token, folderId } = req.body as {
+      const { token, dialogId, folderId } = req.body as {
         token?: string
+        dialogId?: string
         folderId?: string | null
       }
-      if (!token?.trim()) {
-        res.status(400).json({ error: 'Freigabe-Link ungültig.' })
-        return
-      }
-      const source = await getDialogByShareToken(token.trim())
-      if (!source) {
-        res.status(404).json({ error: 'Dialog nicht gefunden oder Freigabe beendet.' })
+      let source = null as Awaited<ReturnType<typeof getDialogByShareToken>>
+      if (token?.trim()) {
+        source = await getDialogByShareToken(token.trim())
+        if (!source) {
+          res.status(404).json({ error: 'Dialog nicht gefunden oder Freigabe beendet.' })
+          return
+        }
+      } else if (dialogId?.trim()) {
+        source = await getDialogForViewer(dialogId.trim(), user.uid)
+        if (!source || source.visibility !== 'public') {
+          res.status(404).json({ error: 'Öffentlicher Dialog nicht gefunden.' })
+          return
+        }
+        if (source.userId === user.uid) {
+          res.status(400).json({ error: 'Das ist bereits dein Dialog.' })
+          return
+        }
+      } else {
+        res.status(400).json({ error: 'Freigabe-Link oder Dialog-ID fehlt.' })
         return
       }
       const dialog = await cloneDialog(source, user.uid, folderId ?? null)
       res.status(201).json({ dialog })
+      return
+    }
+
+    if (route === 'public-library' && req.method === 'GET') {
+      const [folders, dialogs] = await Promise.all([
+        listPublicFolders(),
+        listPublicDialogs(),
+      ])
+      // Öffentliche Liste ohne private Nutzerfelder
+      res.json({
+        folders: folders.map((f) => ({
+          id: f.id,
+          name: f.name,
+          parentId: f.parentId,
+          visibility: 'public' as const,
+          createdAt: f.createdAt,
+          updatedAt: f.updatedAt,
+        })),
+        dialogs: dialogs.map((d) => ({
+          id: d.id,
+          title: d.title,
+          sourceLanguage: d.sourceLanguage,
+          targetLanguage: d.targetLanguage,
+          length: d.length,
+          folderId: d.folderId ?? null,
+          visibility: 'public' as const,
+          sectionsCount: d.sections.length,
+          updatedAt: d.updatedAt,
+          createdAt: d.createdAt,
+        })),
+      })
+      return
+    }
+
+    if (route === 'public-dialog' && req.method === 'GET') {
+      const id = req.query.id as string
+      if (!id?.trim()) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      let viewerId: string | null = null
+      const header = req.headers.authorization
+      if (header?.startsWith('Bearer ')) {
+        try {
+          const user = await requireAuth(req)
+          viewerId = user.uid
+        } catch {
+          viewerId = null
+        }
+      }
+      const dialog = await getDialogForViewer(id.trim(), viewerId)
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      if (dialog.visibility !== 'public' && dialog.userId !== viewerId) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      res.json({ dialog, isOwner: viewerId != null && dialog.userId === viewerId })
+      return
+    }
+
+    if (route === 'dialog-publish' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { id, visibility } = req.body as {
+        id?: string
+        visibility?: 'private' | 'public'
+      }
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      if (visibility !== 'public' && visibility !== 'private') {
+        res.status(400).json({ error: 'visibility muss public oder private sein.' })
+        return
+      }
+      const dialog = await setDialogVisibility(id, user.uid, visibility)
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      res.json({ dialog })
       return
     }
 
@@ -214,12 +314,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'PATCH') {
-        const { name, parentId } = req.body as {
+        const { name, parentId, visibility } = req.body as {
           name?: string
           parentId?: string | null
+          visibility?: 'private' | 'public'
         }
         try {
-          const folder = await updateFolder(id, user.uid, { name, parentId })
+          const folder = await updateFolder(id, user.uid, { name, parentId, visibility })
           if (!folder) {
             res.status(404).json({ error: 'Ordner nicht gefunden.' })
             return

@@ -321,6 +321,79 @@ html[dir='rtl'] .slideshow-topbar {
   line-height: 1;
 }
 
+.lang-pair-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.lang-pair-flags--lg {
+  font-size: 1.85rem;
+}
+
+.lang-pair-flags--md {
+  font-size: 1.35rem;
+}
+
+.lang-pair-flags--sm {
+  font-size: 1.05rem;
+}
+
+.lang-pair-arrow {
+  opacity: 0.55;
+  font-size: 0.7em;
+  margin: 0 0.05rem;
+}
+
+.lang-pair-names {
+  margin-inline-start: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted, #6b7280);
+}
+
+.dialog-card-flags {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.lang-pair-card .folder-open {
+  align-items: flex-start;
+}
+
+.lang-pair-card .folder-open h3 {
+  margin-bottom: 0.25rem;
+}
+
+.visibility-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0f766e;
+  background: #ccfbf1;
+  border-radius: 0.35rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.editor-lang-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.visibility-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
 .library-card-actions {
   display: flex;
   flex-wrap: wrap;

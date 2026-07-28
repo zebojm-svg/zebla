@@ -17,6 +17,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {t('brand.name')}
           </Link>
           <div className="topbar-actions">
+            <Link to="/explore" className="btn btn-ghost">
+              {t('explore.nav')}
+            </Link>
+            {user && (
+              <Link to="/" className="btn btn-ghost">
+                {t('explore.myLibrary')}
+              </Link>
+            )}
             <LanguageSwitcher className="lang-switcher--topbar" />
             {user && (
               <>
@@ -25,6 +33,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {t('nav.logout')}
                 </button>
               </>
+            )}
+            {!user && (
+              <Link to="/login" className="btn btn-ghost">
+                {t('nav.login')}
+              </Link>
             )}
           </div>
         </header>

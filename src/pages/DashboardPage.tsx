@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { LanguagePairFlags } from '../components/LanguagePairFlags'
 import type { Dialog, DialogFolder } from '../types'
-import { languageName } from '../types'
 import { useI18n } from '../i18n/I18nContext'
+import { languagePairLabel } from '../../shared/language-flags'
 
 function folderPath(
   folderId: string | null,
@@ -235,6 +236,9 @@ export function DashboardPage() {
           <p className="muted">Ordne Dialoge in Ordnern – erstellen, verschieben, umbenennen.</p>
         </div>
         <div className="header-actions">
+          <Link to="/explore" className="btn btn-secondary">
+            {t('explore.nav')}
+          </Link>
           <button type="button" className="btn btn-secondary" onClick={createFolder}>
             + {t('dashboard.newFolder')}
           </button>
@@ -329,9 +333,22 @@ export function DashboardPage() {
 
           {childDialogs.map((d) => (
             <article key={d.id} className="library-card dialog-card">
+              <div className="dialog-card-flags">
+                <LanguagePairFlags
+                  sourceLanguage={d.sourceLanguage}
+                  targetLanguage={d.targetLanguage}
+                  size="lg"
+                />
+                {d.visibility === 'public' && (
+                  <span className="visibility-badge" title={t('explore.publicBadge')}>
+                    {t('explore.publicBadge')}
+                  </span>
+                )}
+              </div>
               <h3>{d.title}</h3>
               <p className="dialog-meta">
-                {languageName(d.targetLanguage)} · {d.sections.length} Abschnitt
+                {languagePairLabel(d.sourceLanguage, d.targetLanguage)} · {d.sections.length}{' '}
+                Abschnitt
                 {d.sections.length !== 1 ? 'e' : ''}
               </p>
               <div className="library-card-actions">

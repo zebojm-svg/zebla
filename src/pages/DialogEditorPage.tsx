@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
+import { LanguagePairFlags } from '../components/LanguagePairFlags'
 import type { Dialog } from '../types'
-import { LANGUAGES, languageName, needsRomanization } from '../types'
+import { LANGUAGES, needsRomanization } from '../types'
 import { getIncludeRomanization, setIncludeRomanization } from '../lib/preferences'
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
 import { useI18n } from '../i18n/I18nContext'
+import { languagePairLabel } from '../../shared/language-flags'
 import {
   estimateAllSceneImages,
   estimateAllSectionImages,
@@ -33,6 +35,7 @@ export function DialogEditorPage() {
   const [includeRomanization, setIncludeRomanizationState] = useState(true)
   const [shareBusy, setShareBusy] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
+  const [publishBusy, setPublishBusy] = useState(false)
   const [imageDirectionDraft, setImageDirectionDraft] = useState('')
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
@@ -109,14 +112,36 @@ export function DialogEditorPage() {
     setTimeout(() => setShareCopied(false), 2500)
   }
 
+  const togglePublish = async (visibility: 'private' | 'public') => {
+    setPublishBusy(true)
+    setError('')
+    try {
+      const { dialog: d } = await api.dialogs.setVisibility(dialog.id, visibility)
+      setDialog(d)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Veröffentlichen fehlgeschlagen.')
+    } finally {
+      setPublishBusy(false)
+    }
+  }
+
   return (
     <div className="editor-page">
       <div className="page-header">
         <div>
           <h1>{dialog.title}</h1>
-          <p className="muted">
-            {languageName(dialog.targetLanguage)} · {dialog.sections.length} Abschnitt
-            {dialog.sections.length !== 1 ? 'e' : ''}
+          <p className="muted editor-lang-line">
+            <LanguagePairFlags
+              sourceLanguage={dialog.sourceLanguage}
+              targetLanguage={dialog.targetLanguage}
+              size="sm"
+            />
+            <span>
+              {languagePairLabel(dialog.sourceLanguage, dialog.targetLanguage)} ·{' '}
+              {dialog.sections.length} Abschnitt
+              {dialog.sections.length !== 1 ? 'e' : ''}
+              {dialog.visibility === 'public' ? ` · ${t('explore.publicBadge')}` : ''}
+            </span>
           </p>
         </div>
         <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
@@ -396,6 +421,43 @@ export function DialogEditorPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="panel share-panel">
+        <h2>{t('editor.publishTitle')}</h2>
+        <p className="muted share-hint">{t('editor.publishHint')}</p>
+        {dialog.visibility === 'public' ? (
+          <div className="share-active">
+            <p className="visibility-status">
+              <LanguagePairFlags
+                sourceLanguage={dialog.sourceLanguage}
+                targetLanguage={dialog.targetLanguage}
+                size="md"
+              />{' '}
+              {t('editor.published')}
+            </p>
+            <Link to="/explore" className="btn btn-secondary">
+              {t('explore.nav')}
+            </Link>
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger"
+              disabled={publishBusy}
+              onClick={() => togglePublish('private')}
+            >
+              {publishBusy ? '…' : t('editor.unpublish')}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={publishBusy}
+            onClick={() => togglePublish('public')}
+          >
+            {publishBusy ? '…' : t('editor.publish')}
+          </button>
+        )}
       </section>
 
       <section className="panel share-panel">

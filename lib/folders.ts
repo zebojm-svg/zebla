@@ -5,6 +5,7 @@ interface FolderDoc {
   userId: string
   name: string
   parentId: string | null
+  visibility?: 'private' | 'public'
   createdAt: string
   updatedAt: string
 }
@@ -15,6 +16,7 @@ function docToFolder(id: string, data: FolderDoc): DialogFolder {
     userId: data.userId,
     name: data.name,
     parentId: data.parentId ?? null,
+    visibility: data.visibility === 'public' ? 'public' : 'private',
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -24,6 +26,16 @@ export async function listFolders(userId: string): Promise<DialogFolder[]> {
   const snap = await adminDb()
     .collection('folders')
     .where('userId', '==', userId)
+    .get()
+  return snap.docs
+    .map((doc) => docToFolder(doc.id, doc.data() as FolderDoc))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+}
+
+export async function listPublicFolders(): Promise<DialogFolder[]> {
+  const snap = await adminDb()
+    .collection('folders')
+    .where('visibility', '==', 'public')
     .get()
   return snap.docs
     .map((doc) => docToFolder(doc.id, doc.data() as FolderDoc))
@@ -59,6 +71,7 @@ export async function createFolder(
     userId,
     name: trimmed,
     parentId: parentId ?? null,
+    visibility: 'private',
     createdAt: now,
     updatedAt: now,
   }
@@ -83,7 +96,7 @@ function isDescendantFolder(
 export async function updateFolder(
   id: string,
   userId: string,
-  data: Partial<{ name: string; parentId: string | null }>,
+  data: Partial<{ name: string; parentId: string | null; visibility: 'private' | 'public' }>,
 ): Promise<DialogFolder | null> {
   const existing = await getFolder(id, userId)
   if (!existing) return null
@@ -106,11 +119,38 @@ export async function updateFolder(
     userId,
     name: data.name?.trim() || existing.name,
     parentId,
+    visibility:
+      data.visibility !== undefined
+        ? data.visibility
+        : (existing.visibility === 'public' ? 'public' : 'private'),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
   await adminDb().collection('folders').doc(id).set(updated)
   return docToFolder(id, updated)
+}
+
+/** Macht einen Ordner und alle Vorfahren öffentlich (für Themenstruktur in der Bibliothek). */
+export async function publishFolderChain(folderId: string, userId: string): Promise<void> {
+  const folders = await listFolders(userId)
+  const byId = new Map(folders.map((f) => [f.id, f]))
+  const now = new Date().toISOString()
+  let cur: string | null = folderId
+  const batch = adminDb().batch()
+  let updates = 0
+  while (cur) {
+    const folder = byId.get(cur)
+    if (!folder || folder.userId !== userId) break
+    if (folder.visibility !== 'public') {
+      batch.update(adminDb().collection('folders').doc(cur), {
+        visibility: 'public',
+        updatedAt: now,
+      })
+      updates += 1
+    }
+    cur = folder.parentId
+  }
+  if (updates > 0) await batch.commit()
 }
 
 export async function deleteFolder(id: string, userId: string): Promise<boolean> {
