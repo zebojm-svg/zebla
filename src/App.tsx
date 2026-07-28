@@ -9,6 +9,7 @@ import { CreateDialogPage } from './pages/CreateDialogPage'
 import { DialogEditorPage } from './pages/DialogEditorPage'
 import { SlideshowPage } from './pages/SlideshowPage'
 import { ShareImportPage } from './pages/ShareImportPage'
+import { ExplorePage } from './pages/ExplorePage'
 
 function AppRoutes() {
   return (
@@ -18,6 +19,15 @@ function AppRoutes() {
       </Route>
 
       <Route path="/share/:token" element={<ShareImportPage />} />
+
+      <Route
+        path="/explore"
+        element={
+          <Layout>
+            <ExplorePage />
+          </Layout>
+        }
+      />
 
       <Route element={<ProtectedRoute />}>
         <Route

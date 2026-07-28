@@ -123,13 +123,45 @@ export const api = {
         '/library',
       ),
   },
+  publicLibrary: {
+    list: () =>
+      request<{
+        folders: Array<{
+          id: string
+          name: string
+          parentId: string | null
+          visibility: 'public'
+          createdAt: string
+          updatedAt: string
+        }>
+        dialogs: Array<{
+          id: string
+          title: string
+          sourceLanguage: string
+          targetLanguage: string
+          length: import('../types').DialogLength
+          folderId: string | null
+          visibility: 'public'
+          sectionsCount: number
+          updatedAt: string
+          createdAt: string
+        }>
+      }>('/public-library'),
+    getDialog: (id: string) =>
+      request<{ dialog: import('../types').Dialog; isOwner: boolean }>(
+        `/public-dialog?id=${encodeURIComponent(id)}`,
+      ),
+  },
   folders: {
     create: (name: string, parentId?: string | null) =>
       request<{ folder: import('../types').DialogFolder }>('/folders', {
         method: 'POST',
         body: JSON.stringify({ name, parentId: parentId ?? null }),
       }),
-    update: (id: string, data: { name?: string; parentId?: string | null }) =>
+    update: (
+      id: string,
+      data: { name?: string; parentId?: string | null; visibility?: 'private' | 'public' },
+    ) =>
       request<{ folder: import('../types').DialogFolder }>('/folder', {
         method: 'PATCH',
         body: JSON.stringify({ id, ...data }),
@@ -172,10 +204,20 @@ export const api = {
           body: JSON.stringify({ id, enabled }),
         },
       ),
+    setVisibility: (id: string, visibility: 'private' | 'public') =>
+      request<{ dialog: import('../types').Dialog }>('/dialog-publish', {
+        method: 'POST',
+        body: JSON.stringify({ id, visibility }),
+      }),
     cloneFromShare: (token: string, folderId?: string | null) =>
       request<{ dialog: import('../types').Dialog }>('/dialog-clone', {
         method: 'POST',
         body: JSON.stringify({ token, folderId: folderId ?? null }),
+      }),
+    clonePublic: (dialogId: string, folderId?: string | null) =>
+      request<{ dialog: import('../types').Dialog }>('/dialog-clone', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, folderId: folderId ?? null }),
       }),
   },
   shared: {

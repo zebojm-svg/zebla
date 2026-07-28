@@ -139,6 +139,8 @@ export interface Dialog {
   sections: DialogSection[]
   folderId?: string | null
   shareToken?: string | null
+  /** private = nur Eigentümer; public = in der öffentlichen Bibliothek sichtbar */
+  visibility?: 'private' | 'public'
   /** Wie der Dialog erstellt wurde: topic | dictate | chat */
   creationMode?: CreateMode
   /** Ursprüngliche Eingabe (Thema, Diktat, …). */
@@ -173,6 +175,8 @@ export interface DialogFolder {
   userId: string
   name: string
   parentId: string | null
+  /** private = nur Eigentümer; public = Themenordner in der öffentlichen Bibliothek */
+  visibility?: 'private' | 'public'
   createdAt: string
   updatedAt: string
 }

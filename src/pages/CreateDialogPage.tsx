@@ -11,6 +11,7 @@ export function CreateDialogPage() {
   const [searchParams] = useSearchParams()
   const folderId = searchParams.get('folder')
   const [mode, setMode] = useState<CreateMode>('topic')
+  const [sourceLanguage, setSourceLanguage] = useState('de')
   const [targetLanguage, setTargetLanguage] = useState('en')
   const [length, setLength] = useState<DialogLength>('medium')
   const [topic, setTopic] = useState('')
@@ -33,7 +34,7 @@ export function CreateDialogPage() {
   ) => {
     const { dialog } = await api.dialogs.create({
       title,
-      sourceLanguage: 'de',
+      sourceLanguage,
       targetLanguage,
       length,
       sections,
@@ -120,7 +121,30 @@ export function CreateDialogPage() {
     }
 
     const recognition = new SpeechRecognition()
-    recognition.lang = 'de-DE'
+    const speechLocale: Record<string, string> = {
+      de: 'de-DE',
+      en: 'en-US',
+      fr: 'fr-FR',
+      es: 'es-ES',
+      it: 'it-IT',
+      pt: 'pt-PT',
+      nl: 'nl-NL',
+      pl: 'pl-PL',
+      tr: 'tr-TR',
+      ja: 'ja-JP',
+      zh: 'zh-CN',
+      ar: 'ar-SA',
+      fa: 'fa-AF',
+      ru: 'ru-RU',
+      sv: 'sv-SE',
+      da: 'da-DK',
+      no: 'nb-NO',
+      el: 'el-GR',
+      cs: 'cs-CZ',
+      hu: 'hu-HU',
+      ko: 'ko-KR',
+    }
+    recognition.lang = speechLocale[sourceLanguage] ?? sourceLanguage
     recognition.continuous = false
     recognition.interimResults = false
 
@@ -149,6 +173,16 @@ export function CreateDialogPage() {
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="settings-row">
+        <label>
+          {t('create.sourceLang')}
+          <select value={sourceLanguage} onChange={(e) => setSourceLanguage(e.target.value)}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           {t('create.targetLang')}
           <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
