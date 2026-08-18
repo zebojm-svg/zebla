@@ -4,8 +4,10 @@ import { api } from '../api/client'
 import { LanguageFlag } from '../components/LanguageFlag'
 import type { ChatMessage, CreateMode, DialogLength } from '../types'
 import { LENGTH_LABELS, LANGUAGES } from '../types'
+import { useI18n } from '../i18n/I18nContext'
 
 export function CreateDialogPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const folderId = searchParams.get('folder')
@@ -142,14 +144,14 @@ export function CreateDialogPage() {
   return (
     <div className="create-page">
       <div className="page-header">
-        <h1>Neuen Dialog erstellen</h1>
+        <h1>{t('create.title')}</h1>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="settings-row">
         <label>
-          Fremdsprache
+          {t('create.targetLang')}
           <span className="lang-select-row">
             <LanguageFlag code={targetLanguage} size="md" />
             <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>

@@ -358,6 +358,7 @@ export const api = {
       beatIndex: number,
       replan?: boolean,
       retry?: boolean,
+      forceImages?: boolean,
     ) =>
       request<{
         dialog: import('../types').Dialog
@@ -367,7 +368,7 @@ export const api = {
         reason?: string
       }>('/image-lines', {
         method: 'POST',
-        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, retry }),
+        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, retry, forceImages }),
       }),
     visualBrief: (
       dialogId: string,

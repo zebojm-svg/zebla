@@ -4,14 +4,19 @@ import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { SlideshowKenBurnsImage } from '../components/SlideshowKenBurnsImage'
 import { SlideshowVoicePanel } from '../components/SlideshowVoicePanel'
 import { PinchZoomSurface } from '../components/PinchZoomSurface'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
 import { api } from '../api/client'
 import type { Dialog, DialogSection } from '../types'
 import { languageName, needsRomanization } from '../types'
 import {
   getIncludeRomanization,
+  getShowTargetText,
+  getShowTranslation,
   getUseCloudTts,
   setIncludeRomanization,
+  setShowTargetText,
+  setShowTranslation,
   setUseCloudTts,
 } from '../lib/preferences'
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
@@ -19,9 +24,11 @@ import { useCostConfirm } from '../hooks/useCostConfirm'
 import { estimateMissingTts, estimateRegenerateTts } from '../lib/costEstimates'
 import { exportDialogJson, exportDialogText } from '../utils/exportDialog'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line-speech'
+import { useI18n } from '../i18n/I18nContext'
 
 export function SlideshowPage() {
   const { id } = useParams<{ id: string }>()
+  const { t } = useI18n()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [slideIndex, setSlideIndex] = useState(0)
   const [lineIndex, setLineIndex] = useState(0)
@@ -34,7 +41,9 @@ export function SlideshowPage() {
   const [exportStatus, setExportStatus] = useState('')
   const [audioStatus, setAudioStatus] = useState('')
   const [useCloudTts, setUseCloudTtsState] = useState(true)
+  const [showTargetText, setShowTargetTextState] = useState(true)
   const [showRomanization, setShowRomanizationState] = useState(true)
+  const [showTranslation, setShowTranslationState] = useState(true)
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
@@ -55,7 +64,9 @@ export function SlideshowPage() {
   useEffect(() => {
     if (!dialog) return
     setUseCloudTtsState(getUseCloudTts(dialog.targetLanguage))
+    setShowTargetTextState(getShowTargetText())
     setShowRomanizationState(getIncludeRomanization())
+    setShowTranslationState(getShowTranslation())
   }, [dialog?.id, dialog?.targetLanguage])
 
   useEffect(() => {
@@ -107,7 +118,7 @@ export function SlideshowPage() {
     ? [lastLineOfDialog]
     : atSectionEnd && slideIndex < (dialog?.sections.length ?? 1) - 1
       ? []
-      : (section?.lines.slice(lineIndex, lineIndex + 2) ?? [])
+      : (section?.lines.slice(lineIndex, lineIndex + 1) ?? [])
 
   const displayLine = dialogFinished && lastLineOfDialog
     ? lastLineOfDialog
@@ -184,13 +195,19 @@ export function SlideshowPage() {
   const exportError = useMemo(() => {
     if (!dialog) return null
     const lines = dialog.sections.flatMap((s) => s.lines).filter((l) => lineSpeechText(l))
-    if (lines.length === 0) return 'Keine Zeilen.'
+    if (lines.length === 0) return t('slideshow.noLines')
     const missing = lines.filter((l) => lineNeedsAudio(l)).length
     if (missing > 0) {
-      return `${missing} Zeile${missing !== 1 ? 'n' : ''} ohne Audio — zuerst „Audio vorbereiten“.`
+      return t('slideshow.missingAudio', { count: missing })
     }
     return null
-  }, [dialog])
+  }, [dialog, t])
+
+  const scriptDisplayOptions = {
+    showTargetText,
+    showRomanization,
+    showTranslation,
+  }
 
   const runEnsureAudio = async (force: boolean) => {
     if (!dialog || !cloudTtsReady) return
@@ -239,7 +256,7 @@ export function SlideshowPage() {
   if (loading) {
     return (
       <div className="slideshow-page page-center">
-        <p className="muted">Lade Diashow …</p>
+        <p className="muted">{t('common.loading')}</p>
       </div>
     )
   }
@@ -247,8 +264,8 @@ export function SlideshowPage() {
   if (!dialog || dialog.sections.length === 0 || !section) {
     return (
       <div className="slideshow-page page-center">
-        <p>Kein Dialog vorhanden.</p>
-        <Link to="/">Zurück</Link>
+        <p>{t('slideshow.noDialog')}</p>
+        <Link to="/">{t('nav.back')}</Link>
       </div>
     )
   }
@@ -257,18 +274,24 @@ export function SlideshowPage() {
     <div className="slideshow-page">
       <div className="slideshow-topbar">
         <Link to={`/dialog/${dialog.id}`} className="btn btn-ghost slideshow-back">
-          ← Bearbeiten
+          {t('nav.edit')}
         </Link>
         <span className="slideshow-title">{dialog.title}</span>
-        <span className="slideshow-counter">
-          Abschnitt {slideIndex + 1}/{dialog.sections.length}
-        </span>
+        <div className="slideshow-topbar-end">
+          <LanguageSwitcher className="lang-switcher--slideshow" />
+          <span className="slideshow-counter">
+            {t('slideshow.section', {
+              current: slideIndex + 1,
+              total: dialog.sections.length,
+            })}
+          </span>
+        </div>
       </div>
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
 
       <details className="slideshow-tools panel">
-        <summary className="slideshow-tools-summary">Einstellungen, Stimmen & Export</summary>
+        <summary className="slideshow-tools-summary">{t('slideshow.tools')}</summary>
       <div className="slideshow-settings panel">
         <label className="checkbox-label slideshow-setting">
           <input
@@ -281,31 +304,61 @@ export function SlideshowPage() {
             }}
           />
           <span>
-            ☁️ Cloud-Sprachausgabe{' '}
+            {t('slideshow.cloudTts')}{' '}
             <span className="muted slideshow-setting-hint">
-              (kostenpflichtig, ca. 1 Cent / 5 Zeilen; wird einmal gespeichert)
+              {t('slideshow.cloudTtsHint')}
             </span>
           </span>
         </label>
-        {needsRomanization(dialog.targetLanguage) && (
+        <fieldset className="slideshow-script-toggles">
+          <legend>{t('slideshow.displayScripts')}</legend>
           <label className="checkbox-label slideshow-setting">
             <input
               type="checkbox"
-              checked={showRomanization}
+              checked={showTargetText}
               onChange={(e) => {
                 const on = e.target.checked
-                setShowRomanizationState(on)
-                setIncludeRomanization(on)
+                setShowTargetTextState(on)
+                setShowTargetText(on)
               }}
             />
-            <span>Lautschrift (lateinische Aussprache unter jedem Wort)</span>
+            <span>
+              {t('slideshow.showTarget', { lang: languageName(dialog.targetLanguage) })}
+            </span>
           </label>
-        )}
+          {needsRomanization(dialog.targetLanguage) && (
+            <label className="checkbox-label slideshow-setting">
+              <input
+                type="checkbox"
+                checked={showRomanization}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  setShowRomanizationState(on)
+                  setIncludeRomanization(on)
+                }}
+              />
+              <span>{t('slideshow.showRomanization')}</span>
+            </label>
+          )}
+          <label className="checkbox-label slideshow-setting">
+            <input
+              type="checkbox"
+              checked={showTranslation}
+              onChange={(e) => {
+                const on = e.target.checked
+                setShowTranslationState(on)
+                setShowTranslation(on)
+              }}
+            />
+            <span>
+              {t('slideshow.showTranslation', {
+                lang: languageName(dialog.sourceLanguage),
+              })}
+            </span>
+          </label>
+        </fieldset>
         {!useCloudTts && (
-          <p className="muted slideshow-setting-note">
-            🖥️ Windows-Sprachausgabe (gratis). Bei Persisch/Arabisch ggf. Sprachpaket in den
-            Windows-Einstellungen installieren.
-          </p>
+          <p className="muted slideshow-setting-note">{t('slideshow.windowsTts')}</p>
         )}
       </div>
 
@@ -342,12 +395,15 @@ export function SlideshowPage() {
       )}
       {useCloudTts && cloudTtsReady && !ttsError && (
         <div className="slideshow-cloud-tts">
-          ☁️ Cloud-Sprachausgabe
+          {t('slideshow.cloudTts')}
           {dialog.targetLanguage.startsWith('fa') ? ' (Gemini)' : ' (Google)'}
           {audioReadyCount > 0 && (
             <span className="slideshow-audio-count">
               {' '}
-              · {audioReadyCount}/{allLines.length} Zeilen gespeichert — Wiedergabe ohne neue KI-Kosten
+              {t('slideshow.audioReady', {
+                ready: audioReadyCount,
+                total: allLines.length,
+              })}
             </span>
           )}
         </div>
@@ -364,7 +420,7 @@ export function SlideshowPage() {
               disabled={audioBusy || speaking || exportBusy}
               onClick={() => void handleEnsureAudio()}
             >
-              {audioBusy ? 'Erzeuge Audio …' : 'Audio vorbereiten'}
+              {audioBusy ? t('slideshow.audioBusy') : t('slideshow.prepareAudio')}
             </button>
             {hasStoredAudio && (
               <button
@@ -372,9 +428,9 @@ export function SlideshowPage() {
                 className="btn btn-secondary btn-sm"
                 disabled={audioBusy || speaking || exportBusy}
                 onClick={() => void handleRegenerateAudio()}
-                title="Ersetzt alle gespeicherten MP3s (z. B. nach Textänderung)"
+                title={t('slideshow.regenerateAudio')}
               >
-                {audioBusy ? 'Erzeuge Audio …' : 'Audio neu erstellen'}
+                {audioBusy ? t('slideshow.audioBusy') : t('slideshow.regenerateAudio')}
               </button>
             )}
             <button
@@ -383,7 +439,7 @@ export function SlideshowPage() {
               disabled={exportBusy || speaking}
               onClick={() => exportDialogText(dialog)}
             >
-              Dialog (TXT)
+              {t('slideshow.exportTxt')}
             </button>
             <button
               type="button"
@@ -391,7 +447,7 @@ export function SlideshowPage() {
               disabled={exportBusy || speaking}
               onClick={() => exportDialogJson(dialog)}
             >
-              Dialog (JSON)
+              {t('slideshow.exportJson')}
             </button>
             <button
               type="button"
@@ -406,20 +462,20 @@ export function SlideshowPage() {
                   const { exportDialogMp3 } = await import('../utils/exportDialogMedia')
                   await exportDialogMp3(dialog, {
                     rate,
-                    showRomanization,
+                    ...scriptDisplayOptions,
                     targetLanguage: dialog.targetLanguage,
                     nativeLanguage: dialog.sourceLanguage,
                     onProgress: setExportStatus,
                   })
                 } catch (err) {
-                  setAudioStatus(err instanceof Error ? err.message : 'MP3-Export fehlgeschlagen')
+                  setAudioStatus(err instanceof Error ? err.message : t('common.error'))
                 } finally {
                   setExportBusy(false)
                   setExportStatus('')
                 }
               }}
             >
-              Export als MP3
+              {t('slideshow.exportMp3')}
             </button>
             <button
               type="button"
@@ -434,26 +490,24 @@ export function SlideshowPage() {
                   const { exportDialogMp4 } = await import('../utils/exportDialogMedia')
                   await exportDialogMp4(dialog, {
                     rate,
-                    showRomanization,
+                    ...scriptDisplayOptions,
                     targetLanguage: dialog.targetLanguage,
                     nativeLanguage: dialog.sourceLanguage,
                     onProgress: setExportStatus,
                   })
                 } catch (err) {
-                  setAudioStatus(err instanceof Error ? err.message : 'MP4-Export fehlgeschlagen')
+                  setAudioStatus(err instanceof Error ? err.message : t('common.error'))
                 } finally {
                   setExportBusy(false)
                   setExportStatus('')
                 }
               }}
             >
-              Export als MP4
+              {t('slideshow.exportMp4')}
             </button>
           </div>
           <p className="muted slideshow-export-info">
-            Export mit aktueller Geschwindigkeit ({rate.toFixed(2)}×). MP4 = Bilder + Text + Sprache
-            wie in der Diashow. MP3 = nur Audio. Klingt die Stimme zu tief? Einmal „Audio neu
-            erstellen“ (Tempo wird nur einmal angewendet).
+            {t('slideshow.exportInfo', { rate: rate.toFixed(2) })}
           </p>
           {exportStatus && (
             <p className="muted slideshow-export-info">{exportStatus}</p>
@@ -480,9 +534,7 @@ export function SlideshowPage() {
         />
       )}
 
-      <p className="muted slideshow-zoom-hint">
-        Zwei Finger auf Bild oder Dialog zum Zoomen · Doppelklick = zurücksetzen
-      </p>
+      <p className="muted slideshow-zoom-hint">{t('slideshow.zoomHint')}</p>
 
       <div className="slideshow-stage">
         <div className="slideshow-image-wrap">
@@ -505,9 +557,7 @@ export function SlideshowPage() {
 
         <PinchZoomSurface className="slideshow-preview">
           {atSectionEnd && !dialogFinished ? (
-            <p className="slideshow-done-hint">
-              Abschnitt zu Ende — weiter für nächsten Abschnitt.
-            </p>
+            <p className="slideshow-done-hint">{t('slideshow.sectionEnd')}</p>
           ) : previewLines.length > 0 ? (
             previewLines.map((line) => (
               <div
@@ -522,7 +572,9 @@ export function SlideshowPage() {
                   }
                   targetLanguage={dialog.targetLanguage}
                   nativeLanguage={dialog.sourceLanguage}
+                  showTargetText={showTargetText}
                   showRomanization={showRomanization}
+                  showTranslation={showTranslation}
                 />
               </div>
             ))
@@ -536,8 +588,8 @@ export function SlideshowPage() {
             type="button"
             className="btn btn-secondary slideshow-nav-btn"
             onClick={goToStart}
-            aria-label="Zum Anfang"
-            title="Zum Anfang"
+            aria-label={t('slideshow.start')}
+            title={t('slideshow.start')}
           >
             ⏮
           </button>
@@ -546,7 +598,7 @@ export function SlideshowPage() {
             className="btn btn-secondary slideshow-nav-btn"
             disabled={!canGoPrev}
             onClick={goPrev}
-            aria-label="Zurück"
+            aria-label={t('slideshow.prev')}
           >
             ←
           </button>
@@ -555,7 +607,7 @@ export function SlideshowPage() {
               type="button"
               className="btn btn-primary slideshow-play-btn"
               onClick={stop}
-              aria-label="Pause"
+              aria-label={t('slideshow.pause')}
             >
               ⏸
             </button>
@@ -573,7 +625,7 @@ export function SlideshowPage() {
                 }
               }}
               disabled={atSectionEnd && slideIndex >= dialog.sections.length - 1}
-              aria-label="Abspielen"
+              aria-label={t('slideshow.play')}
             >
               ▶
             </button>
@@ -583,7 +635,7 @@ export function SlideshowPage() {
             className="btn btn-secondary slideshow-nav-btn"
             disabled={!canGoNext}
             onClick={goNext}
-            aria-label="Weiter"
+            aria-label={t('slideshow.next')}
           >
             →
           </button>
@@ -607,7 +659,7 @@ export function SlideshowPage() {
               checked={highlightWords}
               onChange={(e) => setHighlightWords(e.target.checked)}
             />
-            Wörter
+            {t('slideshow.words')}
           </label>
         </div>
       </div>

@@ -36,7 +36,7 @@ export function estimateRegenerateTts(dialog: {
       { label: 'Geschätzte Kosten', amount: `ca. ${cents} Cent` },
     ],
     totalHint: `ca. ${cents} Cent`,
-    note: 'Nur nötig nach Textänderung, Birkenbihl oder wenn die falsche Sprache gesprochen wurde.',
+    note: 'Nur nötig nach Textänderung, Birkenbihl, Sprachmodell-Upgrade (z. B. Koreanisch → Gemini-TTS) oder wenn die falsche Sprache gesprochen wurde.',
   }
 }
 
@@ -97,16 +97,16 @@ export function estimateSectionImage(): CostEstimate {
 }
 
 export function estimateSceneImages(portraitCount = 2): CostEstimate {
-  const cents = Math.max(4, portraitCount * 3)
+  const cents = Math.max(6, portraitCount * 3 + 4)
   return {
-    title: 'Sprecher-Porträts generieren',
-    description: `KI erstellt zuerst ein Bilderskript (Szenen, Kamera, Mimik), dann ${portraitCount} konsistente Comic-Panels.`,
+    title: 'Dialogbilder / Bilderskript',
+    description: `Zuerst Figuren-Portraits + Gruppen-Referenz, dann ${portraitCount} konsistente Szenenbilder abgeleitet vom Original.`,
     items: [
-      { label: 'Porträts pro Abschnitt', amount: String(portraitCount) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 4} Cent` },
+      { label: 'Portraits + Szenen', amount: String(portraitCount + 2) },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 6} Cent` },
     ],
-    totalHint: `ca. ${cents}–${cents + 4} Cent`,
-    note: 'Zuerst Bild-Regie + ein Testbild (ca. 2–5 Cent). Danach Panels. Alle 3 Bilder prüft eine zweite KI die Logik (Text, günstig).',
+    totalHint: `ca. ${cents}–${cents + 6} Cent`,
+    note: 'Zuerst Bild-Regie + Testbild. Dann Portraits/Szenen. Alle 3 Bilder prüft eine zweite KI die Logik.',
   }
 }
 
@@ -126,13 +126,35 @@ export function estimateVisualTest(): CostEstimate {
 export function estimateAllSectionImages(sectionCount: number): CostEstimate {
   const cents = sectionCount * 4
   return {
-    title: 'Alle Abschnitts-Bilder',
+    title: 'Alle Titelbilder',
     description: `${sectionCount} Titelbilder für alle Abschnitte.`,
     items: [
       { label: 'Abschnitte', amount: String(sectionCount) },
       { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + sectionCount * 2} Cent` },
     ],
     totalHint: `ca. ${cents}–${cents + sectionCount * 2} Cent`,
+  }
+}
+
+export function estimateAllSceneImages(
+  sectionCount: number,
+  approxBeatsPerSection = 3,
+): CostEstimate {
+  const portraits = 2
+  const scenes = sectionCount * approxBeatsPerSection
+  const total = portraits + 1 + scenes
+  const cents = Math.max(10, total * 3)
+  return {
+    title: 'Alle Dialogbilder neu',
+    description:
+      `Figuren-Portraits + Referenz-Cast neu, danach alle ${scenes} Szenenbilder aus den Originalen ableiten ` +
+      `(${sectionCount} Abschnitte).`,
+    items: [
+      { label: 'Bilder gesamt (ca.)', amount: String(total) },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + sectionCount * 4} Cent` },
+    ],
+    totalHint: `ca. ${cents}–${cents + sectionCount * 4} Cent`,
+    note: 'Bestehende Szenenbilder werden ersetzt. Danach ggf. „Audio neu erstellen“ für bessere Stimmen.',
   }
 }
 

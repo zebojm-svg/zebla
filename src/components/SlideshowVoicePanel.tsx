@@ -74,7 +74,9 @@ export function SlideshowVoicePanel({ dialog, setDialog, disabled, onStatus }: P
       <p className="muted slideshow-voice-hint">
         Geschlecht und Stimme festlegen, dann „Stimme neu“ – wichtig z. B. für Koreanisch. Nach
         Änderung ggf. einmal „Audio neu erstellen“ für alle.
-        {gemini ? ' Stil-Hinweis wirkt bei Gemini-TTS (Persisch).' : ''}
+        {gemini
+          ? ' Stil-Hinweis wirkt bei Gemini-TTS (Persisch, Koreanisch, Japanisch, Chinesisch, Arabisch).'
+          : ''}
       </p>
       <div className="slideshow-voice-grid">
         {speakers.map((speaker) => {

@@ -11,9 +11,14 @@ import type {
   VisualBrief,
   VisualScene,
   VisualScriptBeat,
-  VisualShotType,
 } from '../shared/types.js'
-import { appearanceGuideFor, styleLockPrompt } from './ken-burns-style.js'
+import {
+  appearanceGuideFor,
+  CAST_APPEARANCE_GUIDE,
+  castIntegrityRules,
+  PHOTOREALISTIC_STYLE,
+  styleLockPrompt,
+} from './ken-burns-style.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 
@@ -53,62 +58,195 @@ function inferAddressee(
   return speakers.find((s) => s !== speaker) ?? speakers[0] ?? 'partner'
 }
 
-function shotTypeBlock(
-  shotType: VisualShotType | undefined,
-  beat: { activeSpeaker: string; addressee: string; cameraEn: string; framing: PortraitFraming },
+/** Pro Szene: wer sitzt links/rechts (erste Erwähnung = links). */
+export type SceneSeating = {
+  left: string
+  right: string
+  others: string[]
+}
+
+export function seatingForScene(
+  sceneId: string,
+  plans: { sceneId: string; activeSpeaker: string; addressee: string }[],
+): SceneSeating | null {
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const p of plans) {
+    if (p.sceneId !== sceneId) continue
+    for (const name of [p.activeSpeaker, p.addressee]) {
+      const n = name?.trim()
+      if (!n || seen.has(n)) continue
+      seen.add(n)
+      order.push(n)
+    }
+  }
+  if (order.length < 2) {
+    if (order.length === 1) return { left: order[0], right: order[0], others: [] }
+    return null
+  }
+  return { left: order[0], right: order[1], others: order.slice(2) }
+}
+
+/**
+ * Deterministische Kamera nach 180°-Regel:
+ * Linker Platz → wird von rechts gefilmt, schaut nach screen-right.
+ * Rechter Platz → wird von links gefilmt, schaut nach screen-left.
+ */
+export function cameraEnForSeating(
+  activeSpeaker: string,
+  addressee: string,
+  seating: SceneSeating | null,
+  continuity: 'locked' | 'gradual',
+): string {
+  if (!seating) {
+    return (
+      `from empty seat of ${addressee} looking across at ${activeSpeaker}, ` +
+      `${addressee} completely out of frame, keep identical room geography`
+    )
+  }
+
+  const onLeft = activeSpeaker === seating.left
+  const onRight = activeSpeaker === seating.right
+  const partner =
+    onLeft ? seating.right : onRight ? seating.left : addressee
+
+  if (onLeft) {
+    return (
+      `REVERSE SHOT / 180-degree rule: camera sits at ${partner}'s RIGHT-side seat looking LEFTWARD across the same table at ${activeSpeaker}. ` +
+      `${activeSpeaker} occupies the LEFT half of the frame and looks toward screen-RIGHT (toward ${partner}). ` +
+      `${partner} is completely out of frame. ` +
+      (continuity === 'gradual'
+        ? `Same continuous location as other shots in this scene; background may drift only slightly.`
+        : `IDENTICAL room, furniture, window/wall placement and lighting as every other shot in this scene.`)
+    )
+  }
+
+  if (onRight) {
+    return (
+      `REVERSE SHOT / 180-degree rule: camera sits at ${partner}'s LEFT-side seat looking RIGHTWARD across the same table at ${activeSpeaker}. ` +
+      `${activeSpeaker} occupies the RIGHT half of the frame and looks toward screen-LEFT (toward ${partner}). ` +
+      `${partner} is completely out of frame. ` +
+      (continuity === 'gradual'
+        ? `Same continuous location as other shots in this scene; background may drift only slightly.`
+        : `IDENTICAL room, furniture, window/wall placement and lighting as every other shot in this scene.`)
+    )
+  }
+
+  return (
+    `from empty seat of ${addressee} looking at ${activeSpeaker}, ${addressee} out of frame, ` +
+    `keep the locked spatial layout (${seating.left} left / ${seating.right} right)`
+  )
+}
+
+function cameraEnForPictureStory(
+  activeSpeaker: string,
+  addressee: string,
+  seating: SceneSeating | null,
+  shotType?: VisualScriptBeat['shotType'],
   mustShowEn?: string,
 ): string {
-  const prop = mustShowEn ? ` Key prop in frame: ${mustShowEn}.` : ''
   if (shotType === 'insert') {
     return (
-      `INSERT CLOSE-UP of the object this line is about${mustShowEn ? `: ${mustShowEn}` : ''}. ` +
-      `Fill the frame with the object (brochure page, gadget, etc.). People only as hands or tiny edge, or absent. Not a talking-head. `
+      `INSERT / object close-up: ${mustShowEn?.trim() || 'the key prop named in the line'} fills the frame. ` +
+      `Hands of ${activeSpeaker} optional; faces optional. Same lighting as sibling shots.`
     )
   }
-  if (shotType === 'two_shot' || shotType === 'wide') {
+  if (shotType === 'speaker') {
+    return cameraEnForSeating(activeSpeaker, addressee, seating, 'locked')
+  }
+  if (seating) {
     return (
-      `TWO-SHOT: ${beat.activeSpeaker} AND ${beat.addressee} both fully visible. ` +
-      `${beat.cameraEn}. ${framingExpr[beat.framing]}.${prop} ` +
-      `They often look at the shared object, not only at each other. `
+      `TWO-SHOT, 180-degree geography: ${seating.left} on the LEFT, ${seating.right} on the RIGHT, ` +
+      `BOTH faces clearly visible, looking at each other or at a shared object. ` +
+      `Same room, furniture and lighting as sibling shots.`
     )
   }
-  return (
-    `Speaker-focused shot of ${beat.activeSpeaker} (${framingExpr[beat.framing]}), ${beat.cameraEn}. ` +
-    `Partner ${beat.addressee} may be partly visible.${prop} `
-  )
+  return `TWO-SHOT of ${activeSpeaker} and ${addressee}, both faces visible, shared location.`
+}
+
+function spatialBlockForScene(scene: VisualScene | undefined, seating: SceneSeating | null): string {
+  if (!scene && !seating) return ''
+  const continuity = scene?.continuity === 'gradual' ? 'gradual' : 'locked'
+  const parts: string[] = []
+  if (scene) {
+    parts.push(
+      `SCENE LOCK "${scene.id}": setting=${scene.settingEn}. background=${scene.backgroundEn}. lighting=${scene.lightingEn}.`,
+    )
+    if (scene.spatialEn?.trim()) {
+      parts.push(`SPATIAL MAP: ${scene.spatialEn.trim()}`)
+    }
+  }
+  if (seating) {
+    parts.push(
+      `SEATING LOCK: ${seating.left} ALWAYS on the LEFT side of the shared space; ` +
+        `${seating.right} ALWAYS on the RIGHT side` +
+        (seating.others.length ? `; also present: ${seating.others.join(', ')}` : '') +
+        `. Never swap left/right between shots.`,
+    )
+  }
+  if (continuity === 'locked') {
+    parts.push(
+      `CONTINUITY=locked: This is a stationary conversation. ` +
+        `Do NOT change indoor↔outdoor, time of day, weather, or room. ` +
+        `Background architecture and props must match prior frames of this scene.`,
+    )
+  } else {
+    parts.push(
+      `CONTINUITY=gradual: Characters may be walking/moving. ` +
+        `Background may shift slowly along the same path, but keep same weather, time of day, and outfit. ` +
+        `No sudden teleport indoor↔outdoor.`,
+    )
+  }
+  return parts.join(' ') + ' '
 }
 
 function buildBeatPrompt(
   beat: Omit<VisualScriptBeat, 'id' | 'prompt' | 'imageUrl'>,
   scene: VisualScene | undefined,
   bible: CharacterVisual[] | undefined,
+  seating: SceneSeating | null,
   brief?: VisualBrief | null,
 ): string {
-  const artStyle = brief?.artStyle
-  const styleLock = brief?.stylePromptEn || styleLockPrompt(artStyle)
-  const appearance = brief?.castLockEn || appearanceGuideFor(artStyle, brief?.ageEn)
   const cast = bible?.find((c) => c.name === beat.activeSpeaker)?.description
+  const castNames = bible?.map((c) => c.name) ?? [beat.activeSpeaker, beat.addressee].filter(Boolean)
   const allCast = bible?.length
     ? `LOCKED CAST (identical in every frame): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  const sceneBlock = scene
-    ? `Scene "${scene.id}" LOCKED: ${scene.settingEn}. Background LOCKED: ${scene.backgroundEn}. Lighting LOCKED: ${scene.lightingEn}. `
-    : ''
-  const setupNote = beat.newSetup
-    ? 'Establish this scene. '
-    : 'SAME scene, background, outfits, hairstyles, body type — only pose/expression/shot size may change. '
+  const continuity = scene?.continuity === 'gradual' ? 'gradual' : 'locked'
+  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
+  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
   const director = brief?.directorPromptEn ? `${brief.directorPromptEn} ` : ''
   const extra = brief?.extraConstraintsEn ? `CORRECTIONS: ${brief.extraConstraintsEn}. ` : ''
-  const critic = brief?.criticNotesEn ? `CRITIC LOCK: ${brief.criticNotesEn}. ` : ''
+  const pictureStory = brief?.cameraLanguage === 'picture_story'
+  const setupNote =
+    continuity === 'locked'
+      ? 'Same locked dialog location as sibling shots — ONLY expression/pose of the visible speaker may change. '
+      : 'Same continuous journey as sibling shots — background may drift slightly; outfits and lighting stay consistent. '
+  const integrity = pictureStory
+    ? ''
+    : castIntegrityRules({
+        castNames: [...new Set(castNames.filter(Boolean))],
+        visibleSpeaker: beat.activeSpeaker,
+        addressee: beat.addressee,
+      })
+  const peopleNote = pictureStory
+    ? beat.shotType === 'insert'
+      ? `INSERT of ${beat.mustShowEn || 'the named object'}; people optional. `
+      : `Picture story TWO-SHOT: both faces visible. ${beat.mustShowEn ? `MUST SHOW: ${beat.mustShowEn}. ` : ''}`
+    : `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking toward ${beat.addressee} who is out of frame. `
   return (
-    `${director}${extra}${critic}${styleLock} ${setupNote}` +
+    `${director}${extra}` +
+    (brief ? '' : `Photorealistic cinematic dialog still (live-action, NOT comic/cartoon). `) +
+    `${setupNote}` +
     `${allCast}` +
-    `${sceneBlock}` +
-    shotTypeBlock(beat.shotType, beat, beat.mustShowEn) +
-    `${cast ? `${beat.activeSpeaker} MUST look exactly like: ${cast}. ` : ''}` +
-    `${gazeExpr[beat.gaze]}. Expression: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
-    `Do not change clothing, hair color, face shape or age. No speech bubbles, no captions, no text in the image. ` +
-    `NOT looking at viewer. ${appearance}`
+    spatialBlockForScene(scene, seating) +
+    integrity +
+    `Viewpoint: ${beat.cameraEn}. ` +
+    peopleNote +
+    `${gazeExpr[beat.gaze]}. Expression ONLY: ${beat.expressionEn || moodExpr[beat.mood]}. ` +
+    `Do not change clothing, hair color, face shape or age of ${beat.activeSpeaker}. No speech bubbles, no captions. ` +
+    `Widescreen 16:9 landscape composition filling the frame horizontally. ` +
+    `NOT looking at viewer. ${appearance || CAST_APPEARANCE_GUIDE}. ${styleLock || PHOTOREALISTIC_STYLE}`
   )
 }
 
@@ -132,9 +270,22 @@ export async function buildDialogVisualScript(
   const bible = dialog.characterBible
   const brief = dialog.visualBrief
   const pictureStory = brief?.cameraLanguage === 'picture_story'
+  const allSpeakers = [
+    ...new Set(dialog.sections.flatMap((s) => s.lines.map((l) => l.speaker))),
+  ]
+
   const styleNote = brief
     ? `STIL: ${brief.artStyle}. ALTER: ${brief.ageEn}. ${brief.directorPromptEn}`
-    : 'Wenn der Nutzer Zeichnung/Jugendliche/Bildergeschichte will, NICHT automatisch Foto-Erwachsene und Schulterkamera wählen.'
+    : 'Photorealistische Dialog-Szenen wie Film-Stills (KEIN Comic), außer der Nutzer verlangt ausdrücklich Zeichnung.'
+
+  const peopleRules = pictureStory
+    ? `BILDERGESCHICHTE (Bookbox):
+- Meist TWO-SHOT: beide Figuren mit Gesicht im Bild, links/rechts wie spatialEn.
+- INSERTS: Nahaufnahme von genannten Objekten (Prospekt, Zeitung, Gerät), wenn die Zeile das Objekt nennt — mustShowEn setzen.
+- Ortswechsel (Sofa→Küche) = neue sceneId. NICHT alle Orte in eine Szene zwingen.
+- Hinterköpfe/OTS vermeiden.`
+    : `PERSONENZAHL:
+- Genau die Dialogfiguren. Kamera vom Platz des Partners; Partner komplett außerhalb des Bildes (kein Hinterkopf).`
 
   const result = await chatJson<{
     scenes: VisualScene[]
@@ -150,47 +301,54 @@ export async function buildDialogVisualScript(
       cameraEn: string
       expressionEn: string
       reason: string
-      shotType?: VisualShotType
+      shotType?: 'two_shot' | 'insert' | 'speaker' | 'wide'
       mustShowEn?: string
     }[]
     defaultFraming: PortraitFraming
   }>(
-    `Du erstellst ein BILDERSKRIPT für eine Sprachlern-Diashow.
+    `Du erstellst ein BILDERSKRIPT für eine Sprachlern-Diashow. ${styleNote}
 
-${styleNote}
+Zuerst den GESAMTEN Dialog lesen (Handlung, Orte, Bewegung).
 
-Zuerst den GESAMTEN Dialog lesen und verstehen (Handlung, Orte, Gegenstände, über die gesprochen wird).
+${bible?.length ? `FESTE FIGUREN:\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+Sprecher: ${allSpeakers.join(', ')}
 
-${bible?.length ? `FESTE FIGUREN (Aussehen auf ALLEN Bildern IDENTISCH – Kleidung, Frisur, Gesicht):\n${formatCharacterBibleForPrompt(bible)}\n` : ''}
+=== 3D-RAUM & KONTINUITÄT (kritisch) ===
+1) Plane WENIGE Szenen. Ein normales Sitzgespräch = EINE scene. Ein Ortswechsel (Sofa→Küche) = neue scene.
+2) Wechsle NICHT zwischen drinnen/draußen nur weil ein anderer Sprecher redet.
+3) continuity:
+   - "locked" = sitzen/stehen an einem Ort – Hintergrund IDENTISCH in allen Shots dieser Szene
+   - "gradual" = Spaziergang/Fahrt – Hintergrund darf sich langsam ändern
+4) spatialEn (englisch, 2–4 Sätze): feste Geografie, z.B. wer links/rechts sitzt.
+5) 180°-Regel: Wenn A links sitzt und B rechts, bleibt das so.
+6) newSetup=true nur bei echtem Ortswechsel oder klarer Bewegungsetappe – NICHT bei jedem Sprecherwechsel.
 
-${brief?.mustShowEn?.length ? `PFLICHT-REQUISITEN in Zimmershots: ${brief.mustShowEn.join('; ')}\n` : ''}
-${brief?.insertPlan?.length ? `GEPLANTE INSERTS (globalLineIndex → Gegenstand): ${JSON.stringify(brief.insertPlan)}\n` : ''}
+${peopleRules}
 
-SZENEN (scenes):
-- Wenige wiederkehrende Schauplätze mit festem Hintergrund und Licht.
-- Für Bildergeschichten extra eine Insert-Szene (z.B. prospectus_closeup) anlegen und auch BENUTZEN.
-
-PRO ZEILE (linePlans):
-- shotType: ${pictureStory ? 'two_shot | insert | speaker | wide — wechsle bewusst. Insert wenn die Zeile einen Gegenstand nennt (Prospekt, Roboter, Zahnpasta…). Two-shot oft beide Personen + Gegenstand. NICHT 20× speaker/OTS.' : 'speaker ist erlaubt; trotzdem Insert wenn ein Gegenstand zentral ist.'}
-- mood: ${moodList} – MUSS zum Zeileninhalt passen (Humor → laughing/surprised, Skepsis nicht neutral-freundlich)
-- newSetup: true bei Ortwechsel, Insert, Kameraseite; false = nur Mimik
-- cameraEn: englisch
-- mustShowEn: was in DIESEM Bild sichtbar sein muss
-- expressionEn: NUR Gesichtsausdruck
-- gaze: at_partner | aside | down | away — bei Insert/Gegenstand: down
-
-KONSISTENZ: Gleiche Kleidung, Frisur, Gesicht, Alter. Jede Person andere KleidungsFARBE.
+PRO ZEILE:
+- mood: ${moodList}
+- sceneId muss zu scenes[].id passen und über Sprecherwechsel hinweg GLEICH bleiben, solange der Ort gleich ist
+- shotType: two_shot | insert | speaker | wide
+- mustShowEn: englisch, wenn ein Objekt sichtbar sein muss (brochure, newspaper)
+- expressionEn: nur Mimik
 
 JSON:
 {
-  "scenes": [{ "id": "cafe", "title": "Café", "settingEn": "...", "backgroundEn": "...", "lightingEn": "..." }],
-  "linePlans": [{ "sectionId": "...", "lineIndex": 0, "sceneId": "cafe", "activeSpeaker": "Ubaid", "addressee": "Shome", "mood": "neutral", "gaze": "at_partner", "newSetup": true, "cameraEn": "...", "expressionEn": "...", "reason": "...", "shotType": "two_shot", "mustShowEn": "..." }],
+  "scenes": [{
+    "id": "cafe",
+    "title": "Café",
+    "settingEn": "small cafe booth",
+    "backgroundEn": "brick wall and street window behind left seat, service counter behind right seat",
+    "lightingEn": "warm afternoon window light from the left",
+    "spatialEn": "Person on left seat faces right across small table; person on right seat faces left; window always behind left seat",
+    "continuity": "locked"
+  }],
+  "linePlans": [{ "sectionId": "...", "lineIndex": 0, "sceneId": "cafe", "activeSpeaker": "Ubaid", "addressee": "Shome", "mood": "neutral", "gaze": "at_partner", "newSetup": true, "cameraEn": "...", "expressionEn": "...", "shotType": "two_shot", "mustShowEn": "colorful gadget brochure", "reason": "..." }],
   "defaultFraming": "three_quarter"
 }`,
     `${imageContext ? `${imageContext}\n\n---\n` : ''}Dialog "${dialog.title}"\n\n${dialogSummary}\n\nAbschnitte:\n${JSON.stringify(sectionsPayload)}`,
   )
 
-  const validMoods = new Set<SpeakerMood>(SPEAKER_MOODS)
   const validGaze = new Set<PortraitGaze>(['at_partner', 'aside', 'down', 'away'])
   const validFraming = new Set<PortraitFraming>(['bust', 'three_quarter', 'full_body'])
   const defaultFraming = validFraming.has(result.defaultFraming as PortraitFraming)
@@ -199,8 +357,29 @@ JSON:
 
   const sceneMap = new Map<string, VisualScene>()
   for (const s of result.scenes ?? []) {
-    if (s?.id) sceneMap.set(s.id, s)
+    if (!s?.id) continue
+    const continuity = s.continuity === 'gradual' ? 'gradual' : 'locked'
+    sceneMap.set(s.id, {
+      ...s,
+      continuity,
+      spatialEn: s.spatialEn?.trim() || undefined,
+    })
   }
+  if (!sceneMap.size) {
+    sceneMap.set('main', {
+      id: 'main',
+      title: 'Main',
+      settingEn: 'shared conversation space',
+      backgroundEn: 'consistent interior or outdoor setting matching the dialog',
+      lightingEn: 'natural even light',
+      spatialEn: `${allSpeakers[0] ?? 'Speaker A'} on the left, ${allSpeakers[1] ?? 'Speaker B'} on the right, facing each other`,
+      continuity: 'locked',
+    })
+  }
+
+  // Wenn das Modell zu viele Szenen ohne Ortswechsel erzeugt: auf erste Szene zusammenziehen,
+  // außer continuity=gradual oder Titel deutet klar auf Ortswechsel hin.
+  const primarySceneId = [...sceneMap.keys()][0]
 
   const beats: VisualScriptBeat[] = []
   const plansBySection = new Map<string, typeof result.linePlans>()
@@ -209,6 +388,21 @@ JSON:
     const list = plansBySection.get(plan.sectionId) ?? []
     list.push(plan)
     plansBySection.set(plan.sectionId, list)
+  }
+
+  // Globale Sitzordnung aus allen Plänen (erste Erwähnung = links)
+  const flatPlans = result.linePlans ?? []
+  const seatingByScene = new Map<string, SceneSeating | null>()
+  for (const id of sceneMap.keys()) {
+    seatingByScene.set(id, seatingForScene(id, flatPlans.length ? flatPlans : [
+      ...dialog.sections.flatMap((sec) =>
+        sec.lines.map((line, lineIndex) => ({
+          sceneId: primarySceneId,
+          activeSpeaker: line.speaker,
+          addressee: inferAddressee(sec, lineIndex, [...new Set(sec.lines.map((l) => l.speaker))]),
+        })),
+      ),
+    ]))
   }
 
   for (const section of dialog.sections) {
@@ -220,32 +414,54 @@ JSON:
     const covered = new Set(plans.map((p) => p.lineIndex))
     for (let i = 0; i < section.lines.length; i++) {
       if (!covered.has(i)) {
-        const insert = brief?.insertPlan?.find((p) => {
-          const start = dialog.sections
-            .slice(0, dialog.sections.findIndex((s) => s.id === section.id))
-            .reduce((n, s) => n + s.lines.length, 0)
-          return p.globalLineIndex === start + i
-        })
         plans.push({
           sectionId: section.id,
           lineIndex: i,
-          sceneId: insert ? 'insert_prop' : result.scenes?.[0]?.id ?? 'main',
+          sceneId: primarySceneId,
           activeSpeaker: section.lines[i].speaker,
           addressee: inferAddressee(section, i, speakers),
           mood: 'neutral',
-          gaze: insert ? 'down' : 'at_partner',
-          newSetup: i === 0 || Boolean(insert),
-          cameraEn: insert
-            ? `close-up of ${insert.whatEn}`
-            : `two-shot of ${section.lines[i].speaker} and ${inferAddressee(section, i, speakers)}`,
+          gaze: 'at_partner',
+          newSetup: i === 0,
+          cameraEn: '',
           expressionEn: 'neutral friendly',
-          reason: insert ? `Insert: ${insert.whatEn}` : 'Standard',
-          shotType: insert ? 'insert' : pictureStory ? 'two_shot' : 'speaker',
-          mustShowEn: insert?.whatEn ?? brief?.mustShowEn[0],
+          reason: 'Standard',
         })
       }
     }
     plans.sort((a, b) => a.lineIndex - b.lineIndex)
+
+    // Ortssprünge dämpfen: gleiche continuity=locked-Szenen zusammenführen wenn Modell wild wechselt
+    let lastLockedSceneId: string | null = null
+    for (const plan of plans) {
+      let sceneId = plan.sceneId?.trim() || primarySceneId
+      if (!sceneMap.has(sceneId)) sceneId = primarySceneId
+      const scene = sceneMap.get(sceneId)!
+      if (!pictureStory && scene.continuity !== 'gradual') {
+        if (lastLockedSceneId && sceneId !== lastLockedSceneId) {
+          // Behalte die bisherige locked scene statt hin und her zu springen
+          sceneId = lastLockedSceneId
+        }
+        lastLockedSceneId = sceneId
+      }
+      plan.sceneId = sceneId
+      const seating = seatingByScene.get(sceneId) ?? seatingForScene(sceneId, plans)
+      if (!seatingByScene.has(sceneId)) seatingByScene.set(sceneId, seating)
+      plan.cameraEn = pictureStory
+        ? cameraEnForPictureStory(
+            plan.activeSpeaker,
+            plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers),
+            seating,
+            plan.shotType,
+            plan.mustShowEn,
+          )
+        : cameraEnForSeating(
+            plan.activeSpeaker,
+            plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers),
+            seating,
+            scene.continuity === 'gradual' ? 'gradual' : 'locked',
+          )
+    }
 
     let group: {
       sceneId: string
@@ -258,25 +474,34 @@ JSON:
       expressionEn: string
       lineIndices: number[]
       reasons: string[]
-      shotType: VisualShotType
+      shotType?: VisualScriptBeat['shotType']
       mustShowEn?: string
     } | null = null
-
-    const validShots = new Set<VisualShotType>(['two_shot', 'insert', 'speaker', 'wide'])
 
     for (const plan of plans) {
       if (plan.lineIndex < 0 || plan.lineIndex >= section.lines.length) continue
       const mood = normalizeSpeakerMood(plan.mood)
       const gaze = validGaze.has(plan.gaze as PortraitGaze) ? (plan.gaze as PortraitGaze) : 'at_partner'
       const addressee = plan.addressee?.trim() || inferAddressee(section, plan.lineIndex, speakers)
-      const sceneId = plan.sceneId?.trim() || 'main'
-      const cameraEn = plan.cameraEn?.trim() || `beside ${addressee} watching ${plan.activeSpeaker}`
-      const shotType = validShots.has(plan.shotType as VisualShotType)
-        ? (plan.shotType as VisualShotType)
-        : pictureStory
-          ? 'two_shot'
-          : 'speaker'
-      const mustShowEn = plan.mustShowEn?.trim() || brief?.mustShowEn[0]
+      const sceneId = plan.sceneId?.trim() || primarySceneId
+      const scene = sceneMap.get(sceneId)
+      const seating = seatingByScene.get(sceneId) ?? null
+      const cameraEn =
+        plan.cameraEn?.trim() ||
+        (pictureStory
+          ? cameraEnForPictureStory(
+              plan.activeSpeaker,
+              addressee,
+              seating,
+              plan.shotType,
+              plan.mustShowEn,
+            )
+          : cameraEnForSeating(
+              plan.activeSpeaker,
+              addressee,
+              seating,
+              scene?.continuity === 'gradual' ? 'gradual' : 'locked',
+            ))
 
       if (
         group &&
@@ -286,7 +511,8 @@ JSON:
         group.mood === mood &&
         group.gaze === gaze &&
         group.cameraEn === cameraEn &&
-        group.shotType === shotType &&
+        group.shotType === plan.shotType &&
+        group.mustShowEn === plan.mustShowEn &&
         group.lineIndices[group.lineIndices.length - 1] === plan.lineIndex - 1
       ) {
         group.lineIndices.push(plan.lineIndex)
@@ -294,7 +520,15 @@ JSON:
       } else {
         if (group) {
           beats.push(
-            finalizeBeat(section.id, group, defaultFraming, sceneMap, bible, brief),
+            finalizeBeat(
+              section.id,
+              group,
+              defaultFraming,
+              sceneMap,
+              bible,
+              seatingByScene.get(group.sceneId) ?? null,
+              brief,
+            ),
           )
         }
         group = {
@@ -308,17 +542,37 @@ JSON:
           expressionEn: plan.expressionEn?.trim() || moodExpr[mood],
           lineIndices: [plan.lineIndex],
           reasons: plan.reason?.trim() ? [plan.reason.trim()] : [],
-          shotType,
-          mustShowEn,
+          shotType: plan.shotType,
+          mustShowEn: plan.mustShowEn,
         }
       }
     }
     if (group) {
-      beats.push(finalizeBeat(section.id, group, defaultFraming, sceneMap, bible, brief))
+      beats.push(
+        finalizeBeat(
+          section.id,
+          group,
+          defaultFraming,
+          sceneMap,
+          bible,
+          seatingByScene.get(group.sceneId) ?? null,
+          brief,
+        ),
+      )
     }
   }
 
   if (!beats.length) throw new Error('KI konnte kein Bilderskript erstellen.')
+
+  // Enrich spatialEn if missing
+  for (const [id, scene] of sceneMap) {
+    if (scene.spatialEn?.trim()) continue
+    const seating = seatingByScene.get(id)
+    if (!seating) continue
+    scene.spatialEn =
+      `${seating.left} sits/stands on the LEFT; ${seating.right} on the RIGHT; they face each other; ` +
+      `reverse shots keep this geography (180-degree rule).`
+  }
 
   return { version: 1, scenes: [...sceneMap.values()], beats }
 }
@@ -336,16 +590,17 @@ function finalizeBeat(
     expressionEn: string
     lineIndices: number[]
     reasons: string[]
-    shotType: VisualShotType
+    shotType?: VisualScriptBeat['shotType']
     mustShowEn?: string
   },
   framing: PortraitFraming,
   sceneMap: Map<string, VisualScene>,
   bible: CharacterVisual[] | undefined,
+  seating: SceneSeating | null,
   brief?: VisualBrief | null,
 ): VisualScriptBeat {
   const firstIdx = group.lineIndices[0]
-  const id = `${group.activeSpeaker.replace(/\s+/g, '_')}-${group.sceneId}-${group.shotType}-${group.mood}-${firstIdx}`
+  const id = `${group.activeSpeaker.replace(/\s+/g, '_')}-${group.sceneId}-${group.mood}-${firstIdx}`
   const partial = {
     sectionId,
     lineIndices: group.lineIndices,
@@ -365,7 +620,7 @@ function finalizeBeat(
   return {
     id,
     ...partial,
-    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, brief),
+    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, seating, brief),
   }
 }
 
@@ -406,4 +661,19 @@ export function beatsToSpeakerPortraits(beats: VisualScriptBeat[]): SpeakerPortr
     imageUrl: b.imageUrl,
     reason: b.reason,
   }))
+}
+
+/** Früheres Bild derselben Szene – für Hintergrund-Kontinuität. */
+export function previousSceneImageUrl(
+  script: DialogVisualScript | undefined,
+  sceneId: string,
+  currentBeatId: string,
+): string | undefined {
+  if (!script?.beats?.length) return undefined
+  let last: string | undefined
+  for (const b of script.beats) {
+    if (b.id === currentBeatId) break
+    if (b.sceneId === sceneId && b.imageUrl) last = b.imageUrl
+  }
+  return last
 }

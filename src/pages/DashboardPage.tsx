@@ -6,6 +6,7 @@ import { copyTextToClipboard } from '../utils/clipboard'
 import { LanguageFlag } from '../components/LanguageFlag'
 import type { ClassRoom, Dialog, DialogFolder } from '../types'
 import { languageName } from '../types'
+import { useI18n } from '../i18n/I18nContext'
 
 function folderPath(
   folderId: string | null,
@@ -52,11 +53,12 @@ function moveTargets(
     excludeFolderId?: string
     scope: 'personal' | 'class'
     classId?: string | null
+    rootLabel?: string
   },
 ): MoveTarget[] {
   const targets: MoveTarget[] = []
   if (opts.scope === 'personal') {
-    targets.push({ kind: 'folder', id: null, label: 'Hauptverzeichnis' })
+    targets.push({ kind: 'folder', id: null, label: opts.rootLabel ?? 'Hauptverzeichnis' })
   }
 
   for (const folder of folders) {
@@ -83,6 +85,7 @@ function moveTargets(
 
 export function DashboardPage() {
   const { user } = useAuth()
+  const { t } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
   const currentFolderId = searchParams.get('folder')
 
@@ -442,6 +445,7 @@ export function DashboardPage() {
         excludeFolderId: moveItem.type === 'folder' ? moveItem.id : undefined,
         scope: moveItem.scope,
         classId: moveItem.classId,
+        rootLabel: t('dashboard.root'),
       })
     : []
 
@@ -449,7 +453,7 @@ export function DashboardPage() {
     <div className="dashboard">
       <div className="page-header">
         <div>
-          <h1>Meine Dialoge</h1>
+          <h1>{t('dashboard.title')}</h1>
           <p className="muted">
             Ordne Dialoge in Ordnern. «Teilen» / Ordner «Öffentlich» stellt sie unter{' '}
             <Link to="/explore">Öffentliche Dialoge</Link> bereit.
@@ -458,18 +462,18 @@ export function DashboardPage() {
         <div className="header-actions">
           {canCreateFolder && (
             <button type="button" className="btn btn-secondary" onClick={createFolder}>
-              + Ordner
+              + {t('dashboard.newFolder')}
             </button>
           )}
           <Link to={createLink} className="btn btn-primary">
-            + Neuer Dialog
+            + {t('dashboard.newDialog')}
           </Link>
         </div>
       </div>
 
       <nav className="breadcrumb" aria-label="Ordnerpfad">
         <button type="button" className="breadcrumb-link" onClick={goToRoot}>
-          Hauptverzeichnis
+          {t('dashboard.root')}
         </button>
         {breadcrumbs.map((folder) => (
           <span key={folder.id} className="breadcrumb-segment">

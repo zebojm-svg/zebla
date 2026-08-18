@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useI18n } from '../i18n/I18nContext'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 export function LoginPage() {
   const { loginGoogle, loginStudent, firebaseReady } = useAuth()
+  const { t } = useI18n()
   const [classCode, setClassCode] = useState('')
   const [studentCode, setStudentCode] = useState('')
   const [name, setName] = useState('')
@@ -16,7 +19,7 @@ export function LoginPage() {
     try {
       await loginStudent(studentCode, name || undefined, classCode || undefined)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen')
+      setError(err instanceof Error ? err.message : t('common.error'))
     } finally {
       setLoading(false)
     }
@@ -28,7 +31,7 @@ export function LoginPage() {
     try {
       await loginGoogle()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google-Anmeldung fehlgeschlagen')
+      setError(err instanceof Error ? err.message : t('common.error'))
     } finally {
       setLoading(false)
     }
@@ -38,11 +41,11 @@ export function LoginPage() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <h1>Zebla</h1>
-          <div className="alert alert-error">
-            Firebase ist nicht konfiguriert. Bitte VITE_FIREBASE_* Variablen in .env
-            setzen (siehe README).
+          <div className="login-lang-row">
+            <LanguageSwitcher />
           </div>
+          <h1>{t('brand.name')}</h1>
+          <div className="alert alert-error">{t('login.firebaseMissing')}</div>
         </div>
       </div>
     )
@@ -51,15 +54,16 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>Zebla</h1>
-        <p className="login-subtitle">
-          Sprachdialoge erstellen, übersetzen und lernen – mit KI.
-        </p>
+        <div className="login-lang-row">
+          <LanguageSwitcher />
+        </div>
+        <h1>{t('brand.name')}</h1>
+        <p className="login-subtitle">{t('login.subtitle')}</p>
 
         {error && <div className="alert alert-error">{error}</div>}
 
         <section className="login-section">
-          <h2>Als Lehrkraft / Master</h2>
+          <h2>{t('login.googleTitle')}</h2>
           <p className="hint">
             Mit Google anmelden. Neue Lehrkräfte registrieren sich selbst; KI braucht später Pro.
           </p>
@@ -69,16 +73,16 @@ export function LoginPage() {
             onClick={handleGoogleLogin}
             disabled={loading}
           >
-            Mit Google anmelden
+            {t('login.googleBtn')}
           </button>
         </section>
 
         <div className="divider">
-          <span>oder</span>
+          <span>{t('common.or')}</span>
         </div>
 
         <section className="login-section">
-          <h2>Als Schüler anmelden</h2>
+          <h2>{t('login.studentTitle')}</h2>
           <form onSubmit={handleStudentLogin} className="student-form">
             <label>
               Klassencode
@@ -91,27 +95,27 @@ export function LoginPage() {
               />
             </label>
             <label>
-              Schülercode
+              {t('login.studentCode')}
               <input
                 type="text"
                 value={studentCode}
                 onChange={(e) => setStudentCode(e.target.value.toUpperCase())}
-                placeholder="persönlicher Code"
+                placeholder={t('login.codePh')}
                 required
                 autoComplete="off"
               />
             </label>
             <label>
-              Anzeigename (optional)
+              {t('login.displayName')}
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="z.B. Max M."
+                placeholder={t('login.displayNamePh')}
               />
             </label>
             <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Anmelden …' : 'Mit Codes anmelden'}
+              {loading ? t('login.studentBusy') : t('login.studentBtn')}
             </button>
           </form>
           <p className="hint">

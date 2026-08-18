@@ -15,12 +15,15 @@ import {
   planSpeakerPortraits,
   applySpeakerPortraits,
   ensureDialogVisualScript,
+  ensureCharacterPortraits,
   ensureReferenceImage,
   generateSectionImage,
   generateUploadedImage,
   isAiConfigured,
   chatJson,
 } from './ai.js'
+import { referenceUrlsForScene } from './reference-image.js'
+import { previousSceneImageUrl } from './visual-script.js'
 import { buildVisualBrief, neededVisualQuestions, testImagePrompt } from './visual-director.js'
 import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
@@ -129,11 +132,18 @@ async function attachSectionImage(
   userId: string,
   profile?: UserProfile | null,
 ) {
-  const withBible = await ensureCharacterBibleOnDialog(dialog, userId, profile)
+  let withBible = await ensureCharacterBibleOnDialog(dialog, userId, profile)
+  withBible = await ensureCharacterPortraits(withBible, userId, false)
+  withBible = await ensureReferenceImage(withBible, userId, false)
+  const speakers = [...new Set(section.lines.map((l) => l.speaker))]
+  const activeSpeaker = speakers[0]
   const { imageUrl: dataUrl, prompt } = await generateSectionImage(
     section,
     withBible.title,
     withBible.characterBible,
+    referenceUrlsForScene(withBible, activeSpeaker),
+    withBible.referenceImagePrompt,
+    activeSpeaker,
   )
   let imageUrl = dataUrl
   try {
@@ -150,6 +160,8 @@ async function attachSectionImage(
     {
       sections,
       characterBible: withBible.characterBible,
+      referenceImageUrl: withBible.referenceImageUrl,
+      referenceImagePrompt: withBible.referenceImagePrompt,
     },
     profile,
   )
@@ -279,6 +291,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       beatIndex?: number
       replan?: boolean
       retry?: boolean
+      forceImages?: boolean
     }
     const dialogId = dialogIdFromRequest(req, body)
     const sectionId = body.sectionId
@@ -299,16 +312,38 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid, profile)
 
-    if (!dialog.visualScript?.beats?.length || body.replan) {
-      if (body.replan) {
+    const clearAndReplan = body.replan === true
+    const keepTest = Boolean(dialog.visualBrief?.testApproved)
+    const forceImages = body.forceImages === true || body.retry === true || clearAndReplan
+
+    if (!dialog.visualScript?.beats?.length || clearAndReplan) {
+      if (clearAndReplan) {
+        const clearedBible = keepTest
+          ? dialog.characterBible
+          : dialog.characterBible?.map((c) => {
+              const { portraitUrl: _p, portraitPrompt: _pp, ...rest } = c
+              return rest
+            })
+        const clearedSections = dialog.sections.map((s) => {
+          const { speakerPortraits: _sp, lineImageBeats: _lb, ...secRest } = s
+          return {
+            ...secRest,
+            lines: s.lines.map((l) => {
+              const { imageUrl: _iu, imagePrompt: _ip, ...lineRest } = l
+              return lineRest
+            }),
+          }
+        })
         const cleared = await updateDialog(
           dialog.id,
           user.uid,
           {
-            visualScript: { version: 1, scenes: [], beats: [] },
-            ...(dialog.visualBrief?.testApproved
+            visualScript: null,
+            characterBible: clearedBible,
+            sections: clearedSections,
+            ...(keepTest
               ? {}
-              : { referenceImageUrl: '', referenceImagePrompt: '' }),
+              : { referenceImageUrl: null, referenceImagePrompt: null }),
           },
           profile,
         )
@@ -324,11 +359,8 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       dialog = withScript ?? { ...dialog, visualScript: script }
     }
 
-    dialog = await ensureReferenceImage(
-      dialog,
-      user.uid,
-      body.replan === true && !dialog.visualBrief?.testApproved,
-    )
+    dialog = await ensureCharacterPortraits(dialog, user.uid, clearAndReplan && !keepTest)
+    dialog = await ensureReferenceImage(dialog, user.uid, clearAndReplan && !keepTest)
 
     if (body.beatIndex === -1) {
       res.json({
@@ -336,7 +368,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         done: false,
         totalBeats: dialog.visualScript?.beats.filter((b) => b.sectionId === section.id).length ?? 0,
         currentBeat: 0,
-        reason: 'Referenz-Cast (intern)',
+        reason: 'Figuren-Portraits & Referenz-Cast (intern)',
       })
       return
     }
@@ -355,10 +387,10 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         gaze: p.gaze,
         framing: p.framing,
         newSetup: true,
-        cameraEn: `beside ${p.addressee ?? 'partner'} watching ${p.speaker}`,
+        cameraEn: `from empty seat of ${p.addressee ?? 'partner'} looking at ${p.speaker}, partner completely out of frame`,
         expressionEn: p.mood,
         prompt: p.prompt,
-        imageUrl: p.imageUrl,
+        imageUrl: undefined,
         reason: p.reason,
       }))
     }
@@ -379,14 +411,26 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
     }
 
     const beat = beats[beatIndex]
-    if (!beat.imageUrl || body.retry) {
+    if (!beat.imageUrl || forceImages) {
       const storageKey = `${section.id}-beat-${beat.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}${body.retry ? '-r' : ''}`
+      const prevSceneUrl = previousSceneImageUrl(
+        dialog.visualScript,
+        beat.sceneId,
+        beat.id,
+      )
+      const pictureStory = dialog.visualBrief?.cameraLanguage === 'picture_story'
       const imageUrl = await generateUploadedImage(
         beat.prompt,
         dialog.id,
         storageKey,
         dialog.characterBible,
         dialog.referenceImagePrompt,
+        referenceUrlsForScene(
+          dialog,
+          pictureStory ? undefined : beat.activeSpeaker,
+          prevSceneUrl,
+        ),
+        pictureStory ? undefined : beat.activeSpeaker,
         dialog.visualBrief,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
@@ -556,9 +600,9 @@ export async function handleVisualBrief(req: VercelRequest, res: VercelResponse)
       {
         visualBrief: brief,
         characterBible: [],
-        visualScript: { version: 1, scenes: [], beats: [] },
-        referenceImageUrl: brief.testImageUrl,
-        referenceImagePrompt: brief.testApproved ? brief.directorPromptEn : undefined,
+        visualScript: null,
+        referenceImageUrl: null,
+        referenceImagePrompt: null,
       },
       profile,
     )
@@ -612,6 +656,7 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
     }
 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid, profile)
+    dialog = await ensureCharacterPortraits(dialog, user.uid, false)
     const extra = body.comment?.trim()
     const visualBrief = {
       ...dialog.visualBrief!,
@@ -624,11 +669,15 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
       ? formatCharacterBibleForPrompt(dialog.characterBible)
       : ''
     const prompt = testImagePrompt({ ...dialog, visualBrief }, bibleNote)
+    const portraitUrls =
+      dialog.characterBible?.map((c) => c.portraitUrl).filter((u): u is string => !!u) ?? []
     const imageUrl = await generateUploadedImage(
       prompt,
       dialog.id,
       extra ? `visual-test-${Date.now()}` : 'visual-test',
       dialog.characterBible,
+      undefined,
+      portraitUrls,
       undefined,
       visualBrief,
     )

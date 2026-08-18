@@ -10,7 +10,9 @@ import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
 import { copyTextToClipboard } from '../utils/clipboard'
+import { useI18n } from '../i18n/I18nContext'
 import {
+  estimateAllSceneImages,
   estimateAllSectionImages,
   estimateBirkenbihl,
   estimateSceneImages,
@@ -24,6 +26,7 @@ import type { Dialog, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
+  const { t } = useI18n()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -128,7 +131,7 @@ export function DialogEditorPage() {
             ? 'KI plant Bilderskript …'
             : `Bild ${beatIndex + 1} … (ca. 15–30 s)`,
       )
-      const res = await api.ai.imageLines(current.id, sectionId, beatIndex, replan)
+      const res = await api.ai.imageLines(current.id, sectionId, beatIndex, replan, false, true)
       current = res.dialog
       setDialog(res.dialog)
       if (beatIndex < 0) {
@@ -147,7 +150,7 @@ export function DialogEditorPage() {
           retried.add(fromBeat)
           for (const i of critic.retryBeatIndexes) {
             setStatus(`Korrigiere Bild ${i + 1} …`)
-            const retryRes = await api.ai.imageLines(current.id, sectionId, i, false, true)
+            const retryRes = await api.ai.imageLines(current.id, sectionId, i, false, true, true)
             current = retryRes.dialog
             setDialog(retryRes.dialog)
             await new Promise((r) => setTimeout(r, 2500))
@@ -211,7 +214,7 @@ export function DialogEditorPage() {
           </p>
         </div>
         <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
-          Diashow starten
+          {t('editor.slideshow')}
         </Link>
       </div>
 
@@ -444,7 +447,64 @@ export function DialogEditorPage() {
 
           <div className="tool-group">
             <span className="tool-label">Bilder</span>
-            <div className="tool-controls tool-controls--single">
+            <div className="tool-controls tool-controls--stack">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!!busy}
+                onClick={async () => {
+                  if (
+                    !(await confirmCost(
+                      estimateAllSceneImages(dialog.sections.length),
+                    ))
+                  )
+                    return
+                  await runAction('scenes-all', async () => {
+                    let current = dialog
+                    let generated = 0
+                    for (let si = 0; si < current.sections.length; si++) {
+                      const section = current.sections[si]
+                      let beatIndex = -1
+                      let replan = si === 0
+                      let done = false
+                      while (!done) {
+                        setStatus(
+                          beatIndex < 0
+                            ? `Abschnitt ${si + 1}/${current.sections.length}: Figuren-Portraits & Referenz …`
+                            : `Abschnitt ${si + 1}/${current.sections.length}: neues Bild ${beatIndex + 1} …`,
+                        )
+                        const res = await api.ai.imageLines(
+                          current.id,
+                          section.id,
+                          beatIndex,
+                          replan,
+                          false,
+                          true,
+                        )
+                        current = res.dialog
+                        setDialog(res.dialog)
+                        if (beatIndex < 0) {
+                          beatIndex = 0
+                          replan = false
+                          continue
+                        }
+                        generated++
+                        done = res.done
+                        beatIndex++
+                        replan = false
+                        if (!done) {
+                          await new Promise((r) => setTimeout(r, 2500))
+                        }
+                      }
+                    }
+                    setStatus(
+                      `Fertig – ${generated} Dialogbild${generated !== 1 ? 'er' : ''} neu erzeugt. Seite ggf. einmal hart neu laden (Strg+F5), falls der Browser noch alte Vorschaubilder zeigt.`,
+                    )
+                  })
+                }}
+              >
+                {busy === 'scenes-all' ? 'Generiere …' : 'Alle Dialogbilder neu'}
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -461,7 +521,7 @@ export function DialogEditorPage() {
                     for (let i = 0; i < current.sections.length; i++) {
                       const section = current.sections[i]
                       setStatus(
-                        `Generiere Bild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
+                        `Generiere Titelbild ${i + 1} von ${current.sections.length} (ca. 15–30 s) …`,
                       )
                       const { dialog: d } = await api.ai.image(current.id, section.id)
                       current = d
@@ -473,7 +533,7 @@ export function DialogEditorPage() {
                   })
                 }}
               >
-                {busy === 'images' ? 'Generiere …' : 'Alle Bilder generieren'}
+                {busy === 'images' ? 'Generiere …' : 'Alle Titelbilder'}
               </button>
             </div>
           </div>

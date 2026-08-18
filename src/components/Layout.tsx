@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
@@ -64,6 +65,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </nav>
               )}
               <div className="zebo-shell-header__right">
+                <LanguageSwitcher className="lang-switcher--topbar" />
                 <a className="zebo-hub-link" href="https://zebotools.ch">
                   ← ZeboTools
                 </a>
@@ -113,6 +115,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
           {!user && (
             <div className="zebo-shell-header__right">
+              <LanguageSwitcher className="lang-switcher--topbar" />
               <a className="zebo-hub-link" href="https://zebotools.ch">
                 ← ZeboTools
               </a>

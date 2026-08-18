@@ -9,6 +9,7 @@ import {
   mergeVoiceProfilesIntoDialog,
 } from './speaker-voice.js'
 import { TTS_STORAGE_SPEAKING_RATE } from './tts-storage.js'
+import { isGeminiTtsVoiceName, usesGeminiTts } from '../shared/tts-routing.js'
 
 export function findLineInDialog(
   dialog: Dialog,
@@ -41,7 +42,14 @@ async function ensureSpeakerVoicesOnDialog(
   dialog: Dialog,
 ): Promise<Dialog> {
   const speakers = [...speakerIndexMap(dialog).keys()]
-  if (dialog.speakerVoices && speakers.every((s) => dialog.speakerVoices?.[s]?.voiceName)) {
+  const gemini = usesGeminiTts(dialog.targetLanguage)
+  const hasAll = dialog.speakerVoices && speakers.every((s) => dialog.speakerVoices?.[s]?.voiceName)
+  const needsGeminiRemap =
+    gemini &&
+    dialog.speakerVoices &&
+    speakers.some((s) => !isGeminiTtsVoiceName(dialog.speakerVoices?.[s]?.voiceName))
+
+  if (hasAll && !needsGeminiRemap) {
     return dialog
   }
   const profiles = buildSpeakerVoiceProfiles(dialog)

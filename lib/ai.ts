@@ -18,8 +18,14 @@ import type {
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
-import { appearanceGuideFor, styleLockPrompt } from './ken-burns-style.js'
-import { referenceAnchorForPrompt, buildReferenceImagePrompt } from './reference-image.js'
+import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO, appearanceGuideFor, styleLockPrompt, castIntegrityRules } from './ken-burns-style.js'
+import {
+  referenceAnchorForPrompt,
+  buildReferenceImagePrompt,
+  buildCharacterPortraitPrompt,
+  portraitAnchorForPrompt,
+  referenceUrlsForScene,
+} from './reference-image.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
 import {
@@ -366,7 +372,7 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`,
     {
       instances: [{ prompt }],
-      parameters: { sampleCount: 1 },
+      parameters: { sampleCount: 1, aspectRatio: IMAGE_ASPECT_RATIO },
     },
   )
 
@@ -378,13 +384,66 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
   return `data:image/png;base64,${b64}`
 }
 
-async function generateImageWithGemini(prompt: string): Promise<string> {
+export type InlineImageRef = { mimeType: string; data: string }
+
+async function fetchImageAsInline(url: string): Promise<InlineImageRef | null> {
+  try {
+    if (url.startsWith('data:')) {
+      const match = url.match(/^data:([^;]+);base64,(.+)$/)
+      if (!match) return null
+      return { mimeType: match[1], data: match[2] }
+    }
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    const mimeType = res.headers.get('content-type')?.split(';')[0] || 'image/png'
+    return { mimeType, data: buf.toString('base64') }
+  } catch {
+    return null
+  }
+}
+
+async function loadInlineImages(urls: string[] | undefined): Promise<InlineImageRef[]> {
+  if (!urls?.length) return []
+  const out: InlineImageRef[] = []
+  for (const url of urls.slice(0, 3)) {
+    const img = await fetchImageAsInline(url)
+    if (img) out.push(img)
+  }
+  return out
+}
+
+async function generateImageWithGemini(
+  prompt: string,
+  referenceImages?: InlineImageRef[],
+): Promise<string> {
   const apiKey = requireGeminiKey()
+  const parts: Record<string, unknown>[] = []
+  if (referenceImages?.length) {
+    for (const img of referenceImages) {
+      parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
+    }
+    parts.push({
+      text:
+        'Reference images: (1) locked face/identity of the speaking character; ' +
+        '(2) if present, a PREVIOUS frame from the SAME scene — match that room/location, furniture, lighting, and background geography exactly (or only gradual drift if the prompt says gradual continuity); ' +
+        '(3) optional group cast sheet. ' +
+        'CRITICAL: do not invent extra people. Show only the single speaking character from the text prompt — ' +
+        'no over-the-shoulder back-of-head, no third person at the table. ' +
+        'Keep left/right seating and look direction consistent with the spatial map in the prompt. ' +
+        'Only change the visible speaker pose/expression as requested; do not teleport indoor↔outdoor between reverse shots.',
+    })
+  }
+  parts.push({ text: prompt })
+
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
     {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      contents: [{ parts }],
+      generationConfig: {
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: { aspectRatio: IMAGE_ASPECT_RATIO },
+      },
     },
   )
 
@@ -392,7 +451,9 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
     candidates?: {
       content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }
     }[]
+    error?: { message?: string }
   }
+  if (data.error?.message) throw new Error(data.error.message)
   const inlineData = data.candidates?.[0]?.content?.parts?.find(
     (part) => part.inlineData?.data,
   )?.inlineData
@@ -459,10 +520,14 @@ function uniqueSpeakers(section: DialogSection): string[] {
 
 function twoShotLayoutHint(speakers: string[]): string {
   if (speakers.length >= 2) {
-    return `Medium two-shot: ${speakers[0]} on the LEFT third of the frame, ${speakers[1]} on the RIGHT third, both facing slightly toward each other, equal prominence, full upper body visible. `
+    return (
+      `Exactly TWO people only (${speakers[0]} and ${speakers[1]}), no third person: ` +
+      `${speakers[0]} on the LEFT third of the frame, ${speakers[1]} on the RIGHT third, ` +
+      `both facing slightly toward each other, equal prominence, full upper body visible. `
+    )
   }
   if (speakers.length === 1) {
-    return `Single subject ${speakers[0]} centered, medium shot, upper body visible. `
+    return `Single subject ${speakers[0]} centered, medium shot, upper body visible. No other people. `
   }
   return ''
 }
@@ -502,14 +567,12 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
 
 Regeln:
 - name: exakt wie im Dialog (z.B. Ramo, Shome)
-- gender: "male" | "female" – aus Kontext, Nutzer-Angabe oder Namen. Niemals das Geschlecht raten gegen die Nutzer-Angabe.
-- description: 2–3 Sätze Englisch: exakte Kleidung (Farbe, Stil), Frisur, Brille ja/nein, Hautfarbe, Alter, unverwechselbare Merkmale
-- Alter: ${brief?.ageEn ?? 'passend zur Geschichte'}
-- Stil: ${brief?.artStyle ?? 'wie in den Bild-Hinweisen, sonst Illustration wenn Kinderbuch/Jugendliche'}
+- gender: "male" | "female" – aus Kontext, Nutzer-Angabe oder Namen
+- description: 2–3 Sätze Englisch: exakte Kleidung (Farbe, Stil), Frisur, Brille optional, Hautfarbe, Alter, unverwechselbare Merkmale
 - Erscheinungsbild-Richtlinie: ${appearance}
-- Jede Person ANDERE Kleidungsfarbe und ein Merkmal (Brille nur bei einer Person, wenn nicht beide Brille tragen sollen)
+- Stil: ${styleLock}
 - Nur Personen, die im Dialog vorkommen
-- Stil-Lock: ${styleLock}
+- Alter und Zeichenstil müssen zum Brief passen (keine Erwachsenen-Fotos wenn Jugendliche/Zeichnung verlangt sind)
 
 JSON:
 { "characters": [{ "name": "Ramo", "gender": "male", "description": "..." }] }`,
@@ -530,16 +593,25 @@ function buildConsistentImagePrompt(
   scenePrompt: string,
   bible?: CharacterVisual[],
   referencePrompt?: string,
+  activeSpeaker?: string,
   brief?: VisualBrief | null,
 ): string {
+  const portrait = activeSpeaker
+    ? bible?.find((c) => c.name === activeSpeaker)
+    : undefined
+  const portraitRef = portraitAnchorForPrompt(
+    activeSpeaker ?? '',
+    portrait?.portraitPrompt,
+  )
   const ref = referenceAnchorForPrompt(referencePrompt)
   const cast =
     bible?.length ?
       `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
-  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
-  return `${ref}${cast}${scenePrompt}. ${appearance}. ${styleLock}`
+  if (brief) {
+    return `${portraitRef}${ref}${cast}${scenePrompt}`
+  }
+  return `${portraitRef}${ref}${cast}${scenePrompt}. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
 }
 
 function buildImagePrompt(
@@ -558,12 +630,17 @@ function buildImagePrompt(
   )
 }
 
-async function generateImageDataUrl(prompt: string): Promise<string> {
+async function generateImageDataUrl(
+  prompt: string,
+  referenceImageUrls?: string[],
+): Promise<string> {
   try {
+    const refs = await loadInlineImages(referenceImageUrls)
     if (IMAGE_MODEL.startsWith('imagen')) {
+      // Imagen predict path has no multimodal refs — prompt-only fallback
       return await generateImageWithImagen(prompt)
     }
-    return await generateImageWithGemini(prompt)
+    return await generateImageWithGemini(prompt, refs)
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err)
     throw new Error(imageGenerationErrorMessage(raw))
@@ -574,9 +651,22 @@ export async function generateSectionImage(
   section: DialogSection,
   dialogTitle: string,
   bible?: CharacterVisual[],
+  referenceImageUrls?: string[],
+  referencePrompt?: string,
+  activeSpeaker?: string,
 ): Promise<{ imageUrl: string; prompt: string }> {
-  const prompt = buildImagePrompt(section, dialogTitle, bible)
-  const imageUrl = await generateImageDataUrl(prompt)
+  const speakers = uniqueSpeakers(section)
+  const snippet = section.lines
+    .slice(0, 5)
+    .map((l) => `${l.speaker}: ${l.text}`)
+    .join(' ')
+  const prompt = buildConsistentImagePrompt(
+    `${twoShotLayoutHint(speakers)}Scene for language learning dialog "${dialogTitle}", section "${section.title}". ${snippet}`,
+    bible,
+    referencePrompt,
+    activeSpeaker,
+  )
+  const imageUrl = await generateImageDataUrl(prompt, referenceImageUrls)
   return { imageUrl, prompt }
 }
 
@@ -792,12 +882,18 @@ function buildPortraitGroup(
   const firstIdx = group.lineIndices[0]
   const id = `${group.speaker.replace(/\s+/g, '_')}-${group.mood}-${group.gaze}-${firstIdx}`
   const prompt =
-    `Over-the-shoulder cinematic dialogue shot: camera beside ${group.addressee}, as if the viewer sits next to ${group.addressee} watching the conversation. ` +
+    castIntegrityRules({
+      castNames: bible?.map((c) => c.name) ?? [group.speaker, group.addressee].filter(Boolean),
+      visibleSpeaker: group.speaker,
+      addressee: group.addressee,
+    }) +
+    `SPATIAL CONTINUITY: Keep the same room/location geography as other shots of this conversation; do not switch indoor↔outdoor between speakers. ` +
+    `Viewpoint: camera from empty seat of ${group.addressee} looking at ${group.speaker} with consistent left/right seating (180-degree rule). ` +
     `${framingExpr[framing]} of ${group.speaker}${castHint ? ` (${castHint})` : ''}. ` +
-    `${group.speaker} is speaking to ${group.addressee}. ${gazeExpr[group.gaze]}. ` +
-    `Expression: ${moodExpr[group.mood]}. Third-person observer perspective, natural dialogue scene. ` +
-    `Setting: ${scene}. Only ${group.speaker} visible in frame; ${group.addressee} is off-camera beside the viewer, do not show a second person. ` +
-    `Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${styleLockPrompt(undefined)}`
+    `${group.speaker} is speaking to ${group.addressee} who is completely out of frame. ${gazeExpr[group.gaze]}. ` +
+    `Expression: ${moodExpr[group.mood]}. Natural dialogue scene. ` +
+    `Setting: ${scene}. ` +
+    `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
   return {
     id,
     speaker: group.speaker,
@@ -894,10 +990,18 @@ export async function generateUploadedImage(
   storageKey: string,
   bible?: CharacterVisual[],
   referencePrompt?: string,
+  referenceImageUrls?: string[],
+  activeSpeaker?: string,
   brief?: VisualBrief | null,
 ): Promise<string> {
-  const fullPrompt = buildConsistentImagePrompt(prompt, bible, referencePrompt, brief)
-  const dataUrl = await generateImageDataUrl(fullPrompt)
+  const fullPrompt = buildConsistentImagePrompt(
+    prompt,
+    bible,
+    referencePrompt,
+    activeSpeaker,
+    brief,
+  )
+  const dataUrl = await generateImageDataUrl(fullPrompt, referenceImageUrls)
   const { uploadDialogImage } = await import('./image-storage.js')
   try {
     return await uploadDialogImage(dataUrl, dialogId, storageKey)
@@ -917,36 +1021,71 @@ export function applyLineImageBeats(
   })
 }
 
+/** Erzeugt zuerst Einzelportraits aller Figuren (Identitäts-Anker). */
+export async function ensureCharacterPortraits(
+  dialog: Dialog,
+  userId: string,
+  force = false,
+): Promise<Dialog> {
+  const bible = dialog.characterBible
+  if (!bible?.length) return dialog
+
+  const needsWork = force || bible.some((c) => !c.portraitUrl)
+  if (!needsWork) return dialog
+
+  const { updateDialog } = await import('./firestore.js')
+  const nextBible: CharacterVisual[] = []
+
+  for (const character of bible) {
+    if (character.portraitUrl && !force) {
+      nextBible.push(character)
+      continue
+    }
+    const prompt = buildCharacterPortraitPrompt(character, dialog)
+    const storageKey = `portrait-${character.name.replace(/[^\w\-]+/g, '_').slice(0, 40)}`
+    const portraitUrl = await generateUploadedImage(
+      prompt,
+      dialog.id,
+      storageKey,
+      [character],
+      undefined,
+      undefined,
+      character.name,
+      dialog.visualBrief,
+    )
+    nextBible.push({ ...character, portraitUrl, portraitPrompt: prompt })
+  }
+
+  const updated = await updateDialog(dialog.id, userId, { characterBible: nextBible })
+  return updated ?? { ...dialog, characterBible: nextBible }
+}
+
 export async function ensureReferenceImage(
   dialog: Dialog,
   userId: string,
   force = false,
 ): Promise<Dialog> {
-  if (dialog.visualBrief?.testImageUrl && dialog.visualBrief.testApproved && !force) {
-    if (dialog.referenceImageUrl === dialog.visualBrief.testImageUrl) return dialog
-    const { updateDialog } = await import('./firestore.js')
-    const updated = await updateDialog(dialog.id, userId, {
-      referenceImageUrl: dialog.visualBrief.testImageUrl,
-      referenceImagePrompt: dialog.visualBrief.directorPromptEn,
-    })
-    return (
-      updated ?? {
-        ...dialog,
-        referenceImageUrl: dialog.visualBrief.testImageUrl,
-        referenceImagePrompt: dialog.visualBrief.directorPromptEn,
-      }
-    )
+  if (
+    dialog.visualBrief?.testApproved &&
+    (dialog.visualBrief.testImageUrl || dialog.referenceImageUrl) &&
+    !force
+  ) {
+    return dialog
   }
   if (dialog.referenceImageUrl && dialog.referenceImagePrompt && !force) {
     return dialog
   }
   const prompt = buildReferenceImagePrompt(dialog, dialog.characterBible)
   const { updateDialog } = await import('./firestore.js')
+  const portraitUrls =
+    dialog.characterBible?.map((c) => c.portraitUrl).filter((u): u is string => !!u) ?? []
   const imageUrl = await generateUploadedImage(
     prompt,
     dialog.id,
     'reference-cast-0',
     dialog.characterBible,
+    undefined,
+    portraitUrls,
     undefined,
     dialog.visualBrief,
   )

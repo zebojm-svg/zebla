@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import type { DialogSection } from '../types'
 import { LanguageFlag } from '../components/LanguageFlag'
 import { isRtlLanguage, languageName } from '../types'
+import { useI18n } from '../i18n/I18nContext'
 
 interface SharedPreview {
   title: string
@@ -18,6 +19,7 @@ interface SharedPreview {
 export function ShareImportPage() {
   const { token } = useParams<{ token: string }>()
   const { user, loading: authLoading } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const folderId = searchParams.get('folder')
@@ -125,15 +127,15 @@ export function ShareImportPage() {
               disabled={importing}
               onClick={handleImport}
             >
-              {importing ? 'Kopiere …' : 'In meine Bibliothek kopieren'}
+              {importing ? t('common.loading') : t('share.import')}
             </button>
           ) : (
             <Link to={loginUrl} className="btn btn-primary">
-              Anmelden und kopieren
+              {t('share.loginNeeded')}
             </Link>
           )}
           <Link to="/" className="btn btn-secondary">
-            Abbrechen
+            {t('common.cancel')}
           </Link>
         </div>
       </div>

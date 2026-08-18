@@ -378,12 +378,13 @@ export async function updateDialog(
     creationPrompt: string
     creationChat: Dialog['creationChat']
     imageDirection: string
-    referenceImageUrl: string
-    referenceImagePrompt: string
+    /** null = Feld löschen (z. B. bei Bild-Neuaufbau). */
+    referenceImageUrl: string | null
+    referenceImagePrompt: string | null
     speakerProfiles: Dialog['speakerProfiles']
     characterBible: CharacterVisual[]
     speakerVoices: Dialog['speakerVoices']
-    visualScript: DialogVisualScript
+    visualScript: DialogVisualScript | null
     visualBrief: Dialog['visualBrief']
   }>,
   profile?: UserProfile | null,
@@ -413,6 +414,12 @@ export async function updateDialog(
     }
   }
 
+  const pick = <T,>(next: T | null | undefined, prev: T | undefined): T | undefined => {
+    if (next === null) return undefined
+    if (next !== undefined) return next
+    return prev
+  }
+
   const updated: DialogDoc = {
     userId: existing.userId,
     title: data.title ?? existing.title,
@@ -429,27 +436,22 @@ export async function updateDialog(
     creationChat: data.creationChat !== undefined ? data.creationChat : existing.creationChat,
     imageDirection:
       data.imageDirection !== undefined ? data.imageDirection : existing.imageDirection,
-    referenceImageUrl:
-      data.referenceImageUrl !== undefined ? data.referenceImageUrl : existing.referenceImageUrl,
-    referenceImagePrompt:
-      data.referenceImagePrompt !== undefined
-        ? data.referenceImagePrompt
-        : existing.referenceImagePrompt,
+    referenceImageUrl: pick(data.referenceImageUrl, existing.referenceImageUrl),
+    referenceImagePrompt: pick(data.referenceImagePrompt, existing.referenceImagePrompt),
     speakerProfiles:
       data.speakerProfiles !== undefined ? data.speakerProfiles : existing.speakerProfiles,
     characterBible:
       data.characterBible !== undefined ? data.characterBible : existing.characterBible,
     speakerVoices:
       data.speakerVoices !== undefined ? data.speakerVoices : existing.speakerVoices,
-    visualScript:
-      data.visualScript !== undefined ? data.visualScript : existing.visualScript,
-    visualBrief:
-      data.visualBrief !== undefined ? data.visualBrief : existing.visualBrief,
+    visualScript: pick(data.visualScript, existing.visualScript),
+    visualBrief: pick(data.visualBrief, existing.visualBrief ?? undefined),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
 
-  await adminDb().collection('dialogs').doc(id).set(updated)
+  // Vollständiges set ohne undefined-Felder → gelöschte Keys verschwinden wirklich
+  await adminDb().collection('dialogs').doc(id).set(stripUndefined(updated))
   return docToDialog(id, updated)
 }
 

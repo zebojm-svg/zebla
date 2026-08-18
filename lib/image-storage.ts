@@ -13,12 +13,16 @@ export async function uploadDialogImage(
   const contentType = match[1]
   const buffer = Buffer.from(match[2], 'base64')
   const ext = contentType.includes('jpeg') ? 'jpg' : 'png'
-  const path = `dialog-images/${dialogId}/${sectionId}.${ext}`
+  // Einmaliger Pfad + Cache-Bust: sonst liefert der Browser nach „Neu generieren“
+  // jahrelang die alte Datei unter derselben URL (max-age war 1 Jahr).
+  const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const safeKey = sectionId.replace(/[^\w.\-]+/g, '_').slice(0, 80)
+  const path = `dialog-images/${dialogId}/${safeKey}-${unique}.${ext}`
 
   const bucket = adminStorage().bucket()
   const file = bucket.file(path)
   await file.save(buffer, {
-    metadata: { contentType, cacheControl: 'public, max-age=31536000' },
+    metadata: { contentType, cacheControl: 'public, max-age=3600' },
   })
   await file.makePublic()
   return `https://storage.googleapis.com/${bucket.name}/${path}`
@@ -39,8 +43,9 @@ export async function downloadImageByUrl(
   const bucket = adminStorage().bucket()
   const bucketName = bucket.name
   const storagePrefix = `https://storage.googleapis.com/${bucketName}/`
-  if (imageUrl.startsWith(storagePrefix)) {
-    const path = decodeURIComponent(imageUrl.slice(storagePrefix.length))
+  const bareUrl = imageUrl.split('?')[0]
+  if (bareUrl.startsWith(storagePrefix)) {
+    const path = decodeURIComponent(bareUrl.slice(storagePrefix.length))
     const file = bucket.file(path)
     const [buffer] = await file.download()
     const [meta] = await file.getMetadata()
