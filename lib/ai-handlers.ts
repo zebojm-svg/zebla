@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requireAuth, sendError } from './api-utils.js'
-import { getDialog, updateDialog } from './firestore.js'
+import { getDialog, updateDialog, type UserProfile } from './firestore.js'
+import { requireProfile, assertCanUseAi } from './access.js'
+import { consumeQuota } from './usage.js'
 import { uploadDialogImage } from './image-storage.js'
 import {
   generateDialogFromTopic,
@@ -17,7 +19,11 @@ import {
   generateSectionImage,
   generateUploadedImage,
   isAiConfigured,
+  chatJson,
 } from './ai.js'
+import { buildVisualBrief, neededVisualQuestions, testImagePrompt } from './visual-director.js'
+import { reviewRecentBeats } from './visual-critic.js'
+import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
@@ -26,7 +32,10 @@ export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
 
 export async function handleGenerateTopic(req: VercelRequest, res: VercelResponse) {
   try {
-    await requireAuth(req)
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const { topic, targetLanguage, length } = req.body as {
       topic?: string
       targetLanguage?: string
@@ -45,7 +54,10 @@ export async function handleGenerateTopic(req: VercelRequest, res: VercelRespons
 
 export async function handleGenerateSentences(req: VercelRequest, res: VercelResponse) {
   try {
-    await requireAuth(req)
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const { sentences, targetLanguage, length } = req.body as {
       sentences?: string[]
       targetLanguage?: string
@@ -64,7 +76,10 @@ export async function handleGenerateSentences(req: VercelRequest, res: VercelRes
 
 export async function handleGenerateChat(req: VercelRequest, res: VercelResponse) {
   try {
-    await requireAuth(req)
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const { messages, targetLanguage, length } = req.body as {
       messages?: ChatMessage[]
       targetLanguage?: string
@@ -88,11 +103,12 @@ function dialogIdFromRequest(req: VercelRequest, body: { dialogId?: string }): s
 async function ensureCharacterBibleOnDialog(
   dialog: Dialog,
   userId: string,
+  profile?: UserProfile | null,
 ): Promise<Dialog> {
   let current = dialog
   if (!current.characterBible?.length) {
     const characterBible = await buildCharacterBible(current)
-    const updated = await updateDialog(current.id, userId, { characterBible })
+    const updated = await updateDialog(current.id, userId, { characterBible }, profile)
     current = updated ?? { ...current, characterBible }
   }
   if (!current.speakerVoices || !Object.keys(current.speakerVoices).length) {
@@ -101,7 +117,7 @@ async function ensureCharacterBibleOnDialog(
     )
     const profiles = buildSpeakerVoiceProfiles(current)
     const merged = mergeVoiceProfilesIntoDialog(current, profiles)
-    const updated = await updateDialog(current.id, userId, merged)
+    const updated = await updateDialog(current.id, userId, merged, profile)
     current = updated ?? { ...current, ...merged }
   }
   return current
@@ -111,8 +127,9 @@ async function attachSectionImage(
   dialog: Dialog,
   section: DialogSection,
   userId: string,
+  profile?: UserProfile | null,
 ) {
-  const withBible = await ensureCharacterBibleOnDialog(dialog, userId)
+  const withBible = await ensureCharacterBibleOnDialog(dialog, userId, profile)
   const { imageUrl: dataUrl, prompt } = await generateSectionImage(
     section,
     withBible.title,
@@ -127,16 +144,24 @@ async function attachSectionImage(
   const sections = dialog.sections.map((s) =>
     s.id === section.id ? { ...s, imageUrl, imagePrompt: prompt } : s,
   )
-  const updated = await updateDialog(dialog.id, userId, {
-    sections,
-    characterBible: withBible.characterBible,
-  })
+  const updated = await updateDialog(
+    dialog.id,
+    userId,
+    {
+      sections,
+      characterBible: withBible.characterBible,
+    },
+    profile,
+  )
   return { updated, imageUrl, sectionId: section.id }
 }
 
 export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string; targetLanguage?: string }
     const dialogId = dialogIdFromRequest(req, body)
     const { targetLanguage } = body
@@ -144,7 +169,7 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.status(400).json({ error: 'dialogId und Zielsprache fehlen.' })
       return
     }
-    const dialog = await getDialog(dialogId, user.uid)
+    const dialog = await getDialog(dialogId, user.uid, profile)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
@@ -157,7 +182,12 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       offset += sec.lines.length
       return { ...sec, lines }
     })
-    const updated = await updateDialog(dialog.id, user.uid, { targetLanguage, sections })
+    const updated = await updateDialog(
+      dialog.id,
+      user.uid,
+      { targetLanguage, sections },
+      profile,
+    )
     res.json({ dialog: updated })
   } catch (err) {
     sendError(res, err)
@@ -167,6 +197,9 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
 export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const body = req.body as {
       dialogId?: string
       nativeLanguage?: string
@@ -178,7 +211,7 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
       res.status(400).json({ error: 'dialogId und Muttersprache fehlen.' })
       return
     }
-    const dialog = await getDialog(dialogId, user.uid)
+    const dialog = await getDialog(dialogId, user.uid, profile)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
@@ -193,10 +226,15 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
       )
       sections.push({ ...sec, lines })
     }
-    const updated = await updateDialog(dialog.id, user.uid, {
-      sourceLanguage: nativeLanguage,
-      sections,
-    })
+    const updated = await updateDialog(
+      dialog.id,
+      user.uid,
+      {
+        sourceLanguage: nativeLanguage,
+        sections,
+      },
+      profile,
+    )
     res.json({ dialog: updated })
   } catch (err) {
     sendError(res, err)
@@ -206,20 +244,23 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
 export async function handleSplit(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string }
     const dialogId = dialogIdFromRequest(req, body)
     if (!dialogId) {
       res.status(400).json({ error: 'dialogId fehlt.' })
       return
     }
-    const dialog = await getDialog(dialogId, user.uid)
+    const dialog = await getDialog(dialogId, user.uid, profile)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
     const allLines = dialog.sections.flatMap((s) => s.lines)
     const sections = await splitIntoSections(allLines)
-    const updated = await updateDialog(dialog.id, user.uid, { sections })
+    const updated = await updateDialog(dialog.id, user.uid, { sections }, profile)
     res.json({ dialog: updated })
   } catch (err) {
     sendError(res, err)
@@ -229,11 +270,15 @@ export async function handleSplit(req: VercelRequest, res: VercelResponse) {
 export async function handleImageLines(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const body = req.body as {
       dialogId?: string
       sectionId?: string
       beatIndex?: number
       replan?: boolean
+      retry?: boolean
     }
     const dialogId = dialogIdFromRequest(req, body)
     const sectionId = body.sectionId
@@ -241,7 +286,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
       return
     }
-    let dialog = await getDialog(dialogId, user.uid)
+    let dialog = await getDialog(dialogId, user.uid, profile)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
@@ -252,23 +297,38 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       return
     }
 
-    dialog = await ensureCharacterBibleOnDialog(dialog, user.uid)
+    dialog = await ensureCharacterBibleOnDialog(dialog, user.uid, profile)
 
     if (!dialog.visualScript?.beats?.length || body.replan) {
       if (body.replan) {
-        const cleared = await updateDialog(dialog.id, user.uid, {
-          visualScript: undefined,
-          referenceImageUrl: undefined,
-          referenceImagePrompt: undefined,
-        })
+        const cleared = await updateDialog(
+          dialog.id,
+          user.uid,
+          {
+            visualScript: { version: 1, scenes: [], beats: [] },
+            ...(dialog.visualBrief?.testApproved
+              ? {}
+              : { referenceImageUrl: '', referenceImagePrompt: '' }),
+          },
+          profile,
+        )
         if (cleared) dialog = cleared
       }
       const script = await ensureDialogVisualScript(dialog)
-      const withScript = await updateDialog(dialog.id, user.uid, { visualScript: script })
+      const withScript = await updateDialog(
+        dialog.id,
+        user.uid,
+        { visualScript: script },
+        profile,
+      )
       dialog = withScript ?? { ...dialog, visualScript: script }
     }
 
-    dialog = await ensureReferenceImage(dialog, user.uid, body.replan === true)
+    dialog = await ensureReferenceImage(
+      dialog,
+      user.uid,
+      body.replan === true && !dialog.visualBrief?.testApproved,
+    )
 
     if (body.beatIndex === -1) {
       res.json({
@@ -319,14 +379,15 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
     }
 
     const beat = beats[beatIndex]
-    if (!beat.imageUrl) {
-      const storageKey = `${section.id}-beat-${beat.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}`
+    if (!beat.imageUrl || body.retry) {
+      const storageKey = `${section.id}-beat-${beat.id.replace(/[^\w\-]+/g, '_').slice(0, 48)}${body.retry ? '-r' : ''}`
       const imageUrl = await generateUploadedImage(
         beat.prompt,
         dialog.id,
         storageKey,
         dialog.characterBible,
         dialog.referenceImagePrompt,
+        dialog.visualBrief,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
     }
@@ -359,11 +420,16 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
           }
         : s,
     )
-    const updated = await updateDialog(dialog.id, user.uid, {
-      sections,
-      characterBible: dialog.characterBible,
-      visualScript,
-    })
+    const updated = await updateDialog(
+      dialog.id,
+      user.uid,
+      {
+        sections,
+        characterBible: dialog.characterBible,
+        visualScript,
+      },
+      profile,
+    )
     const done = beatIndex + 1 >= beats.length
     res.json({
       dialog: updated,
@@ -378,27 +444,26 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
 }
 
 export async function handleImageAll(req: VercelRequest, res: VercelResponse) {
-  const body = req.body as { dialogId?: string; sectionId?: string }
-  if (!body.sectionId) {
-    res.status(400).json({
-      error: 'Bitte Bilder einzeln generieren (ein Abschnitt pro Anfrage).',
-    })
-    return
-  }
-  return handleImage(req, res)
-}
-
-export async function handleImage(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string; sectionId?: string }
+    if (!body.sectionId) {
+      res.status(400).json({
+        error: 'Bitte Bilder einzeln generieren (ein Abschnitt pro Anfrage).',
+      })
+      return
+    }
+    // Quota bereits oben verbraucht – restliche Logik wie handleImage ohne erneutes Gating
     const dialogId = dialogIdFromRequest(req, body)
     const sectionId = body.sectionId ?? (req.query.sectionId as string | undefined)
     if (!dialogId || !sectionId) {
       res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
       return
     }
-    const dialog = await getDialog(dialogId, user.uid)
+    const dialog = await getDialog(dialogId, user.uid, profile)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
@@ -412,9 +477,226 @@ export async function handleImage(req: VercelRequest, res: VercelResponse) {
       dialog,
       section,
       user.uid,
+      profile,
     )
     res.json({ dialog: updated, imageUrl, sectionId: sid })
   } catch (err) {
     sendError(res, err)
   }
 }
+
+export async function handleImage(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
+    const body = req.body as { dialogId?: string; sectionId?: string }
+    const dialogId = dialogIdFromRequest(req, body)
+    const sectionId = body.sectionId ?? (req.query.sectionId as string | undefined)
+    if (!dialogId || !sectionId) {
+      res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
+      return
+    }
+    const dialog = await getDialog(dialogId, user.uid, profile)
+    if (!dialog) {
+      res.status(404).json({ error: 'Dialog nicht gefunden.' })
+      return
+    }
+    const section = dialog.sections.find((s) => s.id === sectionId)
+    if (!section) {
+      res.status(404).json({ error: 'Abschnitt nicht gefunden.' })
+      return
+    }
+    const { updated, imageUrl, sectionId: sid } = await attachSectionImage(
+      dialog,
+      section,
+      user.uid,
+      profile,
+    )
+    res.json({ dialog: updated, imageUrl, sectionId: sid })
+  } catch (err) {
+    sendError(res, err)
+  }
+}
+
+export async function handleVisualBrief(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    const body = req.body as {
+      dialogId?: string
+      answers?: Record<string, string>
+      askQuestions?: boolean
+    }
+    const dialogId = dialogIdFromRequest(req, body)
+    if (!dialogId) {
+      res.status(400).json({ error: 'dialogId fehlt.' })
+      return
+    }
+    const dialog = await getDialog(dialogId, user.uid, profile)
+    if (!dialog) {
+      res.status(404).json({ error: 'Dialog nicht gefunden.' })
+      return
+    }
+
+    const ask = body.askQuestions !== false
+    const questions = ask ? neededVisualQuestions(dialog, body.answers) : []
+    if (questions.length) {
+      res.json({ dialog, questions, brief: null })
+      return
+    }
+
+    await consumeQuota(profile, 'aiCalls')
+    const brief = await buildVisualBrief(dialog, chatJson, body.answers)
+    const updated = await updateDialog(
+      dialog.id,
+      user.uid,
+      {
+        visualBrief: brief,
+        characterBible: [],
+        visualScript: { version: 1, scenes: [], beats: [] },
+        referenceImageUrl: brief.testImageUrl,
+        referenceImagePrompt: brief.testApproved ? brief.directorPromptEn : undefined,
+      },
+      profile,
+    )
+    res.json({ dialog: updated ?? { ...dialog, visualBrief: brief }, questions: [], brief })
+  } catch (err) {
+    sendError(res, err)
+  }
+}
+
+export async function handleVisualTest(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
+    const body = req.body as {
+      dialogId?: string
+      comment?: string
+      approve?: boolean
+    }
+    const dialogId = dialogIdFromRequest(req, body)
+    if (!dialogId) {
+      res.status(400).json({ error: 'dialogId fehlt.' })
+      return
+    }
+    let dialog = await getDialog(dialogId, user.uid, profile)
+    if (!dialog) {
+      res.status(404).json({ error: 'Dialog nicht gefunden.' })
+      return
+    }
+    if (!dialog.visualBrief) {
+      const brief = await buildVisualBrief(dialog, chatJson)
+      const withBrief = await updateDialog(dialog.id, user.uid, { visualBrief: brief }, profile)
+      dialog = withBrief ?? { ...dialog, visualBrief: brief }
+    }
+
+    if (body.approve) {
+      const visualBrief = { ...dialog.visualBrief!, testApproved: true }
+      const updated = await updateDialog(
+        dialog.id,
+        user.uid,
+        {
+          visualBrief,
+          referenceImageUrl: visualBrief.testImageUrl,
+          referenceImagePrompt: visualBrief.directorPromptEn,
+        },
+        profile,
+      )
+      res.json({ dialog: updated ?? { ...dialog, visualBrief } })
+      return
+    }
+
+    dialog = await ensureCharacterBibleOnDialog(dialog, user.uid, profile)
+    const extra = body.comment?.trim()
+    const visualBrief = {
+      ...dialog.visualBrief!,
+      extraConstraintsEn: extra
+        ? [dialog.visualBrief?.extraConstraintsEn, extra].filter(Boolean).join(' ')
+        : dialog.visualBrief?.extraConstraintsEn,
+      testApproved: false,
+    }
+    const bibleNote = dialog.characterBible
+      ? formatCharacterBibleForPrompt(dialog.characterBible)
+      : ''
+    const prompt = testImagePrompt({ ...dialog, visualBrief }, bibleNote)
+    const imageUrl = await generateUploadedImage(
+      prompt,
+      dialog.id,
+      extra ? `visual-test-${Date.now()}` : 'visual-test',
+      dialog.characterBible,
+      undefined,
+      visualBrief,
+    )
+    visualBrief.testImageUrl = imageUrl
+    const updated = await updateDialog(
+      dialog.id,
+      user.uid,
+      {
+        visualBrief,
+        characterBible: dialog.characterBible,
+        referenceImageUrl: imageUrl,
+        referenceImagePrompt: prompt,
+      },
+      profile,
+    )
+    res.json({ dialog: updated ?? { ...dialog, visualBrief } })
+  } catch (err) {
+    sendError(res, err)
+  }
+}
+
+export async function handleVisualCritic(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
+    const body = req.body as {
+      dialogId?: string
+      sectionId?: string
+      fromBeat?: number
+      toBeat?: number
+    }
+    const dialogId = dialogIdFromRequest(req, body)
+    if (!dialogId || !body.sectionId) {
+      res.status(400).json({ error: 'dialogId und sectionId fehlen.' })
+      return
+    }
+    let dialog = await getDialog(dialogId, user.uid, profile)
+    if (!dialog) {
+      res.status(404).json({ error: 'Dialog nicht gefunden.' })
+      return
+    }
+    const fromBeat = Math.max(0, body.fromBeat ?? 0)
+    const toBeat = body.toBeat ?? fromBeat
+    const critic = await reviewRecentBeats(dialog, body.sectionId, fromBeat, toBeat)
+
+    if (dialog.visualBrief && (critic.extraConstraintsEn || critic.notes)) {
+      const visualBrief = {
+        ...dialog.visualBrief,
+        extraConstraintsEn: [dialog.visualBrief.extraConstraintsEn, critic.extraConstraintsEn]
+          .filter(Boolean)
+          .join(' ')
+          .slice(0, 1200),
+        criticNotesEn: critic.notes || dialog.visualBrief.criticNotesEn,
+      }
+      const updated = await updateDialog(dialog.id, user.uid, { visualBrief }, profile)
+      dialog = updated ?? { ...dialog, visualBrief }
+    }
+
+    res.json({
+      dialog,
+      ok: critic.ok,
+      notes: critic.notes,
+      retryBeatIndexes: critic.retryBeatIndexes,
+    })
+  } catch (err) {
+    sendError(res, err)
+  }
+}
+

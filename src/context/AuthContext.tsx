@@ -20,7 +20,7 @@ interface AuthContextValue {
   user: User | null
   loading: boolean
   loginGoogle: () => Promise<void>
-  loginStudent: (code: string, name?: string) => Promise<void>
+  loginStudent: (code: string, name?: string, classCode?: string) => Promise<void>
   logout: () => Promise<void>
   firebaseReady: boolean
 }
@@ -56,15 +56,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           fbUser.displayName ?? undefined,
         )
         setUser(profile)
-      } catch {
-        setUser({
-          id: fbUser.uid,
-          name: fbUser.displayName ?? 'Nutzer',
-          email: fbUser.email ?? undefined,
-          authType: fbUser.providerData.some((p) => p.providerId === 'google.com')
-            ? 'google'
-            : 'student',
-        })
+      } catch (firstErr) {
+        try {
+          const { user: profile } = await api.auth.sync(
+            fbUser.displayName ?? undefined,
+          )
+          setUser(profile)
+        } catch {
+          console.error('auth.sync failed', firstErr)
+          setUser(null)
+          await signOut(auth).catch(() => undefined)
+        }
       } finally {
         setLoading(false)
       }
@@ -75,11 +77,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginGoogle = async () => {
     const provider = new GoogleAuthProvider()
+    // Immer Kontenauswahl zeigen (nicht stillschweigend das letzte Google-Konto)
+    provider.setCustomParameters({ prompt: 'select_account' })
     await signInWithPopup(auth, provider)
   }
 
-  const loginStudent = async (code: string, name?: string) => {
-    const { customToken } = await api.auth.student(code, name)
+  const loginStudent = async (code: string, name?: string, classCode?: string) => {
+    const { customToken } = await api.auth.student(code, name, classCode)
     await signInWithCustomToken(auth, customToken)
   }
 

@@ -1,12 +1,27 @@
 import { randomUUID } from 'crypto'
 import { adminAuth, adminDb } from './firebase-admin.js'
-import type { CharacterVisual, Dialog, DialogSection, DialogVisualScript } from '../shared/types.js'
+import type {
+  CharacterVisual,
+  Dialog,
+  DialogSection,
+  DialogVisualScript,
+  SubscriptionStatus,
+  UserRole,
+} from '../shared/types.js'
+import { isProActive, resolveRole } from './roles.js'
+import { getClassByCode, getClass } from './classes.js'
+import { getFolder } from './folders.js'
 
 export interface UserProfile {
   id: string
   name: string
   email?: string
   authType: 'google' | 'student'
+  role: UserRole
+  classIds: string[]
+  subscriptionStatus: SubscriptionStatus
+  stripeCustomerId?: string
+  stripeSubscriptionId?: string
   createdAt: string
 }
 
@@ -18,6 +33,7 @@ interface DialogDoc {
   length: Dialog['length']
   sections: DialogSection[]
   folderId?: string | null
+  classId?: string | null
   shareToken?: string | null
   creationMode?: Dialog['creationMode']
   creationPrompt?: string
@@ -29,6 +45,7 @@ interface DialogDoc {
   characterBible?: CharacterVisual[]
   speakerVoices?: Dialog['speakerVoices']
   visualScript?: DialogVisualScript
+  visualBrief?: Dialog['visualBrief']
   createdAt: string
   updatedAt: string
 }
@@ -61,6 +78,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     length: data.length,
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
+    classId: data.classId ?? null,
     shareToken: data.shareToken ?? null,
     creationMode: data.creationMode,
     creationPrompt: data.creationPrompt,
@@ -72,69 +90,125 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     characterBible: data.characterBible,
     speakerVoices: data.speakerVoices,
     visualScript: data.visualScript,
+    visualBrief: data.visualBrief ?? null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
+  }
+}
+
+function mapProfile(uid: string, data: Record<string, unknown>): UserProfile {
+  const authType = (data.authType as 'google' | 'student') ?? 'google'
+  const email = data.email as string | undefined
+  const role = (data.role as UserRole) ?? resolveRole(authType, email)
+  const subscriptionStatus =
+    (data.subscriptionStatus as SubscriptionStatus) ?? 'none'
+  return {
+    id: uid,
+    name: data.name as string,
+    email,
+    authType,
+    role,
+    classIds: Array.isArray(data.classIds) ? (data.classIds as string[]) : [],
+    subscriptionStatus,
+    stripeCustomerId: data.stripeCustomerId as string | undefined,
+    stripeSubscriptionId: data.stripeSubscriptionId as string | undefined,
+    createdAt: data.createdAt as string,
+  }
+}
+
+export function profileToClientUser(profile: UserProfile) {
+  return {
+    id: profile.id,
+    name: profile.name,
+    email: profile.email,
+    authType: profile.authType,
+    role: profile.role,
+    classIds: profile.classIds,
+    subscriptionStatus: profile.subscriptionStatus,
+    proActive: isProActive(profile.role, profile.subscriptionStatus),
   }
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const snap = await adminDb().collection('users').doc(uid).get()
   if (!snap.exists) return null
-  const data = snap.data()!
-  return {
-    id: uid,
-    name: data.name as string,
-    email: data.email as string | undefined,
-    authType: data.authType as 'google' | 'student',
-    createdAt: data.createdAt as string,
-  }
+  return mapProfile(uid, snap.data() as Record<string, unknown>)
 }
 
 export async function upsertUserProfile(
   uid: string,
-  data: { name: string; email?: string; authType: 'google' | 'student' },
+  data: {
+    name: string
+    email?: string
+    authType: 'google' | 'student'
+    classIds?: string[]
+  },
 ): Promise<UserProfile> {
   const ref = adminDb().collection('users').doc(uid)
   const existing = await ref.get()
   const now = new Date().toISOString()
+  const role = resolveRole(data.authType, data.email)
 
   if (existing.exists) {
-    await ref.update({
+    const prev = existing.data()!
+    const updates: Record<string, unknown> = {
       name: data.name,
+      role,
       ...(data.email ? { email: data.email } : {}),
-    })
-    const updated = await ref.get()
-    const d = updated.data()!
-    return {
-      id: uid,
-      name: d.name as string,
-      email: d.email as string | undefined,
-      authType: d.authType as 'google' | 'student',
-      createdAt: d.createdAt as string,
     }
+    // Master-E-Mail nachträglich erkannt
+    if (role === 'master' && prev.role !== 'master') {
+      updates.subscriptionStatus = 'active'
+    }
+    if (data.classIds) {
+      updates.classIds = data.classIds
+    }
+    await ref.update(updates)
+    const updated = await ref.get()
+    return mapProfile(uid, updated.data() as Record<string, unknown>)
   }
 
   const profile = {
     name: data.name,
     email: data.email ?? null,
     authType: data.authType,
+    role,
+    classIds: data.classIds ?? [],
+    subscriptionStatus: role === 'master' ? 'active' : 'none',
     createdAt: now,
   }
   await ref.set(profile)
-  return {
-    id: uid,
-    name: data.name,
-    email: data.email,
-    authType: data.authType,
-    createdAt: now,
-  }
+  return mapProfile(uid, profile as Record<string, unknown>)
+}
+
+export async function setUserSubscription(
+  uid: string,
+  data: {
+    subscriptionStatus: SubscriptionStatus
+    stripeCustomerId?: string
+    stripeSubscriptionId?: string | null
+  },
+): Promise<UserProfile | null> {
+  const ref = adminDb().collection('users').doc(uid)
+  const snap = await ref.get()
+  if (!snap.exists) return null
+  await ref.update({
+    subscriptionStatus: data.subscriptionStatus,
+    ...(data.stripeCustomerId ? { stripeCustomerId: data.stripeCustomerId } : {}),
+    ...(data.stripeSubscriptionId !== undefined
+      ? { stripeSubscriptionId: data.stripeSubscriptionId }
+      : {}),
+  })
+  const updated = await ref.get()
+  return mapProfile(uid, updated.data() as Record<string, unknown>)
 }
 
 export async function loginWithStudentCode(
-  code: string,
+  studentCode: string,
   displayName?: string,
+  classCode?: string,
 ): Promise<{ uid: string; profile: UserProfile; customToken: string }> {
-  const normalized = code.toUpperCase().trim()
+  const normalized = studentCode.toUpperCase().trim()
   const codeRef = adminDb().collection('studentCodes').doc(normalized)
   const codeSnap = await codeRef.get()
 
@@ -143,23 +217,46 @@ export async function loginWithStudentCode(
   }
 
   const codeData = codeSnap.data()!
+  const codeClassId = codeData.classId as string | undefined
+
+  if (classCode?.trim()) {
+    const classroom = await getClassByCode(classCode)
+    if (!classroom) throw new Error('Ungültiger Klassencode.')
+    if (codeClassId && codeClassId !== classroom.id) {
+      throw new Error('Schülercode gehört nicht zu dieser Klasse.')
+    }
+  } else if (!codeClassId) {
+    // Legacy-Demo-Codes ohne Klasse weiter erlauben
+  } else {
+    throw new Error('Bitte auch den Klassencode eingeben.')
+  }
+
   let uid = codeData.userId as string | undefined
   const name = displayName?.trim() || `Schüler ${normalized.slice(-4)}`
+  const classIds = codeClassId ? [codeClassId] : []
 
   if (!uid) {
     uid = randomUUID()
     await adminAuth().createUser({ uid, displayName: name })
     await codeRef.update({ userId: uid })
-    const profile = await upsertUserProfile(uid, { name, authType: 'student' })
+    const profile = await upsertUserProfile(uid, {
+      name,
+      authType: 'student',
+      classIds,
+    })
     const customToken = await adminAuth().createCustomToken(uid)
     return { uid, profile, customToken }
   }
 
   const profile = await getUserProfile(uid)
   if (!profile) {
-    await upsertUserProfile(uid, { name, authType: 'student' })
-  } else if (displayName?.trim()) {
-    await upsertUserProfile(uid, { name: displayName.trim(), authType: 'student' })
+    await upsertUserProfile(uid, { name, authType: 'student', classIds })
+  } else {
+    await upsertUserProfile(uid, {
+      name: displayName?.trim() || profile.name,
+      authType: 'student',
+      classIds: classIds.length ? classIds : profile.classIds,
+    })
   }
 
   const finalProfile = (await getUserProfile(uid))!
@@ -177,11 +274,43 @@ export async function listDialogs(userId: string): Promise<Dialog[]> {
   return snap.docs.map((doc) => docToDialog(doc.id, doc.data() as DialogDoc))
 }
 
-export async function getDialog(id: string, userId: string): Promise<Dialog | null> {
+export async function listDialogsForClassIds(classIds: string[]): Promise<Dialog[]> {
+  if (!classIds.length) return []
+  const dialogs: Dialog[] = []
+  for (const classId of [...new Set(classIds)]) {
+    const snap = await adminDb()
+      .collection('dialogs')
+      .where('classId', '==', classId)
+      .get()
+    for (const doc of snap.docs) {
+      dialogs.push(docToDialog(doc.id, doc.data() as DialogDoc))
+    }
+  }
+  return dialogs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+async function canAccessDialog(
+  data: DialogDoc,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<boolean> {
+  if (data.userId === userId) return true
+  if (profile?.role === 'master') return true
+  if (!data.classId) return false
+  if (profile?.classIds.includes(data.classId)) return true
+  const classroom = await getClass(data.classId)
+  return !!classroom && classroom.teacherId === userId
+}
+
+export async function getDialog(
+  id: string,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<Dialog | null> {
   const snap = await adminDb().collection('dialogs').doc(id).get()
   if (!snap.exists) return null
   const data = snap.data() as DialogDoc
-  if (data.userId !== userId) return null
+  if (!(await canAccessDialog(data, userId, profile))) return null
   return docToDialog(snap.id, data)
 }
 
@@ -194,6 +323,7 @@ export async function createDialog(
     length: Dialog['length']
     sections: DialogSection[]
     folderId?: string | null
+    classId?: string | null
     creationMode?: Dialog['creationMode']
     creationPrompt?: string
     creationChat?: Dialog['creationChat']
@@ -203,6 +333,14 @@ export async function createDialog(
     speakerProfiles?: Dialog['speakerProfiles']
   },
 ): Promise<Dialog> {
+  let classId = data.classId ?? null
+  if (data.folderId) {
+    const folder = await getFolder(data.folderId)
+    if (folder?.scope === 'class') {
+      classId = folder.classId ?? null
+    }
+  }
+
   const now = new Date().toISOString()
   const doc: DialogDoc = {
     userId,
@@ -212,6 +350,7 @@ export async function createDialog(
     length: data.length,
     sections: sanitizeSections(data.sections),
     folderId: data.folderId ?? null,
+    classId,
     creationMode: data.creationMode,
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
@@ -245,19 +384,44 @@ export async function updateDialog(
     characterBible: CharacterVisual[]
     speakerVoices: Dialog['speakerVoices']
     visualScript: DialogVisualScript
+    visualBrief: Dialog['visualBrief']
   }>,
+  profile?: UserProfile | null,
 ): Promise<Dialog | null> {
-  const existing = await getDialog(id, userId)
+  const existing = await getDialog(id, userId, profile)
   if (!existing) return null
 
+  const isOwner = existing.userId === userId
+  let isClassTeacher = profile?.role === 'master'
+  if (!isOwner && existing.classId) {
+    const classroom = await getClass(existing.classId)
+    isClassTeacher = isClassTeacher || (!!classroom && classroom.teacherId === userId)
+  }
+  if (!isOwner && !isClassTeacher) return null
+
+  // Nur Eigentümer oder Klassenlehrer (via canAccess) dürfen speichern;
+  // Owner bleibt der ursprüngliche userId.
+  let folderId = data.folderId !== undefined ? data.folderId : (existing.folderId ?? null)
+  let classId = existing.classId ?? null
+  if (data.folderId !== undefined) {
+    if (data.folderId) {
+      const folder = await getFolder(data.folderId)
+      if (!folder) throw new Error('Zielordner nicht gefunden.')
+      classId = folder.scope === 'class' ? (folder.classId ?? null) : null
+    } else {
+      classId = null
+    }
+  }
+
   const updated: DialogDoc = {
-    userId,
+    userId: existing.userId,
     title: data.title ?? existing.title,
     sourceLanguage: data.sourceLanguage ?? existing.sourceLanguage,
     targetLanguage: data.targetLanguage ?? existing.targetLanguage,
     length: existing.length,
     sections: sanitizeSections(data.sections ?? existing.sections),
-    folderId: data.folderId !== undefined ? data.folderId : (existing.folderId ?? null),
+    folderId,
+    classId,
     shareToken: existing.shareToken ?? null,
     creationMode: data.creationMode !== undefined ? data.creationMode : existing.creationMode,
     creationPrompt:
@@ -279,6 +443,8 @@ export async function updateDialog(
       data.speakerVoices !== undefined ? data.speakerVoices : existing.speakerVoices,
     visualScript:
       data.visualScript !== undefined ? data.visualScript : existing.visualScript,
+    visualBrief:
+      data.visualBrief !== undefined ? data.visualBrief : existing.visualBrief,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
@@ -287,9 +453,22 @@ export async function updateDialog(
   return docToDialog(id, updated)
 }
 
-export async function deleteDialog(id: string, userId: string): Promise<boolean> {
-  const existing = await getDialog(id, userId)
+export async function deleteDialog(
+  id: string,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<boolean> {
+  const existing = await getDialog(id, userId, profile)
   if (!existing) return false
+
+  const isOwner = existing.userId === userId
+  let isClassTeacher = profile?.role === 'master'
+  if (!isOwner && existing.classId) {
+    const classroom = await getClass(existing.classId)
+    isClassTeacher = isClassTeacher || (!!classroom && classroom.teacherId === userId)
+  }
+  if (!isOwner && !isClassTeacher) return false
+
   await adminDb().collection('dialogs').doc(id).delete()
   return true
 }
@@ -309,9 +488,12 @@ export async function setDialogSharing(
   id: string,
   userId: string,
   enabled: boolean,
+  profile?: UserProfile | null,
 ): Promise<Dialog | null> {
-  const existing = await getDialog(id, userId)
+  const existing = await getDialog(id, userId, profile)
   if (!existing) return null
+  // Klasseninhalte: kein Link-Teilen (nur persönliche Bibliothek → Öffentlichkeit).
+  if (existing.classId) return null
 
   const shareToken = enabled ? randomUUID() : null
   await adminDb()
@@ -325,25 +507,75 @@ export async function setDialogSharing(
   return { ...existing, shareToken, updatedAt: new Date().toISOString() }
 }
 
+/** Alle Dialoge eines persönlichen Ordners öffentlich freigeben oder Freigabe beenden. */
+export async function setFolderSharing(
+  folderId: string,
+  userId: string,
+  enabled: boolean,
+): Promise<{ updated: number; dialogs: Dialog[] } | null> {
+  const folder = await getFolder(folderId)
+  if (!folder || folder.userId !== userId || folder.scope === 'class') {
+    return null
+  }
+
+  const snap = await adminDb()
+    .collection('dialogs')
+    .where('userId', '==', userId)
+    .where('folderId', '==', folderId)
+    .get()
+
+  const now = new Date().toISOString()
+  const dialogs: Dialog[] = []
+  const batch = adminDb().batch()
+  let ops = 0
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as DialogDoc
+    if (data.classId) continue
+    const shareToken = enabled
+      ? data.shareToken && String(data.shareToken).length > 0
+        ? String(data.shareToken)
+        : randomUUID()
+      : null
+    batch.update(doc.ref, { shareToken, updatedAt: now })
+    ops++
+    dialogs.push(
+      docToDialog(doc.id, {
+        ...data,
+        shareToken,
+        updatedAt: now,
+      }),
+    )
+  }
+
+  if (ops > 0) await batch.commit()
+  return { updated: ops, dialogs }
+}
+
 export async function cloneDialog(
   source: Dialog,
   userId: string,
   folderId?: string | null,
 ): Promise<Dialog> {
+  let classId: string | null = null
+  if (folderId) {
+    const folder = await getFolder(folderId)
+    if (folder?.scope === 'class') classId = folder.classId ?? null
+  }
+
   const now = new Date().toISOString()
   const doc: DialogDoc = {
     userId,
-    title: `${source.title} (Kopie)`,
+    title: `${source.title} (geteilt)`,
     sourceLanguage: source.sourceLanguage,
     targetLanguage: source.targetLanguage,
     length: source.length,
     sections: sanitizeSections(JSON.parse(JSON.stringify(source.sections)) as DialogSection[]),
     folderId: folderId ?? null,
+    classId,
     creationMode: source.creationMode,
     creationPrompt: source.creationPrompt,
-    creationChat: source.creationChat
-      ? (JSON.parse(JSON.stringify(source.creationChat)) as Dialog['creationChat'])
-      : undefined,
+    // Kein creationChat — private Prompt-Historie bleibt beim Original.
     imageDirection: source.imageDirection,
     referenceImageUrl: source.referenceImageUrl,
     referenceImagePrompt: source.referenceImagePrompt,

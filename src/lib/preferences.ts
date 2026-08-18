@@ -1,5 +1,16 @@
 const KEY_ROMANIZATION = 'zebla.includeRomanization'
 const KEY_CLOUD_TTS = 'zebla.useCloudTts'
+const KEY_ASK_VISUAL = 'zebla.askVisualQuestions'
+
+export function getAskVisualQuestions(): boolean {
+  const v = localStorage.getItem(KEY_ASK_VISUAL)
+  if (v === null) return true
+  return v === '1'
+}
+
+export function setAskVisualQuestions(value: boolean): void {
+  localStorage.setItem(KEY_ASK_VISUAL, value ? '1' : '0')
+}
 
 export function getIncludeRomanization(): boolean {
   const v = localStorage.getItem(KEY_ROMANIZATION)

@@ -106,10 +106,10 @@ async function requestBlob(path: string, timeoutMs = 120_000): Promise<Blob> {
 
 export const api = {
   auth: {
-    student: (code: string, name?: string) =>
+    student: (code: string, name?: string, classCode?: string) =>
       request<{ customToken: string; user: import('../types').User }>('/student-login', {
         method: 'POST',
-        body: JSON.stringify({ code, name }),
+        body: JSON.stringify({ code, studentCode: code, name, classCode }),
       }),
     sync: (name?: string) =>
       request<{ user: import('../types').User }>('/sync', {
@@ -119,9 +119,57 @@ export const api = {
   },
   library: {
     list: () =>
-      request<{ folders: import('../types').DialogFolder[]; dialogs: import('../types').Dialog[] }>(
-        '/library',
+      request<{
+        folders: import('../types').DialogFolder[]
+        dialogs: import('../types').Dialog[]
+        classes: import('../types').ClassRoom[]
+      }>('/library'),
+  },
+  classes: {
+    list: () => request<{ classes: import('../types').ClassRoom[] }>('/classes'),
+    create: (name: string) =>
+      request<{ class: import('../types').ClassRoom }>('/classes', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/class?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    listStudents: (classId: string) =>
+      request<{ students: import('../types').StudentCodeInfo[] }>(
+        `/class-students?classId=${encodeURIComponent(classId)}`,
       ),
+    createStudent: (classId: string, label?: string) =>
+      request<{ student: import('../types').StudentCodeInfo }>('/class-students', {
+        method: 'POST',
+        body: JSON.stringify({ classId, label }),
+      }),
+    deleteStudent: (code: string) =>
+      request<{ ok: boolean }>(`/class-student?code=${encodeURIComponent(code)}`, {
+        method: 'DELETE',
+      }),
+  },
+  billing: {
+    status: () =>
+      request<{
+        user: import('../types').User
+        stripeConfigured: boolean
+        priceCents: number
+      }>('/billing/status'),
+    checkout: (successUrl?: string, cancelUrl?: string) =>
+      request<{ url: string }>('/billing/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ successUrl, cancelUrl }),
+      }),
+    confirm: (sessionId: string) =>
+      request<{ user: import('../types').User }>('/billing/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId }),
+      }),
+    devUnlock: (userId?: string) =>
+      request<{ user: import('../types').User }>('/billing/dev-unlock', {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      }),
   },
   folders: {
     create: (name: string, parentId?: string | null) =>
@@ -136,6 +184,11 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/folder?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    setSharing: (id: string, enabled: boolean) =>
+      request<{ updated: number; dialogs: import('../types').Dialog[] }>('/folder-share', {
+        method: 'POST',
+        body: JSON.stringify({ id, enabled }),
+      }),
   },
   dialogs: {
     list: () => request<{ dialogs: import('../types').Dialog[] }>('/dialogs'),
@@ -176,6 +229,11 @@ export const api = {
       request<{ dialog: import('../types').Dialog }>('/dialog-clone', {
         method: 'POST',
         body: JSON.stringify({ token, folderId: folderId ?? null }),
+      }),
+    copyToClass: (dialogId: string, classId: string, folderId?: string | null) =>
+      request<{ dialog: import('../types').Dialog }>('/dialog-copy-to-class', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, classId, folderId: folderId ?? null }),
       }),
   },
   shared: {
@@ -299,6 +357,7 @@ export const api = {
       sectionId: string,
       beatIndex: number,
       replan?: boolean,
+      retry?: boolean,
     ) =>
       request<{
         dialog: import('../types').Dialog
@@ -308,7 +367,39 @@ export const api = {
         reason?: string
       }>('/image-lines', {
         method: 'POST',
-        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan }),
+        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, retry }),
+      }),
+    visualBrief: (
+      dialogId: string,
+      data?: { answers?: Record<string, string>; askQuestions?: boolean },
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        questions: import('../types').VisualQuestion[]
+        brief: import('../types').VisualBrief | null
+      }>('/visual-brief', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, ...data }),
+      }),
+    visualTest: (dialogId: string, data?: { comment?: string; approve?: boolean }) =>
+      request<{ dialog: import('../types').Dialog }>('/visual-test', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, ...data }),
+      }),
+    visualCritic: (
+      dialogId: string,
+      sectionId: string,
+      fromBeat: number,
+      toBeat: number,
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        ok: boolean
+        notes: string
+        retryBeatIndexes: number[]
+      }>('/visual-critic', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, sectionId, fromBeat, toBeat }),
       }),
   },
 }

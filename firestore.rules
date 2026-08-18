@@ -21,5 +21,13 @@ service cloud.firestore {
     match /studentCodes/{code} {
       allow read, write: if false;
     }
+
+    match /classes/{id} {
+      allow read, write: if false;
+    }
+
+    match /usage/{uid}/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

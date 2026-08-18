@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { useAuth } from '../context/AuthContext'
 import type { DialogSection } from '../types'
+import { LanguageFlag } from '../components/LanguageFlag'
 import { isRtlLanguage, languageName } from '../types'
 
 interface SharedPreview {
@@ -83,6 +84,9 @@ export function ShareImportPage() {
         <p className="share-import-badge">Geteilter Dialog</p>
         <h1>{preview.title}</h1>
         <p className="muted">
+          <span className="dialog-lang-flag-inline" aria-hidden>
+            <LanguageFlag code={preview.targetLanguage} size="md" />
+          </span>{' '}
           {languageName(preview.targetLanguage)}
           {targetRtl ? ' · Rechts-nach-links' : ''} · {preview.sections.length} Abschnitt
           {preview.sections.length !== 1 ? 'e' : ''} · {lineCount} Zeilen

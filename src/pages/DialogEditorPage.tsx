@@ -2,21 +2,25 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
-import type { Dialog } from '../types'
+import { LanguageFlag } from '../components/LanguageFlag'
 import { LANGUAGES, languageName, needsRomanization } from '../types'
-import { getIncludeRomanization, setIncludeRomanization } from '../lib/preferences'
+import { getIncludeRomanization, setIncludeRomanization, getAskVisualQuestions, setAskVisualQuestions } from '../lib/preferences'
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
+import { copyTextToClipboard } from '../utils/clipboard'
 import {
   estimateAllSectionImages,
   estimateBirkenbihl,
   estimateSceneImages,
   estimateSectionImage,
   estimateTranslate,
+  estimateVisualTest,
   lineCount,
 } from '../lib/costEstimates'
+import { VisualBriefPanel } from '../components/VisualBriefPanel'
+import type { Dialog, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,6 +35,9 @@ export function DialogEditorPage() {
   const [shareBusy, setShareBusy] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
   const [imageDirectionDraft, setImageDirectionDraft] = useState('')
+  const [askVisualQuestions, setAskVisualQuestionsState] = useState(true)
+  const [visualQuestions, setVisualQuestions] = useState<VisualQuestion[]>([])
+  const [pendingSectionId, setPendingSectionId] = useState<string | null>(null)
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const reload = async () => {
@@ -41,6 +48,7 @@ export function DialogEditorPage() {
     setBirkenbihlLang(d.sourceLanguage)
     setIncludeRomanizationState(getIncludeRomanization())
     setImageDirectionDraft(d.imageDirection ?? '')
+    setAskVisualQuestionsState(getAskVisualQuestions())
   }
 
   useEffect(() => {
@@ -101,9 +109,92 @@ export function DialogEditorPage() {
 
   const copyShareLink = async () => {
     if (!shareUrl) return
-    await navigator.clipboard.writeText(shareUrl)
+    await copyTextToClipboard(shareUrl)
     setShareCopied(true)
     setTimeout(() => setShareCopied(false), 2500)
+  }
+
+  const generateSceneImages = async (sectionId: string, start: Dialog) => {
+    let beatIndex = -1
+    let replan = true
+    let current = start
+    let done = false
+    const retried = new Set<number>()
+    while (!done) {
+      setStatus(
+        beatIndex < 0
+          ? 'Referenz aus dem Testbild …'
+          : replan
+            ? 'KI plant Bilderskript …'
+            : `Bild ${beatIndex + 1} … (ca. 15–30 s)`,
+      )
+      const res = await api.ai.imageLines(current.id, sectionId, beatIndex, replan)
+      current = res.dialog
+      setDialog(res.dialog)
+      if (beatIndex < 0) {
+        beatIndex = 0
+        replan = false
+        continue
+      }
+      if (res.currentBeat > 0 && res.currentBeat % 3 === 0 && !res.done) {
+        const fromBeat = res.currentBeat - 3
+        const toBeat = res.currentBeat - 1
+        setStatus('Prüfe, ob die letzten Bilder zur Geschichte passen …')
+        const critic = await api.ai.visualCritic(current.id, sectionId, fromBeat, toBeat)
+        current = critic.dialog
+        setDialog(critic.dialog)
+        if (!critic.ok && critic.retryBeatIndexes.length && !retried.has(fromBeat)) {
+          retried.add(fromBeat)
+          for (const i of critic.retryBeatIndexes) {
+            setStatus(`Korrigiere Bild ${i + 1} …`)
+            const retryRes = await api.ai.imageLines(current.id, sectionId, i, false, true)
+            current = retryRes.dialog
+            setDialog(retryRes.dialog)
+            await new Promise((r) => setTimeout(r, 2500))
+          }
+        }
+      }
+      done = res.done
+      beatIndex++
+      replan = false
+      if (!done) await new Promise((r) => setTimeout(r, 2500))
+    }
+    setStatus(
+      `Fertig – ${beatIndex} Bild${beatIndex !== 1 ? 'er' : ''}. Eine zweite KI hat zwischendurch mitgeschaut.`,
+    )
+  }
+
+  const runPictureStory = async (sectionId: string, fromDialog?: Dialog) => {
+    let current = fromDialog ?? dialog
+    setPendingSectionId(sectionId)
+
+    const ask = askVisualQuestions
+    if (!current.visualBrief?.directorPromptEn) {
+      setStatus('Bild-Regie liest Dialog und Hinweise …')
+      const res = await api.ai.visualBrief(current.id, { askQuestions: ask })
+      current = res.dialog
+      setDialog(res.dialog)
+      if (res.questions?.length) {
+        setVisualQuestions(res.questions)
+        setStatus('Bitte die Fragen zur Bild-Regie beantworten.')
+        return
+      }
+      setVisualQuestions([])
+    }
+
+    if (!current.visualBrief?.testApproved) {
+      if (!current.visualBrief?.testImageUrl) {
+        if (!(await confirmCost(estimateVisualTest()))) return
+        setStatus('Testbild wird erzeugt …')
+        const t = await api.ai.visualTest(current.id)
+        current = t.dialog
+        setDialog(t.dialog)
+      }
+      setStatus('Bitte das Testbild prüfen.')
+      return
+    }
+
+    await generateSceneImages(sectionId, current)
   }
 
   return (
@@ -112,6 +203,9 @@ export function DialogEditorPage() {
         <div>
           <h1>{dialog.title}</h1>
           <p className="muted">
+            <span className="dialog-lang-flag-inline" aria-hidden>
+              <LanguageFlag code={dialog.targetLanguage} size="md" />
+            </span>{' '}
             {languageName(dialog.targetLanguage)} · {dialog.sections.length} Abschnitt
             {dialog.sections.length !== 1 ? 'e' : ''}
           </p>
@@ -148,6 +242,7 @@ export function DialogEditorPage() {
               void runAction('image-direction', async () => {
                 const { dialog: d } = await api.dialogs.update(dialog.id, {
                   imageDirection: imageDirectionDraft.trim(),
+                  visualBrief: null,
                 })
                 setDialog(d)
                 setStatus('Bild-Hinweise gespeichert. Beim nächsten „Bilder / Bilderskript (KI)“ werden sie berücksichtigt.')
@@ -158,9 +253,49 @@ export function DialogEditorPage() {
           </button>
           <p className="muted dialog-meta-hint">
             Emotionen wie lachen, weinen oder schluchzen kannst du hier oder im Dialogtext beschreiben – die KI
-            plant passende Gesichtsausdrücke.
+            plant passende Gesichtsausdrücke. Speichern setzt die Bild-Regie zurück (neues Testbild).
           </p>
         </label>
+
+        <VisualBriefPanel
+          dialog={dialog}
+          questions={visualQuestions}
+          askQuestions={askVisualQuestions}
+          onAskQuestionsChange={(on) => {
+            setAskVisualQuestionsState(on)
+            setAskVisualQuestions(on)
+          }}
+          busy={!!busy}
+          onAnswer={(answers) => {
+            void runAction('visual-brief', async () => {
+              setStatus('Bild-Regie schreibt den Zwischen-Prompt …')
+              const res = await api.ai.visualBrief(dialog.id, {
+                answers,
+                askQuestions: false,
+              })
+              setDialog(res.dialog)
+              setVisualQuestions(res.questions ?? [])
+              if (pendingSectionId && !res.questions?.length) {
+                await runPictureStory(pendingSectionId, res.dialog)
+              }
+            })
+          }}
+          onApproveTest={() => {
+            void runAction('visual-test', async () => {
+              const res = await api.ai.visualTest(dialog.id, { approve: true })
+              setDialog(res.dialog)
+              if (pendingSectionId) await runPictureStory(pendingSectionId, res.dialog)
+            })
+          }}
+          onCommentTest={(comment) => {
+            void runAction('visual-test', async () => {
+              if (!(await confirmCost(estimateVisualTest()))) return
+              setStatus('Neues Testbild …')
+              const res = await api.ai.visualTest(dialog.id, { comment })
+              setDialog(res.dialog)
+            })
+          }}
+        />
 
         {uniqueSpeakersInDialog(dialog).length > 0 && (
           <div className="dialog-meta-block speaker-gender-block">
@@ -212,13 +347,16 @@ export function DialogEditorPage() {
           <div className="tool-group">
             <span className="tool-label">Übersetzen in</span>
             <div className="tool-controls">
-              <select value={translateLang} onChange={(e) => setTranslateLang(e.target.value)}>
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+              <span className="lang-select-row">
+                <LanguageFlag code={translateLang} size="sm" />
+                <select value={translateLang} onChange={(e) => setTranslateLang(e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </span>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -239,13 +377,16 @@ export function DialogEditorPage() {
           <div className="tool-group tool-group--stack">
             <span className="tool-label">Birkenbihl (Muttersprache)</span>
             <div className="tool-controls">
-              <select value={birkenbihlLang} onChange={(e) => setBirkenbihlLang(e.target.value)}>
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+              <span className="lang-select-row">
+                <LanguageFlag code={birkenbihlLang} size="sm" />
+                <select value={birkenbihlLang} onChange={(e) => setBirkenbihlLang(e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </span>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -342,8 +483,9 @@ export function DialogEditorPage() {
       <section className="panel share-panel">
         <h2>Teilen</h2>
         <p className="muted share-hint">
-          Erstelle einen Link, damit andere den Dialog in ihr Konto kopieren können. Der
-          Original-Dialog bleibt bei dir – es entsteht eine eigene Kopie.
+          Erstelle einen Link für Kolleginnen und Kollegen (eingeloggt): Sie erhalten eine eigene
+          Kopie, dein Original bleibt unverändert. Freigegebene Dialoge erscheinen auch unter{' '}
+          <Link to="/explore">Öffentliche Dialoge</Link>. Prompt-Historie wird nicht mitkopiert.
         </p>
         {dialog.shareToken ? (
           <div className="share-active">
@@ -358,7 +500,7 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={shareBusy}
-                onClick={copyShareLink}
+                onClick={() => void copyShareLink()}
               >
                 {shareCopied ? 'Kopiert!' : 'Link kopieren'}
               </button>
@@ -367,7 +509,7 @@ export function DialogEditorPage() {
               type="button"
               className="btn btn-ghost btn-danger"
               disabled={shareBusy}
-              onClick={() => toggleSharing(false)}
+              onClick={() => void toggleSharing(false)}
             >
               Freigabe beenden
             </button>
@@ -376,8 +518,13 @@ export function DialogEditorPage() {
           <button
             type="button"
             className="btn btn-secondary"
-            disabled={shareBusy}
-            onClick={() => toggleSharing(true)}
+            disabled={shareBusy || !!dialog.classId}
+            onClick={() => void toggleSharing(true)}
+            title={
+              dialog.classId
+                ? 'Klassen-Dialoge können nicht öffentlich geteilt werden'
+                : undefined
+            }
           >
             {shareBusy ? '…' : 'Freigabe-Link erstellen'}
           </button>
@@ -411,39 +558,7 @@ export function DialogEditorPage() {
                 onClick={async () => {
                   if (!(await confirmCost(estimateSceneImages(2)))) return
                   await runAction(`scenes-${section.id}`, async () => {
-                    let beatIndex = -1
-                    let replan = true
-                    let current = dialog
-                    let done = false
-                    while (!done) {
-                      setStatus(
-                        beatIndex < 0
-                          ? 'Referenz-Cast wird erstellt (intern) …'
-                          : replan
-                            ? 'KI plant Bilderskript …'
-                            : `Bild ${beatIndex + 1} … (ca. 15–30 s)`,
-                      )
-                      const res = await api.ai.imageLines(
-                        current.id,
-                        section.id,
-                        beatIndex,
-                        replan,
-                      )
-                      current = res.dialog
-                      setDialog(res.dialog)
-                      if (beatIndex < 0) {
-                        beatIndex = 0
-                        replan = false
-                        continue
-                      }
-                      done = res.done
-                      beatIndex++
-                      replan = false
-                      if (!done) {
-                        await new Promise((r) => setTimeout(r, 2500))
-                      }
-                    }
-                    setStatus(`Fertig – ${beatIndex} Bild${beatIndex !== 1 ? 'er' : ''}.`)
+                    await runPictureStory(section.id)
                   })
                 }}
               >

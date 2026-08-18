@@ -111,12 +111,12 @@ if (faVoices[0]) {
 }
 
 // Production bundle check
-const res = await fetch('https://zebla.vercel.app/')
+const res = await fetch('https://zebla.zebotools.ch/')
 const html = await res.text()
 const m = html.match(/\/assets\/index-[^"]+\.js/)
 let deployOk = false
 if (m) {
-  const js = await fetch(`https://zebla.vercel.app${m[0]}`).then((r) => r.text())
+  const js = await fetch(`https://zebla.zebotools.ch${m[0]}`).then((r) => r.text())
   deployOk = js.includes('fa-AF') && js.includes('fa-IR')
 }
 console.log(`\nProduction-Deploy enthält Fix: ${deployOk ? 'ja' : 'nein'}`)

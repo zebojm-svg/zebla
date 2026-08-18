@@ -106,7 +106,20 @@ export function estimateSceneImages(portraitCount = 2): CostEstimate {
       { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 4} Cent` },
     ],
     totalHint: `ca. ${cents}–${cents + 4} Cent`,
-    note: '2–4 Varianten pro Sprecher möglich. Zuerst wird intern ein Referenz-Cast (Bild 0) erzeugt, danach die Panels.',
+    note: 'Zuerst Bild-Regie + ein Testbild (ca. 2–5 Cent). Danach Panels. Alle 3 Bilder prüft eine zweite KI die Logik (Text, günstig).',
+  }
+}
+
+export function estimateVisualTest(): CostEstimate {
+  return {
+    title: 'Testbild',
+    description: 'Ein Bild zum Prüfen von Stil, Alter und Szene, bevor alle Dialogbilder erzeugt werden.',
+    items: [
+      { label: 'Bilder', amount: '1' },
+      { label: 'Geschätzte Kosten', amount: 'ca. 2–5 Cent' },
+    ],
+    totalHint: 'ca. 2–5 Cent',
+    note: 'Klein angezeigt, aber intern ein normales Bild – so spart man vor allem die 20 weiteren Bilder, falls der Stil nicht stimmt.',
   }
 }
 

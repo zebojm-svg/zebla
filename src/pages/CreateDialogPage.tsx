@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { LanguageFlag } from '../components/LanguageFlag'
 import type { ChatMessage, CreateMode, DialogLength } from '../types'
 import { LENGTH_LABELS, LANGUAGES } from '../types'
 
@@ -149,13 +150,16 @@ export function CreateDialogPage() {
       <div className="settings-row">
         <label>
           Fremdsprache
-          <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.name}
-              </option>
-            ))}
-          </select>
+          <span className="lang-select-row">
+            <LanguageFlag code={targetLanguage} size="md" />
+            <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </span>
         </label>
         <label>
           Dialoglänge

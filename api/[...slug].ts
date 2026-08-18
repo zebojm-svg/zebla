@@ -4,6 +4,7 @@ import {
   requireAuth,
   methodNotAllowed,
   sendError,
+  HttpError,
 } from '../lib/api-utils.js'
 import {
   loginWithStudentCode,
@@ -14,15 +15,43 @@ import {
   deleteDialog,
   getDialogByShareToken,
   setDialogSharing,
+  setFolderSharing,
   cloneDialog,
   upsertUserProfile,
+  getUserProfile,
+  profileToClientUser,
 } from '../lib/firestore.js'
 import {
-  listFolders,
   createFolder,
   updateFolder,
   deleteFolder,
+  getFolder,
 } from '../lib/folders.js'
+import {
+  createClass,
+  deleteClass,
+  createStudentCode,
+  listStudentCodes,
+  deleteStudentCode,
+  listClassesForTeacher,
+  assertClassFolderAccess,
+  getClass,
+} from '../lib/classes.js'
+import { loadLibraryForUser, enrichClientUser } from '../lib/library.js'
+import {
+  assertCanUseAi,
+  requireProfile,
+  requireRole,
+  isProActive,
+} from '../lib/access.js'
+import { consumeQuota } from '../lib/usage.js'
+import {
+  createProCheckoutSession,
+  confirmCheckoutSession,
+  unlockProManually,
+  isStripeConfigured,
+  PRO_PRICE_CENTS,
+} from '../lib/stripe.js'
 import {
   handleAiStatus,
   handleGenerateTopic,
@@ -34,6 +63,9 @@ import {
   handleImage,
   handleImageAll,
   handleImageLines,
+  handleVisualBrief,
+  handleVisualTest,
+  handleVisualCritic,
 } from '../lib/ai-handlers.js'
 import { checkTtsHealth } from '../lib/tts.js'
 import {
@@ -58,6 +90,13 @@ function getRoute(req: VercelRequest): string {
   return ''
 }
 
+async function gateAi(uid: string) {
+  const profile = await requireProfile(uid)
+  assertCanUseAi(profile)
+  await consumeQuota(profile, 'aiCalls')
+  return profile
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const route = getRoute(req)
 
@@ -71,21 +110,102 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (route === 'student-login' || route === 'auth/student') &&
       req.method === 'POST'
     ) {
-      const { code, name } = req.body as { code?: string; name?: string }
-      if (!code?.trim()) {
+      const { code, studentCode, name, classCode } = req.body as {
+        code?: string
+        studentCode?: string
+        name?: string
+        classCode?: string
+      }
+      const resolvedCode = (code ?? studentCode)?.trim()
+      if (!resolvedCode) {
         res.status(400).json({ error: 'Schülercode fehlt.' })
         return
       }
-      const { customToken, profile } = await loginWithStudentCode(code, name)
+      const { customToken, profile } = await loginWithStudentCode(
+        resolvedCode,
+        name,
+        classCode,
+      )
       res.json({
         customToken,
-        user: {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          authType: profile.authType,
-        },
+        user: await enrichClientUser(profile),
       })
+      return
+    }
+
+    
+    if (route === 'hub-sso' && req.method === 'POST') {
+      const expected = process.env.HUB_SSO_SECRET?.trim()
+      if (!expected) {
+        res.status(503).json({ error: 'HUB_SSO_SECRET nicht konfiguriert.' })
+        return
+      }
+      const body = req.body as { secret?: string; email?: string; name?: string }
+      if (!body.secret || body.secret !== expected) {
+        res.status(401).json({ error: 'Ungültiges SSO-Geheimnis.' })
+        return
+      }
+      const email = body.email?.trim().toLowerCase()
+      if (!email || !email.includes('@')) {
+        res.status(400).json({ error: 'E-Mail fehlt.' })
+        return
+      }
+      const displayName = body.name?.trim() || email
+
+      let uid: string
+      try {
+        const existing = await adminAuth().getUserByEmail(email)
+        uid = existing.uid
+        if (displayName && existing.displayName !== displayName) {
+          await adminAuth().updateUser(uid, { displayName })
+        }
+      } catch {
+        const created = await adminAuth().createUser({
+          email,
+          displayName,
+          emailVerified: true,
+        })
+        uid = created.uid
+      }
+
+      const profile = await upsertUserProfile(uid, {
+        name: displayName,
+        email,
+        authType: 'google',
+      })
+      const customToken = await adminAuth().createCustomToken(uid, {
+        src: 'zebotools',
+      })
+      res.json({
+        customToken,
+        user: await enrichClientUser(profile),
+      })
+      return
+    }
+
+    if (route === 'public-shared' && req.method === 'GET') {
+      const { adminDb } = await import('../lib/firebase-admin.js')
+      const snap = await adminDb()
+        .collection('dialogs')
+        .where('shareToken', '>', '')
+        .limit(60)
+        .get()
+      const items = snap.docs
+        .map((doc) => {
+          const d = doc.data()
+          const token = d.shareToken as string | null | undefined
+          if (!token) return null
+          return {
+            id: doc.id,
+            title: (d.title as string) || 'Dialog',
+            sourceLanguage: d.sourceLanguage as string | undefined,
+            targetLanguage: d.targetLanguage as string | undefined,
+            shareToken: token,
+            updatedAt: d.updatedAt as string | undefined,
+          }
+        })
+        .filter(Boolean)
+      res.json({ items })
       return
     }
 
@@ -102,12 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         authType: isGoogle ? 'google' : 'student',
       })
       res.json({
-        user: {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          authType: profile.authType,
-        },
+        user: await enrichClientUser(profile),
       })
       return
     }
@@ -137,22 +252,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-share' && req.method === 'POST') {
       const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['teacher', 'master'])
       const { id, enabled } = req.body as { id?: string; enabled?: boolean }
       if (!id) {
         res.status(400).json({ error: 'ID fehlt.' })
         return
       }
-      const dialog = await setDialogSharing(id, user.uid, enabled !== false)
+      const dialog = await setDialogSharing(id, user.uid, enabled !== false, profile)
       if (!dialog) {
-        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        res.status(404).json({
+          error:
+            'Dialog nicht gefunden oder Klasseninhalt (Klassen-Dialoge können nicht öffentlich geteilt werden).',
+        })
         return
       }
       res.json({ dialog, shareToken: dialog.shareToken ?? null })
       return
     }
 
+    if (route === 'folder-share' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      await requireRole(user.uid, ['teacher', 'master'])
+      const { id, enabled } = req.body as { id?: string; enabled?: boolean }
+      if (!id) {
+        res.status(400).json({ error: 'Ordner-ID fehlt.' })
+        return
+      }
+      const result = await setFolderSharing(id, user.uid, enabled !== false)
+      if (!result) {
+        res.status(404).json({
+          error: 'Persönlicher Ordner nicht gefunden.',
+        })
+        return
+      }
+      res.json(result)
+      return
+    }
+
     if (route === 'dialog-clone' && req.method === 'POST') {
       const user = await requireAuth(req)
+      await requireRole(user.uid, ['teacher', 'master'])
       const { token, folderId } = req.body as {
         token?: string
         folderId?: string | null
@@ -166,6 +305,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(404).json({ error: 'Dialog nicht gefunden oder Freigabe beendet.' })
         return
       }
+      if (source.userId === user.uid) {
+        res.status(400).json({ error: 'Das ist dein eigener Dialog.' })
+        return
+      }
       const dialog = await cloneDialog(source, user.uid, folderId ?? null)
       res.status(201).json({ dialog })
       return
@@ -173,11 +316,211 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'library' && req.method === 'GET') {
       const user = await requireAuth(req)
-      const [folders, dialogs] = await Promise.all([
-        listFolders(user.uid),
-        listDialogs(user.uid),
-      ])
-      res.json({ folders, dialogs })
+      const profile = await requireProfile(user.uid)
+      const library = await loadLibraryForUser(profile)
+      res.json(library)
+      return
+    }
+
+    if (route === 'classes') {
+      const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['teacher', 'master'])
+      if (req.method === 'GET') {
+        const classes = await listClassesForTeacher(profile.id)
+        res.json({ classes })
+        return
+      }
+      if (req.method === 'POST') {
+        const { name } = req.body as { name?: string }
+        if (!name?.trim()) {
+          res.status(400).json({ error: 'Klassenname fehlt.' })
+          return
+        }
+        const classroom = await createClass(profile.id, name)
+        res.status(201).json({ class: classroom })
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
+    if (route === 'class') {
+      const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['teacher', 'master'])
+      const id = (req.query.id ?? (req.body as { id?: string })?.id) as string
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      if (req.method === 'DELETE') {
+        const ok = await deleteClass(id, profile.id, profile.role === 'master')
+        if (!ok) {
+          res.status(404).json({ error: 'Klasse nicht gefunden.' })
+          return
+        }
+        res.json({ ok: true })
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
+    if (route === 'class-students') {
+      const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['teacher', 'master'])
+      const classId = (req.query.classId ??
+        (req.body as { classId?: string })?.classId) as string
+      if (!classId) {
+        res.status(400).json({ error: 'classId fehlt.' })
+        return
+      }
+      if (req.method === 'GET') {
+        const students = await listStudentCodes(
+          classId,
+          profile.id,
+          profile.role === 'master',
+        )
+        res.json({ students })
+        return
+      }
+      if (req.method === 'POST') {
+        const { label } = req.body as { label?: string }
+        const student = await createStudentCode(
+          classId,
+          profile.id,
+          label,
+          profile.role === 'master',
+        )
+        res.status(201).json({ student })
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
+    if (route === 'class-student') {
+      const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['teacher', 'master'])
+      const code = (req.query.code ??
+        (req.body as { code?: string })?.code) as string
+      if (!code?.trim()) {
+        res.status(400).json({ error: 'Code fehlt.' })
+        return
+      }
+      if (req.method === 'DELETE') {
+        const ok = await deleteStudentCode(
+          code,
+          profile.id,
+          profile.role === 'master',
+        )
+        if (!ok) {
+          res.status(404).json({ error: 'Schülercode nicht gefunden.' })
+          return
+        }
+        res.json({ ok: true })
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
+    if (route === 'dialog-copy-to-class' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, classId, folderId } = req.body as {
+        dialogId?: string
+        classId?: string
+        folderId?: string | null
+      }
+      if (!dialogId || !classId) {
+        res.status(400).json({ error: 'dialogId und classId fehlen.' })
+        return
+      }
+      const classroom = await getClass(classId)
+      if (!classroom) {
+        res.status(404).json({ error: 'Klasse nicht gefunden.' })
+        return
+      }
+      const canAccess =
+        profile.role === 'master' ||
+        classroom.teacherId === profile.id ||
+        profile.classIds.includes(classId)
+      if (!canAccess) {
+        throw new HttpError('Keine Berechtigung für diese Klasse.', 403)
+      }
+      const source = await getDialog(dialogId, user.uid, profile)
+      if (!source) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      const targetFolderId = folderId ?? classroom.rootFolderId
+      await assertClassFolderAccess(
+        targetFolderId,
+        profile.id,
+        profile.role,
+        profile.classIds,
+        'read',
+      )
+      const dialog = await cloneDialog(source, user.uid, targetFolderId)
+      res.status(201).json({ dialog })
+      return
+    }
+
+    if (route === 'billing/status' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const profile = await getUserProfile(user.uid)
+      if (!profile) throw new HttpError('Profil nicht gefunden.', 401)
+      res.json({
+        user: await enrichClientUser(profile),
+        client: profileToClientUser(profile),
+        stripeConfigured: isStripeConfigured(),
+        priceCents: PRO_PRICE_CENTS,
+        subscriptionStatus: profile.subscriptionStatus,
+        proActive: isProActive(profile.role, profile.subscriptionStatus),
+      })
+      return
+    }
+
+    if (route === 'billing/checkout' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['teacher', 'master'])
+      const { successUrl, cancelUrl } = req.body as {
+        successUrl?: string
+        cancelUrl?: string
+      }
+      if (!successUrl?.trim() || !cancelUrl?.trim()) {
+        res.status(400).json({ error: 'successUrl und cancelUrl fehlen.' })
+        return
+      }
+      const session = await createProCheckoutSession({
+        uid: profile.id,
+        email: profile.email,
+        successUrl: successUrl.trim(),
+        cancelUrl: cancelUrl.trim(),
+      })
+      res.json(session)
+      return
+    }
+
+    if (route === 'billing/confirm' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { sessionId } = req.body as { sessionId?: string }
+      if (!sessionId?.trim()) {
+        res.status(400).json({ error: 'sessionId fehlt.' })
+        return
+      }
+      await confirmCheckoutSession(sessionId.trim(), user.uid)
+      const profile = await requireProfile(user.uid)
+      res.json({ user: await enrichClientUser(profile) })
+      return
+    }
+
+    if (route === 'billing/dev-unlock' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireRole(user.uid, ['master'])
+      await unlockProManually(profile.id)
+      const updated = await requireProfile(profile.id)
+      res.json({ user: await enrichClientUser(updated) })
       return
     }
 
@@ -191,6 +534,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!name?.trim()) {
           res.status(400).json({ error: 'Ordnername fehlt.' })
           return
+        }
+        if (parentId) {
+          const parent = await getFolder(parentId)
+          if (parent?.scope === 'class') {
+            const profile = await requireProfile(user.uid)
+            await assertClassFolderAccess(
+              parentId,
+              profile.id,
+              profile.role,
+              profile.classIds,
+              'manage',
+            )
+          }
         }
         try {
           const folder = await createFolder(user.uid, name, parentId ?? null)
@@ -213,13 +569,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'ID fehlt.' })
         return
       }
+      const existing = await getFolder(id)
+      if (!existing) {
+        res.status(404).json({ error: 'Ordner nicht gefunden.' })
+        return
+      }
+      const profile = await requireProfile(user.uid)
+      if (existing.scope === 'class') {
+        await assertClassFolderAccess(
+          id,
+          profile.id,
+          profile.role,
+          profile.classIds,
+          'manage',
+        )
+      } else if (existing.userId !== user.uid) {
+        throw new HttpError('Keine Berechtigung.', 403)
+      }
+
       if (req.method === 'PATCH') {
         const { name, parentId } = req.body as {
           name?: string
           parentId?: string | null
         }
         try {
-          const folder = await updateFolder(id, user.uid, { name, parentId })
+          const folder = await updateFolder(id, { name, parentId })
           if (!folder) {
             res.status(404).json({ error: 'Ordner nicht gefunden.' })
             return
@@ -233,12 +607,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'DELETE') {
-        const ok = await deleteFolder(id, user.uid)
-        if (!ok) {
-          res.status(404).json({ error: 'Ordner nicht gefunden.' })
-          return
+        try {
+          const ok = await deleteFolder(id)
+          if (!ok) {
+            res.status(404).json({ error: 'Ordner nicht gefunden.' })
+            return
+          }
+          res.json({ ok: true })
+        } catch (err) {
+          res.status(400).json({
+            error: err instanceof Error ? err.message : 'Ordner konnte nicht gelöscht werden.',
+          })
         }
-        res.json({ ok: true })
         return
       }
       methodNotAllowed(res)
@@ -253,6 +633,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'POST') {
+        const profile = await requireProfile(user.uid)
         const {
           title,
           sourceLanguage,
@@ -280,6 +661,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(400).json({ error: 'Pflichtfelder fehlen.' })
           return
         }
+        if (folderId) {
+          const folder = await getFolder(folderId)
+          if (folder?.scope === 'class') {
+            await assertClassFolderAccess(
+              folderId,
+              profile.id,
+              profile.role,
+              profile.classIds,
+              'read',
+            )
+          }
+        }
+        await consumeQuota(profile, 'dialogCreates')
         const dialog = await createDialog(user.uid, {
           title,
           sourceLanguage: sourceLanguage ?? 'de',
@@ -301,6 +695,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog' || route.startsWith('dialogs/')) {
       const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
       const id =
         route.startsWith('dialogs/')
           ? route.slice('dialogs/'.length)
@@ -310,7 +705,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'GET') {
-        const dialog = await getDialog(id, user.uid)
+        const dialog = await getDialog(id, user.uid, profile)
         if (!dialog) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
@@ -319,7 +714,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'PATCH') {
-        const dialog = await updateDialog(id, user.uid, req.body)
+        const dialog = await updateDialog(id, user.uid, req.body, profile)
         if (!dialog) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
@@ -328,7 +723,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       if (req.method === 'DELETE') {
-        const ok = await deleteDialog(id, user.uid)
+        const ok = await deleteDialog(id, user.uid, profile)
         if (!ok) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
@@ -349,6 +744,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'tts' && req.method === 'POST') {
       const user = await requireAuth(req)
+      await gateAi(user.uid)
       const { dialogId, lineId, rate } = req.body as {
         dialogId?: string
         lineId?: string
@@ -401,6 +797,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-audio-line' && req.method === 'GET') {
       const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
       const dialogId = req.query.dialogId as string | undefined
       const lineId = req.query.lineId as string | undefined
       if (!dialogId || !lineId) {
@@ -408,7 +805,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       try {
-        const dialog = await getDialog(dialogId, user.uid)
+        const dialog = await getDialog(dialogId, user.uid, profile)
         if (!dialog) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
@@ -430,6 +827,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-image' && req.method === 'GET') {
       const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
       const dialogId = req.query.dialogId as string | undefined
       const lineId = req.query.lineId as string | undefined
       if (!dialogId || !lineId) {
@@ -437,7 +835,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       try {
-        const dialog = await getDialog(dialogId, user.uid)
+        const dialog = await getDialog(dialogId, user.uid, profile)
         if (!dialog) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
@@ -465,6 +863,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-ensure-audio' && req.method === 'POST') {
       const user = await requireAuth(req)
+      const profile = await gateAi(user.uid)
+      await consumeQuota(profile, 'slideshowPreps')
       const { dialogId, rate, force } = req.body as {
         dialogId?: string
         rate?: number
@@ -487,6 +887,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-regenerate-speaker-audio' && req.method === 'POST') {
       const user = await requireAuth(req)
+      await gateAi(user.uid)
       const { dialogId, speaker } = req.body as { dialogId?: string; speaker?: string }
       if (!dialogId || !speaker?.trim()) {
         res.status(400).json({ error: 'dialogId und speaker fehlen.' })
@@ -557,6 +958,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       req.method === 'POST'
     ) {
       return handleImageAll(req, res)
+    }
+    if (
+      (route === 'visual-brief' || route === 'ai/visual-brief') &&
+      req.method === 'POST'
+    ) {
+      return handleVisualBrief(req, res)
+    }
+    if (
+      (route === 'visual-test' || route === 'ai/visual-test') &&
+      req.method === 'POST'
+    ) {
+      return handleVisualTest(req, res)
+    }
+    if (
+      (route === 'visual-critic' || route === 'ai/visual-critic') &&
+      req.method === 'POST'
+    ) {
+      return handleVisualCritic(req, res)
     }
 
     res.status(404).json({ error: `API-Route nicht gefunden: ${route}` })

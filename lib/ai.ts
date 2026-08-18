@@ -13,11 +13,12 @@ import type {
   SpeakerPortrait,
   PortraitFraming,
   PortraitGaze,
+  VisualBrief,
 } from '../shared/types.js'
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
-import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE } from './ken-burns-style.js'
+import { appearanceGuideFor, styleLockPrompt } from './ken-burns-style.js'
 import { referenceAnchorForPrompt, buildReferenceImagePrompt } from './reference-image.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
@@ -112,7 +113,7 @@ function geminiErrorMessage(err: unknown): string {
   return 'KI-Anfrage fehlgeschlagen.'
 }
 
-async function chatJson<T>(system: string, user: string): Promise<T> {
+export async function chatJson<T>(system: string, user: string): Promise<T> {
   try {
     const model = getTextModel()
     const result = await model.generateContent({
@@ -336,14 +337,17 @@ export async function splitIntoSections(
   const result = await chatJson<{
     sections: { title: string; lineIndices: number[] }[]
   }>(
-    `Teile den Dialog in 2–5 logische Abschnitte (z.B. Begrüßung, Hauptgespräch, Abschied).
+    `Teile den Dialog in 3–6 Szenen einer Bildergeschichte (wie ein kurzer Film).
+Trenne vor allem bei: Ortswechsel, neue Person, Zeit-Sprung, Pointe.
+Titel kurz, in der Dialogsprache (z.B. «Sur le canapé», «À table»).
+Keine Mini-Abschnitte mit nur 1 Zeile, ausser ein Ruf aus dem Off.
 Antworte als JSON:
 {
   "sections": [
     { "title": "Abschnittstitel", "lineIndices": [0, 1, 2] }
   ]
 }
-Jeder Index darf nur einmal vorkommen.`,
+Jeder Index darf nur einmal vorkommen, alle Zeilen abdecken.`,
     JSON.stringify(lines.map((l, i) => ({ index: i, speaker: l.speaker, text: l.text }))),
   )
 
@@ -489,19 +493,26 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
     })
     .join(', ')
 
+  const brief = dialog.visualBrief
+  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
+  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
+
   const result = await chatJson<{ characters: CharacterVisual[] }>(
-    `Du planst Fotos für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
+    `Du planst Bilder für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
 
 Regeln:
 - name: exakt wie im Dialog (z.B. Ramo, Shome)
-- gender: "male" | "female" – aus Kontext, Nutzer-Angabe oder Namen
-- description: 2–3 Sätze Englisch, photorealistic: exakte Kleidung (Farbe, Stil), Frisur, Brille optional, Hautfarbe, Alter, unverwechselbare Merkmale
-- Erscheinungsbild-Richtlinie: ${CAST_APPEARANCE_GUIDE}
+- gender: "male" | "female" – aus Kontext, Nutzer-Angabe oder Namen. Niemals das Geschlecht raten gegen die Nutzer-Angabe.
+- description: 2–3 Sätze Englisch: exakte Kleidung (Farbe, Stil), Frisur, Brille ja/nein, Hautfarbe, Alter, unverwechselbare Merkmale
+- Alter: ${brief?.ageEn ?? 'passend zur Geschichte'}
+- Stil: ${brief?.artStyle ?? 'wie in den Bild-Hinweisen, sonst Illustration wenn Kinderbuch/Jugendliche'}
+- Erscheinungsbild-Richtlinie: ${appearance}
+- Jede Person ANDERE Kleidungsfarbe und ein Merkmal (Brille nur bei einer Person, wenn nicht beide Brille tragen sollen)
 - Nur Personen, die im Dialog vorkommen
-- Stil: photorealistic live-action photograph ONLY (never cartoon, comic, illustration, anime)
+- Stil-Lock: ${styleLock}
 
 JSON:
-{ "characters": [{ "name": "Ramo", "gender": "male", "description": "photorealistic young man with ..." }] }`,
+{ "characters": [{ "name": "Ramo", "gender": "male", "description": "..." }] }`,
     `${imgCtx ? `${imgCtx}\n\n---\n` : ''}Titel: "${dialog.title}"\n\nDialog:\n${dialogSummaryForImages(dialog)}\n\nSprecher: ${genderHints}\nBeispielzeilen:\n${JSON.stringify(cast)}`,
   )
 
@@ -519,13 +530,16 @@ function buildConsistentImagePrompt(
   scenePrompt: string,
   bible?: CharacterVisual[],
   referencePrompt?: string,
+  brief?: VisualBrief | null,
 ): string {
   const ref = referenceAnchorForPrompt(referencePrompt)
   const cast =
     bible?.length ?
       `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  return `${ref}${cast}${scenePrompt}. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
+  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
+  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
+  return `${ref}${cast}${scenePrompt}. ${appearance}. ${styleLock}`
 }
 
 function buildImagePrompt(
@@ -783,7 +797,7 @@ function buildPortraitGroup(
     `${group.speaker} is speaking to ${group.addressee}. ${gazeExpr[group.gaze]}. ` +
     `Expression: ${moodExpr[group.mood]}. Third-person observer perspective, natural dialogue scene. ` +
     `Setting: ${scene}. Only ${group.speaker} visible in frame; ${group.addressee} is off-camera beside the viewer, do not show a second person. ` +
-    `Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
+    `Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${styleLockPrompt(undefined)}`
   return {
     id,
     speaker: group.speaker,
@@ -880,8 +894,9 @@ export async function generateUploadedImage(
   storageKey: string,
   bible?: CharacterVisual[],
   referencePrompt?: string,
+  brief?: VisualBrief | null,
 ): Promise<string> {
-  const fullPrompt = buildConsistentImagePrompt(prompt, bible, referencePrompt)
+  const fullPrompt = buildConsistentImagePrompt(prompt, bible, referencePrompt, brief)
   const dataUrl = await generateImageDataUrl(fullPrompt)
   const { uploadDialogImage } = await import('./image-storage.js')
   try {
@@ -907,6 +922,21 @@ export async function ensureReferenceImage(
   userId: string,
   force = false,
 ): Promise<Dialog> {
+  if (dialog.visualBrief?.testImageUrl && dialog.visualBrief.testApproved && !force) {
+    if (dialog.referenceImageUrl === dialog.visualBrief.testImageUrl) return dialog
+    const { updateDialog } = await import('./firestore.js')
+    const updated = await updateDialog(dialog.id, userId, {
+      referenceImageUrl: dialog.visualBrief.testImageUrl,
+      referenceImagePrompt: dialog.visualBrief.directorPromptEn,
+    })
+    return (
+      updated ?? {
+        ...dialog,
+        referenceImageUrl: dialog.visualBrief.testImageUrl,
+        referenceImagePrompt: dialog.visualBrief.directorPromptEn,
+      }
+    )
+  }
   if (dialog.referenceImageUrl && dialog.referenceImagePrompt && !force) {
     return dialog
   }
@@ -917,6 +947,8 @@ export async function ensureReferenceImage(
     dialog.id,
     'reference-cast-0',
     dialog.characterBible,
+    undefined,
+    dialog.visualBrief,
   )
   const updated = await updateDialog(dialog.id, userId, {
     referenceImageUrl: imageUrl,

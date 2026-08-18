@@ -1,0 +1,564 @@
+/**
+ * ZeboTools portable shell kit
+ * Copy this file (or relevant sections) into each tool and set --accent.
+ * Goal: one product family — shared tokens + sticky header chrome +
+ * shared buttons / inputs / tabs / user menu.
+ * Not a full interior UI rewrite.
+ */
+
+:root {
+  /* Family tokens — tools keep their own --accent */
+  --zebo-bg: #f6f7fb;
+  --zebo-surface: #ffffff;
+  --zebo-border: #e4e7ee;
+  --zebo-text: #1a1f2b;
+  --zebo-text-muted: #5b6472;
+  --zebo-brand: #1f3a8a;
+  --zebo-brand-soft: #eef2ff;
+
+  --zebo-radius: 16px;
+  --zebo-radius-sm: 10px;
+  --zebo-radius-pill: 999px;
+
+  --zebo-shadow: 0 1px 2px rgba(16, 24, 40, 0.04),
+    0 8px 24px rgba(16, 24, 40, 0.06);
+  --zebo-shadow-hover: 0 2px 4px rgba(16, 24, 40, 0.06),
+    0 16px 40px rgba(16, 24, 40, 0.12);
+  --zebo-shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+  --zebo-space-1: 4px;
+  --zebo-space-2: 8px;
+  --zebo-space-3: 12px;
+  --zebo-space-4: 16px;
+  --zebo-space-5: 24px;
+
+  --zebo-font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --zebo-font-size: 14px;
+  --zebo-font-weight-bold: 700;
+
+  --zebo-focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  --zebo-focus-outline: 2px solid color-mix(in srgb, var(--accent) 55%, white);
+
+  /* Role colors — Master violet / Lehrer blue / Schüler green */
+  --zebo-role-master: #6d28d9;
+  --zebo-role-master-bg: #f5f3ff;
+  --zebo-role-master-border: #c4b5fd;
+  --zebo-role-teacher: #1d4ed8;
+  --zebo-role-teacher-bg: #eff6ff;
+  --zebo-role-teacher-border: #93c5fd;
+  --zebo-role-student: #047857;
+  --zebo-role-student-bg: #ecfdf5;
+  --zebo-role-student-border: #6ee7b7;
+
+  /* Tool accent — override per tool */
+  --accent: #2563eb;
+}
+
+/* ── Sticky shell header ─────────────────────────────────────────────
+ * Layout: [tool pill]  …nav…  [← ZeboTools]  [colored name ▾]
+ */
+.zebo-shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--zebo-space-3);
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: var(--zebo-space-3) var(--zebo-space-5);
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  background: color-mix(in srgb, var(--zebo-surface) 96%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--zebo-border);
+  font-family: var(--zebo-font);
+  box-sizing: border-box;
+}
+
+.zebo-shell-header__left,
+.zebo-shell-header__right {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--zebo-space-3);
+  min-width: 0;
+}
+
+.zebo-shell-header__nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--zebo-space-2);
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+/* Tool brand pill: icon + name */
+.zebo-tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 8px;
+  border: 1px solid var(--zebo-border);
+  background: var(--zebo-surface);
+  border-radius: var(--zebo-radius-pill);
+  box-shadow: var(--zebo-shadow);
+  text-decoration: none;
+  color: var(--zebo-text);
+  font-weight: 700;
+  font-size: var(--zebo-font-size);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.zebo-tool-pill__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent) 12%, white);
+}
+
+.zebo-tool-pill__name {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--zebo-text);
+}
+
+.zebo-tool-pill__name .accent {
+  color: var(--accent);
+}
+
+/* Hub back link — consistent across all tools */
+.zebo-hub-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--zebo-brand);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 4px 2px;
+}
+
+.zebo-hub-link:hover {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
+/* Colored display name by role */
+.zebo-user-name {
+  font-size: 14px;
+  font-weight: 700;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  font-family: inherit;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zebo-user-name--master {
+  color: var(--zebo-role-master);
+}
+.zebo-user-name--teacher {
+  color: var(--zebo-role-teacher);
+}
+.zebo-user-name--student {
+  color: var(--zebo-role-student);
+}
+
+/* Optional role pill (beside or instead of colored name) */
+.zebo-role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: var(--zebo-radius-pill);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.zebo-role-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.zebo-role-pill--master {
+  background: var(--zebo-role-master-bg);
+  border-color: var(--zebo-role-master-border);
+  color: var(--zebo-role-master);
+}
+.zebo-role-pill--teacher {
+  background: var(--zebo-role-teacher-bg);
+  border-color: var(--zebo-role-teacher-border);
+  color: var(--zebo-role-teacher);
+}
+.zebo-role-pill--student {
+  background: var(--zebo-role-student-bg);
+  border-color: var(--zebo-role-student-border);
+  color: var(--zebo-role-student);
+}
+
+/* ── User menu (Name ▾) ────────────────────────────────────────────── */
+.zebo-user-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.zebo-user-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  font-family: inherit;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zebo-user-menu__trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--zebo-focus-ring);
+  border-radius: 4px;
+}
+
+.zebo-user-menu__trigger--master {
+  color: var(--zebo-role-master);
+}
+.zebo-user-menu__trigger--teacher {
+  color: var(--zebo-role-teacher);
+}
+.zebo-user-menu__trigger--student {
+  color: var(--zebo-role-student);
+}
+
+.zebo-user-menu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--zebo-surface);
+  border: 1px solid var(--zebo-border);
+  border-radius: var(--zebo-radius-sm);
+  box-shadow: var(--zebo-shadow-menu);
+  min-width: 220px;
+  z-index: 60;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--zebo-text);
+}
+
+.zebo-user-menu__copy {
+  padding: 6px 14px;
+  color: var(--zebo-text-muted);
+  line-height: 1.4;
+}
+
+.zebo-user-menu__separator {
+  border: none;
+  border-top: 1px solid var(--zebo-border);
+  margin: 4px 0;
+}
+
+.zebo-user-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--zebo-text);
+}
+
+.zebo-user-menu__item:hover {
+  background: #f8fafc;
+}
+
+.zebo-user-menu__item:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 10%, white);
+}
+
+/* ── Horizontal tabs / chips ───────────────────────────────────────── */
+.zebo-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--zebo-space-2);
+}
+
+.zebo-tab {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--zebo-radius-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--zebo-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.zebo-tab:hover {
+  background: color-mix(in srgb, var(--accent) 10%, white);
+  color: var(--zebo-text);
+  text-decoration: none;
+}
+
+.zebo-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--zebo-focus-ring);
+}
+
+.zebo-tab.is-active,
+.zebo-tab[aria-current="page"],
+.zebo-tab[data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, white);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--zebo-border));
+}
+
+.zebo-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 5px;
+  border-radius: var(--zebo-radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────── */
+.zebo-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--zebo-radius-sm);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--zebo-font-size);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: var(--zebo-shadow);
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease,
+    transform 0.1s ease;
+}
+
+.zebo-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.zebo-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--zebo-shadow), var(--zebo-focus-ring);
+}
+
+.zebo-btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 80%, black);
+}
+
+.zebo-btn--primary:hover:not(:disabled) {
+  filter: brightness(0.96);
+  box-shadow: var(--zebo-shadow-hover);
+}
+
+.zebo-btn--secondary {
+  background: var(--zebo-surface);
+  color: var(--zebo-text);
+  border-color: var(--zebo-border);
+}
+
+.zebo-btn--secondary:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.zebo-btn--ghost {
+  background: transparent;
+  color: var(--zebo-text-muted);
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.zebo-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, white);
+  color: var(--zebo-text);
+}
+
+.zebo-btn--sm {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* ── Inputs ────────────────────────────────────────────────────────── */
+.zebo-input,
+.zebo-select,
+.zebo-textarea {
+  appearance: none;
+  width: 100%;
+  font: inherit;
+  font-size: var(--zebo-font-size);
+  padding: 10px 12px;
+  border: 1px solid var(--zebo-border);
+  border-radius: var(--zebo-radius-sm);
+  background: var(--zebo-surface);
+  color: var(--zebo-text);
+  box-shadow: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.zebo-input:focus,
+.zebo-select:focus,
+.zebo-textarea:focus,
+.zebo-input:focus-visible,
+.zebo-select:focus-visible,
+.zebo-textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--zebo-focus-ring);
+}
+
+.zebo-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* Dark-header variant (e.g. PauseKasse) */
+.zebo-shell-header--dark {
+  background: color-mix(in srgb, #0f1c24 92%, black);
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+  color: #eef3f0;
+}
+
+.zebo-shell-header--dark .zebo-tool-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #eef3f0;
+  box-shadow: none;
+}
+
+.zebo-shell-header--dark .zebo-tool-pill__name {
+  color: #eef3f0;
+}
+
+.zebo-shell-header--dark .zebo-hub-link {
+  color: color-mix(in srgb, var(--accent) 80%, white);
+}
+
+.zebo-shell-header--dark .zebo-hub-link:hover {
+  color: var(--accent);
+}
+
+.zebo-shell-header--dark .zebo-user-name--master,
+.zebo-shell-header--dark .zebo-user-menu__trigger--master {
+  color: #c4b5fd;
+}
+.zebo-shell-header--dark .zebo-user-name--teacher,
+.zebo-shell-header--dark .zebo-user-menu__trigger--teacher {
+  color: #93c5fd;
+}
+.zebo-shell-header--dark .zebo-user-name--student,
+.zebo-shell-header--dark .zebo-user-menu__trigger--student {
+  color: #6ee7b7;
+}
+
+.zebo-shell-header--dark .zebo-tab {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.zebo-shell-header--dark .zebo-tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.zebo-shell-header--dark .zebo-tab.is-active,
+.zebo-shell-header--dark .zebo-tab[aria-current="page"],
+.zebo-shell-header--dark .zebo-tab[data-active="true"] {
+  background: var(--accent);
+  color: var(--accent-ink, #0f1c24);
+  border-color: transparent;
+}
+
+.zebo-shell-header--dark .zebo-user-menu__panel {
+  background: #13232c;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #eef3f0;
+}
+
+.zebo-shell-header--dark .zebo-user-menu__copy {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.zebo-shell-header--dark .zebo-user-menu__item {
+  color: #eef3f0;
+}
+
+.zebo-shell-header--dark .zebo-user-menu__item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.zebo-shell-header--dark .zebo-user-menu__separator {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 720px) {
+  .zebo-shell-header {
+    padding: var(--zebo-space-2) var(--zebo-space-3);
+  }
+
+  .zebo-shell-header__nav {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+}

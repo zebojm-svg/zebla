@@ -89,6 +89,39 @@ export interface VisualScene {
   lightingEn: string
 }
 
+export type VisualArtStyle = 'photoreal' | 'illustration' | 'comic' | 'watercolor'
+
+export type VisualCameraLanguage = 'picture_story' | 'dialog_coverage'
+
+export type VisualShotType = 'two_shot' | 'insert' | 'speaker' | 'wide'
+
+export interface VisualQuestion {
+  id: string
+  question: string
+  options: { id: string; label: string }[]
+}
+
+/** Zwischen-Prompt: aus den Nutzer-Hinweisen wird eine feste Bild-Regie. */
+export interface VisualBrief {
+  version: 1
+  artStyle: VisualArtStyle
+  cameraLanguage: VisualCameraLanguage
+  /** Englischer Stil-Lock für jedes Bild. */
+  stylePromptEn: string
+  ageEn: string
+  settingEn: string
+  castLockEn: string
+  mustShowEn: string[]
+  insertPlan: { globalLineIndex: number; whatEn: string }[]
+  /** Der eigentliche Zwischen-Prompt für die Bild-KI. */
+  directorPromptEn: string
+  answers?: Record<string, string>
+  testImageUrl?: string
+  testApproved?: boolean
+  extraConstraintsEn?: string
+  criticNotesEn?: string
+}
+
 /** Ein Panel im Dialog-Comic – konsistente Figuren, wechselnde Mimik. */
 export interface VisualScriptBeat {
   id: string
@@ -107,6 +140,8 @@ export interface VisualScriptBeat {
   prompt: string
   imageUrl?: string
   reason?: string
+  shotType?: VisualShotType
+  mustShowEn?: string
 }
 
 /** Bilderskript für den ganzen Dialog (wie Comic ohne Sprechblasen). */
@@ -125,6 +160,8 @@ export interface Dialog {
   length: DialogLength
   sections: DialogSection[]
   folderId?: string | null
+  /** Gesetzt wenn Dialog im Klassenbereich liegt (für Klassenmitglieder lesbar). */
+  classId?: string | null
   shareToken?: string | null
   /** Wie der Dialog erstellt wurde: topic | dictate | chat */
   creationMode?: CreateMode
@@ -151,17 +188,50 @@ export interface Dialog {
   >
   /** Comic-artiges Bilderskript: Szenen, Kamera, Mimik pro Zeile. */
   visualScript?: DialogVisualScript
+  /** Bild-Regie aus Nutzer-Hinweis + Rückfragen (unsichtbarer Zwischen-Prompt). */
+  visualBrief?: VisualBrief | null
   createdAt: string
   updatedAt: string
 }
+
+export type UserRole = 'master' | 'teacher' | 'student'
+
+export type SubscriptionStatus = 'none' | 'active' | 'past_due' | 'canceled'
 
 export interface DialogFolder {
   id: string
   userId: string
   name: string
   parentId: string | null
+  /** Persönlicher Ordner oder gemeinsamer Klassenordner. */
+  scope: 'personal' | 'class'
+  classId?: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface ClassRoom {
+  id: string
+  name: string
+  teacherId: string
+  classCode: string
+  rootFolderId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StudentCodeInfo {
+  code: string
+  classId: string
+  label?: string
+  userId?: string | null
+  createdAt: string
+}
+
+export interface UsageQuota {
+  dialogCreates: number
+  aiCalls: number
+  slideshowPreps: number
 }
 
 export interface User {
@@ -169,6 +239,14 @@ export interface User {
   name: string
   email?: string
   authType: 'google' | 'student'
+  role: UserRole
+  /** Klasse(n) des Schülers bzw. Lehrer-Klassen (IDs). */
+  classIds: string[]
+  subscriptionStatus: SubscriptionStatus
+  /** True wenn Pro-Zugriff (Master immer, Lehrer mit Abo). */
+  proActive: boolean
+  /** Verbleibendes Kontingent im aktuellen Monat (Server-Sicht). */
+  quota?: UsageQuota
 }
 
 export interface ChatMessage {
@@ -233,4 +311,54 @@ export function needsRomanization(code: string): boolean {
 
 export function languageName(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.name ?? code
+}
+
+/**
+ * ISO-Sprachcode → ISO-3166-1 alpha-2 Ländercode für Flaggen-Bilder (flagcdn.com).
+ * Hinweis: Auf Windows rendern Emoji-Flaggen oft nur als Buchstaben (FR, RU …) —
+ * deshalb PNG-Flags nutzen, nicht `languageFlag()`-Emojis allein.
+ */
+const LANGUAGE_COUNTRY_CODES: Record<string, string> = {
+  de: 'de',
+  en: 'gb',
+  fr: 'fr',
+  es: 'es',
+  it: 'it',
+  pt: 'pt',
+  nl: 'nl',
+  pl: 'pl',
+  tr: 'tr',
+  ja: 'jp',
+  zh: 'cn',
+  ar: 'sa',
+  fa: 'ir',
+  ru: 'ru',
+  sv: 'se',
+  da: 'dk',
+  no: 'no',
+  el: 'gr',
+  cs: 'cz',
+  hu: 'hu',
+  ko: 'kr',
+  kr: 'kr',
+  ch: 'ch',
+  he: 'il',
+  th: 'th',
+  hi: 'in',
+  uk: 'ua',
+}
+
+/** Ländercode für Flaggen-CDN (z. B. flagcdn.com/w40/{code}.png). */
+export function languageCountryCode(code: string): string {
+  const key = code.slice(0, 2).toLowerCase()
+  return LANGUAGE_COUNTRY_CODES[key] ?? 'un'
+}
+
+/** @deprecated Auf Windows oft nur Buchstaben — lieber LanguageFlag / PNG nutzen. */
+export function languageFlag(code: string): string {
+  const country = languageCountryCode(code).toUpperCase()
+  if (country === 'UN') return '🏳️'
+  // Regional-Indicator-Emojis (Fallback wo sie funktionieren)
+  const a = 0x1f1e6 - 65
+  return String.fromCodePoint(a + country.charCodeAt(0), a + country.charCodeAt(1))
 }

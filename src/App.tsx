@@ -8,6 +8,23 @@ import { CreateDialogPage } from './pages/CreateDialogPage'
 import { DialogEditorPage } from './pages/DialogEditorPage'
 import { SlideshowPage } from './pages/SlideshowPage'
 import { ShareImportPage } from './pages/ShareImportPage'
+import { ClassesPage } from './pages/ClassesPage'
+import { ProPage } from './pages/ProPage'
+import { SsoPage } from './pages/SsoPage'
+import { PublicHomePage } from './pages/PublicHomePage'
+import { useAuth } from './context/AuthContext'
+
+
+function HomeSwitch() {
+  const { user, loading } = useAuth()
+  if (loading) return <p className="muted" style={{ padding: '2rem' }}>Laden …</p>
+  if (!user) return <PublicHomePage />
+  return (
+    <Layout>
+      <DashboardPage />
+    </Layout>
+  )
+}
 
 function AppRoutes() {
   return (
@@ -18,12 +35,25 @@ function AppRoutes() {
 
       <Route path="/share/:token" element={<ShareImportPage />} />
 
+      <Route path="/sso" element={<SsoPage />} />
+      <Route path="/explore" element={<PublicHomePage />} />
+
+      <Route path="/" element={<HomeSwitch />} />
+
       <Route element={<ProtectedRoute />}>
         <Route
-          path="/"
+          path="/classes"
           element={
             <Layout>
-              <DashboardPage />
+              <ClassesPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/pro"
+          element={
+            <Layout>
+              <ProPage />
             </Layout>
           }
         />

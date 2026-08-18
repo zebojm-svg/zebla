@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext'
 
 export function LoginPage() {
   const { loginGoogle, loginStudent, firebaseReady } = useAuth()
-  const [code, setCode] = useState('')
+  const [classCode, setClassCode] = useState('')
+  const [studentCode, setStudentCode] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -13,7 +14,7 @@ export function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await loginStudent(code, name || undefined)
+      await loginStudent(studentCode, name || undefined, classCode || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen')
     } finally {
@@ -58,7 +59,10 @@ export function LoginPage() {
         {error && <div className="alert alert-error">{error}</div>}
 
         <section className="login-section">
-          <h2>Mit Google anmelden</h2>
+          <h2>Als Lehrkraft / Master</h2>
+          <p className="hint">
+            Mit Google anmelden. Neue Lehrkräfte registrieren sich selbst; KI braucht später Pro.
+          </p>
           <button
             type="button"
             className="btn btn-secondary google-btn"
@@ -77,12 +81,22 @@ export function LoginPage() {
           <h2>Als Schüler anmelden</h2>
           <form onSubmit={handleStudentLogin} className="student-form">
             <label>
+              Klassencode
+              <input
+                type="text"
+                value={classCode}
+                onChange={(e) => setClassCode(e.target.value.toUpperCase())}
+                placeholder="von der Lehrkraft"
+                autoComplete="off"
+              />
+            </label>
+            <label>
               Schülercode
               <input
                 type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="z.B. DEMO123"
+                value={studentCode}
+                onChange={(e) => setStudentCode(e.target.value.toUpperCase())}
+                placeholder="persönlicher Code"
                 required
                 autoComplete="off"
               />
@@ -97,11 +111,12 @@ export function LoginPage() {
               />
             </label>
             <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Anmelden …' : 'Mit Code anmelden'}
+              {loading ? 'Anmelden …' : 'Mit Codes anmelden'}
             </button>
           </form>
           <p className="hint">
-            Demo-Codes: <code>DEMO123</code>, <code>KLASSE7A</code>
+            Klassencode + Schülercode erhältst du von der Lehrkraft. Alte Demo-Codes ohne Klasse
+            funktionieren weiter nur mit Schülercode.
           </p>
         </section>
       </div>
