@@ -70,7 +70,6 @@ export function DialogEditorPage() {
       setError(err instanceof Error ? err.message : 'Fehler')
     } finally {
       setBusy(null)
-      setStatus('')
     }
   }
 
@@ -187,8 +186,7 @@ export function DialogEditorPage() {
 
     if (!current.visualBrief?.testApproved) {
       if (!current.visualBrief?.testImageUrl) {
-        if (!(await confirmCost(estimateVisualTest()))) return
-        setStatus('Testbild wird erzeugt …')
+        setStatus('Testbild wird erzeugt (ca. 20–40 s) …')
         const t = await api.ai.visualTest(current.id)
         current = t.dialog
         setDialog(t.dialog)
@@ -660,7 +658,6 @@ export function DialogEditorPage() {
       {costPending && (
         <CostConfirmDialog
           estimate={costPending.estimate}
-          busy={!!busy}
           onConfirm={() => closeCost(true)}
           onCancel={() => closeCost(false)}
         />

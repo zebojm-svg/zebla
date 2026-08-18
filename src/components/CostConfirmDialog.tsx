@@ -2,14 +2,12 @@ import type { CostEstimate } from '../lib/costEstimates'
 
 interface CostConfirmDialogProps {
   estimate: CostEstimate
-  busy?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
 
 export function CostConfirmDialog({
   estimate,
-  busy,
   onConfirm,
   onCancel,
 }: CostConfirmDialogProps) {
@@ -37,11 +35,11 @@ export function CostConfirmDialog({
         </p>
         {estimate.note && <p className="cost-dialog-note muted">{estimate.note}</p>}
         <div className="cost-dialog-actions">
-          <button type="button" className="btn btn-ghost" disabled={busy} onClick={onCancel}>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
             Abbrechen
           </button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={onConfirm}>
-            {busy ? 'Bitte warten …' : 'Fortfahren'}
+          <button type="button" className="btn btn-primary" onClick={onConfirm}>
+            Fortfahren
           </button>
         </div>
       </div>

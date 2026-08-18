@@ -528,7 +528,6 @@ export function SlideshowPage() {
       {costPending && (
         <CostConfirmDialog
           estimate={costPending.estimate}
-          busy={audioBusy}
           onConfirm={() => closeCost(true)}
           onCancel={() => closeCost(false)}
         />

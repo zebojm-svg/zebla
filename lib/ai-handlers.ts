@@ -656,7 +656,6 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
     }
 
     dialog = await ensureCharacterBibleOnDialog(dialog, user.uid, profile)
-    dialog = await ensureCharacterPortraits(dialog, user.uid, false)
     const extra = body.comment?.trim()
     const visualBrief = {
       ...dialog.visualBrief!,
@@ -669,15 +668,13 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
       ? formatCharacterBibleForPrompt(dialog.characterBible)
       : ''
     const prompt = testImagePrompt({ ...dialog, visualBrief }, bibleNote)
-    const portraitUrls =
-      dialog.characterBible?.map((c) => c.portraitUrl).filter((u): u is string => !!u) ?? []
     const imageUrl = await generateUploadedImage(
       prompt,
       dialog.id,
       extra ? `visual-test-${Date.now()}` : 'visual-test',
       dialog.characterBible,
       undefined,
-      portraitUrls,
+      undefined,
       undefined,
       visualBrief,
     )
