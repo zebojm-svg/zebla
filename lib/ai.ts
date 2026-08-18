@@ -1027,37 +1027,48 @@ export async function ensureCharacterPortraits(
   userId: string,
   force = false,
 ): Promise<Dialog> {
-  const bible = dialog.characterBible
-  if (!bible?.length) return dialog
-
-  const needsWork = force || bible.some((c) => !c.portraitUrl)
-  if (!needsWork) return dialog
-
-  const { updateDialog } = await import('./firestore.js')
-  const nextBible: CharacterVisual[] = []
-
-  for (const character of bible) {
-    if (character.portraitUrl && !force) {
-      nextBible.push(character)
-      continue
-    }
-    const prompt = buildCharacterPortraitPrompt(character, dialog)
-    const storageKey = `portrait-${character.name.replace(/[^\w\-]+/g, '_').slice(0, 40)}`
-    const portraitUrl = await generateUploadedImage(
-      prompt,
-      dialog.id,
-      storageKey,
-      [character],
-      undefined,
-      undefined,
-      character.name,
-      dialog.visualBrief,
-    )
-    nextBible.push({ ...character, portraitUrl, portraitPrompt: prompt })
+  let current = dialog
+  for (;;) {
+    const step = await ensureNextCharacterPortrait(current, userId, force)
+    current = step.dialog
+    if (!step.generatedName) return current
+    force = false
   }
+}
 
+/** Ein Portrait pro Aufruf – sonst knallt das 60-s-Serverlimit bei 4 Figuren. */
+export async function ensureNextCharacterPortrait(
+  dialog: Dialog,
+  userId: string,
+  force = false,
+): Promise<{ dialog: Dialog; generatedName: string | null; remaining: number }> {
+  const bible = dialog.characterBible
+  if (!bible?.length) return { dialog, generatedName: null, remaining: 0 }
+
+  const missing = bible.filter((c) => force || !c.portraitUrl)
+  if (!missing.length) return { dialog, generatedName: null, remaining: 0 }
+
+  const character = missing[0]
+  const prompt = buildCharacterPortraitPrompt(character, dialog)
+  const storageKey = `portrait-${character.name.replace(/[^\w\-]+/g, '_').slice(0, 40)}`
+  const portraitUrl = await generateUploadedImage(
+    prompt,
+    dialog.id,
+    storageKey,
+    [character],
+    undefined,
+    undefined,
+    character.name,
+    dialog.visualBrief,
+  )
+  const nextBible = bible.map((c) =>
+    c.name === character.name ? { ...c, portraitUrl, portraitPrompt: prompt } : c,
+  )
+  const { updateDialog } = await import('./firestore.js')
   const updated = await updateDialog(dialog.id, userId, { characterBible: nextBible })
-  return updated ?? { ...dialog, characterBible: nextBible }
+  const next = updated ?? { ...dialog, characterBible: nextBible }
+  const remaining = nextBible.filter((c) => !c.portraitUrl).length
+  return { dialog: next, generatedName: character.name, remaining }
 }
 
 export async function ensureReferenceImage(

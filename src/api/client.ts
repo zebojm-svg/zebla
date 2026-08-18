@@ -366,6 +366,7 @@ export const api = {
         totalBeats: number
         currentBeat: number
         reason?: string
+        prepPending?: boolean
       }>('/image-lines', {
         method: 'POST',
         body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, retry, forceImages }),

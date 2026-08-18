@@ -118,22 +118,35 @@ export function DialogEditorPage() {
 
   const generateSceneImages = async (sectionId: string, start: Dialog) => {
     let beatIndex = -1
-    let replan = true
+    let replan = !start.visualScript?.beats?.length
     let current = start
     let done = false
     const retried = new Set<number>()
     while (!done) {
       setStatus(
         beatIndex < 0
-          ? 'Referenz aus dem Testbild …'
+          ? 'Vorbereitung (ein Schritt, ca. 20–40 s) …'
           : replan
             ? 'KI plant Bilderskript …'
             : `Bild ${beatIndex + 1} … (ca. 15–30 s)`,
       )
-      const res = await api.ai.imageLines(current.id, sectionId, beatIndex, replan, false, true)
+      const res = await api.ai.imageLines(
+        current.id,
+        sectionId,
+        beatIndex,
+        replan,
+        false,
+        beatIndex >= 0,
+      )
       current = res.dialog
       setDialog(res.dialog)
       if (beatIndex < 0) {
+        if (res.prepPending) {
+          setStatus(res.reason ?? 'Nächstes Portrait …')
+          replan = false
+          await new Promise((r) => setTimeout(r, 1500))
+          continue
+        }
         beatIndex = 0
         replan = false
         continue
@@ -463,12 +476,12 @@ export function DialogEditorPage() {
                     for (let si = 0; si < current.sections.length; si++) {
                       const section = current.sections[si]
                       let beatIndex = -1
-                      let replan = si === 0
+                      let replan = si === 0 && !current.visualScript?.beats?.length
                       let done = false
                       while (!done) {
                         setStatus(
                           beatIndex < 0
-                            ? `Abschnitt ${si + 1}/${current.sections.length}: Figuren-Portraits & Referenz …`
+                            ? `Abschnitt ${si + 1}/${current.sections.length}: Vorbereitung …`
                             : `Abschnitt ${si + 1}/${current.sections.length}: neues Bild ${beatIndex + 1} …`,
                         )
                         const res = await api.ai.imageLines(
@@ -477,11 +490,16 @@ export function DialogEditorPage() {
                           beatIndex,
                           replan,
                           false,
-                          true,
+                          beatIndex >= 0,
                         )
                         current = res.dialog
                         setDialog(res.dialog)
                         if (beatIndex < 0) {
+                          if (res.prepPending) {
+                            replan = false
+                            await new Promise((r) => setTimeout(r, 1500))
+                            continue
+                          }
                           beatIndex = 0
                           replan = false
                           continue

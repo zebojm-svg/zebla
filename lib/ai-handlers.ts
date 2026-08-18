@@ -16,6 +16,7 @@ import {
   applySpeakerPortraits,
   ensureDialogVisualScript,
   ensureCharacterPortraits,
+  ensureNextCharacterPortrait,
   ensureReferenceImage,
   generateSectionImage,
   generateUploadedImage,
@@ -133,7 +134,9 @@ async function attachSectionImage(
   profile?: UserProfile | null,
 ) {
   let withBible = await ensureCharacterBibleOnDialog(dialog, userId, profile)
-  withBible = await ensureCharacterPortraits(withBible, userId, false)
+  if (!dialog.visualBrief?.testApproved) {
+    withBible = await ensureCharacterPortraits(withBible, userId, false)
+  }
   withBible = await ensureReferenceImage(withBible, userId, false)
   const speakers = [...new Set(section.lines.map((l) => l.speaker))]
   const activeSpeaker = speakers[0]
@@ -359,16 +362,41 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
       dialog = withScript ?? { ...dialog, visualScript: script }
     }
 
-    dialog = await ensureCharacterPortraits(dialog, user.uid, clearAndReplan && !keepTest)
-    dialog = await ensureReferenceImage(dialog, user.uid, clearAndReplan && !keepTest)
+    const skipPortraits =
+      keepTest || dialog.visualBrief?.cameraLanguage === 'picture_story'
 
     if (body.beatIndex === -1) {
+      if (!skipPortraits) {
+        const step = await ensureNextCharacterPortrait(
+          dialog,
+          user.uid,
+          clearAndReplan && !keepTest,
+        )
+        dialog = step.dialog
+        if (step.generatedName || step.remaining > 0) {
+          res.json({
+            dialog,
+            done: false,
+            totalBeats: dialog.visualScript?.beats.filter((b) => b.sectionId === section.id)
+              .length ?? 0,
+            currentBeat: 0,
+            prepPending: true,
+            reason: step.generatedName
+              ? `Portrait ${step.generatedName} (noch ${step.remaining})`
+              : 'Figuren-Portraits',
+          })
+          return
+        }
+      }
+
+      dialog = await ensureReferenceImage(dialog, user.uid, clearAndReplan && !keepTest)
       res.json({
         dialog,
         done: false,
         totalBeats: dialog.visualScript?.beats.filter((b) => b.sectionId === section.id).length ?? 0,
         currentBeat: 0,
-        reason: 'Figuren-Portraits & Referenz-Cast (intern)',
+        prepPending: false,
+        reason: 'Referenz-Cast (intern)',
       })
       return
     }
