@@ -84,7 +84,7 @@ function inferAgeKey(text: string): 'children' | 'teens' | 'adults' | null {
 function inferCamera(text: string): VisualCameraLanguage | null {
   const t = text.toLowerCase()
   if (
-    /(bildergeschichte|prospekt|nahaufnahme|hinein|bookbox|insert|gegenstand zoomen)/.test(
+    /(bildergeschichte|prospekt|nahaufnahme|hinein|bookbox|insert|gegenstand zoomen|canapé|sofa|küche|kitchen|à table|eltern|maman|papa|szene\s*[123])/i.test(
       t,
     )
   ) {
@@ -150,8 +150,15 @@ export async function buildVisualBrief(
   const artStyle = ART_STYLES.has(merged.style as VisualArtStyle)
     ? (merged.style as VisualArtStyle)
     : 'photoreal'
+  const speakerCount = new Set(
+    dialog.sections.flatMap((s) => s.lines.map((l) => l.speaker)),
+  ).size
   const cameraLanguage: VisualCameraLanguage =
-    merged.camera === 'picture_story' ? 'picture_story' : 'dialog_coverage'
+    merged.camera === 'dialog_coverage'
+      ? 'dialog_coverage'
+      : merged.camera === 'picture_story' || speakerCount >= 3 || dialog.sections.length >= 2
+        ? 'picture_story'
+        : 'dialog_coverage'
   const ageEn = ageEnFromKey(merged.age)
   const stylePromptEn = styleLockPrompt(artStyle)
   const castLockEn = appearanceGuideFor(artStyle, ageEn)

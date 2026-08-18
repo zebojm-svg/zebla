@@ -66,6 +66,47 @@ const CLASSIC_VOICE_POOL: Record<
   },
 }
 
+function isAdultSpeakerName(name: string): boolean {
+  return /(maman|mama|maman|papa|vater|mutter|mère|père|mother|father|dad|mom|parent)/i.test(
+    name,
+  )
+}
+
+export function ttsDeliveryForSpeaker(
+  dialog: Dialog,
+  speaker: string,
+): { pitch: number; stylePrompt: string } {
+  const age = (dialog.visualBrief?.ageEn ?? '').toLowerCase()
+  const adult = isAdultSpeakerName(speaker)
+  const hasParents = dialog.sections.some((s) =>
+    s.lines.some((l) => isAdultSpeakerName(l.speaker)),
+  )
+  const child = age.includes('child') || age.includes('8')
+  const teen =
+    !adult && (child || age.includes('teen') || age.includes('13') || age.includes('15') || hasParents)
+  if (adult) {
+    const dad = /(papa|vater|père|father|dad)/i.test(speaker)
+    return {
+      pitch: dad ? -1 : 1,
+      stylePrompt: dad
+        ? 'warm father at the dinner table, natural speech, not a newsreader'
+        : 'warm mother, lively everyday French, not flat or formal',
+    }
+  }
+  if (teen || child) {
+    return {
+      pitch: child ? 5 : 3,
+      stylePrompt:
+        'lively teenager in a picture story, expressive like chatting with a friend, ' +
+        'not a newsreader, questions go up, jokes have energy',
+    }
+  }
+  return {
+    pitch: 1,
+    stylePrompt: 'natural conversational speech, lively, not a newsreader',
+  }
+}
+
 function langKey(languageCode: string): string {
   return languageCode.slice(0, 2).toLowerCase()
 }
@@ -154,10 +195,11 @@ export function buildSpeakerVoiceProfiles(dialog: Dialog): Record<string, Speake
       voiceName = pickGeminiVoice(gender, genderSlot)
     }
 
+    const delivery = ttsDeliveryForSpeaker(dialog, speaker)
     profiles[speaker] = {
       gender,
       voiceName,
-      voicePrompt: userProfile?.voicePrompt?.trim() || undefined,
+      voicePrompt: userProfile?.voicePrompt?.trim() || delivery.stylePrompt,
     }
   }
   return profiles
@@ -184,8 +226,9 @@ export function getSpeakerVoice(
   if (usesGeminiTts(dialog.targetLanguage) && !isGeminiTtsVoiceName(voiceName)) {
     voiceName = pickGeminiVoice(gender, 0)
   }
-  const voicePrompt = user?.voicePrompt?.trim() || base?.voicePrompt
-  return { gender, voiceName, voicePrompt: voicePrompt || undefined }
+  const delivery = ttsDeliveryForSpeaker(dialog, speaker)
+  const voicePrompt = user?.voicePrompt?.trim() || base?.voicePrompt || delivery.stylePrompt
+  return { gender, voiceName, voicePrompt }
 }
 
 export function mergeVoiceProfilesIntoDialog(

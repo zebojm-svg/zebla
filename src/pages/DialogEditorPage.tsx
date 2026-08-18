@@ -116,12 +116,11 @@ export function DialogEditorPage() {
     setTimeout(() => setShareCopied(false), 2500)
   }
 
-  const generateSceneImages = async (sectionId: string, start: Dialog) => {
+  const generateSceneImages = async (sectionId: string, start: Dialog): Promise<Dialog> => {
     let beatIndex = -1
     let replan = !start.visualScript?.beats?.length
     let current = start
     let done = false
-    const retried = new Set<number>()
     while (!done) {
       setStatus(
         beatIndex < 0
@@ -136,7 +135,7 @@ export function DialogEditorPage() {
         beatIndex,
         replan,
         false,
-        beatIndex >= 0,
+        false,
       )
       current = res.dialog
       setDialog(res.dialog)
@@ -151,32 +150,13 @@ export function DialogEditorPage() {
         replan = false
         continue
       }
-      if (res.currentBeat > 0 && res.currentBeat % 3 === 0 && !res.done) {
-        const fromBeat = res.currentBeat - 3
-        const toBeat = res.currentBeat - 1
-        setStatus('Prüfe, ob die letzten Bilder zur Geschichte passen …')
-        const critic = await api.ai.visualCritic(current.id, sectionId, fromBeat, toBeat)
-        current = critic.dialog
-        setDialog(critic.dialog)
-        if (!critic.ok && critic.retryBeatIndexes.length && !retried.has(fromBeat)) {
-          retried.add(fromBeat)
-          for (const i of critic.retryBeatIndexes) {
-            setStatus(`Korrigiere Bild ${i + 1} …`)
-            const retryRes = await api.ai.imageLines(current.id, sectionId, i, false, true, true)
-            current = retryRes.dialog
-            setDialog(retryRes.dialog)
-            await new Promise((r) => setTimeout(r, 2500))
-          }
-        }
-      }
       done = res.done
       beatIndex++
       replan = false
-      if (!done) await new Promise((r) => setTimeout(r, 2500))
+      if (!done) await new Promise((r) => setTimeout(r, 800))
     }
-    setStatus(
-      `Fertig – ${beatIndex} Bild${beatIndex !== 1 ? 'er' : ''}. Eine zweite KI hat zwischendurch mitgeschaut.`,
-    )
+    setStatus(`Fertig – Bilder für diesen Abschnitt. Schon erzeugte Bilder wurden behalten.`)
+    return current
   }
 
   const runPictureStory = async (sectionId: string, fromDialog?: Dialog) => {
@@ -205,6 +185,28 @@ export function DialogEditorPage() {
         setDialog(t.dialog)
       }
       setStatus('Bitte das Testbild prüfen.')
+      return
+    }
+
+    const longOneBlock =
+      current.sections.length === 1 && (current.sections[0]?.lines.length ?? 0) >= 8
+    if (longOneBlock) {
+      setStatus('Teile die Geschichte in Szenen (Sofa, Küche, …) …')
+      const split = await api.ai.split(current.id)
+      if (split.dialog) {
+        current = split.dialog
+        setDialog(split.dialog)
+      }
+      for (const sec of current.sections) {
+        current = await generateSceneImages(sec.id, current)
+      }
+      return
+    }
+
+    if (current.sections.length > 1) {
+      for (const sec of current.sections) {
+        current = await generateSceneImages(sec.id, current)
+      }
       return
     }
 

@@ -275,7 +275,12 @@ export async function handleSplit(req: VercelRequest, res: VercelResponse) {
     }
     const allLines = dialog.sections.flatMap((s) => s.lines)
     const sections = await splitIntoSections(allLines)
-    const updated = await updateDialog(dialog.id, user.uid, { sections }, profile)
+    const updated = await updateDialog(
+      dialog.id,
+      user.uid,
+      { sections, visualScript: null },
+      profile,
+    )
     res.json({ dialog: updated })
   } catch (err) {
     sendError(res, err)

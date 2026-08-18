@@ -154,14 +154,21 @@ function cameraEnForPictureStory(
   if (shotType === 'speaker') {
     return cameraEnForSeating(activeSpeaker, addressee, seating, 'locked')
   }
+  if (seating?.others.length) {
+    return (
+      `WIDE family grouping in THIS location only: ${seating.left} LEFT, ${seating.right} RIGHT, ` +
+      `also ${seating.others.join(', ')} visible at the table. All faces readable. ` +
+      `Same kitchen/room as sibling shots of this scene. Do not move back to the sofa.`
+    )
+  }
   if (seating) {
     return (
       `TWO-SHOT, 180-degree geography: ${seating.left} on the LEFT, ${seating.right} on the RIGHT, ` +
       `BOTH faces clearly visible, looking at each other or at a shared object. ` +
-      `Same room, furniture and lighting as sibling shots.`
+      `Same room as sibling shots of THIS scene only — do not mix sofa and kitchen.`
     )
   }
-  return `TWO-SHOT of ${activeSpeaker} and ${addressee}, both faces visible, shared location.`
+  return `TWO-SHOT of ${activeSpeaker} and ${addressee}, both faces visible, this scene's location only.`
 }
 
 function spatialBlockForScene(scene: VisualScene | undefined, seating: SceneSeating | null): string {
@@ -206,6 +213,7 @@ function buildBeatPrompt(
   bible: CharacterVisual[] | undefined,
   seating: SceneSeating | null,
   brief?: VisualBrief | null,
+  presentNames?: string[],
 ): string {
   const cast = bible?.find((c) => c.name === beat.activeSpeaker)?.description
   const castNames = bible?.map((c) => c.name) ?? [beat.activeSpeaker, beat.addressee].filter(Boolean)
@@ -229,10 +237,20 @@ function buildBeatPrompt(
         visibleSpeaker: beat.activeSpeaker,
         addressee: beat.addressee,
       })
+  const present =
+    presentNames?.filter(Boolean).length
+      ? [...new Set(presentNames.filter(Boolean))]
+      : [beat.activeSpeaker, beat.addressee].filter(Boolean)
+  const absent = castNames.filter((n) => n && !present.includes(n))
   const peopleNote = pictureStory
     ? beat.shotType === 'insert'
       ? `INSERT of ${beat.mustShowEn || 'the named object'}; people optional. `
-      : `Picture story TWO-SHOT: both faces visible. ${beat.mustShowEn ? `MUST SHOW: ${beat.mustShowEn}. ` : ''}`
+      : `VISIBLE IN THIS SCENE ONLY: ${present.join(', ')}. ` +
+        (absent.length ? `Do NOT show ${absent.join(', ')} — they are in a different room. ` : '') +
+        (present.length >= 3
+          ? `Family grouping, all named faces readable. `
+          : `Picture story TWO-SHOT: both faces visible. `) +
+        (beat.mustShowEn ? `MUST SHOW: ${beat.mustShowEn}. ` : '')
     : `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking toward ${beat.addressee} who is out of frame. `
   return (
     `${director}${extra}` +
@@ -280,9 +298,11 @@ export async function buildDialogVisualScript(
 
   const peopleRules = pictureStory
     ? `BILDERGESCHICHTE (Bookbox):
-- Meist TWO-SHOT: beide Figuren mit Gesicht im Bild, links/rechts wie spatialEn.
-- INSERTS: Nahaufnahme von genannten Objekten (Prospekt, Zeitung, Gerät), wenn die Zeile das Objekt nennt — mustShowEn setzen.
-- Ortswechsel (Sofa→Küche) = neue sceneId. NICHT alle Orte in eine Szene zwingen.
+- Ortswechsel = neue sceneId. Sofa/Wohnzimmer ist NICHT die Küche. Niemals beide Orte mischen.
+- Am Anfang nur die Personen, die dort reden (z.B. Julien und Marc auf dem Sofa). Eltern erst in der Küche.
+- Ruf aus einem anderen Zimmer (z.B. «À table!») = Tür/Küche, nicht die Sofa-Szene.
+- Meist TWO-SHOT oder Familiengruppe mit sichtbaren Gesichtern.
+- INSERTS: Nahaufnahme von genannten Objekten (Prospekt, Zeitung).
 - Hinterköpfe/OTS vermeiden.`
     : `PERSONENZAHL:
 - Genau die Dialogfiguren. Kamera vom Platz des Partners; Partner komplett außerhalb des Bildes (kein Hinterkopf).`
@@ -463,6 +483,14 @@ JSON:
           )
     }
 
+    const presentByScene = new Map<string, string[]>()
+    for (const plan of plans) {
+      const sid = plan.sceneId?.trim() || primarySceneId
+      const list = presentByScene.get(sid) ?? []
+      if (plan.activeSpeaker && !list.includes(plan.activeSpeaker)) list.push(plan.activeSpeaker)
+      presentByScene.set(sid, list)
+    }
+
     let group: {
       sceneId: string
       activeSpeaker: string
@@ -528,6 +556,7 @@ JSON:
               bible,
               seatingByScene.get(group.sceneId) ?? null,
               brief,
+              presentByScene.get(group.sceneId),
             ),
           )
         }
@@ -557,6 +586,7 @@ JSON:
           bible,
           seatingByScene.get(group.sceneId) ?? null,
           brief,
+          presentByScene.get(group.sceneId),
         ),
       )
     }
@@ -598,6 +628,7 @@ function finalizeBeat(
   bible: CharacterVisual[] | undefined,
   seating: SceneSeating | null,
   brief?: VisualBrief | null,
+  presentNames?: string[],
 ): VisualScriptBeat {
   const firstIdx = group.lineIndices[0]
   const id = `${group.activeSpeaker.replace(/\s+/g, '_')}-${group.sceneId}-${group.mood}-${firstIdx}`
@@ -620,7 +651,7 @@ function finalizeBeat(
   return {
     id,
     ...partial,
-    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, seating, brief),
+    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, seating, brief, presentNames),
   }
 }
 

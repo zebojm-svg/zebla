@@ -72,11 +72,9 @@ export function SlideshowVoicePanel({ dialog, setDialog, disabled, onStatus }: P
     <div className="slideshow-voice-panel panel">
       <h3 className="slideshow-voice-title">Stimmen pro Sprecher</h3>
       <p className="muted slideshow-voice-hint">
-        Geschlecht und Stimme festlegen, dann „Stimme neu“ – wichtig z. B. für Koreanisch. Nach
-        Änderung ggf. einmal „Audio neu erstellen“ für alle.
-        {gemini
-          ? ' Stil-Hinweis wirkt bei Gemini-TTS (Persisch, Koreanisch, Japanisch, Chinesisch, Arabisch).'
-          : ''}
+        Geschlecht und Stimme festlegen, dann „Stimme neu“. Julien und Marc klingen
+        lebendiger (wie Jugendliche), Maman und Papa etwas ruhiger. Nach der Änderung
+        „Stimme neu“ oder in der Diashow Audio neu erstellen — alte Aufnahmen bleiben sonst.
       </p>
       <div className="slideshow-voice-grid">
         {speakers.map((speaker) => {

@@ -478,9 +478,9 @@ function imageGenerationErrorMessage(raw: string): string {
     raw.includes('rate limit')
   ) {
     return (
-      `Bild-Limit erreicht (Google Free-Tier, Modell: ${IMAGE_MODEL}).` +
-      parseRetryHint(raw) +
-      ' Nur ein Bild auf einmal generieren. Für mehr Bilder: Billing im Google-Cloud-Projekt deines API-Keys aktivieren (Tier 1, ca. 0 € bei wenig Nutzung) – https://aistudio.google.com/apikey'
+      `Google-Bildkontingent ist für jetzt aufgebraucht (Modell: ${IMAGE_MODEL}). ` +
+      `Schon fertige Bilder bleiben gespeichert. Später dieselbe Schaltfläche noch einmal — dann geht es bei den fehlenden Bildern weiter.` +
+      parseRetryHint(raw)
     )
   }
   if (raw.includes('FUNCTION_INVOCATION_TIMEOUT') || raw.includes('Zeitüberschreitung')) {

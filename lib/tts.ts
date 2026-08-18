@@ -17,6 +17,8 @@ export interface TtsRequest {
   voiceName?: string
   /** Nur Gemini-TTS: Stil-Hinweis (z. B. „tiefe männliche Stimme“). */
   voicePrompt?: string
+  /** Google-TTS Tonhöhe −20…20; Jugendliche etwas höher. */
+  pitch?: number
 }
 
 export interface TtsResult {
@@ -117,14 +119,16 @@ async function callClassicSynthesize(
   text: string,
   voice: { languageCode: string; name?: string },
   speakingRate: number,
+  pitch = 0,
+  useSsml = false,
 ): Promise<TtsResult> {
   const body = {
-    input: { text },
+    input: useSsml ? { ssml: text } : { text },
     voice: {
       languageCode: voice.languageCode,
       ...(voice.name ? { name: voice.name } : {}),
     },
-    audioConfig: { audioEncoding: 'MP3', speakingRate, pitch: 0 },
+    audioConfig: { audioEncoding: 'MP3', speakingRate, pitch },
   }
 
   const res = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
@@ -166,7 +170,9 @@ async function callGeminiSynthesize(
       : resolveGeminiVoiceName(gender, speakerIndex)
   const styleHint = voiceStylePrompt?.trim()
   const basePrompt =
-    'Read clearly and naturally for language learners. Moderate pace, friendly teaching tone.'
+    'Speak like a real person in a children's picture story, not a newsreader. ' +
+    'Lively, natural intonation: questions go up, jokes and surprise have energy, ' +
+    'short lines feel spoken not recited. Clear enough for language learners.'
   const prompt = styleHint ? `${basePrompt} Voice character: ${styleHint}.` : basePrompt
 
   const body = {
@@ -279,6 +285,34 @@ export async function checkTtsHealth(languageCode?: string): Promise<TtsHealth> 
   }
 }
 
+function escapeSsml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/** Fragen und Ausrufe klingen gesprochen, nicht vorgelesen. */
+function toLivelySsml(text: string): string {
+  const parts = escapeSsml(text).split(/([?!]+)/)
+  let out = ''
+  for (let i = 0; i < parts.length; i++) {
+    const chunk = parts[i]
+    if (!chunk) continue
+    const next = parts[i + 1]
+    if (next?.includes('?')) {
+      out += `<prosody pitch="+2st">${chunk}${next}</prosody>`
+      i++
+    } else if (next?.includes('!')) {
+      out += `<prosody pitch="+3st" rate="108%">${chunk}${next}</prosody>`
+      i++
+    } else {
+      out += chunk
+    }
+  }
+  return `<speak>${out}</speak>`
+}
+
 export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
   const text = req.text.trim()
   if (!text) throw new Error('Text fehlt.')
@@ -291,6 +325,7 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
   const gender = req.gender ?? 'female'
   const speakerIndex = req.speakerIndex ?? 0
   const speakingRate = Math.min(1.3, Math.max(0.4, req.rate ?? 0.85))
+  const pitch = Math.min(10, Math.max(-10, req.pitch ?? 0))
 
   if (usesGeminiTts(req.languageCode)) {
     const voiceOverride =
@@ -318,15 +353,21 @@ export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
   ]
   const seen = new Set<string>()
   let lastError: Error | null = null
+  const ssml = toLivelySsml(text)
 
   for (const voice of attempts) {
     const key = `${voice.languageCode}:${voice.name ?? ''}`
     if (seen.has(key)) continue
     seen.add(key)
     try {
-      return await callClassicSynthesize(token, text, voice, speakingRate)
+      return await callClassicSynthesize(token, ssml, voice, speakingRate, pitch, true)
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
+      try {
+        return await callClassicSynthesize(token, text, voice, speakingRate, pitch, false)
+      } catch (err2) {
+        lastError = err2 instanceof Error ? err2 : new Error(String(err2))
+      }
     }
   }
 

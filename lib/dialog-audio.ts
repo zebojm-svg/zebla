@@ -7,6 +7,7 @@ import {
   buildSpeakerVoiceProfiles,
   getSpeakerVoice,
   mergeVoiceProfilesIntoDialog,
+  ttsDeliveryForSpeaker,
 } from './speaker-voice.js'
 import { TTS_STORAGE_SPEAKING_RATE } from './tts-storage.js'
 import { isGeminiTtsVoiceName, usesGeminiTts } from '../shared/tts-routing.js'
@@ -79,6 +80,7 @@ export async function getOrCreateLineAudio(
   const speakers = speakerIndexMap(dialog)
   const speakerIdx = speakers.get(found.line.speaker) ?? 0
   const voice = getSpeakerVoice(dialog, found.line.speaker)
+  const delivery = ttsDeliveryForSpeaker(dialog, found.line.speaker)
 
   const tts = await synthesizeSpeech({
     text: lineSpeechText(found.line),
@@ -87,7 +89,8 @@ export async function getOrCreateLineAudio(
     gender: voice.gender,
     speakerIndex: speakerIdx,
     voiceName: voice.voiceName,
-    voicePrompt: voice.voicePrompt,
+    voicePrompt: voice.voicePrompt || delivery.stylePrompt,
+    pitch: delivery.pitch,
   })
 
   const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, lineId)
@@ -154,6 +157,7 @@ export async function ensureDialogAudio(
 
       const speakerIdx = speakers.get(line.speaker) ?? 0
       const voice = getSpeakerVoice(dialog, line.speaker)
+      const delivery = ttsDeliveryForSpeaker(dialog, line.speaker)
       const tts = await synthesizeSpeech({
         text: speechText,
         languageCode: dialog.targetLanguage,
@@ -161,7 +165,8 @@ export async function ensureDialogAudio(
         gender: voice.gender,
         speakerIndex: speakerIdx,
         voiceName: voice.voiceName,
-        voicePrompt: voice.voicePrompt,
+        voicePrompt: voice.voicePrompt || delivery.stylePrompt,
+        pitch: delivery.pitch,
       })
       const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, line.id)
       generated++
@@ -191,6 +196,7 @@ export async function regenerateSpeakerAudio(
   const speakers = speakerIndexMap(dialog)
   const speakerIdx = speakers.get(speaker) ?? 0
   const voice = getSpeakerVoice(dialog, speaker)
+  const delivery = ttsDeliveryForSpeaker(dialog, speaker)
 
   let generated = 0
   for (const section of dialog.sections) {
@@ -206,7 +212,8 @@ export async function regenerateSpeakerAudio(
         gender: voice.gender,
         speakerIndex: speakerIdx,
         voiceName: voice.voiceName,
-        voicePrompt: voice.voicePrompt,
+        voicePrompt: voice.voicePrompt || delivery.stylePrompt,
+        pitch: delivery.pitch,
       })
       const audioUrl = await uploadLineAudio(tts.audioBase64, dialogId, line.id)
       generated++
