@@ -498,6 +498,7 @@ export function StoryPlayerPage() {
           zIndex: layout.zIndex,
           flip: layout.flip,
           keyOutWhite: true,
+          sourceCrop: layout.sourceCrop,
         })
         continue
       }

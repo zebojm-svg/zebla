@@ -19,6 +19,8 @@ export interface LayerImage {
   hueRotate?: number
   /** Weißen/hellen KI-Hintergrund beim Zeichnen entfernen */
   keyOutWhite?: boolean
+  /** Quellbild-Ausschnitt (0–1), z.B. Beine bei Sitz-Pose abschneiden */
+  sourceCrop?: { top?: number; bottom?: number; left?: number; right?: number }
 }
 
 export interface LayerAnimation {
@@ -52,6 +54,41 @@ type Props = {
 interface AnimState {
   offsets: Map<string, { dx: number; dy: number; rotation: number; opacity: number }>
   blinkTimers: Map<string, { nextBlink: number; isBlinking: boolean; blinkEnd: number }>
+}
+
+function imageSourceSize(img: CanvasImageSource): { w: number; h: number } {
+  if (img instanceof HTMLImageElement) {
+    return { w: img.naturalWidth, h: img.naturalHeight }
+  }
+  if (img instanceof HTMLCanvasElement) {
+    return { w: img.width, h: img.height }
+  }
+  return { w: 0, h: 0 }
+}
+
+function drawLayerImage(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  layer: LayerImage,
+  destX: number,
+  destY: number,
+) {
+  const { w: srcW, h: srcH } = imageSourceSize(img)
+  if (srcW === 0 || srcH === 0) return
+
+  const crop = layer.sourceCrop
+  const sx = Math.round((crop?.left ?? 0) * srcW)
+  const sy = Math.round((crop?.top ?? 0) * srcH)
+  const sw = Math.max(
+    1,
+    Math.round(srcW - sx - (crop?.right ?? 0) * srcW),
+  )
+  const sh = Math.max(
+    1,
+    Math.round(srcH - sy - (crop?.bottom ?? 0) * srcH),
+  )
+
+  ctx.drawImage(img, sx, sy, sw, sh, destX, destY, layer.width, layer.height)
 }
 
 export function CompositeCanvas({ width, height, layers, animations = [], className }: Props) {
@@ -234,9 +271,9 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
       if (layer.flip) {
         ctx.translate(finalX + layer.width, finalY)
         ctx.scale(-1, 1)
-        ctx.drawImage(img, 0, 0, layer.width, layer.height)
+        drawLayerImage(ctx, img, layer, 0, 0)
       } else {
-        ctx.drawImage(img, finalX, finalY, layer.width, layer.height)
+        drawLayerImage(ctx, img, layer, finalX, finalY)
       }
 
       ctx.restore()
