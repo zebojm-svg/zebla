@@ -1,0 +1,64 @@
+# Beispiel-Szene: Thomas und Kevin im Schwimmbad
+
+story:
+  title: "Ein Tag im Schwimmbad"
+  style: comic
+  scenes:
+    - id: scene-1
+      environment: draussen/schwimmbad/liegewiese
+      description: "Thomas und Kevin liegen auf der Liegewiese und genießen die Sonne."
+      characters:
+        - id: thomas
+          pose: liegen
+          position: { x: 30, y: 70 }
+          expression: entspannt
+          animations: [haare-wind, blinzeln]
+        - id: kevin
+          pose: liegen
+          position: { x: 60, y: 72 }
+          expression: lachend
+          animations: [blinzeln]
+      dialog:
+        - speaker: thomas
+          text: "Was für ein schöner Tag!"
+        - speaker: kevin
+          text: "Ja! Lass uns gleich schwimmen gehen."
+
+    - id: scene-2
+      environment: draussen/schwimmbad/beckenrand
+      description: "Beide stehen am Beckenrand mit Badetuch in der Hand."
+      characters:
+        - id: thomas
+          pose: stehen
+          armPosition: holding-towel
+          position: { x: 35, y: 50 }
+          expression: aufgeregt
+          animations: [blinzeln, mund-sprechen]
+        - id: kevin
+          pose: stehen
+          armPosition: holding-towel
+          position: { x: 55, y: 50 }
+          expression: grinsend
+          animations: [blinzeln]
+      dialog:
+        - speaker: kevin
+          text: "Wer zuerst drin ist!"
+
+    - id: scene-3
+      environment: draussen/schwimmbad/im-wasser
+      description: "Kevin ist schon im Wasser, Thomas springt gerade rein."
+      characters:
+        - id: kevin
+          pose: schwimmen
+          mask: water-chest  # nur Oberkörper sichtbar
+          position: { x: 50, y: 60 }
+          expression: lachend
+          animations: [blinzeln, arm-schwimmen]
+        - id: thomas
+          pose: springen
+          position: { x: 30, y: 30 }
+          expression: aufgeregt
+          animations: []
+      dialog:
+        - speaker: kevin
+          text: "Haha, ich war schneller!"
