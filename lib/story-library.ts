@@ -29,13 +29,12 @@ export async function listStoryAssets(
   const snap = await adminDb()
     .collection('storyAssets')
     .where('userId', '==', userId)
-    .orderBy('createdAt', 'desc')
     .limit(200)
     .get()
 
-  let items = snap.docs.map(
-    (doc) => ({ id: doc.id, ...doc.data() }) as StoryLibraryAsset,
-  )
+  let items = snap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }) as StoryLibraryAsset)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
   if (opts?.type) {
     items = items.filter((item) => item.type === opts.type)
