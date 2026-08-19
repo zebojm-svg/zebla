@@ -166,6 +166,15 @@ export function StoryPlayerPage() {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState('')
+  const [environmentName, setEnvironmentName] = useState('Wohnzimmer')
+  const [environmentDescription, setEnvironmentDescription] = useState(
+    'cozy family living room, yellow sofa, wooden coffee table with vase, newspapers on floor, warm evening light',
+  )
+  const [generatingEnvironment, setGeneratingEnvironment] = useState(false)
+  const [environmentError, setEnvironmentError] = useState('')
+  const [generatedEnvironments, setGeneratedEnvironments] = useState<
+    Array<{ name: string; imageUrl: string }>
+  >([])
   const [characterName, setCharacterName] = useState('Julien')
   const [characterDescription, setCharacterDescription] = useState(
     '8-year-old boy, round glasses, short brown hair, red t-shirt, blue jeans, friendly smile',
@@ -175,6 +184,8 @@ export function StoryPlayerPage() {
   const [generatedCharacters, setGeneratedCharacters] = useState<
     Array<{ name: string; imageUrl: string }>
   >([])
+  const [leftCharacterImage, setLeftCharacterImage] = useState<string | null>(null)
+  const [rightCharacterImage, setRightCharacterImage] = useState<string | null>(null)
 
   const scene = demoScene
   const env = demoEnvironment
@@ -193,10 +204,12 @@ export function StoryPlayerPage() {
   const layers = useMemo<LayerImage[]>(() => {
     const result: LayerImage[] = []
 
+    const activeBackground = generatedEnvironments[0]?.imageUrl ?? env.background
+
     // Hintergrund
     result.push({
       id: 'bg',
-      src: env.background,
+      src: activeBackground,
       x: 0,
       y: 0,
       width: CANVAS_W,
@@ -261,12 +274,37 @@ export function StoryPlayerPage() {
     // Figuren
     for (let i = 0; i < scene.characters.length; i++) {
       const placement = scene.characters[i]
+      if (i === 0 && leftCharacterImage) {
+        result.push({
+          id: 'char-left-generated',
+          src: leftCharacterImage,
+          x: (placement.position.x / 100) * CANVAS_W - 110,
+          y: (placement.position.y / 100) * CANVAS_H - 290,
+          width: 220,
+          height: 300,
+          zIndex: 20,
+        })
+        continue
+      }
+      if (i === 1 && rightCharacterImage) {
+        result.push({
+          id: 'char-right-generated',
+          src: rightCharacterImage,
+          x: (placement.position.x / 100) * CANVAS_W - 110,
+          y: (placement.position.y / 100) * CANVAS_H - 290,
+          width: 220,
+          height: 300,
+          zIndex: 21,
+          flip: placement.flip,
+        })
+        continue
+      }
       const charLayers = buildCharacterLayers(char, placement, i)
       result.push(...charLayers)
     }
 
     return result
-  }, [scene, env, char])
+  }, [scene, env, char, generatedEnvironments, leftCharacterImage, rightCharacterImage])
 
   const sceneAnimations = useMemo<LayerAnimation[]>(() => [
     { layerId: 'cloud-1', type: 'drift', speed: 12, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 250 },
@@ -274,11 +312,19 @@ export function StoryPlayerPage() {
     { layerId: 'cloud-3', type: 'drift', speed: 15, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 },
     { layerId: 'tree-left', type: 'swing', amplitude: 1.5, period: 4000 },
     { layerId: 'tree-right', type: 'swing', amplitude: 2, period: 3500 },
-    { layerId: 'char-0-head', type: 'blink', blinkDuration: 150, blinkInterval: [2500, 5500] },
-    { layerId: 'char-1-head', type: 'blink', blinkDuration: 130, blinkInterval: [3000, 6000] },
-    { layerId: 'char-0-body', type: 'bob', amplitude: 1.5, period: 5000 },
-    { layerId: 'char-1-body', type: 'bob', amplitude: 1.2, period: 4500 },
-  ], [])
+    ...(leftCharacterImage
+      ? [{ layerId: 'char-left-generated', type: 'bob', amplitude: 1.2, period: 4800 } as LayerAnimation]
+      : [
+          { layerId: 'char-0-head', type: 'blink', blinkDuration: 150, blinkInterval: [2500, 5500] } as LayerAnimation,
+          { layerId: 'char-0-body', type: 'bob', amplitude: 1.5, period: 5000 } as LayerAnimation,
+        ]),
+    ...(rightCharacterImage
+      ? [{ layerId: 'char-right-generated', type: 'bob', amplitude: 1.1, period: 4300 } as LayerAnimation]
+      : [
+          { layerId: 'char-1-head', type: 'blink', blinkDuration: 130, blinkInterval: [3000, 6000] } as LayerAnimation,
+          { layerId: 'char-1-body', type: 'bob', amplitude: 1.2, period: 4500 } as LayerAnimation,
+        ]),
+  ], [leftCharacterImage, rightCharacterImage])
 
   const next = () => {
     if (currentAction < scene.timeline.length - 1) {
@@ -305,6 +351,22 @@ export function StoryPlayerPage() {
       setCharacterError(err instanceof Error ? err.message : 'Fehler')
     } finally {
       setGeneratingCharacter(false)
+    }
+  }
+
+  const handleGenerateEnvironment = async () => {
+    const name = environmentName.trim()
+    const description = environmentDescription.trim()
+    if (!name || !description) return
+    setGeneratingEnvironment(true)
+    setEnvironmentError('')
+    try {
+      const result = await api.story.generateEnvironment(name, description)
+      setGeneratedEnvironments((prev) => [{ name, imageUrl: result.imageUrl }, ...prev].slice(0, 8))
+    } catch (err) {
+      setEnvironmentError(err instanceof Error ? err.message : 'Fehler')
+    } finally {
+      setGeneratingEnvironment(false)
     }
   }
 
@@ -422,6 +484,66 @@ export function StoryPlayerPage() {
             {generatedCharacters.map((item, idx) => (
               <article key={`${item.name}-${idx}`} className="story-character-card">
                 <img src={item.imageUrl} alt={`Figur ${item.name}`} />
+                <p>{item.name}</p>
+                <div className="story-character-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setLeftCharacterImage(item.imageUrl)}
+                  >
+                    Als links
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setRightCharacterImage(item.imageUrl)}
+                  >
+                    Als rechts
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="story-generate-panel">
+        <h3>KI-Umfeld generieren (gleicher Stil)</h3>
+        <p className="muted">
+          Erzeuge Hintergründe wie Wohnzimmer, Küche, Museum oder Schwimmbad und setze sie direkt als Szene.
+        </p>
+        <div className="story-character-form">
+          <input
+            type="text"
+            className="input"
+            placeholder="Umfeldname (z.B. Wohnzimmer)"
+            value={environmentName}
+            onChange={(e) => setEnvironmentName(e.target.value)}
+            disabled={generatingEnvironment}
+          />
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Beschreibung (Möbel, Licht, Details...)"
+            value={environmentDescription}
+            onChange={(e) => setEnvironmentDescription(e.target.value)}
+            disabled={generatingEnvironment}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={generatingEnvironment}
+            onClick={handleGenerateEnvironment}
+          >
+            {generatingEnvironment ? 'Erzeuge Umfeld …' : 'Umfeld erzeugen'}
+          </button>
+        </div>
+        {environmentError && <p className="alert alert-error">{environmentError}</p>}
+        {generatedEnvironments.length > 0 && (
+          <div className="story-character-grid">
+            {generatedEnvironments.map((item, idx) => (
+              <article key={`${item.name}-${idx}`} className="story-character-card">
+                <img src={item.imageUrl} alt={`Umfeld ${item.name}`} />
                 <p>{item.name}</p>
               </article>
             ))}

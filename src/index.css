@@ -1876,3 +1876,13 @@ html[dir='rtl'] .slideshow-topbar {
   font-weight: 600;
   font-size: 0.9rem;
 }
+
+.story-character-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0 0.65rem 0.65rem;
+}
+
+.story-character-card-actions .btn {
+  flex: 1;
+}
