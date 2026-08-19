@@ -1803,3 +1803,38 @@ html[dir='rtl'] .slideshow-topbar {
   margin: 0 0 0.25rem;
   font-size: 1rem;
 }
+
+.story-generate-panel {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--surface, #1e293b);
+  border-radius: 12px;
+  border: 1px solid var(--border, #334155);
+}
+
+.story-generate-panel h3 {
+  margin: 0 0 0.5rem;
+}
+
+.story-generate-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.story-generate-row .input {
+  flex: 1;
+}
+
+.story-generated-preview {
+  margin-top: 1rem;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.story-generated-preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+}

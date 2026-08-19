@@ -162,6 +162,9 @@ export function StoryPlayerPage() {
   const [currentAction, setCurrentAction] = useState(0)
   const [dialogText, setDialogText] = useState('')
   const [dialogSpeaker, setDialogSpeaker] = useState('')
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState('')
 
   const scene = demoScene
   const env = demoEnvironment
@@ -313,6 +316,54 @@ export function StoryPlayerPage() {
         <h3>Szene: {env.name}</h3>
         <p>Figuren: {scene.characters.length} · Aktionen: {scene.timeline.length}</p>
       </div>
+
+      <section className="story-generate-panel">
+        <h3>KI-Szene generieren (Kinderbuch-Stil)</h3>
+        <p className="muted">Beschreibe eine Szene — KI zeichnet sie im warmen Aquarell-Kinderbuchstil.</p>
+        <div className="story-generate-row">
+          <input
+            type="text"
+            className="input"
+            placeholder="z.B. Wohnzimmer mit Sofa, Couchtisch, Zeitungen am Boden, Vater am Esstisch mit Spaghetti"
+            id="scene-desc"
+            disabled={generating}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={generating}
+            onClick={async () => {
+              const input = document.getElementById('scene-desc') as HTMLInputElement
+              const desc = input?.value?.trim()
+              if (!desc) return
+              setGenerating(true)
+              setGenError('')
+              try {
+                const res = await fetch('/api/story/generate-scene', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ description: desc }),
+                })
+                const data = await res.json() as { imageUrl?: string; error?: string }
+                if (data.error) throw new Error(data.error)
+                if (data.imageUrl) setGeneratedImage(data.imageUrl)
+              } catch (err) {
+                setGenError(err instanceof Error ? err.message : 'Fehler')
+              } finally {
+                setGenerating(false)
+              }
+            }}
+          >
+            {generating ? 'Zeichne …' : 'Szene zeichnen'}
+          </button>
+        </div>
+        {genError && <p className="alert alert-error">{genError}</p>}
+        {generatedImage && (
+          <div className="story-generated-preview">
+            <img src={generatedImage} alt="Generierte Szene" />
+          </div>
+        )}
+      </section>
     </div>
   )
 }
