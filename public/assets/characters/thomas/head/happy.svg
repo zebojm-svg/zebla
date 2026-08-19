@@ -1,19 +1,44 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 140">
+  <defs>
+    <radialGradient id="skin-h" cx="50%" cy="40%">
+      <stop offset="0%" stop-color="#FDDCB5"/>
+      <stop offset="100%" stop-color="#F5C5A3"/>
+    </radialGradient>
+  </defs>
+
   <!-- Head shape -->
-  <ellipse cx="60" cy="75" rx="45" ry="52" fill="#FDBCB4"/>
-  <!-- Hair -->
-  <path d="M20 60 Q30 15 60 15 Q90 15 100 60 Q95 40 60 35 Q25 40 20 60" fill="#5D4037"/>
-  <!-- Eyes (happy - slightly squinted) -->
-  <path d="M35 72 Q42 66 50 72" stroke="#333" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M70 72 Q78 66 86 72" stroke="#333" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <!-- Eyebrows (raised) -->
-  <path d="M32 58 Q42 53 52 58" stroke="#5D4037" stroke-width="2.5" fill="none"/>
-  <path d="M68 58 Q78 53 88 58" stroke="#5D4037" stroke-width="2.5" fill="none"/>
-  <!-- Nose -->
-  <path d="M58 80 Q60 88 62 80" stroke="#E8A090" stroke-width="1.5" fill="none"/>
-  <!-- Mouth (big smile) -->
-  <path d="M42 97 Q60 115 78 97" stroke="#C0392B" stroke-width="2.5" fill="#F8BBD0"/>
+  <ellipse cx="60" cy="78" rx="44" ry="50" fill="url(#skin-h)"/>
+
   <!-- Ears -->
-  <ellipse cx="16" cy="75" rx="8" ry="12" fill="#FDBCB4"/>
-  <ellipse cx="104" cy="75" rx="8" ry="12" fill="#FDBCB4"/>
+  <ellipse cx="17" cy="80" rx="8" ry="13" fill="#F5C5A3"/>
+  <ellipse cx="17" cy="80" rx="5" ry="9" fill="#EAAE8A" opacity="0.5"/>
+  <ellipse cx="103" cy="80" rx="8" ry="13" fill="#F5C5A3"/>
+  <ellipse cx="103" cy="80" rx="5" ry="9" fill="#EAAE8A" opacity="0.5"/>
+
+  <!-- Hair -->
+  <path d="M18 65 Q20 20 60 18 Q100 20 102 65 Q98 40 60 38 Q22 40 18 65" fill="#5D3A1A"/>
+  <path d="M25 55 Q30 30 60 28 Q90 30 95 55" fill="#6B4520" opacity="0.6"/>
+  <path d="M50 20 Q55 15 58 22" fill="#5D3A1A"/>
+
+  <!-- Eyebrows (raised, happy) -->
+  <path d="M35 58 Q44 52 53 58" stroke="#4A2F12" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M67 58 Q76 52 85 58" stroke="#4A2F12" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Eyes (happy squint) -->
+  <path d="M36 74 Q44 67 52 74" stroke="#4A3728" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M68 74 Q76 67 84 74" stroke="#4A3728" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+  <!-- Nose -->
+  <path d="M57 82 Q60 92 63 82" stroke="#DBA88A" stroke-width="1.8" fill="none"/>
+  <circle cx="56" cy="88" r="2.5" fill="#EAAE8A" opacity="0.6"/>
+  <circle cx="64" cy="88" r="2.5" fill="#EAAE8A" opacity="0.6"/>
+
+  <!-- Mouth (big happy smile) -->
+  <path d="M42 100 Q60 118 78 100" stroke="#C0392B" stroke-width="2.5" fill="#FADBD8"/>
+  <!-- Teeth hint -->
+  <path d="M48 103 Q60 106 72 103" stroke="white" stroke-width="2" fill="none"/>
+
+  <!-- Cheeks (stronger blush) -->
+  <ellipse cx="35" cy="92" rx="10" ry="6" fill="#F5A5A5" opacity="0.35"/>
+  <ellipse cx="85" cy="92" rx="10" ry="6" fill="#F5A5A5" opacity="0.35"/>
 </svg>

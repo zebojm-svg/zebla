@@ -1,32 +1,125 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#A8D8EA"/>
+      <stop offset="100%" stop-color="#D4ECFA"/>
+    </linearGradient>
+    <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6BAF5A"/>
+      <stop offset="100%" stop-color="#4A8C3B"/>
+    </linearGradient>
+    <linearGradient id="path-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#D4A76A"/>
+      <stop offset="100%" stop-color="#B8935A"/>
+    </linearGradient>
+  </defs>
+
   <!-- Sky -->
-  <rect width="1280" height="450" fill="#87CEEB"/>
-  <!-- Sun -->
-  <circle cx="200" cy="100" r="60" fill="#FFD700" opacity="0.9"/>
+  <rect width="1280" height="480" fill="url(#sky)"/>
+
+  <!-- Distant hills -->
+  <ellipse cx="300" cy="480" rx="350" ry="80" fill="#8BC07A" opacity="0.5"/>
+  <ellipse cx="900" cy="480" rx="400" ry="90" fill="#7DB86E" opacity="0.4"/>
+
+  <!-- Sun with glow -->
+  <circle cx="1050" cy="100" r="50" fill="#FFD93D" opacity="0.9"/>
+  <circle cx="1050" cy="100" r="70" fill="#FFD93D" opacity="0.15"/>
+
   <!-- Clouds -->
-  <ellipse cx="400" cy="80" rx="80" ry="30" fill="white" opacity="0.8"/>
-  <ellipse cx="450" cy="75" rx="60" ry="25" fill="white" opacity="0.8"/>
-  <ellipse cx="900" cy="120" rx="70" ry="25" fill="white" opacity="0.7"/>
-  <!-- Grass -->
-  <rect y="450" width="1280" height="270" fill="#4CAF50"/>
-  <!-- Path -->
-  <ellipse cx="640" cy="600" rx="400" ry="40" fill="#D2B48C" opacity="0.6"/>
-  <!-- Trees -->
-  <rect x="80" y="300" width="30" height="150" fill="#8B4513"/>
-  <ellipse cx="95" cy="280" rx="55" ry="70" fill="#2E7D32"/>
-  <rect x="1100" y="320" width="25" height="130" fill="#8B4513"/>
-  <ellipse cx="1112" cy="300" rx="45" ry="60" fill="#388E3C"/>
-  <!-- Bench -->
-  <rect x="250" y="480" width="120" height="8" fill="#6D4C41" rx="2"/>
-  <rect x="260" y="488" width="5" height="30" fill="#5D4037"/>
-  <rect x="360" y="488" width="5" height="30" fill="#5D4037"/>
-  <rect x="750" y="480" width="120" height="8" fill="#6D4C41" rx="2"/>
-  <rect x="760" y="488" width="5" height="30" fill="#5D4037"/>
-  <rect x="860" y="488" width="5" height="30" fill="#5D4037"/>
-  <!-- Flowers -->
-  <circle cx="500" cy="520" r="5" fill="#FF5722"/>
-  <circle cx="520" cy="530" r="4" fill="#E91E63"/>
-  <circle cx="480" cy="535" r="5" fill="#FF9800"/>
-  <circle cx="700" cy="510" r="4" fill="#9C27B0"/>
-  <circle cx="720" cy="525" r="5" fill="#FF5722"/>
+  <g opacity="0.85">
+    <ellipse cx="200" cy="90" rx="70" ry="28" fill="white"/>
+    <ellipse cx="250" cy="82" rx="55" ry="22" fill="white"/>
+    <ellipse cx="165" cy="85" rx="40" ry="20" fill="white"/>
+  </g>
+  <g opacity="0.7">
+    <ellipse cx="750" cy="60" rx="60" ry="22" fill="white"/>
+    <ellipse cx="790" cy="55" rx="45" ry="18" fill="white"/>
+  </g>
+  <g opacity="0.6">
+    <ellipse cx="500" cy="130" rx="50" ry="18" fill="white"/>
+    <ellipse cx="540" cy="125" rx="40" ry="15" fill="white"/>
+  </g>
+
+  <!-- Grass field -->
+  <rect y="460" width="1280" height="260" fill="url(#grass)"/>
+
+  <!-- Winding path -->
+  <path d="M0 620 Q200 590 400 610 Q640 640 900 600 Q1100 580 1280 610 L1280 660 Q1100 620 900 640 Q640 680 400 650 Q200 630 0 660 Z" fill="url(#path-grad)" opacity="0.7"/>
+
+  <!-- Big tree left -->
+  <rect x="60" y="280" width="35" height="200" fill="#6B4226" rx="5"/>
+  <ellipse cx="78" cy="260" rx="80" ry="100" fill="#3E8C27" opacity="0.9"/>
+  <ellipse cx="50" cy="280" rx="50" ry="70" fill="#4A9E30" opacity="0.8"/>
+  <ellipse cx="110" cy="270" rx="45" ry="60" fill="#56AB3C" opacity="0.7"/>
+
+  <!-- Big tree right -->
+  <rect x="1130" y="300" width="30" height="180" fill="#7A4F2A" rx="4"/>
+  <ellipse cx="1145" cy="280" rx="70" ry="90" fill="#4A9E30" opacity="0.9"/>
+  <ellipse cx="1110" cy="300" rx="45" ry="60" fill="#56AB3C" opacity="0.7"/>
+  <ellipse cx="1175" cy="290" rx="40" ry="55" fill="#3E8C27" opacity="0.8"/>
+
+  <!-- Small tree back -->
+  <rect x="850" y="360" width="18" height="100" fill="#6B4226" rx="3"/>
+  <ellipse cx="859" cy="345" rx="40" ry="55" fill="#5BAE42" opacity="0.8"/>
+
+  <!-- Bushes -->
+  <ellipse cx="180" cy="490" rx="45" ry="30" fill="#3D8A26"/>
+  <ellipse cx="220" cy="495" rx="35" ry="25" fill="#4A9E30"/>
+  <ellipse cx="1050" cy="485" rx="50" ry="32" fill="#3D8A26"/>
+  <ellipse cx="1090" cy="490" rx="38" ry="26" fill="#4A9E30"/>
+
+  <!-- Park bench left (detailed) -->
+  <g transform="translate(260, 510)">
+    <rect x="0" y="0" width="130" height="6" fill="#8B5E3C" rx="2"/>
+    <rect x="0" y="8" width="130" height="6" fill="#7A4F2A" rx="2"/>
+    <rect x="5" y="-25" width="5" height="25" fill="#6B4226"/>
+    <rect x="120" y="-25" width="5" height="25" fill="#6B4226"/>
+    <rect x="5" y="14" width="5" height="25" fill="#5C3A1E"/>
+    <rect x="120" y="14" width="5" height="25" fill="#5C3A1E"/>
+    <!-- Back rest -->
+    <rect x="3" y="-25" width="125" height="5" fill="#8B5E3C" rx="1"/>
+    <rect x="3" y="-18" width="125" height="5" fill="#7A4F2A" rx="1"/>
+  </g>
+
+  <!-- Park bench right -->
+  <g transform="translate(820, 520)">
+    <rect x="0" y="0" width="120" height="5" fill="#8B5E3C" rx="2"/>
+    <rect x="0" y="7" width="120" height="5" fill="#7A4F2A" rx="2"/>
+    <rect x="5" y="-22" width="4" height="22" fill="#6B4226"/>
+    <rect x="111" y="-22" width="4" height="22" fill="#6B4226"/>
+    <rect x="5" y="12" width="4" height="22" fill="#5C3A1E"/>
+    <rect x="111" y="12" width="4" height="22" fill="#5C3A1E"/>
+    <rect x="3" y="-22" width="115" height="4" fill="#8B5E3C" rx="1"/>
+    <rect x="3" y="-16" width="115" height="4" fill="#7A4F2A" rx="1"/>
+  </g>
+
+  <!-- Flowers scattered -->
+  <g>
+    <circle cx="450" cy="540" r="5" fill="#FF6B6B"/><circle cx="450" cy="540" r="2.5" fill="#FFD93D"/>
+    <circle cx="470" cy="555" r="4" fill="#E84393"/><circle cx="470" cy="555" r="2" fill="#FFF"/>
+    <circle cx="435" cy="560" r="5" fill="#FDCB6E"/><circle cx="435" cy="560" r="2.5" fill="#FFF"/>
+    <circle cx="600" cy="530" r="4" fill="#A29BFE"/><circle cx="600" cy="530" r="2" fill="#FFF"/>
+    <circle cx="620" cy="545" r="5" fill="#FF6B6B"/><circle cx="620" cy="545" r="2.5" fill="#FFD93D"/>
+    <circle cx="580" cy="550" r="4" fill="#FDCB6E"/><circle cx="580" cy="550" r="2" fill="#FFF"/>
+    <circle cx="700" cy="560" r="5" fill="#E84393"/><circle cx="700" cy="560" r="2.5" fill="#FFF"/>
+    <circle cx="350" cy="570" r="4" fill="#A29BFE"/><circle cx="350" cy="570" r="2" fill="#FFF"/>
+  </g>
+
+  <!-- Lamp post -->
+  <rect x="540" y="400" width="6" height="130" fill="#4A4A4A" rx="2"/>
+  <ellipse cx="543" cy="395" rx="15" ry="10" fill="#5A5A5A"/>
+  <ellipse cx="543" cy="392" rx="10" ry="7" fill="#FFE066" opacity="0.4"/>
+
+  <!-- Birds -->
+  <path d="M400 150 Q405 145 410 150 Q415 145 420 150" stroke="#555" stroke-width="1.5" fill="none"/>
+  <path d="M430 170 Q434 166 438 170 Q442 166 446 170" stroke="#555" stroke-width="1.2" fill="none"/>
+  <path d="M680 130 Q684 126 688 130 Q692 126 696 130" stroke="#555" stroke-width="1.3" fill="none"/>
+
+  <!-- Grass tufts in foreground -->
+  <g fill="#3D8A26" opacity="0.7">
+    <path d="M100 700 Q105 680 110 700 Q115 682 120 700"/>
+    <path d="M300 695 Q305 678 310 695 Q314 680 318 695"/>
+    <path d="M950 698 Q955 680 960 698 Q964 682 968 698"/>
+    <path d="M1200 700 Q1205 682 1210 700"/>
+  </g>
 </svg>

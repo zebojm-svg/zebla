@@ -123,6 +123,8 @@ function buildCharacterLayers(
     })
   }
 
+  const bodyH = (bodyLayer?.size.h ?? 400) * scale
+
   if (armsLayer) {
     const w = armsLayer.size.w * scale
     const h = armsLayer.size.h * scale
@@ -130,7 +132,7 @@ function buildCharacterLayers(
       id: `char-${index}-arms`,
       src: armsLayer.src,
       x: baseX - w * armsLayer.anchor.x,
-      y: baseY - h * 0.55,
+      y: baseY - bodyH * 0.7,
       width: w,
       height: h,
       flip: placement.flip,
@@ -145,7 +147,7 @@ function buildCharacterLayers(
       id: `char-${index}-head`,
       src: headLayer.src,
       x: baseX - w * headLayer.anchor.x,
-      y: baseY - (bodyLayer?.size.h ?? 400) * scale * 0.85,
+      y: baseY - bodyH * 0.95,
       width: w,
       height: h,
       flip: placement.flip,

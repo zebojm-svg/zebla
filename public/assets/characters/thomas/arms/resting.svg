@@ -1,12 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 200">
-  <!-- Left arm (resting at side) -->
-  <path d="M55 10 Q40 60 45 120 Q47 140 50 150" stroke="#FDBCB4" stroke-width="18" fill="none" stroke-linecap="round"/>
-  <!-- Right arm (resting at side) -->
-  <path d="M165 10 Q180 60 175 120 Q173 140 170 150" stroke="#FDBCB4" stroke-width="18" fill="none" stroke-linecap="round"/>
-  <!-- Hands -->
-  <circle cx="50" cy="155" r="10" fill="#FDBCB4"/>
-  <circle cx="170" cy="155" r="10" fill="#FDBCB4"/>
-  <!-- Sleeve edges -->
-  <path d="M48 10 Q55 15 62 10" stroke="#2980B9" stroke-width="4" fill="none"/>
-  <path d="M158 10 Q165 15 172 10" stroke="#2980B9" stroke-width="4" fill="none"/>
+  <!-- Left arm -->
+  <path d="M50 20 Q38 60 40 100 Q42 130 48 145" stroke="#F5C5A3" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <!-- Left sleeve -->
+  <path d="M42 20 Q50 25 58 20" fill="#4A90D9"/>
+  <ellipse cx="50" cy="22" rx="12" ry="8" fill="#4A90D9"/>
+  <!-- Left hand -->
+  <ellipse cx="48" cy="150" rx="11" ry="13" fill="#FDDCB5"/>
+  <!-- Fingers hint -->
+  <path d="M42 155 Q44 162 48 160 Q52 162 54 155" stroke="#EAAE8A" stroke-width="1" fill="none"/>
+
+  <!-- Right arm -->
+  <path d="M170 20 Q182 60 180 100 Q178 130 172 145" stroke="#F5C5A3" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <!-- Right sleeve -->
+  <path d="M162 20 Q170 25 178 20" fill="#4A90D9"/>
+  <ellipse cx="170" cy="22" rx="12" ry="8" fill="#4A90D9"/>
+  <!-- Right hand -->
+  <ellipse cx="172" cy="150" rx="11" ry="13" fill="#FDDCB5"/>
+  <path d="M166 155 Q168 162 172 160 Q176 162 178 155" stroke="#EAAE8A" stroke-width="1" fill="none"/>
 </svg>
