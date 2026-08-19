@@ -166,6 +166,15 @@ export function StoryPlayerPage() {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState('')
+  const [characterName, setCharacterName] = useState('Julien')
+  const [characterDescription, setCharacterDescription] = useState(
+    '8-year-old boy, round glasses, short brown hair, red t-shirt, blue jeans, friendly smile',
+  )
+  const [generatingCharacter, setGeneratingCharacter] = useState(false)
+  const [characterError, setCharacterError] = useState('')
+  const [generatedCharacters, setGeneratedCharacters] = useState<
+    Array<{ name: string; imageUrl: string }>
+  >([])
 
   const scene = demoScene
   const env = demoEnvironment
@@ -283,6 +292,22 @@ export function StoryPlayerPage() {
     }
   }
 
+  const handleGenerateCharacter = async () => {
+    const name = characterName.trim()
+    const description = characterDescription.trim()
+    if (!name || !description) return
+    setGeneratingCharacter(true)
+    setCharacterError('')
+    try {
+      const result = await api.story.generateCharacter(name, description)
+      setGeneratedCharacters((prev) => [{ name, imageUrl: result.imageUrl }, ...prev].slice(0, 12))
+    } catch (err) {
+      setCharacterError(err instanceof Error ? err.message : 'Fehler')
+    } finally {
+      setGeneratingCharacter(false)
+    }
+  }
+
   return (
     <div className="story-player">
       <div className="story-canvas-wrapper">
@@ -356,6 +381,50 @@ export function StoryPlayerPage() {
         {generatedImage && (
           <div className="story-generated-preview">
             <img src={generatedImage} alt="Generierte Szene" />
+          </div>
+        )}
+      </section>
+
+      <section className="story-generate-panel">
+        <h3>KI-Figur generieren (gleicher Stil)</h3>
+        <p className="muted">
+          Erstelle passende Charaktere für deine Geschichten. Die Bilder kannst du danach wiederverwenden.
+        </p>
+        <div className="story-character-form">
+          <input
+            type="text"
+            className="input"
+            placeholder="Figurenname (z.B. Julien)"
+            value={characterName}
+            onChange={(e) => setCharacterName(e.target.value)}
+            disabled={generatingCharacter}
+          />
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Beschreibung (Alter, Haare, Kleidung, Ausdruck...)"
+            value={characterDescription}
+            onChange={(e) => setCharacterDescription(e.target.value)}
+            disabled={generatingCharacter}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={generatingCharacter}
+            onClick={handleGenerateCharacter}
+          >
+            {generatingCharacter ? 'Erzeuge Figur …' : 'Figur erzeugen'}
+          </button>
+        </div>
+        {characterError && <p className="alert alert-error">{characterError}</p>}
+        {generatedCharacters.length > 0 && (
+          <div className="story-character-grid">
+            {generatedCharacters.map((item, idx) => (
+              <article key={`${item.name}-${idx}`} className="story-character-card">
+                <img src={item.imageUrl} alt={`Figur ${item.name}`} />
+                <p>{item.name}</p>
+              </article>
+            ))}
           </div>
         )}
       </section>
