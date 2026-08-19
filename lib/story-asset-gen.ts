@@ -1,13 +1,5 @@
-import { adminStorage } from './firebase-admin.js'
-
-async function uploadStoryImage(buffer: Buffer, path: string, contentType: string): Promise<string> {
-  const bucket = adminStorage().bucket()
-  const file = bucket.file(path)
-  await file.save(buffer, {
-    metadata: { contentType, cacheControl: 'public, max-age=86400' },
-  })
-  await file.makePublic()
-  return `https://storage.googleapis.com/${bucket.name}/${path}`
+function bufferToDataUrl(buffer: Buffer, mime: string): string {
+  return `data:${mime};base64,${buffer.toString('base64')}`
 }
 
 function requireGeminiKey(): string {
@@ -76,8 +68,7 @@ export async function generateStoryScene(
   }
 
   const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
-  const path = `story-assets/scenes/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
-  const imageUrl = await uploadStoryImage(buffer, path, 'image/png')
+  const imageUrl = bufferToDataUrl(buffer, 'image/png')
 
   return { imageUrl, prompt }
 }
@@ -114,8 +105,7 @@ export async function generateStoryCharacter(
   }
 
   const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
-  const path = `story-assets/characters/${name.toLowerCase().replace(/\s+/g, '-')}/${Date.now()}.png`
-  const imageUrl = await uploadStoryImage(buffer, path, 'image/png')
+  const imageUrl = bufferToDataUrl(buffer, 'image/png')
 
   return { imageUrl, prompt }
 }
@@ -152,8 +142,7 @@ export async function generateStoryEnvironment(
   }
 
   const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
-  const path = `story-assets/environments/${name.toLowerCase().replace(/\s+/g, '-')}/${Date.now()}.png`
-  const imageUrl = await uploadStoryImage(buffer, path, 'image/png')
+  const imageUrl = bufferToDataUrl(buffer, 'image/png')
 
   return { imageUrl, prompt }
 }
