@@ -82,6 +82,13 @@ import {
   generateStoryCharacter,
   generateStoryEnvironment,
 } from '../lib/story-asset-gen.js'
+import {
+  listStoryAssets,
+  saveStoryAsset,
+  deleteStoryAsset,
+  type StoryAssetType,
+} from '../lib/story-library.js'
+import { SCENE_PRESETS } from '../shared/scene-presets.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -1017,6 +1024,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const result = await generateStoryEnvironment(description.trim(), name.trim())
       res.json(result)
+      return
+    }
+
+    if (route === 'story-library' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const type = req.query.type as StoryAssetType | undefined
+      const tag = typeof req.query.tag === 'string' ? req.query.tag : undefined
+      const assets = await listStoryAssets(user.uid, { type, tag })
+      res.json({ assets })
+      return
+    }
+
+    if (route === 'story-library' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { type, name, description, imageUrl, tags } = req.body as {
+        type?: StoryAssetType
+        name?: string
+        description?: string
+        imageUrl?: string
+        tags?: string[]
+      }
+      if (!type || !name?.trim() || !imageUrl?.trim()) {
+        res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
+        return
+      }
+      if (!['character', 'environment', 'scene'].includes(type)) {
+        res.status(400).json({ error: 'Ungültiger Asset-Typ.' })
+        return
+      }
+      const asset = await saveStoryAsset(user.uid, {
+        type,
+        name: name.trim(),
+        description: description?.trim(),
+        imageUrl: imageUrl.trim(),
+        tags: Array.isArray(tags) ? tags : [],
+      })
+      res.json({ asset })
+      return
+    }
+
+    if (route.startsWith('story-library/') && req.method === 'DELETE') {
+      const user = await requireAuth(req)
+      const id = route.slice('story-library/'.length)
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const ok = await deleteStoryAsset(user.uid, id)
+      if (!ok) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      res.json({ ok: true })
+      return
+    }
+
+    if (route === 'story-presets' && req.method === 'GET') {
+      await requireAuth(req)
+      res.json({ presets: SCENE_PRESETS })
       return
     }
 

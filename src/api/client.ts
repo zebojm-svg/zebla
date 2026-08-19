@@ -420,5 +420,29 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ name, description }),
       }),
+    listLibrary: (opts?: { type?: 'character' | 'environment' | 'scene'; tag?: string }) => {
+      const params = new URLSearchParams()
+      if (opts?.type) params.set('type', opts.type)
+      if (opts?.tag) params.set('tag', opts.tag)
+      const qs = params.toString()
+      return request<{ assets: import('../../shared/story-types').StoryLibraryAsset[] }>(
+        `/story-library${qs ? `?${qs}` : ''}`,
+      )
+    },
+    saveToLibrary: (input: {
+      type: 'character' | 'environment' | 'scene'
+      name: string
+      description?: string
+      imageUrl: string
+      tags: string[]
+    }) =>
+      request<{ asset: import('../../shared/story-types').StoryLibraryAsset }>('/story-library', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    deleteFromLibrary: (id: string) =>
+      request<{ ok: boolean }>(`/story-library/${id}`, { method: 'DELETE' }),
+    listPresets: () =>
+      request<{ presets: import('../../shared/scene-presets').ScenePreset[] }>('/story-presets'),
   },
 }

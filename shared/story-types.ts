@@ -1,5 +1,18 @@
 /** Asset-Bibliothek und Szenen-Typen für ZeboStories */
 
+export type StoryAssetType = 'character' | 'environment' | 'scene'
+
+/** Persistiertes KI-Asset in der persönlichen Story-Bibliothek */
+export interface StoryLibraryAsset {
+  id: string
+  type: StoryAssetType
+  name: string
+  description?: string
+  imageUrl: string
+  tags: string[]
+  createdAt: string
+}
+
 export interface AssetMeta {
   id: string
   name: string

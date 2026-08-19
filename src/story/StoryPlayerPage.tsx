@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CompositeCanvas, type LayerImage, type LayerAnimation } from './CompositeCanvas'
 import { api } from '../api/client'
-import type { CharacterAsset, EnvironmentAsset, Scene } from '../../shared/story-types'
+import type { CharacterAsset, EnvironmentAsset, Scene, StoryLibraryAsset } from '../../shared/story-types'
+import type { ScenePreset } from '../../shared/scene-presets'
+import { SCENE_PRESETS } from '../../shared/scene-presets'
 
 const CANVAS_W = 1280
 const CANVAS_H = 720
@@ -159,6 +161,30 @@ function buildCharacterLayers(
   return result
 }
 
+function parseTagsInput(raw: string): string[] {
+  return raw
+    .split(/[,;]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function presetLayersToCanvas(
+  preset: ScenePreset | null,
+  canvasW: number,
+  canvasH: number,
+): LayerImage[] {
+  if (!preset) return []
+  return preset.layers.map((layer) => ({
+    id: `preset-${layer.id}`,
+    src: layer.src,
+    x: (layer.position.x / 100) * canvasW - layer.size.w / 2,
+    y: (layer.position.y / 100) * canvasH - layer.size.h / 2,
+    width: layer.size.w,
+    height: layer.size.h,
+    zIndex: layer.zIndex,
+  }))
+}
+
 export function StoryPlayerPage() {
   const [currentAction, setCurrentAction] = useState(0)
   const [dialogText, setDialogText] = useState('')
@@ -186,10 +212,86 @@ export function StoryPlayerPage() {
   >([])
   const [leftCharacterImage, setLeftCharacterImage] = useState<string | null>(null)
   const [rightCharacterImage, setRightCharacterImage] = useState<string | null>(null)
+  const [libraryAssets, setLibraryAssets] = useState<StoryLibraryAsset[]>([])
+  const [libraryLoading, setLibraryLoading] = useState(true)
+  const [libraryError, setLibraryError] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
+  const [saveTagsInput, setSaveTagsInput] = useState('wohnzimmer, kinderbuch')
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [activeEnvironmentUrl, setActiveEnvironmentUrl] = useState<string | null>(null)
+  const [activePresetId, setActivePresetId] = useState<string | null>(null)
+  const [presets] = useState<ScenePreset[]>(SCENE_PRESETS)
 
   const scene = demoScene
   const env = demoEnvironment
   const char = demoCharacter
+
+  const activePreset = useMemo(
+    () => presets.find((p) => p.id === activePresetId) ?? null,
+    [presets, activePresetId],
+  )
+
+  const reloadLibrary = useCallback(async () => {
+    setLibraryLoading(true)
+    setLibraryError('')
+    try {
+      const { assets } = await api.story.listLibrary()
+      setLibraryAssets(assets)
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : 'Bibliothek konnte nicht geladen werden.')
+    } finally {
+      setLibraryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void reloadLibrary()
+  }, [reloadLibrary])
+
+  const filteredLibrary = useMemo(() => {
+    const needle = tagFilter.trim().toLowerCase()
+    if (!needle) return libraryAssets
+    return libraryAssets.filter((asset) =>
+      asset.tags.some((tag) => tag.includes(needle) || needle.includes(tag)) ||
+      asset.name.toLowerCase().includes(needle),
+    )
+  }, [libraryAssets, tagFilter])
+
+  const libraryCharacters = filteredLibrary.filter((a) => a.type === 'character')
+  const libraryEnvironments = filteredLibrary.filter((a) => a.type === 'environment')
+
+  const handleSaveToLibrary = async (input: {
+    type: 'character' | 'environment' | 'scene'
+    name: string
+    description?: string
+    imageUrl: string
+    key: string
+  }) => {
+    setSavingId(input.key)
+    try {
+      const { asset } = await api.story.saveToLibrary({
+        type: input.type,
+        name: input.name,
+        description: input.description,
+        imageUrl: input.imageUrl,
+        tags: parseTagsInput(saveTagsInput),
+      })
+      setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const handleDeleteFromLibrary = async (id: string) => {
+    try {
+      await api.story.deleteFromLibrary(id)
+      setLibraryAssets((prev) => prev.filter((a) => a.id !== id))
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
+    }
+  }
 
   useEffect(() => {
     if (scene.timeline.length === 0) return
@@ -204,7 +306,13 @@ export function StoryPlayerPage() {
   const layers = useMemo<LayerImage[]>(() => {
     const result: LayerImage[] = []
 
-    const activeBackground = generatedEnvironments[0]?.imageUrl ?? env.background
+    const activeBackground =
+      activeEnvironmentUrl ??
+      generatedEnvironments[0]?.imageUrl ??
+      env.background
+
+    const usingCustomBackground =
+      Boolean(activeEnvironmentUrl) || generatedEnvironments.length > 0
 
     // Hintergrund
     result.push({
@@ -217,59 +325,64 @@ export function StoryPlayerPage() {
       zIndex: 0,
     })
 
-    // Wolken (separate Layers für Animation)
-    result.push({
-      id: 'cloud-1',
-      src: '/assets/environments/park/cloud1.svg',
-      x: 150,
-      y: 50,
-      width: 200,
-      height: 80,
-      opacity: 0.8,
-      zIndex: 1,
-    })
-    result.push({
-      id: 'cloud-2',
-      src: '/assets/environments/park/cloud2.svg',
-      x: 700,
-      y: 30,
-      width: 160,
-      height: 60,
-      opacity: 0.65,
-      zIndex: 1,
-    })
-    result.push({
-      id: 'cloud-3',
-      src: '/assets/environments/park/cloud3.svg',
-      x: 450,
-      y: 100,
-      width: 140,
-      height: 55,
-      opacity: 0.55,
-      zIndex: 1,
-    })
+    if (!usingCustomBackground) {
+      // Wolken (separate Layers für Animation)
+      result.push({
+        id: 'cloud-1',
+        src: '/assets/environments/park/cloud1.svg',
+        x: 150,
+        y: 50,
+        width: 200,
+        height: 80,
+        opacity: 0.8,
+        zIndex: 1,
+      })
+      result.push({
+        id: 'cloud-2',
+        src: '/assets/environments/park/cloud2.svg',
+        x: 700,
+        y: 30,
+        width: 160,
+        height: 60,
+        opacity: 0.65,
+        zIndex: 1,
+      })
+      result.push({
+        id: 'cloud-3',
+        src: '/assets/environments/park/cloud3.svg',
+        x: 450,
+        y: 100,
+        width: 140,
+        height: 55,
+        opacity: 0.55,
+        zIndex: 1,
+      })
 
-    // Bäume (separate für Wind-Animation)
-    result.push({
-      id: 'tree-left',
-      src: '/assets/environments/park/tree-left.svg',
-      x: 20,
-      y: 200,
-      width: 160,
-      height: 320,
-      zIndex: 2,
-      rotationAnchor: { x: 0.5, y: 1 },
-    })
-    result.push({
-      id: 'tree-right',
-      src: '/assets/environments/park/tree-right.svg',
-      x: 1070,
-      y: 220,
-      width: 140,
-      height: 290,
-      zIndex: 2,
-      rotationAnchor: { x: 0.5, y: 1 },
-    })
+      // Bäume (separate für Wind-Animation)
+      result.push({
+        id: 'tree-left',
+        src: '/assets/environments/park/tree-left.svg',
+        x: 20,
+        y: 200,
+        width: 160,
+        height: 320,
+        zIndex: 2,
+        rotationAnchor: { x: 0.5, y: 1 },
+      })
+      result.push({
+        id: 'tree-right',
+        src: '/assets/environments/park/tree-right.svg',
+        x: 1070,
+        y: 220,
+        width: 140,
+        height: 290,
+        zIndex: 2,
+        rotationAnchor: { x: 0.5, y: 1 },
+      })
+    }
+
+    // Szenen-Preset (Tisch, Stühle, …)
+    result.push(...presetLayersToCanvas(activePreset, CANVAS_W, CANVAS_H))
 
     // Figuren
     for (let i = 0; i < scene.characters.length; i++) {
@@ -304,14 +417,30 @@ export function StoryPlayerPage() {
     }
 
     return result
-  }, [scene, env, char, generatedEnvironments, leftCharacterImage, rightCharacterImage])
+  }, [
+    scene,
+    env,
+    char,
+    generatedEnvironments,
+    leftCharacterImage,
+    rightCharacterImage,
+    activeEnvironmentUrl,
+    activePreset,
+  ])
+
+  const usingCustomBackground =
+    Boolean(activeEnvironmentUrl) || generatedEnvironments.length > 0
 
   const sceneAnimations = useMemo<LayerAnimation[]>(() => [
-    { layerId: 'cloud-1', type: 'drift', speed: 12, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 250 },
-    { layerId: 'cloud-2', type: 'drift', speed: 8, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 },
-    { layerId: 'cloud-3', type: 'drift', speed: 15, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 },
-    { layerId: 'tree-left', type: 'swing', amplitude: 1.5, period: 4000 },
-    { layerId: 'tree-right', type: 'swing', amplitude: 2, period: 3500 },
+    ...(!usingCustomBackground
+      ? [
+          { layerId: 'cloud-1', type: 'drift', speed: 12, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 250 } as LayerAnimation,
+          { layerId: 'cloud-2', type: 'drift', speed: 8, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 } as LayerAnimation,
+          { layerId: 'cloud-3', type: 'drift', speed: 15, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 } as LayerAnimation,
+          { layerId: 'tree-left', type: 'swing', amplitude: 1.5, period: 4000 } as LayerAnimation,
+          { layerId: 'tree-right', type: 'swing', amplitude: 2, period: 3500 } as LayerAnimation,
+        ]
+      : []),
     ...(leftCharacterImage
       ? [{ layerId: 'char-left-generated', type: 'bob', amplitude: 1.2, period: 4800 } as LayerAnimation]
       : [
@@ -324,7 +453,7 @@ export function StoryPlayerPage() {
           { layerId: 'char-1-head', type: 'blink', blinkDuration: 130, blinkInterval: [3000, 6000] } as LayerAnimation,
           { layerId: 'char-1-body', type: 'bob', amplitude: 1.2, period: 4500 } as LayerAnimation,
         ]),
-  ], [leftCharacterImage, rightCharacterImage])
+  ], [leftCharacterImage, rightCharacterImage, usingCustomBackground])
 
   const next = () => {
     if (currentAction < scene.timeline.length - 1) {
@@ -363,6 +492,7 @@ export function StoryPlayerPage() {
     try {
       const result = await api.story.generateEnvironment(name, description)
       setGeneratedEnvironments((prev) => [{ name, imageUrl: result.imageUrl }, ...prev].slice(0, 8))
+      setActiveEnvironmentUrl(result.imageUrl)
     } catch (err) {
       setEnvironmentError(err instanceof Error ? err.message : 'Fehler')
     } finally {
@@ -401,9 +531,160 @@ export function StoryPlayerPage() {
       </div>
 
       <div className="story-scene-info">
-        <h3>Szene: {env.name}</h3>
+        <h3>Szene: {env.name}{activePreset ? ` · ${activePreset.name}` : ''}</h3>
         <p>Figuren: {scene.characters.length} · Aktionen: {scene.timeline.length}</p>
       </div>
+
+      <section className="story-generate-panel">
+        <h3>Story-Bibliothek</h3>
+        <p className="muted">
+          Gespeicherte Figuren und Umgebungen mit Tags — einmal erzeugen, immer wieder verwenden.
+        </p>
+        <div className="story-library-toolbar">
+          <input
+            type="text"
+            className="input"
+            placeholder="Tags filtern (z.B. wohnzimmer, mann)"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          />
+          <input
+            type="text"
+            className="input"
+            placeholder="Tags beim Speichern (Komma-getrennt)"
+            value={saveTagsInput}
+            onChange={(e) => setSaveTagsInput(e.target.value)}
+          />
+        </div>
+        {libraryError && <p className="alert alert-error">{libraryError}</p>}
+        {libraryLoading ? (
+          <p className="muted">Bibliothek wird geladen …</p>
+        ) : (
+          <>
+            {libraryEnvironments.length > 0 && (
+              <>
+                <h4 className="story-library-heading">Umgebungen</h4>
+                <div className="story-character-grid">
+                  {libraryEnvironments.map((item) => (
+                    <article key={item.id} className="story-character-card">
+                      <img src={item.imageUrl} alt={`Umfeld ${item.name}`} />
+                      <p>{item.name}</p>
+                      <div className="story-tag-row">
+                        {item.tags.map((tag) => (
+                          <span key={tag} className="story-tag">{tag}</span>
+                        ))}
+                      </div>
+                      <div className="story-character-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => setActiveEnvironmentUrl(item.imageUrl)}
+                        >
+                          Als Szene
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => void handleDeleteFromLibrary(item.id)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+            {libraryCharacters.length > 0 && (
+              <>
+                <h4 className="story-library-heading">Figuren</h4>
+                <div className="story-character-grid">
+                  {libraryCharacters.map((item) => (
+                    <article key={item.id} className="story-character-card">
+                      <img src={item.imageUrl} alt={`Figur ${item.name}`} />
+                      <p>{item.name}</p>
+                      <div className="story-tag-row">
+                        {item.tags.map((tag) => (
+                          <span key={tag} className="story-tag">{tag}</span>
+                        ))}
+                      </div>
+                      <div className="story-character-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setLeftCharacterImage(item.imageUrl)}
+                        >
+                          Als links
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setRightCharacterImage(item.imageUrl)}
+                        >
+                          Als rechts
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => void handleDeleteFromLibrary(item.id)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+            {libraryAssets.length === 0 && (
+              <p className="muted">Noch leer — erzeuge Figuren/Umgebungen und speichere sie unten in der Bibliothek.</p>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="story-generate-panel">
+        <h3>Szenen-Presets</h3>
+        <p className="muted">
+          Fertige Arrangements wie «Wohnzimmer-Abendessen» — Tisch, Stühle, Teller werden als Layer über dein Umfeld gelegt.
+        </p>
+        <div className="story-preset-list">
+          {presets.map((preset) => (
+            <article
+              key={preset.id}
+              className={`story-preset-card${activePresetId === preset.id ? ' is-active' : ''}`}
+            >
+              <div>
+                <strong>{preset.name}</strong>
+                <p className="muted">{preset.description}</p>
+                <div className="story-tag-row">
+                  {preset.tags.map((tag) => (
+                    <span key={tag} className="story-tag">{tag}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="story-preset-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setActivePresetId(preset.id)}
+                >
+                  Anwenden
+                </button>
+                {activePresetId === preset.id && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setActivePresetId(null)}
+                  >
+                    Entfernen
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="story-generate-panel">
         <h3>KI-Szene generieren (Kinderbuch-Stil)</h3>
@@ -443,6 +724,30 @@ export function StoryPlayerPage() {
         {generatedImage && (
           <div className="story-generated-preview">
             <img src={generatedImage} alt="Generierte Szene" />
+            <div className="story-character-card-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setActiveEnvironmentUrl(generatedImage)}
+              >
+                Als Szene-Hintergrund
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={savingId === 'scene-preview'}
+                onClick={() =>
+                  void handleSaveToLibrary({
+                    type: 'scene',
+                    name: 'Generierte Szene',
+                    imageUrl: generatedImage,
+                    key: 'scene-preview',
+                  })
+                }
+              >
+                {savingId === 'scene-preview' ? 'Speichere …' : 'In Bibliothek'}
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -500,6 +805,22 @@ export function StoryPlayerPage() {
                   >
                     Als rechts
                   </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={savingId === `char-${idx}`}
+                    onClick={() =>
+                      void handleSaveToLibrary({
+                        type: 'character',
+                        name: item.name,
+                        description: characterDescription,
+                        imageUrl: item.imageUrl,
+                        key: `char-${idx}`,
+                      })
+                    }
+                  >
+                    {savingId === `char-${idx}` ? 'Speichere …' : 'In Bibliothek'}
+                  </button>
                 </div>
               </article>
             ))}
@@ -545,6 +866,31 @@ export function StoryPlayerPage() {
               <article key={`${item.name}-${idx}`} className="story-character-card">
                 <img src={item.imageUrl} alt={`Umfeld ${item.name}`} />
                 <p>{item.name}</p>
+                <div className="story-character-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => setActiveEnvironmentUrl(item.imageUrl)}
+                  >
+                    Als Szene
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={savingId === `env-${idx}`}
+                    onClick={() =>
+                      void handleSaveToLibrary({
+                        type: 'environment',
+                        name: item.name,
+                        description: environmentDescription,
+                        imageUrl: item.imageUrl,
+                        key: `env-${idx}`,
+                      })
+                    }
+                  >
+                    {savingId === `env-${idx}` ? 'Speichere …' : 'In Bibliothek'}
+                  </button>
+                </div>
               </article>
             ))}
           </div>

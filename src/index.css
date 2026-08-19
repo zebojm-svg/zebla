@@ -1886,3 +1886,69 @@ html[dir='rtl'] .slideshow-topbar {
 .story-character-card-actions .btn {
   flex: 1;
 }
+
+.story-library-toolbar {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 720px) {
+  .story-library-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.story-library-heading {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+  color: #cbd5e1;
+}
+
+.story-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0 0.65rem 0.5rem;
+}
+
+.story-tag {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.story-preset-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.story-preset-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.story-preset-card.is-active {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.35);
+}
+
+.story-preset-card p {
+  margin: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+.story-preset-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
