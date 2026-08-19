@@ -405,20 +405,25 @@ export const api = {
       }),
   },
   story: {
-    generateScene: (description: string) =>
-      request<{ imageUrl: string; prompt: string }>('/story-generate-scene', {
+    listArtStyles: () =>
+      request<{
+        styles: import('../../shared/story-art-styles').StoryArtStyle[]
+        defaultStyleId: import('../../shared/story-art-styles').StoryArtStyleId
+      }>('/story-art-styles'),
+    generateScene: (description: string, styleId?: string) =>
+      request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-scene', {
         method: 'POST',
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ description, styleId }),
       }),
-    generateCharacter: (name: string, description: string) =>
-      request<{ imageUrl: string; prompt: string }>('/story-generate-character', {
+    generateCharacter: (name: string, description: string, styleId?: string) =>
+      request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-character', {
         method: 'POST',
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, styleId }),
       }),
-    generateEnvironment: (name: string, description: string) =>
-      request<{ imageUrl: string; prompt: string }>('/story-generate-environment', {
+    generateEnvironment: (name: string, description: string, styleId?: string) =>
+      request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-environment', {
         method: 'POST',
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, styleId }),
       }),
     listLibrary: (opts?: { type?: 'character' | 'environment' | 'scene'; tag?: string }) => {
       const params = new URLSearchParams()
@@ -435,6 +440,7 @@ export const api = {
       description?: string
       imageUrl: string
       tags: string[]
+      styleId?: string
     }) =>
       request<{ asset: import('../../shared/story-types').StoryLibraryAsset }>('/story-library', {
         method: 'POST',

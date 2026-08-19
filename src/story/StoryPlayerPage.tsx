@@ -11,12 +11,24 @@ import {
   type SceneCast,
 } from './story-cast'
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
+import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
+import type { StoryArtStyleId } from '../../shared/story-art-styles'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
 type LayerOverride = { visible: boolean; hueRotate: number }
 
-type SessionCharacter = { name: string; imageUrl: string; description?: string }
+type SessionCharacter = {
+  name: string
+  imageUrl: string
+  description?: string
+  styleId: StoryArtStyleId
+}
+type SessionEnvironment = {
+  name: string
+  imageUrl: string
+  styleId: StoryArtStyleId
+}
 
 const CANVAS_W = 1280
 const CANVAS_H = 720
@@ -215,9 +227,9 @@ export function StoryPlayerPage() {
   )
   const [generatingEnvironment, setGeneratingEnvironment] = useState(false)
   const [environmentError, setEnvironmentError] = useState('')
-  const [generatedEnvironments, setGeneratedEnvironments] = useState<
-    Array<{ name: string; imageUrl: string }>
-  >([])
+  const [generatedEnvironments, setGeneratedEnvironments] = useState<SessionEnvironment[]>([])
+  const [artStyle, setArtStyle] = useState<StoryArtStyleId>(() => loadStoryArtStyle())
+  const [generatedSceneStyleId, setGeneratedSceneStyleId] = useState<StoryArtStyleId | null>(null)
   const [characterName, setCharacterName] = useState('Julien')
   const [characterDescription, setCharacterDescription] = useState(
     '8-year-old boy, round glasses, short brown hair, red t-shirt, blue jeans, friendly smile',
@@ -304,6 +316,7 @@ export function StoryPlayerPage() {
     name: string
     description?: string
     imageUrl: string
+    styleId?: StoryArtStyleId
     key: string
   }) => {
     setSavingId(input.key)
@@ -314,6 +327,7 @@ export function StoryPlayerPage() {
         description: input.description,
         imageUrl: input.imageUrl,
         tags: parseTagsInput(saveTagsInput),
+        styleId: input.styleId ?? artStyle,
       })
       setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
     } catch (err) {
@@ -502,9 +516,9 @@ export function StoryPlayerPage() {
     setGeneratingCharacter(true)
     setCharacterError('')
     try {
-      const result = await api.story.generateCharacter(name, description)
+      const result = await api.story.generateCharacter(name, description, artStyle)
       setGeneratedCharacters((prev) =>
-        [{ name, imageUrl: result.imageUrl, description }, ...prev].slice(0, 12),
+        [{ name, imageUrl: result.imageUrl, description, styleId: result.styleId as StoryArtStyleId }, ...prev].slice(0, 12),
       )
       setActiveTab('bibliothek')
       setWorkflowStep('assets')
@@ -525,8 +539,10 @@ export function StoryPlayerPage() {
     setGeneratingEnvironment(true)
     setEnvironmentError('')
     try {
-      const result = await api.story.generateEnvironment(name, description)
-      setGeneratedEnvironments((prev) => [{ name, imageUrl: result.imageUrl }, ...prev].slice(0, 8))
+      const result = await api.story.generateEnvironment(name, description, artStyle)
+      setGeneratedEnvironments((prev) =>
+        [{ name, imageUrl: result.imageUrl, styleId: result.styleId as StoryArtStyleId }, ...prev].slice(0, 8),
+      )
       setActiveEnvironmentUrl(result.imageUrl)
       setActiveTab('bibliothek')
       setWorkflowStep('assets')
@@ -556,6 +572,13 @@ export function StoryPlayerPage() {
       </header>
 
       <StoryWorkflowNav active={workflowStep} onStep={handleWorkflowStep} />
+
+      <div className="story-style-bar">
+        <StoryStylePicker value={artStyle} onChange={setArtStyle} />
+        <p className="muted story-style-bar-note">
+          Gilt für alle KI-Generierungen. Bibliothek wiederverwenden = kein neuer Stil-Lauf nötig.
+        </p>
+      </div>
 
       <div className="story-tabs" role="tablist">
         {([
@@ -784,7 +807,7 @@ export function StoryPlayerPage() {
                             key: `session-char-${idx}`,
                             name: item.name,
                             imageUrl: item.imageUrl,
-                            subtitle: 'Gerade erzeugt',
+                            subtitle: `Gerade erzeugt · ${storyStyleLabel(item.styleId) ?? artStyle}`,
                           }}
                           onPlaceLeft={() =>
                             handlePlaceCharacter('left', {
@@ -804,6 +827,7 @@ export function StoryPlayerPage() {
                               name: item.name,
                               description: item.description ?? characterDescription,
                               imageUrl: item.imageUrl,
+                              styleId: item.styleId,
                               key: `session-char-${idx}`,
                             })
                           }
@@ -820,7 +844,12 @@ export function StoryPlayerPage() {
                       {generatedEnvironments.map((item, idx) => (
                         <StoryEnvironmentCard
                           key={`session-env-${item.imageUrl}`}
-                          item={{ key: `session-env-${idx}`, name: item.name, imageUrl: item.imageUrl }}
+                          item={{
+                            key: `session-env-${idx}`,
+                            name: item.name,
+                            imageUrl: item.imageUrl,
+                            tags: item.styleId ? [storyStyleLabel(item.styleId)!] : undefined,
+                          }}
                           onUse={() => {
                             setActiveEnvironmentUrl(item.imageUrl)
                             setActiveTab('szene')
@@ -831,6 +860,7 @@ export function StoryPlayerPage() {
                               name: item.name,
                               description: environmentDescription,
                               imageUrl: item.imageUrl,
+                              styleId: item.styleId,
                               key: `session-env-${idx}`,
                             })
                           }
@@ -877,7 +907,17 @@ export function StoryPlayerPage() {
                       {libraryEnvironments.map((item) => (
                         <StoryEnvironmentCard
                           key={item.id}
-                          item={{ key: item.id, name: item.name, imageUrl: item.imageUrl, tags: item.tags }}
+                          item={{
+                            key: item.id,
+                            name: item.name,
+                            imageUrl: item.imageUrl,
+                            tags: [
+                              ...item.tags,
+                              ...(item.styleId && storyStyleLabel(item.styleId)
+                                ? [storyStyleLabel(item.styleId)!]
+                                : []),
+                            ],
+                          }}
                           onUse={() => {
                             setActiveEnvironmentUrl(item.imageUrl)
                             setActiveTab('szene')
@@ -895,7 +935,17 @@ export function StoryPlayerPage() {
                       {libraryCharacters.map((item) => (
                         <StoryCharacterCard
                           key={item.id}
-                          item={{ key: item.id, name: item.name, imageUrl: item.imageUrl, tags: item.tags }}
+                          item={{
+                            key: item.id,
+                            name: item.name,
+                            imageUrl: item.imageUrl,
+                            tags: [
+                              ...item.tags,
+                              ...(item.styleId && storyStyleLabel(item.styleId)
+                                ? [storyStyleLabel(item.styleId)!]
+                                : []),
+                            ],
+                          }}
                           onPlaceLeft={() =>
                             handlePlaceCharacter('left', {
                               imageUrl: item.imageUrl,
@@ -1017,8 +1067,9 @@ export function StoryPlayerPage() {
                   setGenerating(true)
                   setGenError('')
                   try {
-                    const result = await api.story.generateScene(desc)
+                    const result = await api.story.generateScene(desc, artStyle)
                     setGeneratedImage(result.imageUrl)
+                    setGeneratedSceneStyleId(result.styleId as StoryArtStyleId)
                     setActiveEnvironmentUrl(result.imageUrl)
                     setActiveTab('bibliothek')
                   } catch (err) {
@@ -1035,6 +1086,11 @@ export function StoryPlayerPage() {
             {generatedImage && (
               <div className="story-generated-preview">
                 <img src={generatedImage} alt="Generierte Szene" />
+                {generatedSceneStyleId && (
+                  <p className="muted story-card-subtitle">
+                    Stil: {storyStyleLabel(generatedSceneStyleId)}
+                  </p>
+                )}
                 <div className="story-character-card-actions">
                   <button
                     type="button"
@@ -1055,6 +1111,7 @@ export function StoryPlayerPage() {
                         type: 'scene',
                         name: 'Generierte Szene',
                         imageUrl: generatedImage,
+                        styleId: generatedSceneStyleId ?? artStyle,
                         key: 'scene-preview',
                       })
                     }

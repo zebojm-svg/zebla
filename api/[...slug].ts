@@ -89,6 +89,10 @@ import {
   type StoryAssetType,
 } from '../lib/story-library.js'
 import { SCENE_PRESETS } from '../shared/scene-presets.js'
+import {
+  STORY_ART_STYLES,
+  isStoryArtStyleId,
+} from '../shared/story-art-styles.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -991,38 +995,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // --- Story Asset Generation ---
+    if (route === 'story-art-styles' && req.method === 'GET') {
+      await requireAuth(req)
+      res.json({ styles: STORY_ART_STYLES, defaultStyleId: 'petit-nicolas' })
+      return
+    }
+
     if (route === 'story-generate-scene' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { description } = req.body as { description?: string }
+      const { description, styleId } = req.body as {
+        description?: string
+        styleId?: string
+      }
       if (!description?.trim()) {
         res.status(400).json({ error: 'Szenenbeschreibung fehlt.' })
         return
       }
-      const result = await generateStoryScene(description.trim())
+      const style = isStoryArtStyleId(styleId ?? '') ? styleId : undefined
+      const result = await generateStoryScene(description.trim(), '16:9', style)
       res.json(result)
       return
     }
 
     if (route === 'story-generate-character' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { description, name } = req.body as { description?: string; name?: string }
+      const { description, name, styleId } = req.body as {
+        description?: string
+        name?: string
+        styleId?: string
+      }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
-      const result = await generateStoryCharacter(description.trim(), name.trim())
+      const style = isStoryArtStyleId(styleId ?? '') ? styleId : undefined
+      const result = await generateStoryCharacter(description.trim(), name.trim(), style)
       res.json(result)
       return
     }
 
     if (route === 'story-generate-environment' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { description, name } = req.body as { description?: string; name?: string }
+      const { description, name, styleId } = req.body as {
+        description?: string
+        name?: string
+        styleId?: string
+      }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
-      const result = await generateStoryEnvironment(description.trim(), name.trim())
+      const style = isStoryArtStyleId(styleId ?? '') ? styleId : undefined
+      const result = await generateStoryEnvironment(description.trim(), name.trim(), style)
       res.json(result)
       return
     }
@@ -1038,12 +1062,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { type, name, description, imageUrl, tags } = req.body as {
+      const { type, name, description, imageUrl, tags, styleId } = req.body as {
         type?: StoryAssetType
         name?: string
         description?: string
         imageUrl?: string
         tags?: string[]
+        styleId?: string
       }
       if (!type || !name?.trim() || !imageUrl?.trim()) {
         res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
@@ -1059,6 +1084,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         description: description?.trim(),
         imageUrl: imageUrl.trim(),
         tags: Array.isArray(tags) ? tags : [],
+        styleId: isStoryArtStyleId(styleId ?? '') ? styleId : undefined,
       })
       res.json({ asset })
       return

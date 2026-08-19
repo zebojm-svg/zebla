@@ -1953,8 +1953,44 @@ html[dir='rtl'] .slideshow-topbar {
   flex-shrink: 0;
 }
 
-.story-page-header {
-  margin-bottom: 1rem;
+.story-style-bar {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.25);
+}
+
+@media (min-width: 720px) {
+  .story-style-bar {
+    grid-template-columns: minmax(220px, 320px) 1fr;
+    align-items: start;
+    gap: 1rem;
+  }
+}
+
+.story-style-picker-label {
+  display: block;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 0.35rem;
+}
+
+.story-style-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
+.story-style-bar-note {
+  margin: 0;
+  font-size: 0.85rem;
+  align-self: center;
+}
+
+.story-style-picker-compact .story-style-hint {
+  display: none;
 }
 
 .story-page-header h2 {

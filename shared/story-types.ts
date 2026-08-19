@@ -10,6 +10,8 @@ export interface StoryLibraryAsset {
   description?: string
   imageUrl: string
   tags: string[]
+  /** Bildstil bei KI-Generierung */
+  styleId?: string
   createdAt: string
 }
 
