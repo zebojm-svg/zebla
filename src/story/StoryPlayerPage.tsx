@@ -807,7 +807,7 @@ export function StoryPlayerPage() {
                 <strong>Figuren platzieren</strong> — Julien «Als links» / «Als rechts»
               </li>
               <li>
-                <strong>Pose anpassen</strong> — unten: Sofa, Sprechpartner anschauen
+                <strong>Pose anpassen</strong> — ziehen, Mausrad, Shift+Drehen, Regler; für Sitzen: «Sitzen (Beine vorne)» erzeugen
               </li>
             </ol>
           </section>
