@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { keyOutLightBackground } from './image-key-out'
 
 export interface LayerImage {
   id: string
@@ -16,6 +17,8 @@ export interface LayerImage {
   rotationAnchor?: { x: number; y: number }
   /** CSS filter hue-rotate in degrees (Einzelteile einfärben) */
   hueRotate?: number
+  /** Weißen/hellen KI-Hintergrund beim Zeichnen entfernen */
+  keyOutWhite?: boolean
 }
 
 export interface LayerAnimation {
@@ -53,7 +56,7 @@ interface AnimState {
 
 export function CompositeCanvas({ width, height, layers, animations = [], className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [images, setImages] = useState<Map<string, HTMLImageElement>>(new Map())
+  const [images, setImages] = useState<Map<string, CanvasImageSource>>(new Map())
   const animRef = useRef<AnimState>({
     offsets: new Map(),
     blinkTimers: new Map(),
@@ -63,17 +66,31 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
 
   // Load images
   useEffect(() => {
-    const toLoad = layers.filter((l) => !images.has(l.src))
+    const toLoad = layers.filter((l) => {
+      const cacheKey = l.keyOutWhite ? `key:${l.src}` : l.src
+      return !images.has(cacheKey)
+    })
     if (toLoad.length === 0) return
 
     let cancelled = false
     Promise.all(
       toLoad.map(
         (l) =>
-          new Promise<[string, HTMLImageElement]>((resolve) => {
+          new Promise<[string, CanvasImageSource]>((resolve) => {
+            const cacheKey = l.keyOutWhite ? `key:${l.src}` : l.src
             const img = new Image()
-            img.onload = () => resolve([l.src, img])
-            img.onerror = () => resolve([l.src, img])
+            img.crossOrigin = 'anonymous'
+            img.onload = () => {
+              if (l.keyOutWhite && img.naturalWidth > 0) {
+                resolve([
+                  cacheKey,
+                  keyOutLightBackground(img, img.naturalWidth, img.naturalHeight),
+                ])
+              } else {
+                resolve([cacheKey, img])
+              }
+            }
+            img.onerror = () => resolve([cacheKey, img])
             img.src = l.src
           }),
       ),
@@ -81,7 +98,7 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
       if (cancelled) return
       setImages((prev) => {
         const next = new Map(prev)
-        for (const [src, img] of loaded) next.set(src, img)
+        for (const [key, img] of loaded) next.set(key, img)
         return next
       })
     })
@@ -169,8 +186,10 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
     const sorted = [...layers].sort((a, b) => a.zIndex - b.zIndex)
 
     for (const layer of sorted) {
-      const img = images.get(layer.src)
-      if (!img || !img.complete || img.naturalWidth === 0) continue
+      const cacheKey = layer.keyOutWhite ? `key:${layer.src}` : layer.src
+      const img = images.get(cacheKey)
+      if (!img) continue
+      if (img instanceof HTMLImageElement && (!img.complete || img.naturalWidth === 0)) continue
 
       const offset = state.offsets.get(layer.id)
       const dx = offset?.dx ?? 0

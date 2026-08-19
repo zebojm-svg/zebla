@@ -8,7 +8,11 @@ import { StoryWorkflowNav, type StoryWorkflowStep } from './StoryWorkflowNav'
 import {
   placeInCast,
   updateCastName,
+  updateCastPose,
+  updateCastLookAt,
+  getCastLayerLayout,
   type SceneCast,
+  type CastPose,
 } from './story-cast'
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
 import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
@@ -275,9 +279,24 @@ export function StoryPlayerPage() {
 
   const handlePlaceCharacter = (
     slot: 'left' | 'right',
-    input: { imageUrl: string; assetName: string; libraryAssetId?: string; displayName?: string },
+    input: {
+      imageUrl: string
+      assetName: string
+      libraryAssetId?: string
+      displayName?: string
+      pose?: CastPose
+    },
   ) => {
-    setCast((prev) => placeInCast(prev, slot, input))
+    setCast((prev) => {
+      let next = placeInCast(prev, slot, input)
+      if (next.left && next.right) {
+        next = {
+          left: { ...next.left, lookAtPartner: true },
+          right: { ...next.right, lookAtPartner: true },
+        }
+      }
+      return next
+    })
     setActiveTab('szene')
     setWorkflowStep('scene')
   }
@@ -442,15 +461,23 @@ export function StoryPlayerPage() {
       const placement = scene.characters[i]
       const castMember = i === 0 ? cast.left : i === 1 ? cast.right : null
       if (castMember) {
+        const layout = getCastLayerLayout(
+          castMember.slot,
+          castMember.pose,
+          CANVAS_W,
+          CANVAS_H,
+          castMember.lookAtPartner,
+        )
         result.push({
           id: `char-${castMember.slot}-generated`,
           src: castMember.imageUrl,
-          x: (placement.position.x / 100) * CANVAS_W - 110,
-          y: (placement.position.y / 100) * CANVAS_H - 290,
-          width: 220,
-          height: 300,
-          zIndex: 20 + i,
-          flip: i === 1 ? placement.flip : undefined,
+          x: layout.x,
+          y: layout.y,
+          width: layout.width,
+          height: layout.height,
+          zIndex: layout.zIndex,
+          flip: layout.flip,
+          keyOutWhite: true,
         })
         continue
       }
@@ -648,8 +675,8 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel">
             <h3>Besetzung dieser Szene</h3>
             <p className="muted">
-              Jede Figur braucht einen <strong>Sprecher-Namen</strong> — unabhängig vom Bibliotheksnamen.
-              So weiss das Tool, wer spricht und wer geht.
+              Jede Figur braucht einen <strong>Sprecher-Namen</strong>. Der weisse KI-Hintergrund wird automatisch
+              entfernt — wähle «Auf Sofa sitzen» und «Sprechpartner anschauen» für natürliche Szenen.
             </p>
             <div className="story-cast-grid">
               {(['left', 'right'] as const).map((slot) => {
@@ -669,6 +696,33 @@ export function StoryPlayerPage() {
                             value={member.displayName}
                             onChange={(e) => setCast((prev) => updateCastName(prev, slot, e.target.value))}
                           />
+                        </label>
+                        <label className="story-cast-name-label">
+                          Pose
+                          <select
+                            className="input"
+                            value={member.pose}
+                            onChange={(e) =>
+                              setCast((prev) =>
+                                updateCastPose(prev, slot, e.target.value as CastPose),
+                              )
+                            }
+                          >
+                            <option value="sitting-sofa">Auf Sofa sitzen</option>
+                            <option value="standing">Stehen</option>
+                          </select>
+                        </label>
+                        <label className="story-cast-look-at">
+                          <input
+                            type="checkbox"
+                            checked={member.lookAtPartner}
+                            onChange={(e) =>
+                              setCast((prev) =>
+                                updateCastLookAt(prev, slot, e.target.checked),
+                              )
+                            }
+                          />
+                          Sprechpartner anschauen
                         </label>
                         <p className="muted story-card-subtitle">Bibliothek: {member.assetName}</p>
                         <button

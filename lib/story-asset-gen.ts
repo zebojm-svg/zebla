@@ -1,4 +1,5 @@
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
+import { removeLightBackground } from './story-image-processing.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -92,10 +93,19 @@ export async function generateStoryCharacter(
   description: string,
   name: string,
   styleId?: StoryArtStyleId,
+  pose: 'standing' | 'sitting' = 'standing',
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const prompt = `${style}\n\nSingle character on TRANSPARENT/WHITE background, full body, front-facing pose, standing naturally:\n${description}\nCharacter name: ${name}\nIMPORTANT: Only this ONE character, no background scene, no other people.`
+  const poseLine =
+    pose === 'sitting'
+      ? 'sitting on a chair or sofa, relaxed natural posture, legs visible or bent naturally'
+      : 'standing naturally, full body visible'
+  const prompt =
+    `${style}\n\n` +
+    `Single character cutout on pure flat solid white #FFFFFF background only, no floor line, no shadow on background, ` +
+    `${poseLine}, front view:\n${description}\nCharacter name: ${name}\n` +
+    `IMPORTANT: Only this ONE character, no room, no furniture, no other people, no gradient background.`
 
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
@@ -122,8 +132,12 @@ export async function generateStoryCharacter(
   }
 
   const buffer2 = Buffer.from(imgPart2.inlineData.data, 'base64')
+  const cutout = await removeLightBackground(buffer2)
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const imageUrl2 = await uploadStoryAsset(buffer2, `story-characters/${name.toLowerCase().replace(/\s+/g, '-')}-${unique2}.png`)
+  const imageUrl2 = await uploadStoryAsset(
+    cutout,
+    `story-characters/${name.toLowerCase().replace(/\s+/g, '-')}-${unique2}.png`,
+  )
 
   return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id }
 }

@@ -2118,6 +2118,15 @@ html[dir='rtl'] .slideshow-topbar {
   margin-bottom: 0.5rem;
 }
 
+.story-cast-look-at {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  margin-bottom: 0.5rem;
+}
+
 .story-card-subtitle {
   font-size: 0.8rem;
   margin: 0.25rem 0 0.5rem;
