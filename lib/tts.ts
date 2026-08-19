@@ -170,7 +170,7 @@ async function callGeminiSynthesize(
       : resolveGeminiVoiceName(gender, speakerIndex)
   const styleHint = voiceStylePrompt?.trim()
   const basePrompt =
-    'Speak like a real person in a children's picture story, not a newsreader. ' +
+    "Speak like a real person in a children's picture story, not a newsreader. " +
     'Lively, natural intonation: questions go up, jokes and surprise have energy, ' +
     'short lines feel spoken not recited. Clear enough for language learners.'
   const prompt = styleHint ? `${basePrompt} Voice character: ${styleHint}.` : basePrompt
