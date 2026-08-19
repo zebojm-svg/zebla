@@ -1,5 +1,13 @@
-function bufferToDataUrl(buffer: Buffer, mime: string): string {
-  return `data:${mime};base64,${buffer.toString('base64')}`
+import { adminStorage } from './firebase-admin.js'
+
+async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
+  const bucket = adminStorage().bucket()
+  const file = bucket.file(assetPath)
+  await file.save(buffer, {
+    metadata: { contentType: 'image/png', cacheControl: 'public, max-age=86400' },
+  })
+  await file.makePublic()
+  return `https://storage.googleapis.com/${bucket.name}/${assetPath}`
 }
 
 function requireGeminiKey(): string {
@@ -58,17 +66,23 @@ export async function generateStoryScene(
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }
     }>
+    error?: { message?: string }
+  }
+
+  if (data.error?.message) {
+    throw new Error(`Gemini: ${data.error.message}`)
   }
 
   const parts = data.candidates?.[0]?.content?.parts ?? []
   const imgPart = parts.find((p) => p.inlineData?.data)
   if (!imgPart?.inlineData) {
     const textPart = parts.find((p) => p.text)
-    throw new Error(textPart?.text ?? 'Kein Bild generiert.')
+    throw new Error(textPart?.text ?? `Kein Bild generiert. Model: ${IMAGE_MODEL}`)
   }
 
   const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
-  const imageUrl = bufferToDataUrl(buffer, 'image/png')
+  const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const imageUrl = await uploadStoryAsset(buffer, `story-scenes/${unique}.png`)
 
   return { imageUrl, prompt }
 }
@@ -97,17 +111,18 @@ export async function generateStoryCharacter(
     }>
   }
 
-  const parts = data.candidates?.[0]?.content?.parts ?? []
-  const imgPart = parts.find((p) => p.inlineData?.data)
-  if (!imgPart?.inlineData) {
-    const textPart = parts.find((p) => p.text)
+  const parts2 = data.candidates?.[0]?.content?.parts ?? []
+  const imgPart2 = parts2.find((p) => p.inlineData?.data)
+  if (!imgPart2?.inlineData) {
+    const textPart = parts2.find((p) => p.text)
     throw new Error(textPart?.text ?? 'Kein Bild generiert.')
   }
 
-  const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
-  const imageUrl = bufferToDataUrl(buffer, 'image/png')
+  const buffer2 = Buffer.from(imgPart2.inlineData.data, 'base64')
+  const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const imageUrl2 = await uploadStoryAsset(buffer2, `story-characters/${name.toLowerCase().replace(/\s+/g, '-')}-${unique2}.png`)
 
-  return { imageUrl, prompt }
+  return { imageUrl: imageUrl2, prompt }
 }
 
 export async function generateStoryEnvironment(
@@ -134,15 +149,16 @@ export async function generateStoryEnvironment(
     }>
   }
 
-  const parts = data.candidates?.[0]?.content?.parts ?? []
-  const imgPart = parts.find((p) => p.inlineData?.data)
-  if (!imgPart?.inlineData) {
-    const textPart = parts.find((p) => p.text)
+  const parts3 = data.candidates?.[0]?.content?.parts ?? []
+  const imgPart3 = parts3.find((p) => p.inlineData?.data)
+  if (!imgPart3?.inlineData) {
+    const textPart = parts3.find((p) => p.text)
     throw new Error(textPart?.text ?? 'Kein Bild generiert.')
   }
 
-  const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
-  const imageUrl = bufferToDataUrl(buffer, 'image/png')
+  const buffer3 = Buffer.from(imgPart3.inlineData.data, 'base64')
+  const unique3 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const imageUrl3 = await uploadStoryAsset(buffer3, `story-environments/${name.toLowerCase().replace(/\s+/g, '-')}-${unique3}.png`)
 
-  return { imageUrl, prompt }
+  return { imageUrl: imageUrl3, prompt }
 }
