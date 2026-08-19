@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CompositeCanvas, type LayerImage, type LayerAnimation } from './CompositeCanvas'
+import { api } from '../api/client'
 import type { CharacterAsset, EnvironmentAsset, Scene } from '../../shared/story-types'
 
 const CANVAS_W = 1280
@@ -339,14 +340,8 @@ export function StoryPlayerPage() {
               setGenerating(true)
               setGenError('')
               try {
-                const res = await fetch('/api/story/generate-scene', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ description: desc }),
-                })
-                const data = await res.json() as { imageUrl?: string; error?: string }
-                if (data.error) throw new Error(data.error)
-                if (data.imageUrl) setGeneratedImage(data.imageUrl)
+                const result = await api.story.generateScene(desc)
+                setGeneratedImage(result.imageUrl)
               } catch (err) {
                 setGenError(err instanceof Error ? err.message : 'Fehler')
               } finally {

@@ -404,4 +404,21 @@ export const api = {
         body: JSON.stringify({ dialogId, sectionId, fromBeat, toBeat }),
       }),
   },
+  story: {
+    generateScene: (description: string) =>
+      request<{ imageUrl: string; prompt: string }>('/story/generate-scene', {
+        method: 'POST',
+        body: JSON.stringify({ description }),
+      }),
+    generateCharacter: (name: string, description: string) =>
+      request<{ imageUrl: string; prompt: string }>('/story/generate-character', {
+        method: 'POST',
+        body: JSON.stringify({ name, description }),
+      }),
+    generateEnvironment: (name: string, description: string) =>
+      request<{ imageUrl: string; prompt: string }>('/story/generate-environment', {
+        method: 'POST',
+        body: JSON.stringify({ name, description }),
+      }),
+  },
 }
