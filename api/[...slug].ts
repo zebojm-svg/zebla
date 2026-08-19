@@ -77,8 +77,11 @@ import { exportDialogAudioZip } from '../lib/dialog-audio-export.js'
 import { downloadLineAudio } from '../lib/audio-storage.js'
 import { findLineInDialog } from '../lib/dialog-audio.js'
 import { downloadImageByUrl } from '../lib/image-storage.js'
-// Lazy import to prevent cold-start crash if story-asset-gen has issues
-const storyGen = () => import('../lib/story-asset-gen.js')
+import {
+  generateStoryScene,
+  generateStoryCharacter,
+  generateStoryEnvironment,
+} from '../lib/story-asset-gen.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -988,7 +991,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'Szenenbeschreibung fehlt.' })
         return
       }
-      const { generateStoryScene } = await storyGen()
       const result = await generateStoryScene(description.trim())
       res.json(result)
       return
@@ -1001,7 +1003,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
-      const { generateStoryCharacter } = await storyGen()
       const result = await generateStoryCharacter(description.trim(), name.trim())
       res.json(result)
       return
@@ -1014,7 +1015,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
-      const { generateStoryEnvironment } = await storyGen()
       const result = await generateStoryEnvironment(description.trim(), name.trim())
       res.json(result)
       return
