@@ -1,6 +1,5 @@
-import { adminStorage } from './firebase-admin.js'
-
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
+  const { adminStorage } = await import('./firebase-admin.js')
   const bucket = adminStorage().bucket()
   const file = bucket.file(assetPath)
   await file.save(buffer, {
