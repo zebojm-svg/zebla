@@ -1,130 +1,301 @@
-# ZeboStories — Konzept & Architektur
+# ZeboStories — Konzept & Architektur (v2)
 
-## Kernidee
+## Vision
 
-On-Demand wachsende Asset-Bibliothek. Jede Figur und jedes Umfeld wird **einmal** per KI generiert
-und danach unbegrenzt wiederverwendet — ohne neue Rechenkosten.
+Zebla wird erweitert: neben Sprachdialogen auch **animierte Bildergeschichten** mit
+wiederverwendbaren Figuren, Props und Umfeldern. Alles compositing-basiert — KI-Kosten
+fallen nur beim ersten Erstellen eines Assets an, nie beim Abspielen.
 
-## Asset-Typen
+---
 
-### 1. Charakter (Figur)
+## Zwei Modi im selben Tool
 
-Ein Charakter besteht aus **Ebenen** (Layers), nicht aus einem flachen Bild:
+| Modus | Beschreibung |
+|-------|-------------|
+| **Dialog** | 2+ Figuren reden abwechselnd, Birkenbihl-Übersetzung, TTS |
+| **Story** | Timeline mit Szenen, stille Momente, Wetter, Figuren bewegen sich |
+
+Beide teilen dieselbe Asset-Bibliothek und denselben Compositing-Engine.
+
+---
+
+## Asset-Hierarchie (skalierbar auf 1000+ Elemente)
+
+### Prinzip: Tags + Presets + Einzelteile
 
 ```
-character/
-├── meta.yaml           # Name, Beschreibung, Stil, Erstellungsdatum
-├── body/
-│   ├── front.png       # Ganzkörper frontal (freigestellt, transparent)
-│   ├── side.png        # Seitenansicht
-│   └── back.png        # Rückenansicht
-├── head/
-│   ├── neutral.png
-│   ├── happy.png
-│   ├── sad.png
-│   ├── surprised.png
-│   └── angry.png
-├── arms/
+Asset-Typen:
+┌─────────────────────────────────────────────────────────┐
+│  Szenen-Preset   (= vorgefertigte Kombination)          │
+│    "Gedeckter Tisch" = Tisch + 4 Teller + 4 Gläser     │
+│    "Schwimmbad"      = Becken + Liegestühle + Schirme   │
+├─────────────────────────────────────────────────────────┤
+│  Umfeld (Environment)                                   │
+│    Hintergrund + Vordergrund + Zonen + Masken           │
+├─────────────────────────────────────────────────────────┤
+│  Charakter (Character)                                  │
+│    Körper-Ebenen + Kopf + Arme + Beine + Mimik          │
+├─────────────────────────────────────────────────────────┤
+│  Props (Einzelobjekte)                                  │
+│    Teller, Stuhl, Regenschirm, Ball, Buch, Lampe…       │
+├─────────────────────────────────────────────────────────┤
+│  Effekte (Overlays)                                     │
+│    Regen, Schnee, Nebel, Sonnenstrahlen, Nacht          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Warum Tags statt nur Ordner?
+
+Bei 1000 Elementen findet man nichts mehr in Ordnern allein.
+Jedes Asset bekommt **Tags**, die Suche und Filter ermöglichen:
+
+```yaml
+# Beispiel: ein Teller
+id: prop-teller-blau
+name: "Blauer Teller"
+type: prop
+tags: [geschirr, küche, essen, blau, rund]
+style: comic
+size: { w: 80, h: 80 }
+anchor: { x: 40, y: 40 }  # Mittelpunkt für Platzierung
+stackable: true             # darf mehrfach in Szene
+```
+
+### Suche im Editor:
+
+```
+Nutzer tippt: "teller"
+→ Zeigt: Blauer Teller, Weißer Teller, Suppenteller, Teller mit Essen…
+
+Nutzer tippt: "küche möbel"
+→ Zeigt: Tisch, Stuhl, Kühlschrank, Herd, Regal…
+
+Nutzer tippt: "schwimmbad"
+→ Zeigt: Szenen-Preset "Schwimmbad" + Einzelteile (Becken, Liegestuhl, Handtuch…)
+```
+
+---
+
+## Charakter-Aufbau (Layer-System)
+
+Jede Figur = zusammengesetztes Puppet aus Ebenen:
+
+```
+Character "Thomas":
+├── body/           # Torso (verschiedene Kleidungen möglich)
+├── head/           # Kopfformen + Frisuren
+│   ├── expressions/    # Mimik: neutral, happy, sad, angry, surprised…
+│   └── mouth/          # Mundformen für Lipsync (A, O, E, closed, smile)
+├── arms/           # Armpositionen
 │   ├── resting.png
 │   ├── gesturing.png
-│   ├── pointing.png
-│   └── crossed.png
-├── legs/
+│   ├── holding-left.png   # hält etwas in der Hand
+│   └── swimming.png
+├── legs/           # Beinpositionen
 │   ├── standing.png
 │   ├── sitting.png
-│   ├── walking-1.png
-│   ├── walking-2.png
-│   └── swimming.png   # nur Oberkörper sichtbar
-└── animations/
-    ├── blink.json      # Timing + Frame-Referenzen
-    ├── talk.json       # Mund-Frames für Lipsync
-    └── hair-wind.json  # Haar-Overlay-Frames
+│   ├── walking/    # 4-6 Walk-Cycle-Frames
+│   └── hidden.png  # für "im Wasser" (leer)
+└── accessories/    # Optional: Brille, Hut, Tasche…
 ```
 
-### 2. Umfeld (Environment)
-
-```
-environment/
-├── meta.yaml           # Name, Kategorie, Lichtrichtung, Perspektive
-├── background.png      # Haupthintergrund (z.B. 1920×1080)
-├── foreground.png      # Vordergrund-Elemente (optional, z.B. Tischkante)
-├── zones.json          # Wo dürfen Figuren platziert werden?
-│                       # [{ id: "couch", x: 200, y: 400, scale: 0.8, pose: "sitzen" }]
-└── masks/
-    └── water.png       # Maske: was verdeckt wird (z.B. Wasser ab Hüfte)
-```
-
-### 3. Pose
-
-Wiederverwendbare Körperstellung — nicht figurenspezifisch, sondern übertragbar:
+### Posen als Rezepte (nicht neue Bilder):
 
 ```yaml
-# poses/sitzen/meta.yaml
-name: sitzen
-armPosition: resting
-legPosition: sitting
-torsoAngle: 0
-description: "Figur sitzt aufrecht"
-compatibleZones: [couch, chair, bench, ground]
+# pose: "am-tisch-sitzen"
+body: front
+head: neutral         # überschreibbar durch Szene
+arms: resting
+legs: sitting
+position: zone.chair  # an die Stuhl-Zone im Umfeld andocken
 ```
 
-### 4. Animation
+---
 
-Sprite-basiert, kein Video:
+## Szenen-Presets (Übersichtlichkeit bei vielen Elementen)
+
+Ein Preset = fertige Bühne, die der Nutzer in 1 Klick laden und dann anpassen kann:
 
 ```yaml
-# animations/blinzeln/meta.yaml
-name: blinzeln
-fps: 12
-loop: true
-interval: [3000, 6000]  # ms zwischen Blinzlern (zufällig)
-frames:
-  - eyes-open.png       # 1 Frame
-  - eyes-half.png       # 1 Frame
-  - eyes-closed.png     # 2 Frames
-  - eyes-half.png       # 1 Frame
-  - eyes-open.png       # zurück
+# presets/abendessen.yaml
+name: "Abendessen am Küchentisch"
+environment: drinnen/küche
+props:
+  - id: tisch-gross
+    position: { x: 50, y: 65 }
+  - id: stuhl
+    position: { x: 30, y: 70 }
+    repeat: 4
+    spacing: 15
+  - id: teller-weiss
+    position: { x: 30, y: 60 }
+    repeat: 4
+    spacing: 15
+  - id: glas
+    position: { x: 33, y: 58 }
+    repeat: 4
+    spacing: 15
+zones:
+  - id: seat-1
+    position: { x: 30, y: 68 }
+    pose: sitzen
+  - id: seat-2
+    position: { x: 45, y: 68 }
+    pose: sitzen
+  - id: seat-3
+    position: { x: 60, y: 68 }
+    pose: sitzen
+  - id: seat-4
+    position: { x: 75, y: 68 }
+    pose: sitzen
 ```
 
-## Compositing-Pipeline (pro Szene, 0 KI-Kosten)
+Nutzer wählt "Abendessen" → alles ist da. Will er 6 Teller? Zieht Props dazu.
+
+---
+
+## Timeline & stille Momente
+
+Nicht jede Szene hat sofort Dialog. Eine Story hat eine Timeline:
+
+```yaml
+timeline:
+  - at: 0s
+    action: dialog
+    speaker: kevin
+    text: "Ich gehe mal kurz ans Fenster."
+
+  - at: 2s
+    action: animate
+    target: kevin
+    animation: walk
+    to: zone.fenster
+    duration: 3s
+
+  - at: 5s
+    action: pose-change
+    target: kevin
+    pose: stehen-am-fenster
+    expression: nachdenklich
+
+  - at: 6s
+    action: effect
+    type: regen
+    intensity: light
+    fade-in: 2s
+
+  - at: 8s
+    action: dialog
+    speaker: kevin
+    text: "Es fängt an zu regnen…"
+    expression: überrascht
+
+  - at: 10s
+    action: environment-transition
+    from: drinnen/wohnzimmer
+    to: drinnen/wohnzimmer-dunkel
+    duration: 3s
+```
+
+### KI-Vorschlag-System:
+
+Nutzer gibt Dialogtext ein → KI analysiert und schlägt Timeline vor:
 
 ```
-1. Hintergrund laden (environment/background.png)
-2. Für jede Figur in der Szene:
-   a. Körper-Layer gemäß Pose zusammensetzen
-   b. Kopf/Ausdruck wählen
-   c. Arm-Position wählen
-   d. An Zone platzieren (position, scale aus zones.json)
-   e. Maske anwenden (z.B. Wasser verdeckt Beine)
-3. Vordergrund-Layer darüber
-4. Animation-Loops starten (Blinzeln, Mund, Haare)
+Input:  "Kevin steht auf und geht zum Fenster. Es fängt an zu regnen."
+
+KI-Vorschlag:
+  1. kevin: animation walk → zone.fenster (3s)
+  2. kevin: pose stehen-am-fenster, expression nachdenklich
+  3. effect: regen, light, fade-in 2s
+  4. [optional] hintergrund abdunkeln
+
+Nutzer: ✓ Annehmen / ✏️ Anpassen / ✗ Verwerfen
 ```
 
-## On-Demand-Generierung (nur wenn Asset fehlt)
+---
 
-Wenn der Nutzer z.B. „einen Astronauten" braucht:
+## Skalierbarkeit: Wie bleibt es übersichtlich bei 1000+ Assets?
 
-1. Prompt generieren (aus Stil-Template + Beschreibung)
-2. Bild-KI generiert: Ganzkörper, freigestellt
-3. KI zerlegt in Ebenen (Kopf, Arme, Beine) oder: wir generieren jede Ebene separat
-4. Verschiedene Gesichtsausdrücke generieren (Inpainting nur Gesicht = billig)
-5. Asset in Bibliothek speichern
-6. Ab jetzt: 0 Kosten für diese Figur
+### 1. Intelligente Suche (nicht nur Ordner)
 
-**Kosten pro neue Figur**: ~8–12 Bild-Generierungen × ~3–5 Cent = 30–60 Cent
+```
+Suche: fuzzy-match auf Name + Tags + Beschreibung
+Filter: Typ (character/prop/environment/effect), Stil, Farbe, Größe
+Favoriten: oft benutzte Assets oben anpinnen
+Zuletzt verwendet: die letzten 20 Assets griffbereit
+```
 
-## Offene Fragen
+### 2. Kategorien als flache Tags (nicht tiefe Bäume)
 
-- [ ] Welche Bild-KI eignet sich am besten für konsistente Ebenen? (Flux > DALL-E für Transparenz)
-- [ ] Automatische Ebenen-Zerlegung vs. manuelle Separation?
-- [ ] Wie viele Posen pro Figur sind das Minimum für gute Stories? (Schätzung: 5–8)
-- [ ] Lipsync: Phonem-basiert oder einfach Amplitude?
-- [ ] Stil-Konsistenz: LoRA/IP-Adapter pro Stil oder reicht guter Prompt?
+```
+Statt:  Drinnen > Küche > Möbel > Tisch > Esstisch
+Besser: Tags: [drinnen, küche, möbel, tisch, gross]
+```
 
-## Spätere Features (nicht für v1)
+→ Ein Asset kann in mehreren Kontexten auftauchen (Tisch passt in Küche UND Wohnzimmer).
 
-- Kamera-Bewegung (Pan, Zoom auf Canvas)
-- Parallax-Scrolling bei Hintergrund-Ebenen
-- Export als Video (ffmpeg aus Canvas-Frames)
-- Kollaborative Bibliothek (Klasse teilt sich Figuren-Pool)
-- KI-generierte Story-Vorschläge basierend auf vorhandenen Assets
+### 3. Szenen-Presets als Abkürzung
+
+Nutzer muss nicht 30 Props einzeln platzieren.
+"Restaurant" → Preset lädt alles → Nutzer passt an.
+
+### 4. Stil-Gruppen
+
+Alle Assets eines Stils gehören zusammen. Filter: „nur Comic-Stil" → sieht nur passende Assets.
+
+---
+
+## On-Demand Asset-Generierung
+
+Wenn etwas fehlt:
+
+```
+Nutzer: "Ich brauche einen Hund"
+
+System:
+  1. Suche in Bibliothek → kein Hund vorhanden
+  2. Dialog: "Soll ich einen Hund generieren? Welcher Stil? Welche Rasse?"
+  3. Nutzer: "Golden Retriever, Comic-Stil"
+  4. KI generiert:
+     - Hund stehend (freigestellt)
+     - Hund sitzend
+     - Hund liegend
+     - Hund laufend (3 Frames)
+     - Kopf: fröhlich, traurig, aufmerksam
+  5. → Gespeichert als character/tiere/golden-retriever/
+  6. Ab jetzt: 0 Kosten, immer verfügbar
+```
+
+Geschätzter Aufwand pro neuem Asset:
+- Einfaches Prop (Teller, Ball): 1 Generation = ~3–5 Cent
+- Charakter (alle Posen + Mimik): 8–12 Generationen = ~30–60 Cent
+- Umfeld (Hintergrund + Vordergrund + Zonen): 2–3 Generationen = ~10–15 Cent
+
+---
+
+## Integration mit bestehendem Zebla
+
+```
+Zebla (heute):
+  Dialog erstellen → Birkenbihl → TTS → Diashow (statische Bilder)
+
+Zebla (erweitert):
+  Dialog erstellen → Birkenbihl → TTS → Story-Modus:
+    - Figuren aus Bibliothek wählen
+    - Umfeld wählen
+    - KI schlägt Szenen-Aufbau vor
+    - Compositing-Engine zeigt animierte Szenen
+    - Lipsync zu TTS-Audio
+    - Stille Momente zwischen Dialogzeilen
+```
+
+---
+
+## Offene Entscheidungen
+
+1. **Wo leben die Assets?** Firebase Storage (wie heute) oder Cloudflare R2 (billiger bei viel Traffic)?
+2. **Canvas-Lib?** Pixi.js (performant, Sprites) vs. Konva (einfacher, DOM-nah)?
+3. **Asset-Editor im Tool?** Oder nur Upload + Tag-Vergabe?
+4. **Figuren-Zerlegung**: KI macht das automatisch (SAM-Segmentierung) oder manuell vorbereiten?
+5. **Stil-Konsistenz**: Alle Assets im selben Prompt-Template generieren, oder LoRA/IP-Adapter?
