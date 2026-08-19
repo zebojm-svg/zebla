@@ -79,18 +79,33 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
           new Promise<[string, CanvasImageSource]>((resolve) => {
             const cacheKey = l.keyOutWhite ? `key:${l.src}` : l.src
             const img = new Image()
-            img.crossOrigin = 'anonymous'
+            if (l.keyOutWhite) {
+              img.crossOrigin = 'anonymous'
+            }
             img.onload = () => {
               if (l.keyOutWhite && img.naturalWidth > 0) {
-                resolve([
-                  cacheKey,
-                  keyOutLightBackground(img, img.naturalWidth, img.naturalHeight),
-                ])
+                try {
+                  resolve([
+                    cacheKey,
+                    keyOutLightBackground(img, img.naturalWidth, img.naturalHeight),
+                  ])
+                } catch {
+                  resolve([cacheKey, img])
+                }
               } else {
                 resolve([cacheKey, img])
               }
             }
-            img.onerror = () => resolve([cacheKey, img])
+            img.onerror = () => {
+              if (l.keyOutWhite) {
+                const fallback = new Image()
+                fallback.onload = () => resolve([cacheKey, fallback])
+                fallback.onerror = () => resolve([cacheKey, img])
+                fallback.src = l.src
+                return
+              }
+              resolve([cacheKey, img])
+            }
             img.src = l.src
           }),
       ),

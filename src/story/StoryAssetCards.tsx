@@ -76,17 +76,20 @@ export function StoryEnvironmentCard({
   onSave,
   saving,
   onDelete,
+  isActive,
 }: {
   item: CharacterCardItem
   onUse: () => void
   onSave?: () => void
   saving?: boolean
   onDelete?: () => void
+  isActive?: boolean
 }) {
   return (
-    <article className="story-character-card">
+    <article className={`story-character-card${isActive ? ' is-active' : ''}`}>
       <img src={item.imageUrl} alt={`Umfeld ${item.name}`} />
       <p>{item.name}</p>
+      {isActive && <p className="story-card-subtitle">✓ Aktiver Hintergrund</p>}
       {item.tags && item.tags.length > 0 && (
         <div className="story-tag-row">
           {item.tags.map((tag) => (
@@ -96,7 +99,7 @@ export function StoryEnvironmentCard({
       )}
       <div className="story-character-card-actions">
         <button type="button" className="btn btn-primary btn-sm" onClick={onUse}>
-          Als Szene
+          {isActive ? '✓ Hintergrund aktiv' : 'Hintergrund setzen'}
         </button>
         {onSave && (
           <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={onSave}>

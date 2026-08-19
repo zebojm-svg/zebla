@@ -253,6 +253,8 @@ export function StoryPlayerPage() {
   const [saveTagsInput, setSaveTagsInput] = useState('wohnzimmer, kinderbuch')
   const [savingId, setSavingId] = useState<string | null>(null)
   const [activeEnvironmentUrl, setActiveEnvironmentUrl] = useState<string | null>(null)
+  const [activeEnvironmentName, setActiveEnvironmentName] = useState<string | null>(null)
+  const [sceneNotice, setSceneNotice] = useState('')
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
   const [presets] = useState<ScenePreset[]>(SCENE_PRESETS)
 
@@ -264,6 +266,24 @@ export function StoryPlayerPage() {
     () => presets.find((p) => p.id === activePresetId) ?? null,
     [presets, activePresetId],
   )
+
+  const handleApplyBackground = (name: string, imageUrl: string) => {
+    setActiveEnvironmentUrl(imageUrl)
+    setActiveEnvironmentName(name)
+    setActiveTab('szene')
+    setWorkflowStep('scene')
+    setSceneNotice(`Hintergrund «${name}» ist gesetzt — jetzt Figuren platzieren (Tab Bibliothek).`)
+  }
+
+  const activeSceneTitle =
+    activeEnvironmentName ??
+    (activeEnvironmentUrl ? 'Eigenes Umfeld' : generatedEnvironments[0]?.name ?? env.name)
+
+  useEffect(() => {
+    if (!sceneNotice) return
+    const timer = setTimeout(() => setSceneNotice(''), 8000)
+    return () => clearTimeout(timer)
+  }, [sceneNotice])
 
   useEffect(() => {
     if (!activePreset) {
@@ -570,9 +590,7 @@ export function StoryPlayerPage() {
       setGeneratedEnvironments((prev) =>
         [{ name, imageUrl: result.imageUrl, styleId: result.styleId as StoryArtStyleId }, ...prev].slice(0, 8),
       )
-      setActiveEnvironmentUrl(result.imageUrl)
-      setActiveTab('bibliothek')
-      setWorkflowStep('assets')
+      handleApplyBackground(name, result.imageUrl)
     } catch (err) {
       setEnvironmentError(err instanceof Error ? err.message : 'Fehler')
     } finally {
@@ -662,16 +680,62 @@ export function StoryPlayerPage() {
           </div>
 
           <div className="story-scene-info">
-            <h3>Szene: {env.name}{activePreset ? ` · ${activePreset.name}` : ''}</h3>
+            <h3>
+              Hintergrund: {activeSceneTitle}
+              {activePreset ? ` · ${activePreset.name}` : ''}
+            </h3>
             <p>
               Besetzung: {castNames || '—'} · Aktionen: {scene.timeline.length}
             </p>
+            {!activeEnvironmentUrl && generatedEnvironments.length === 0 && (
+              <p className="story-scene-hint">
+                Noch kein Hintergrund — unter «Bibliothek» bei Wohnzimmer auf <strong>Hintergrund setzen</strong> klicken.
+              </p>
+            )}
           </div>
+          {sceneNotice && <p className="alert alert-success story-notice">{sceneNotice}</p>}
         </>
       )}
 
       {activeTab === 'szene' && (
         <>
+          <section className="story-generate-panel story-steps-panel">
+            <h3>So baust du die Szene</h3>
+            <ol className="story-steps-list">
+              <li className={activeEnvironmentUrl ? 'is-done' : 'is-current'}>
+                <strong>Hintergrund wählen</strong> — Wohnzimmer aus der Bibliothek (unten oder Tab Bibliothek)
+              </li>
+              <li className={cast.left || cast.right ? 'is-done' : activeEnvironmentUrl ? 'is-current' : ''}>
+                <strong>Figuren platzieren</strong> — Julien «Als links» / «Als rechts»
+              </li>
+              <li>
+                <strong>Pose anpassen</strong> — unten: Sofa, Sprechpartner anschauen
+              </li>
+            </ol>
+          </section>
+
+          {libraryEnvironments.length > 0 && (
+            <section className="story-generate-panel">
+              <h3>Schritt 1 — Hintergrund wählen</h3>
+              <p className="muted">Klicke dein Wohnzimmer — es erscheint oben in der Vorschau.</p>
+              <div className="story-character-grid">
+                {libraryEnvironments.map((item) => (
+                  <StoryEnvironmentCard
+                    key={`pick-${item.id}`}
+                    item={{
+                      key: item.id,
+                      name: item.name,
+                      imageUrl: item.imageUrl,
+                      tags: item.tags,
+                    }}
+                    isActive={activeEnvironmentUrl === item.imageUrl}
+                    onUse={() => handleApplyBackground(item.name, item.imageUrl)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="story-generate-panel">
             <h3>Besetzung dieser Szene</h3>
             <p className="muted">
@@ -844,7 +908,7 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel" ref={sessionGalleryRef}>
             <h3>Gerade erzeugt (diese Sitzung)</h3>
             <p className="muted">
-              Hier erscheinen Julien &amp; Co. direkt nach «Figur erzeugen» — ohne erst speichern zu müssen.
+              <strong>Umgebung:</strong> «Hintergrund setzen» · <strong>Figur:</strong> «Als links» / «Als rechts»
             </p>
             {generatedCharacters.length === 0 && generatedEnvironments.length === 0 ? (
               <p className="muted">Noch nichts erzeugt. Tab «KI erzeugen» oder unten aus gespeicherter Bibliothek wählen.</p>
@@ -904,10 +968,8 @@ export function StoryPlayerPage() {
                             imageUrl: item.imageUrl,
                             tags: item.styleId ? [storyStyleLabel(item.styleId)!] : undefined,
                           }}
-                          onUse={() => {
-                            setActiveEnvironmentUrl(item.imageUrl)
-                            setActiveTab('szene')
-                          }}
+                          isActive={activeEnvironmentUrl === item.imageUrl}
+                          onUse={() => handleApplyBackground(item.name, item.imageUrl)}
                           onSave={() =>
                             void handleSaveToLibrary({
                               type: 'environment',
@@ -972,10 +1034,8 @@ export function StoryPlayerPage() {
                                 : []),
                             ],
                           }}
-                          onUse={() => {
-                            setActiveEnvironmentUrl(item.imageUrl)
-                            setActiveTab('szene')
-                          }}
+                          isActive={activeEnvironmentUrl === item.imageUrl}
+                          onUse={() => handleApplyBackground(item.name, item.imageUrl)}
                           onDelete={() => void handleDeleteFromLibrary(item.id)}
                         />
                       ))}
@@ -1124,8 +1184,7 @@ export function StoryPlayerPage() {
                     const result = await api.story.generateScene(desc, artStyle)
                     setGeneratedImage(result.imageUrl)
                     setGeneratedSceneStyleId(result.styleId as StoryArtStyleId)
-                    setActiveEnvironmentUrl(result.imageUrl)
-                    setActiveTab('bibliothek')
+                    handleApplyBackground('Generierte Szene', result.imageUrl)
                   } catch (err) {
                     setGenError(err instanceof Error ? err.message : 'Fehler')
                   } finally {
@@ -1149,10 +1208,7 @@ export function StoryPlayerPage() {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setActiveEnvironmentUrl(generatedImage)
-                      setActiveTab('szene')
-                    }}
+                    onClick={() => handleApplyBackground('Generierte Szene', generatedImage)}
                   >
                     Als Szene-Hintergrund
                   </button>
