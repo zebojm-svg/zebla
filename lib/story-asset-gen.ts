@@ -30,10 +30,10 @@ async function googleApiPost(url: string, body: object, timeoutMs = 55_000): Pro
   }
 }
 
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL?.replace(
-  /^models\//,
-  '',
-) ?? 'gemini-2.5-flash-preview-image-generation'
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL
+  ?.replace('gemini-2.5-flash-preview-image', 'gemini-2.5-flash-image')
+  .replace(/^models\//, '')
+  ?? 'gemini-2.5-flash-image'
 
 const STYLE_PROMPT = `Style: warm children's book watercolor illustration, soft pen outlines, 
 muted warm palette (beige, cream, soft wood tones, gentle pastels), 
@@ -69,7 +69,13 @@ export async function generateStoryScene(
   }
 
   if (data.error?.message) {
-    throw new Error(`Gemini: ${data.error.message}`)
+    const msg = data.error.message
+    if (msg.includes('is not found') || msg.includes('not supported')) {
+      throw new Error(
+        'Bildmodell nicht verfügbar. Bitte GEMINI_IMAGE_MODEL auf gemini-2.5-flash-image setzen.',
+      )
+    }
+    throw new Error(`Gemini: ${msg}`)
   }
 
   const parts = data.candidates?.[0]?.content?.parts ?? []
