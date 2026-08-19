@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CompositeCanvas, type LayerImage } from './CompositeCanvas'
+import { CompositeCanvas, type LayerImage, type LayerAnimation } from './CompositeCanvas'
 import type { CharacterAsset, EnvironmentAsset, Scene } from '../../shared/story-types'
 
 const CANVAS_W = 1280
@@ -191,6 +191,60 @@ export function StoryPlayerPage() {
       zIndex: 0,
     })
 
+    // Wolken (separate Layers für Animation)
+    result.push({
+      id: 'cloud-1',
+      src: '/assets/environments/park/cloud1.svg',
+      x: 150,
+      y: 50,
+      width: 200,
+      height: 80,
+      opacity: 0.8,
+      zIndex: 1,
+    })
+    result.push({
+      id: 'cloud-2',
+      src: '/assets/environments/park/cloud2.svg',
+      x: 700,
+      y: 30,
+      width: 160,
+      height: 60,
+      opacity: 0.65,
+      zIndex: 1,
+    })
+    result.push({
+      id: 'cloud-3',
+      src: '/assets/environments/park/cloud3.svg',
+      x: 450,
+      y: 100,
+      width: 140,
+      height: 55,
+      opacity: 0.55,
+      zIndex: 1,
+    })
+
+    // Bäume (separate für Wind-Animation)
+    result.push({
+      id: 'tree-left',
+      src: '/assets/environments/park/tree-left.svg',
+      x: 20,
+      y: 200,
+      width: 160,
+      height: 320,
+      zIndex: 2,
+      rotationAnchor: { x: 0.5, y: 1 },
+    })
+    result.push({
+      id: 'tree-right',
+      src: '/assets/environments/park/tree-right.svg',
+      x: 1070,
+      y: 220,
+      width: 140,
+      height: 290,
+      zIndex: 2,
+      rotationAnchor: { x: 0.5, y: 1 },
+    })
+
     // Figuren
     for (let i = 0; i < scene.characters.length; i++) {
       const placement = scene.characters[i]
@@ -200,6 +254,18 @@ export function StoryPlayerPage() {
 
     return result
   }, [scene, env, char])
+
+  const sceneAnimations = useMemo<LayerAnimation[]>(() => [
+    { layerId: 'cloud-1', type: 'drift', speed: 12, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 250 },
+    { layerId: 'cloud-2', type: 'drift', speed: 8, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 },
+    { layerId: 'cloud-3', type: 'drift', speed: 15, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 },
+    { layerId: 'tree-left', type: 'swing', amplitude: 1.5, period: 4000 },
+    { layerId: 'tree-right', type: 'swing', amplitude: 2, period: 3500 },
+    { layerId: 'char-0-head', type: 'blink', blinkDuration: 150, blinkInterval: [2500, 5500] },
+    { layerId: 'char-1-head', type: 'blink', blinkDuration: 130, blinkInterval: [3000, 6000] },
+    { layerId: 'char-0-body', type: 'bob', amplitude: 1.5, period: 5000 },
+    { layerId: 'char-1-body', type: 'bob', amplitude: 1.2, period: 4500 },
+  ], [])
 
   const next = () => {
     if (currentAction < scene.timeline.length - 1) {
@@ -220,6 +286,7 @@ export function StoryPlayerPage() {
           width={CANVAS_W}
           height={CANVAS_H}
           layers={layers}
+          animations={sceneAnimations}
           className="story-canvas"
         />
         {dialogText && (

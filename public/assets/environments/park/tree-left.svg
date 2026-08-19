@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 320">
+  <!-- Trunk -->
+  <rect x="65" y="180" width="30" height="140" fill="#6B4226" rx="5"/>
+  <path d="M68 190 Q72 200 70 220" stroke="#5C3A1E" stroke-width="2" fill="none" opacity="0.5"/>
+
+  <!-- Foliage layers -->
+  <ellipse cx="80" cy="150" rx="70" ry="85" fill="#3E8C27"/>
+  <ellipse cx="55" cy="170" rx="45" ry="60" fill="#4A9E30" opacity="0.9"/>
+  <ellipse cx="110" cy="160" rx="40" ry="55" fill="#56AB3C" opacity="0.85"/>
+  <ellipse cx="80" cy="120" rx="50" ry="55" fill="#4CAF50" opacity="0.8"/>
+  <!-- Highlight -->
+  <ellipse cx="60" cy="130" rx="25" ry="30" fill="#66BB6A" opacity="0.5"/>
+</svg>
