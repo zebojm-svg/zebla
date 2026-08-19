@@ -984,7 +984,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // --- Story Asset Generation ---
-    if (route === 'story/generate-scene' && req.method === 'POST') {
+    if (route === 'story-generate-scene' && req.method === 'POST') {
       const user = await requireAuth(req)
       const { description } = req.body as { description?: string }
       if (!description?.trim()) {
@@ -996,7 +996,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    if (route === 'story/generate-character' && req.method === 'POST') {
+    if (route === 'story-generate-character' && req.method === 'POST') {
       const user = await requireAuth(req)
       const { description, name } = req.body as { description?: string; name?: string }
       if (!description?.trim() || !name?.trim()) {
@@ -1008,7 +1008,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    if (route === 'story/generate-environment' && req.method === 'POST') {
+    if (route === 'story-generate-environment' && req.method === 'POST') {
       const user = await requireAuth(req)
       const { description, name } = req.body as { description?: string; name?: string }
       if (!description?.trim() || !name?.trim()) {

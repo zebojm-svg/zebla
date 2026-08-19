@@ -406,17 +406,17 @@ export const api = {
   },
   story: {
     generateScene: (description: string) =>
-      request<{ imageUrl: string; prompt: string }>('/story/generate-scene', {
+      request<{ imageUrl: string; prompt: string }>('/story-generate-scene', {
         method: 'POST',
         body: JSON.stringify({ description }),
       }),
     generateCharacter: (name: string, description: string) =>
-      request<{ imageUrl: string; prompt: string }>('/story/generate-character', {
+      request<{ imageUrl: string; prompt: string }>('/story-generate-character', {
         method: 'POST',
         body: JSON.stringify({ name, description }),
       }),
     generateEnvironment: (name: string, description: string) =>
-      request<{ imageUrl: string; prompt: string }>('/story/generate-environment', {
+      request<{ imageUrl: string; prompt: string }>('/story-generate-environment', {
         method: 'POST',
         body: JSON.stringify({ name, description }),
       }),
