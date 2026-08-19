@@ -1049,7 +1049,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
         return
       }
-      if (!['character', 'environment', 'scene'].includes(type)) {
+      if (!['character', 'environment', 'scene', 'prop'].includes(type)) {
         res.status(400).json({ error: 'Ungültiger Asset-Typ.' })
         return
       }

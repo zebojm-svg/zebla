@@ -1,9 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CompositeCanvas, type LayerImage, type LayerAnimation } from './CompositeCanvas'
 import { api } from '../api/client'
 import type { CharacterAsset, EnvironmentAsset, Scene, StoryLibraryAsset } from '../../shared/story-types'
 import type { ScenePreset } from '../../shared/scene-presets'
 import { SCENE_PRESETS } from '../../shared/scene-presets'
+import { StoryWorkflowNav, type StoryWorkflowStep } from './StoryWorkflowNav'
+import {
+  placeInCast,
+  updateCastName,
+  type SceneCast,
+} from './story-cast'
+import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
+
+type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
+
+type LayerOverride = { visible: boolean; hueRotate: number }
+
+type SessionCharacter = { name: string; imageUrl: string; description?: string }
 
 const CANVAS_W = 1280
 const CANVAS_H = 720
@@ -172,17 +185,21 @@ function presetLayersToCanvas(
   preset: ScenePreset | null,
   canvasW: number,
   canvasH: number,
+  overrides: Record<string, LayerOverride>,
 ): LayerImage[] {
   if (!preset) return []
-  return preset.layers.map((layer) => ({
-    id: `preset-${layer.id}`,
-    src: layer.src,
-    x: (layer.position.x / 100) * canvasW - layer.size.w / 2,
-    y: (layer.position.y / 100) * canvasH - layer.size.h / 2,
-    width: layer.size.w,
-    height: layer.size.h,
-    zIndex: layer.zIndex,
-  }))
+  return preset.layers
+    .filter((layer) => overrides[layer.id]?.visible !== false)
+    .map((layer) => ({
+      id: `preset-${layer.id}`,
+      src: layer.src,
+      x: (layer.position.x / 100) * canvasW - layer.size.w / 2,
+      y: (layer.position.y / 100) * canvasH - layer.size.h / 2,
+      width: layer.size.w,
+      height: layer.size.h,
+      zIndex: layer.zIndex,
+      hueRotate: overrides[layer.id]?.hueRotate || undefined,
+    }))
 }
 
 export function StoryPlayerPage() {
@@ -207,11 +224,12 @@ export function StoryPlayerPage() {
   )
   const [generatingCharacter, setGeneratingCharacter] = useState(false)
   const [characterError, setCharacterError] = useState('')
-  const [generatedCharacters, setGeneratedCharacters] = useState<
-    Array<{ name: string; imageUrl: string }>
-  >([])
-  const [leftCharacterImage, setLeftCharacterImage] = useState<string | null>(null)
-  const [rightCharacterImage, setRightCharacterImage] = useState<string | null>(null)
+  const [generatedCharacters, setGeneratedCharacters] = useState<SessionCharacter[]>([])
+  const [cast, setCast] = useState<SceneCast>({ left: null, right: null })
+  const [activeTab, setActiveTab] = useState<StoryTab>('szene')
+  const [workflowStep, setWorkflowStep] = useState<StoryWorkflowStep>('scene')
+  const [layerOverrides, setLayerOverrides] = useState<Record<string, LayerOverride>>({})
+  const sessionGalleryRef = useRef<HTMLDivElement>(null)
   const [libraryAssets, setLibraryAssets] = useState<StoryLibraryAsset[]>([])
   const [libraryLoading, setLibraryLoading] = useState(true)
   const [libraryError, setLibraryError] = useState('')
@@ -230,6 +248,27 @@ export function StoryPlayerPage() {
     () => presets.find((p) => p.id === activePresetId) ?? null,
     [presets, activePresetId],
   )
+
+  useEffect(() => {
+    if (!activePreset) {
+      setLayerOverrides({})
+      return
+    }
+    const next: Record<string, LayerOverride> = {}
+    for (const layer of activePreset.layers) {
+      next[layer.id] = { visible: true, hueRotate: 0 }
+    }
+    setLayerOverrides(next)
+  }, [activePresetId, activePreset])
+
+  const handlePlaceCharacter = (
+    slot: 'left' | 'right',
+    input: { imageUrl: string; assetName: string; libraryAssetId?: string; displayName?: string },
+  ) => {
+    setCast((prev) => placeInCast(prev, slot, input))
+    setActiveTab('szene')
+    setWorkflowStep('scene')
+  }
 
   const reloadLibrary = useCallback(async () => {
     setLibraryLoading(true)
@@ -382,33 +421,22 @@ export function StoryPlayerPage() {
     }
 
     // Szenen-Preset (Tisch, Stühle, …)
-    result.push(...presetLayersToCanvas(activePreset, CANVAS_W, CANVAS_H))
+    result.push(...presetLayersToCanvas(activePreset, CANVAS_W, CANVAS_H, layerOverrides))
 
     // Figuren
     for (let i = 0; i < scene.characters.length; i++) {
       const placement = scene.characters[i]
-      if (i === 0 && leftCharacterImage) {
+      const castMember = i === 0 ? cast.left : i === 1 ? cast.right : null
+      if (castMember) {
         result.push({
-          id: 'char-left-generated',
-          src: leftCharacterImage,
+          id: `char-${castMember.slot}-generated`,
+          src: castMember.imageUrl,
           x: (placement.position.x / 100) * CANVAS_W - 110,
           y: (placement.position.y / 100) * CANVAS_H - 290,
           width: 220,
           height: 300,
-          zIndex: 20,
-        })
-        continue
-      }
-      if (i === 1 && rightCharacterImage) {
-        result.push({
-          id: 'char-right-generated',
-          src: rightCharacterImage,
-          x: (placement.position.x / 100) * CANVAS_W - 110,
-          y: (placement.position.y / 100) * CANVAS_H - 290,
-          width: 220,
-          height: 300,
-          zIndex: 21,
-          flip: placement.flip,
+          zIndex: 20 + i,
+          flip: i === 1 ? placement.flip : undefined,
         })
         continue
       }
@@ -422,10 +450,10 @@ export function StoryPlayerPage() {
     env,
     char,
     generatedEnvironments,
-    leftCharacterImage,
-    rightCharacterImage,
     activeEnvironmentUrl,
     activePreset,
+    layerOverrides,
+    cast,
   ])
 
   const usingCustomBackground =
@@ -441,19 +469,19 @@ export function StoryPlayerPage() {
           { layerId: 'tree-right', type: 'swing', amplitude: 2, period: 3500 } as LayerAnimation,
         ]
       : []),
-    ...(leftCharacterImage
+    ...(cast.left
       ? [{ layerId: 'char-left-generated', type: 'bob', amplitude: 1.2, period: 4800 } as LayerAnimation]
       : [
           { layerId: 'char-0-head', type: 'blink', blinkDuration: 150, blinkInterval: [2500, 5500] } as LayerAnimation,
           { layerId: 'char-0-body', type: 'bob', amplitude: 1.5, period: 5000 } as LayerAnimation,
         ]),
-    ...(rightCharacterImage
+    ...(cast.right
       ? [{ layerId: 'char-right-generated', type: 'bob', amplitude: 1.1, period: 4300 } as LayerAnimation]
       : [
           { layerId: 'char-1-head', type: 'blink', blinkDuration: 130, blinkInterval: [3000, 6000] } as LayerAnimation,
           { layerId: 'char-1-body', type: 'bob', amplitude: 1.2, period: 4500 } as LayerAnimation,
         ]),
-  ], [leftCharacterImage, rightCharacterImage, usingCustomBackground])
+  ], [cast.left, cast.right, usingCustomBackground])
 
   const next = () => {
     if (currentAction < scene.timeline.length - 1) {
@@ -475,7 +503,14 @@ export function StoryPlayerPage() {
     setCharacterError('')
     try {
       const result = await api.story.generateCharacter(name, description)
-      setGeneratedCharacters((prev) => [{ name, imageUrl: result.imageUrl }, ...prev].slice(0, 12))
+      setGeneratedCharacters((prev) =>
+        [{ name, imageUrl: result.imageUrl, description }, ...prev].slice(0, 12),
+      )
+      setActiveTab('bibliothek')
+      setWorkflowStep('assets')
+      requestAnimationFrame(() => {
+        sessionGalleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Fehler')
     } finally {
@@ -493,6 +528,8 @@ export function StoryPlayerPage() {
       const result = await api.story.generateEnvironment(name, description)
       setGeneratedEnvironments((prev) => [{ name, imageUrl: result.imageUrl }, ...prev].slice(0, 8))
       setActiveEnvironmentUrl(result.imageUrl)
+      setActiveTab('bibliothek')
+      setWorkflowStep('assets')
     } catch (err) {
       setEnvironmentError(err instanceof Error ? err.message : 'Fehler')
     } finally {
@@ -500,402 +537,536 @@ export function StoryPlayerPage() {
     }
   }
 
+  const castNames = [cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(', ')
+
+  const handleWorkflowStep = (step: StoryWorkflowStep) => {
+    setWorkflowStep(step)
+    if (step === 'assets') setActiveTab('bibliothek')
+    if (step === 'scene') setActiveTab('szene')
+    if (step === 'actions') setActiveTab('szene')
+  }
+
   return (
     <div className="story-player">
-      <div className="story-canvas-wrapper">
-        <CompositeCanvas
-          width={CANVAS_W}
-          height={CANVAS_H}
-          layers={layers}
-          animations={sceneAnimations}
-          className="story-canvas"
-        />
-        {dialogText && (
-          <div className="story-dialog-bubble">
-            <span className="story-dialog-speaker">{dialogSpeaker}</span>
-            <span className="story-dialog-text">{dialogText}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="story-controls">
-        <button type="button" className="btn btn-secondary" onClick={prev} disabled={currentAction === 0}>
-          ← Zurück
-        </button>
-        <span className="story-progress">
-          {currentAction + 1} / {scene.timeline.length}
-        </span>
-        <button type="button" className="btn btn-primary" onClick={next} disabled={currentAction >= scene.timeline.length - 1}>
-          Weiter →
-        </button>
-      </div>
-
-      <div className="story-scene-info">
-        <h3>Szene: {env.name}{activePreset ? ` · ${activePreset.name}` : ''}</h3>
-        <p>Figuren: {scene.characters.length} · Aktionen: {scene.timeline.length}</p>
-      </div>
-
-      <section className="story-generate-panel">
-        <h3>Story-Bibliothek</h3>
+      <header className="story-page-header">
+        <h2>Story-Studio</h2>
         <p className="muted">
-          Gespeicherte Figuren und Umgebungen mit Tags — einmal erzeugen, immer wieder verwenden.
+          Dialog → Bilder aus Bibliothek → Aktionen → Szene. Alles aus der Bibliothek kostet keine KI-Credits.
         </p>
-        <div className="story-library-toolbar">
-          <input
-            type="text"
-            className="input"
-            placeholder="Tags filtern (z.B. wohnzimmer, mann)"
-            value={tagFilter}
-            onChange={(e) => setTagFilter(e.target.value)}
-          />
-          <input
-            type="text"
-            className="input"
-            placeholder="Tags beim Speichern (Komma-getrennt)"
-            value={saveTagsInput}
-            onChange={(e) => setSaveTagsInput(e.target.value)}
-          />
-        </div>
-        {libraryError && <p className="alert alert-error">{libraryError}</p>}
-        {libraryLoading ? (
-          <p className="muted">Bibliothek wird geladen …</p>
-        ) : (
-          <>
-            {libraryEnvironments.length > 0 && (
-              <>
-                <h4 className="story-library-heading">Umgebungen</h4>
-                <div className="story-character-grid">
-                  {libraryEnvironments.map((item) => (
-                    <article key={item.id} className="story-character-card">
-                      <img src={item.imageUrl} alt={`Umfeld ${item.name}`} />
-                      <p>{item.name}</p>
-                      <div className="story-tag-row">
-                        {item.tags.map((tag) => (
-                          <span key={tag} className="story-tag">{tag}</span>
-                        ))}
-                      </div>
-                      <div className="story-character-card-actions">
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={() => setActiveEnvironmentUrl(item.imageUrl)}
-                        >
-                          Als Szene
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => void handleDeleteFromLibrary(item.id)}
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </>
-            )}
-            {libraryCharacters.length > 0 && (
-              <>
-                <h4 className="story-library-heading">Figuren</h4>
-                <div className="story-character-grid">
-                  {libraryCharacters.map((item) => (
-                    <article key={item.id} className="story-character-card">
-                      <img src={item.imageUrl} alt={`Figur ${item.name}`} />
-                      <p>{item.name}</p>
-                      <div className="story-tag-row">
-                        {item.tags.map((tag) => (
-                          <span key={tag} className="story-tag">{tag}</span>
-                        ))}
-                      </div>
-                      <div className="story-character-card-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setLeftCharacterImage(item.imageUrl)}
-                        >
-                          Als links
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setRightCharacterImage(item.imageUrl)}
-                        >
-                          Als rechts
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => void handleDeleteFromLibrary(item.id)}
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </>
-            )}
-            {libraryAssets.length === 0 && (
-              <p className="muted">Noch leer — erzeuge Figuren/Umgebungen und speichere sie unten in der Bibliothek.</p>
-            )}
-          </>
-        )}
-      </section>
+      </header>
 
-      <section className="story-generate-panel">
-        <h3>Szenen-Presets</h3>
-        <p className="muted">
-          Fertige Arrangements wie «Wohnzimmer-Abendessen» — Tisch, Stühle, Teller werden als Layer über dein Umfeld gelegt.
-        </p>
-        <div className="story-preset-list">
-          {presets.map((preset) => (
-            <article
-              key={preset.id}
-              className={`story-preset-card${activePresetId === preset.id ? ' is-active' : ''}`}
-            >
-              <div>
-                <strong>{preset.name}</strong>
-                <p className="muted">{preset.description}</p>
-                <div className="story-tag-row">
-                  {preset.tags.map((tag) => (
-                    <span key={tag} className="story-tag">{tag}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="story-preset-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => setActivePresetId(preset.id)}
-                >
-                  Anwenden
-                </button>
-                {activePresetId === preset.id && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setActivePresetId(null)}
-                  >
-                    Entfernen
-                  </button>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <StoryWorkflowNav active={workflowStep} onStep={handleWorkflowStep} />
 
-      <section className="story-generate-panel">
-        <h3>KI-Szene generieren (Kinderbuch-Stil)</h3>
-        <p className="muted">Beschreibe eine Szene — KI zeichnet sie im warmen Aquarell-Kinderbuchstil.</p>
-        <div className="story-generate-row">
-          <input
-            type="text"
-            className="input"
-            placeholder="z.B. Wohnzimmer mit Sofa, Couchtisch, Zeitungen am Boden, Vater am Esstisch mit Spaghetti"
-            id="scene-desc"
-            disabled={generating}
-          />
+      <div className="story-tabs" role="tablist">
+        {([
+          ['szene', 'Szene'],
+          ['bibliothek', 'Bibliothek'],
+          ['erzeugen', 'KI erzeugen'],
+        ] as const).map(([id, label]) => (
           <button
+            key={id}
             type="button"
-            className="btn btn-primary"
-            disabled={generating}
-            onClick={async () => {
-              const input = document.getElementById('scene-desc') as HTMLInputElement
-              const desc = input?.value?.trim()
-              if (!desc) return
-              setGenerating(true)
-              setGenError('')
-              try {
-                const result = await api.story.generateScene(desc)
-                setGeneratedImage(result.imageUrl)
-              } catch (err) {
-                setGenError(err instanceof Error ? err.message : 'Fehler')
-              } finally {
-                setGenerating(false)
-              }
+            role="tab"
+            aria-selected={activeTab === id}
+            className={`story-tab${activeTab === id ? ' is-active' : ''}`}
+            onClick={() => {
+              setActiveTab(id)
+              if (id === 'bibliothek') setWorkflowStep('assets')
+              if (id === 'erzeugen') setWorkflowStep('assets')
+              if (id === 'szene') setWorkflowStep('scene')
             }}
           >
-            {generating ? 'Zeichne …' : 'Szene zeichnen'}
+            {label}
           </button>
-        </div>
-        {genError && <p className="alert alert-error">{genError}</p>}
-        {generatedImage && (
-          <div className="story-generated-preview">
-            <img src={generatedImage} alt="Generierte Szene" />
-            <div className="story-character-card-actions">
+        ))}
+      </div>
+
+      {(activeTab === 'szene' || activeTab === 'bibliothek') && (
+        <>
+          <div className="story-canvas-wrapper">
+            <CompositeCanvas
+              width={CANVAS_W}
+              height={CANVAS_H}
+              layers={layers}
+              animations={sceneAnimations}
+              className="story-canvas"
+            />
+            {dialogText && (
+              <div className="story-dialog-bubble">
+                <span className="story-dialog-speaker">{dialogSpeaker}</span>
+                <span className="story-dialog-text">{dialogText}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="story-controls">
+            <button type="button" className="btn btn-secondary" onClick={prev} disabled={currentAction === 0}>
+              ← Zurück
+            </button>
+            <span className="story-progress">
+              {currentAction + 1} / {scene.timeline.length}
+            </span>
+            <button type="button" className="btn btn-primary" onClick={next} disabled={currentAction >= scene.timeline.length - 1}>
+              Weiter →
+            </button>
+          </div>
+
+          <div className="story-scene-info">
+            <h3>Szene: {env.name}{activePreset ? ` · ${activePreset.name}` : ''}</h3>
+            <p>
+              Besetzung: {castNames || '—'} · Aktionen: {scene.timeline.length}
+            </p>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'szene' && (
+        <>
+          <section className="story-generate-panel">
+            <h3>Besetzung dieser Szene</h3>
+            <p className="muted">
+              Jede Figur braucht einen <strong>Sprecher-Namen</strong> — unabhängig vom Bibliotheksnamen.
+              So weiss das Tool, wer spricht und wer geht.
+            </p>
+            <div className="story-cast-grid">
+              {(['left', 'right'] as const).map((slot) => {
+                const member = cast[slot]
+                const label = slot === 'left' ? 'Links' : 'Rechts'
+                return (
+                  <div key={slot} className="story-cast-slot">
+                    <span className="story-cast-slot-label">{label}</span>
+                    {member ? (
+                      <>
+                        <img src={member.imageUrl} alt={member.displayName} className="story-cast-thumb" />
+                        <label className="story-cast-name-label">
+                          Sprecher-Name
+                          <input
+                            type="text"
+                            className="input"
+                            value={member.displayName}
+                            onChange={(e) => setCast((prev) => updateCastName(prev, slot, e.target.value))}
+                          />
+                        </label>
+                        <p className="muted story-card-subtitle">Bibliothek: {member.assetName}</p>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setCast((prev) => ({ ...prev, [slot]: null }))}
+                        >
+                          Entfernen
+                        </button>
+                      </>
+                    ) : (
+                      <p className="muted">Noch leer — Figur unter «Bibliothek» wählen.</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+
+          <section className="story-generate-panel">
+            <h3>Szenen-Presets & Ebenen</h3>
+            <p className="muted">
+              Presets legen <strong>einzelne Ebenen</strong> (Tisch, Stuhl, Teller …) über dein Umfeld.
+              Ziel: jedes Teil einzeln tauschen/färben — KI-Umfelder sind heute noch ein flaches Bild.
+            </p>
+            <div className="story-preset-list">
+              {presets.map((preset) => (
+                <article
+                  key={preset.id}
+                  className={`story-preset-card${activePresetId === preset.id ? ' is-active' : ''}`}
+                >
+                  <div>
+                    <strong>{preset.name}</strong>
+                    <p className="muted">{preset.description}</p>
+                    <div className="story-tag-row">
+                      {preset.tags.map((tag) => (
+                        <span key={tag} className="story-tag">{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="story-preset-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        setActivePresetId(preset.id)
+                        setWorkflowStep('scene')
+                      }}
+                    >
+                      Anwenden
+                    </button>
+                    {activePresetId === preset.id && (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePresetId(null)}>
+                        Entfernen
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {activePreset && (
+              <div className="story-layer-panel">
+                <h4 className="story-library-heading">Ebenen: {activePreset.name}</h4>
+                <ul className="story-layer-list">
+                  {activePreset.layers.map((layer) => {
+                    const override = layerOverrides[layer.id] ?? { visible: true, hueRotate: 0 }
+                    return (
+                      <li key={layer.id} className="story-layer-row">
+                        <label className="story-layer-visible">
+                          <input
+                            type="checkbox"
+                            checked={override.visible}
+                            onChange={(e) =>
+                              setLayerOverrides((prev) => ({
+                                ...prev,
+                                [layer.id]: { ...override, visible: e.target.checked },
+                              }))
+                            }
+                          />
+                          {layer.name}
+                        </label>
+                        <label className="story-layer-hue">
+                          Farbton
+                          <input
+                            type="range"
+                            min={0}
+                            max={360}
+                            value={override.hueRotate}
+                            onChange={(e) =>
+                              setLayerOverrides((prev) => ({
+                                ...prev,
+                                [layer.id]: { ...override, hueRotate: Number(e.target.value) },
+                              }))
+                            }
+                          />
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          <section className="story-generate-panel story-coming-soon">
+            <h3>Aktionen (Schritt 3)</h3>
+            <p className="muted">
+              Sprechen, gehen, Mimik und Pose-Wechsel werden hier an die Besetzung gekoppelt — demnächst.
+              Dialoge bearbeitest du schon heute unter{' '}
+              <a href="/create">Dialog erstellen</a>.
+            </p>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'bibliothek' && (
+        <>
+          <section className="story-generate-panel" ref={sessionGalleryRef}>
+            <h3>Gerade erzeugt (diese Sitzung)</h3>
+            <p className="muted">
+              Hier erscheinen Julien &amp; Co. direkt nach «Figur erzeugen» — ohne erst speichern zu müssen.
+            </p>
+            {generatedCharacters.length === 0 && generatedEnvironments.length === 0 ? (
+              <p className="muted">Noch nichts erzeugt. Tab «KI erzeugen» oder unten aus gespeicherter Bibliothek wählen.</p>
+            ) : (
+              <>
+                {generatedCharacters.length > 0 && (
+                  <>
+                    <h4 className="story-library-heading">Figuren (Sitzung)</h4>
+                    <div className="story-character-grid">
+                      {generatedCharacters.map((item, idx) => (
+                        <StoryCharacterCard
+                          key={`session-char-${item.imageUrl}`}
+                          item={{
+                            key: `session-char-${idx}`,
+                            name: item.name,
+                            imageUrl: item.imageUrl,
+                            subtitle: 'Gerade erzeugt',
+                          }}
+                          onPlaceLeft={() =>
+                            handlePlaceCharacter('left', {
+                              imageUrl: item.imageUrl,
+                              assetName: item.name,
+                            })
+                          }
+                          onPlaceRight={() =>
+                            handlePlaceCharacter('right', {
+                              imageUrl: item.imageUrl,
+                              assetName: item.name,
+                            })
+                          }
+                          onSave={() =>
+                            void handleSaveToLibrary({
+                              type: 'character',
+                              name: item.name,
+                              description: item.description ?? characterDescription,
+                              imageUrl: item.imageUrl,
+                              key: `session-char-${idx}`,
+                            })
+                          }
+                          saving={savingId === `session-char-${idx}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+                {generatedEnvironments.length > 0 && (
+                  <>
+                    <h4 className="story-library-heading">Umgebungen (Sitzung)</h4>
+                    <div className="story-character-grid">
+                      {generatedEnvironments.map((item, idx) => (
+                        <StoryEnvironmentCard
+                          key={`session-env-${item.imageUrl}`}
+                          item={{ key: `session-env-${idx}`, name: item.name, imageUrl: item.imageUrl }}
+                          onUse={() => {
+                            setActiveEnvironmentUrl(item.imageUrl)
+                            setActiveTab('szene')
+                          }}
+                          onSave={() =>
+                            void handleSaveToLibrary({
+                              type: 'environment',
+                              name: item.name,
+                              description: environmentDescription,
+                              imageUrl: item.imageUrl,
+                              key: `session-env-${idx}`,
+                            })
+                          }
+                          saving={savingId === `session-env-${idx}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="story-generate-panel">
+            <h3>Gespeicherte Bibliothek</h3>
+            <p className="muted">
+              Dauerhaft gespeichert — Tags zum Filtern. Wiederverwendung ohne neue KI-Generierung.
+            </p>
+            <div className="story-library-toolbar">
+              <input
+                type="text"
+                className="input"
+                placeholder="Tags filtern (z.B. wohnzimmer, mann)"
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+              />
+              <input
+                type="text"
+                className="input"
+                placeholder="Tags beim Speichern (Komma-getrennt)"
+                value={saveTagsInput}
+                onChange={(e) => setSaveTagsInput(e.target.value)}
+              />
+            </div>
+            {libraryError && <p className="alert alert-error">{libraryError}</p>}
+            {libraryLoading ? (
+              <p className="muted">Bibliothek wird geladen …</p>
+            ) : (
+              <>
+                {libraryEnvironments.length > 0 && (
+                  <>
+                    <h4 className="story-library-heading">Umgebungen</h4>
+                    <div className="story-character-grid">
+                      {libraryEnvironments.map((item) => (
+                        <StoryEnvironmentCard
+                          key={item.id}
+                          item={{ key: item.id, name: item.name, imageUrl: item.imageUrl, tags: item.tags }}
+                          onUse={() => {
+                            setActiveEnvironmentUrl(item.imageUrl)
+                            setActiveTab('szene')
+                          }}
+                          onDelete={() => void handleDeleteFromLibrary(item.id)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+                {libraryCharacters.length > 0 && (
+                  <>
+                    <h4 className="story-library-heading">Figuren</h4>
+                    <div className="story-character-grid">
+                      {libraryCharacters.map((item) => (
+                        <StoryCharacterCard
+                          key={item.id}
+                          item={{ key: item.id, name: item.name, imageUrl: item.imageUrl, tags: item.tags }}
+                          onPlaceLeft={() =>
+                            handlePlaceCharacter('left', {
+                              imageUrl: item.imageUrl,
+                              assetName: item.name,
+                              libraryAssetId: item.id,
+                            })
+                          }
+                          onPlaceRight={() =>
+                            handlePlaceCharacter('right', {
+                              imageUrl: item.imageUrl,
+                              assetName: item.name,
+                              libraryAssetId: item.id,
+                            })
+                          }
+                          onDelete={() => void handleDeleteFromLibrary(item.id)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+                {libraryAssets.length === 0 && generatedCharacters.length === 0 && (
+                  <p className="muted">Bibliothek leer — unter «KI erzeugen» etwas erstellen und «In Bibliothek» speichern.</p>
+                )}
+              </>
+            )}
+          </section>
+        </>
+      )}
+
+      {activeTab === 'erzeugen' && (
+        <>
+          <section className="story-generate-panel">
+            <h3>KI-Figur generieren</h3>
+            <p className="muted">
+              Nach dem Erzeugen wechselst du automatisch zur Bibliothek — dort findest du die Figur sofort.
+            </p>
+            <div className="story-character-form">
+              <input
+                type="text"
+                className="input"
+                placeholder="Figurenname (z.B. Julien)"
+                value={characterName}
+                onChange={(e) => setCharacterName(e.target.value)}
+                disabled={generatingCharacter}
+              />
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Beschreibung (Alter, Haare, Kleidung, Ausdruck...)"
+                value={characterDescription}
+                onChange={(e) => setCharacterDescription(e.target.value)}
+                disabled={generatingCharacter}
+              />
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setActiveEnvironmentUrl(generatedImage)}
+                className="btn btn-primary"
+                disabled={generatingCharacter}
+                onClick={handleGenerateCharacter}
               >
-                Als Szene-Hintergrund
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={savingId === 'scene-preview'}
-                onClick={() =>
-                  void handleSaveToLibrary({
-                    type: 'scene',
-                    name: 'Generierte Szene',
-                    imageUrl: generatedImage,
-                    key: 'scene-preview',
-                  })
-                }
-              >
-                {savingId === 'scene-preview' ? 'Speichere …' : 'In Bibliothek'}
+                {generatingCharacter ? 'Erzeuge Figur …' : 'Figur erzeugen'}
               </button>
             </div>
-          </div>
-        )}
-      </section>
+            {characterError && <p className="alert alert-error">{characterError}</p>}
+          </section>
 
-      <section className="story-generate-panel">
-        <h3>KI-Figur generieren (gleicher Stil)</h3>
-        <p className="muted">
-          Erstelle passende Charaktere für deine Geschichten. Die Bilder kannst du danach wiederverwenden.
-        </p>
-        <div className="story-character-form">
-          <input
-            type="text"
-            className="input"
-            placeholder="Figurenname (z.B. Julien)"
-            value={characterName}
-            onChange={(e) => setCharacterName(e.target.value)}
-            disabled={generatingCharacter}
-          />
-          <textarea
-            className="input"
-            rows={3}
-            placeholder="Beschreibung (Alter, Haare, Kleidung, Ausdruck...)"
-            value={characterDescription}
-            onChange={(e) => setCharacterDescription(e.target.value)}
-            disabled={generatingCharacter}
-          />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={generatingCharacter}
-            onClick={handleGenerateCharacter}
-          >
-            {generatingCharacter ? 'Erzeuge Figur …' : 'Figur erzeugen'}
-          </button>
-        </div>
-        {characterError && <p className="alert alert-error">{characterError}</p>}
-        {generatedCharacters.length > 0 && (
-          <div className="story-character-grid">
-            {generatedCharacters.map((item, idx) => (
-              <article key={`${item.name}-${idx}`} className="story-character-card">
-                <img src={item.imageUrl} alt={`Figur ${item.name}`} />
-                <p>{item.name}</p>
+          <section className="story-generate-panel">
+            <h3>KI-Umfeld generieren</h3>
+            <p className="muted">
+              Flacher Hintergrund — ergänze Presets (Tab Szene) für einzelne Möbel-Ebenen.
+            </p>
+            <div className="story-character-form">
+              <input
+                type="text"
+                className="input"
+                placeholder="Umfeldname (z.B. Wohnzimmer)"
+                value={environmentName}
+                onChange={(e) => setEnvironmentName(e.target.value)}
+                disabled={generatingEnvironment}
+              />
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Beschreibung (Möbel, Licht, Details...)"
+                value={environmentDescription}
+                onChange={(e) => setEnvironmentDescription(e.target.value)}
+                disabled={generatingEnvironment}
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={generatingEnvironment}
+                onClick={handleGenerateEnvironment}
+              >
+                {generatingEnvironment ? 'Erzeuge Umfeld …' : 'Umfeld erzeugen'}
+              </button>
+            </div>
+            {environmentError && <p className="alert alert-error">{environmentError}</p>}
+          </section>
+
+          <section className="story-generate-panel">
+            <h3>KI-Szene generieren (ganzes Bild)</h3>
+            <p className="muted">Ein flaches Gesamtbild — für maximale Flexibilität lieber Umfeld + Preset-Ebenen.</p>
+            <div className="story-generate-row">
+              <input
+                type="text"
+                className="input"
+                placeholder="z.B. Wohnzimmer mit Sofa, Couchtisch, Vater am Esstisch"
+                id="scene-desc"
+                disabled={generating}
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={generating}
+                onClick={async () => {
+                  const input = document.getElementById('scene-desc') as HTMLInputElement
+                  const desc = input?.value?.trim()
+                  if (!desc) return
+                  setGenerating(true)
+                  setGenError('')
+                  try {
+                    const result = await api.story.generateScene(desc)
+                    setGeneratedImage(result.imageUrl)
+                    setActiveEnvironmentUrl(result.imageUrl)
+                    setActiveTab('bibliothek')
+                  } catch (err) {
+                    setGenError(err instanceof Error ? err.message : 'Fehler')
+                  } finally {
+                    setGenerating(false)
+                  }
+                }}
+              >
+                {generating ? 'Zeichne …' : 'Szene zeichnen'}
+              </button>
+            </div>
+            {genError && <p className="alert alert-error">{genError}</p>}
+            {generatedImage && (
+              <div className="story-generated-preview">
+                <img src={generatedImage} alt="Generierte Szene" />
                 <div className="story-character-card-actions">
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => setLeftCharacterImage(item.imageUrl)}
+                    onClick={() => {
+                      setActiveEnvironmentUrl(generatedImage)
+                      setActiveTab('szene')
+                    }}
                   >
-                    Als links
+                    Als Szene-Hintergrund
                   </button>
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => setRightCharacterImage(item.imageUrl)}
-                  >
-                    Als rechts
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={savingId === `char-${idx}`}
+                    disabled={savingId === 'scene-preview'}
                     onClick={() =>
                       void handleSaveToLibrary({
-                        type: 'character',
-                        name: item.name,
-                        description: characterDescription,
-                        imageUrl: item.imageUrl,
-                        key: `char-${idx}`,
+                        type: 'scene',
+                        name: 'Generierte Szene',
+                        imageUrl: generatedImage,
+                        key: 'scene-preview',
                       })
                     }
                   >
-                    {savingId === `char-${idx}` ? 'Speichere …' : 'In Bibliothek'}
+                    {savingId === 'scene-preview' ? 'Speichere …' : 'In Bibliothek'}
                   </button>
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="story-generate-panel">
-        <h3>KI-Umfeld generieren (gleicher Stil)</h3>
-        <p className="muted">
-          Erzeuge Hintergründe wie Wohnzimmer, Küche, Museum oder Schwimmbad und setze sie direkt als Szene.
-        </p>
-        <div className="story-character-form">
-          <input
-            type="text"
-            className="input"
-            placeholder="Umfeldname (z.B. Wohnzimmer)"
-            value={environmentName}
-            onChange={(e) => setEnvironmentName(e.target.value)}
-            disabled={generatingEnvironment}
-          />
-          <textarea
-            className="input"
-            rows={3}
-            placeholder="Beschreibung (Möbel, Licht, Details...)"
-            value={environmentDescription}
-            onChange={(e) => setEnvironmentDescription(e.target.value)}
-            disabled={generatingEnvironment}
-          />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={generatingEnvironment}
-            onClick={handleGenerateEnvironment}
-          >
-            {generatingEnvironment ? 'Erzeuge Umfeld …' : 'Umfeld erzeugen'}
-          </button>
-        </div>
-        {environmentError && <p className="alert alert-error">{environmentError}</p>}
-        {generatedEnvironments.length > 0 && (
-          <div className="story-character-grid">
-            {generatedEnvironments.map((item, idx) => (
-              <article key={`${item.name}-${idx}`} className="story-character-card">
-                <img src={item.imageUrl} alt={`Umfeld ${item.name}`} />
-                <p>{item.name}</p>
-                <div className="story-character-card-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() => setActiveEnvironmentUrl(item.imageUrl)}
-                  >
-                    Als Szene
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={savingId === `env-${idx}`}
-                    onClick={() =>
-                      void handleSaveToLibrary({
-                        type: 'environment',
-                        name: item.name,
-                        description: environmentDescription,
-                        imageUrl: item.imageUrl,
-                        key: `env-${idx}`,
-                      })
-                    }
-                  >
-                    {savingId === `env-${idx}` ? 'Speichere …' : 'In Bibliothek'}
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
   )
 }

@@ -14,6 +14,8 @@ export interface LayerImage {
   rotation?: number
   /** Anchor for rotation (0-1 normalized within layer) */
   rotationAnchor?: { x: number; y: number }
+  /** CSS filter hue-rotate in degrees (Einzelteile einfärben) */
+  hueRotate?: number
 }
 
 export interface LayerAnimation {
@@ -182,6 +184,9 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
 
       ctx.save()
       ctx.globalAlpha = (layer.opacity ?? 1) * animOpacity
+      if (layer.hueRotate) {
+        ctx.filter = `hue-rotate(${layer.hueRotate}deg)`
+      }
 
       const anchorX = finalX + layer.width * (layer.rotationAnchor?.x ?? 0.5)
       const anchorY = finalY + layer.height * (layer.rotationAnchor?.y ?? 1)

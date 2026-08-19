@@ -1,6 +1,6 @@
 /** Asset-Bibliothek und Szenen-Typen für ZeboStories */
 
-export type StoryAssetType = 'character' | 'environment' | 'scene'
+export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop'
 
 /** Persistiertes KI-Asset in der persönlichen Story-Bibliothek */
 export interface StoryLibraryAsset {
@@ -11,6 +11,39 @@ export interface StoryLibraryAsset {
   imageUrl: string
   tags: string[]
   createdAt: string
+}
+
+/**
+ * Einzelnes Requisit (Sofa, Tisch, Teppich …) — Ziel-Architektur.
+ * Umgebungen werden aus Props zusammengesetzt, jedes Teil einzeln tausch-/färbbar.
+ */
+export interface PropAsset extends AssetMeta {
+  type: 'prop'
+  src: string
+  category: 'moebel' | 'deko' | 'boden' | 'wand' | 'beleuchtung' | 'sonstiges'
+  /** Standard-Platzierung relativ zur Szene (0–100 %) */
+  defaultPosition?: { x: number; y: number }
+  defaultSize?: { w: number; h: number }
+  /** Varianten desselben Typs (z.B. anderes Sofa) */
+  variantGroup?: string
+}
+
+/** Zusammengesetztes Umfeld aus einzelnen Prop-Layern */
+export interface EnvironmentComposition {
+  id: string
+  name: string
+  tags: string[]
+  /** Optionaler KI-Hintergrund (flach) — wird durch Props ergänzt oder ersetzt */
+  backgroundUrl?: string
+  props: Array<{
+    propId: string
+    src: string
+    position: { x: number; y: number }
+    size: { w: number; h: number }
+    zIndex: number
+    hueRotate?: number
+    visible?: boolean
+  }>
 }
 
 export interface AssetMeta {
@@ -86,6 +119,8 @@ export interface AnimationDef {
 
 export interface SceneCharacterPlacement {
   characterId: string
+  /** Anzeigename in der Szene (Sprecher im Dialog) */
+  displayName?: string
   poseId: string
   expression?: string
   position: { x: number; y: number }
