@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 400">
+  <!-- Body/Torso - T-shirt -->
+  <path d="M70 80 Q100 75 130 80 L140 200 Q100 210 60 200 Z" fill="#3498DB"/>
+  <!-- Pants -->
+  <path d="M65 200 L60 380 Q80 385 100 380 L100 200" fill="#2C3E50"/>
+  <path d="M135 200 L140 380 Q120 385 100 380 L100 200" fill="#2C3E50"/>
+  <!-- Shoes -->
+  <ellipse cx="65" cy="390" rx="20" ry="10" fill="#333"/>
+  <ellipse cx="135" cy="390" rx="20" ry="10" fill="#333"/>
+  <!-- Neck -->
+  <rect x="90" y="65" width="20" height="20" fill="#FDBCB4" rx="5"/>
+</svg>

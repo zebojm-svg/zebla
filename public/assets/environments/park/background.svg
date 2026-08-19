@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <!-- Sky -->
+  <rect width="1280" height="450" fill="#87CEEB"/>
+  <!-- Sun -->
+  <circle cx="200" cy="100" r="60" fill="#FFD700" opacity="0.9"/>
+  <!-- Clouds -->
+  <ellipse cx="400" cy="80" rx="80" ry="30" fill="white" opacity="0.8"/>
+  <ellipse cx="450" cy="75" rx="60" ry="25" fill="white" opacity="0.8"/>
+  <ellipse cx="900" cy="120" rx="70" ry="25" fill="white" opacity="0.7"/>
+  <!-- Grass -->
+  <rect y="450" width="1280" height="270" fill="#4CAF50"/>
+  <!-- Path -->
+  <ellipse cx="640" cy="600" rx="400" ry="40" fill="#D2B48C" opacity="0.6"/>
+  <!-- Trees -->
+  <rect x="80" y="300" width="30" height="150" fill="#8B4513"/>
+  <ellipse cx="95" cy="280" rx="55" ry="70" fill="#2E7D32"/>
+  <rect x="1100" y="320" width="25" height="130" fill="#8B4513"/>
+  <ellipse cx="1112" cy="300" rx="45" ry="60" fill="#388E3C"/>
+  <!-- Bench -->
+  <rect x="250" y="480" width="120" height="8" fill="#6D4C41" rx="2"/>
+  <rect x="260" y="488" width="5" height="30" fill="#5D4037"/>
+  <rect x="360" y="488" width="5" height="30" fill="#5D4037"/>
+  <rect x="750" y="480" width="120" height="8" fill="#6D4C41" rx="2"/>
+  <rect x="760" y="488" width="5" height="30" fill="#5D4037"/>
+  <rect x="860" y="488" width="5" height="30" fill="#5D4037"/>
+  <!-- Flowers -->
+  <circle cx="500" cy="520" r="5" fill="#FF5722"/>
+  <circle cx="520" cy="530" r="4" fill="#E91E63"/>
+  <circle cx="480" cy="535" r="5" fill="#FF9800"/>
+  <circle cx="700" cy="510" r="4" fill="#9C27B0"/>
+  <circle cx="720" cy="525" r="5" fill="#FF5722"/>
+</svg>

@@ -9,6 +9,7 @@ import { CreateDialogPage } from './pages/CreateDialogPage'
 import { DialogEditorPage } from './pages/DialogEditorPage'
 import { SlideshowPage } from './pages/SlideshowPage'
 import { ShareImportPage } from './pages/ShareImportPage'
+import { StoryPlayerPage } from './story/StoryPlayerPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ProPage } from './pages/ProPage'
 import { SsoPage } from './pages/SsoPage'
@@ -75,6 +76,14 @@ function AppRoutes() {
           }
         />
         <Route path="/dialog/:id/slideshow" element={<SlideshowPage />} />
+        <Route
+          path="/story"
+          element={
+            <Layout>
+              <StoryPlayerPage />
+            </Layout>
+          }
+        />
       </Route>
     </Routes>
   )
