@@ -21,6 +21,8 @@ export interface LayerImage {
   keyOutWhite?: boolean
   /** Quellbild-Ausschnitt (0–1), z.B. Beine bei Sitz-Pose abschneiden */
   sourceCrop?: { top?: number; bottom?: number; left?: number; right?: number }
+  /** Auf der Leinwand verschiebbar */
+  draggable?: boolean
 }
 
 export interface LayerAnimation {
@@ -49,6 +51,11 @@ type Props = {
   layers: LayerImage[]
   animations?: LayerAnimation[]
   className?: string
+  selectedLayerId?: string | null
+  onSelectLayer?: (layerId: string | null) => void
+  onDragLayer?: (layerId: string, dx: number, dy: number) => void
+  onWheelLayer?: (layerId: string, deltaScale: number) => void
+  onRotateLayer?: (layerId: string, deltaRotation: number) => void
 }
 
 interface AnimState {
@@ -91,8 +98,28 @@ function drawLayerImage(
   ctx.drawImage(img, sx, sy, sw, sh, destX, destY, layer.width, layer.height)
 }
 
-export function CompositeCanvas({ width, height, layers, animations = [], className }: Props) {
+export function CompositeCanvas({
+  width,
+  height,
+  layers,
+  animations = [],
+  className,
+  selectedLayerId,
+  onSelectLayer,
+  onDragLayer,
+  onWheelLayer,
+  onRotateLayer,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const dragRef = useRef<{
+    layerId: string
+    lastX: number
+    lastY: number
+    mode: 'move' | 'rotate'
+    rotateAnchorX?: number
+    rotateAnchorY?: number
+    lastAngleDeg?: number
+  } | null>(null)
   const [images, setImages] = useState<Map<string, CanvasImageSource>>(new Map())
   const animRef = useRef<AnimState>({
     offsets: new Map(),
@@ -288,13 +315,129 @@ export function CompositeCanvas({ width, height, layers, animations = [], classN
     return () => cancelAnimationFrame(frameRef.current)
   }, [render])
 
+  const hitTest = useCallback(
+    (canvasX: number, canvasY: number): LayerImage | null => {
+      const sorted = [...layers].sort((a, b) => b.zIndex - a.zIndex)
+      for (const layer of sorted) {
+        if (!layer.draggable) continue
+        if (
+          canvasX >= layer.x &&
+          canvasX <= layer.x + layer.width &&
+          canvasY >= layer.y &&
+          canvasY <= layer.y + layer.height
+        ) {
+          return layer
+        }
+      }
+      return null
+    },
+    [layers],
+  )
+
+  const toCanvasCoords = (e: React.PointerEvent<HTMLCanvasElement> | WheelEvent) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    const clientX = 'clientX' in e ? e.clientX : 0
+    const clientY = 'clientY' in e ? e.clientY : 0
+    return {
+      x: ((clientX - rect.left) / rect.width) * width,
+      y: ((clientY - rect.top) / rect.height) * height,
+    }
+  }
+
+  const layerAnchor = (layer: LayerImage) => {
+    const finalX = layer.x
+    const finalY = layer.y
+    return {
+      x: finalX + layer.width * (layer.rotationAnchor?.x ?? 0.5),
+      y: finalY + layer.height * (layer.rotationAnchor?.y ?? 1),
+    }
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !onWheelLayer) return
+
+    const onWheel = (e: WheelEvent) => {
+      const { x, y } = toCanvasCoords(e)
+      const hit =
+        hitTest(x, y) ??
+        (selectedLayerId ? layers.find((l) => l.id === selectedLayerId && l.draggable) ?? null : null)
+      if (!hit) return
+      e.preventDefault()
+      const delta = -e.deltaY * 0.002
+      onWheelLayer(hit.id, delta)
+    }
+
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', onWheel)
+  }, [layers, selectedLayerId, onWheelLayer, hitTest, width, height])
+
   return (
     <canvas
       ref={canvasRef}
       width={width}
       height={height}
-      className={className}
-      style={{ display: 'block', maxWidth: '100%', height: 'auto' }}
+      className={`${className ?? ''}${selectedLayerId ? ' story-canvas-interactive' : ''}`}
+      style={{ display: 'block', maxWidth: '100%', height: 'auto', touchAction: 'none' }}
+      onPointerDown={(e) => {
+        const { x, y } = toCanvasCoords(e)
+        const hit = hitTest(x, y)
+        if (hit) {
+          if (e.shiftKey && onRotateLayer) {
+            const anchor = layerAnchor(hit)
+            const angleDeg = (Math.atan2(y - anchor.y, x - anchor.x) * 180) / Math.PI
+            dragRef.current = {
+              layerId: hit.id,
+              lastX: x,
+              lastY: y,
+              mode: 'rotate',
+              rotateAnchorX: anchor.x,
+              rotateAnchorY: anchor.y,
+              lastAngleDeg: angleDeg,
+            }
+          } else {
+            dragRef.current = { layerId: hit.id, lastX: x, lastY: y, mode: 'move' }
+          }
+          onSelectLayer?.(hit.id)
+          canvasRef.current?.setPointerCapture(e.pointerId)
+        } else {
+          onSelectLayer?.(null)
+        }
+      }}
+      onPointerMove={(e) => {
+        const drag = dragRef.current
+        if (!drag) return
+        const { x, y } = toCanvasCoords(e)
+        if (drag.mode === 'rotate' && onRotateLayer && drag.rotateAnchorX != null && drag.lastAngleDeg != null) {
+          const angleDeg = (Math.atan2(y - drag.rotateAnchorY!, x - drag.rotateAnchorX!) * 180) / Math.PI
+          let delta = angleDeg - drag.lastAngleDeg
+          if (delta > 180) delta -= 360
+          if (delta < -180) delta += 360
+          if (Math.abs(delta) > 0.2) {
+            onRotateLayer(drag.layerId, delta)
+            drag.lastAngleDeg = angleDeg
+          }
+          return
+        }
+        if (!onDragLayer) return
+        const dx = x - drag.lastX
+        const dy = y - drag.lastY
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          onDragLayer(drag.layerId, dx, dy)
+          drag.lastX = x
+          drag.lastY = y
+        }
+      }}
+      onPointerUp={(e) => {
+        dragRef.current = null
+        try {
+          canvasRef.current?.releasePointerCapture(e.pointerId)
+        } catch {
+          /* ignore */
+        }
+      }}
     />
   )
 }

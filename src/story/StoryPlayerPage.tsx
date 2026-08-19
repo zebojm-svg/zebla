@@ -10,10 +10,22 @@ import {
   updateCastName,
   updateCastPose,
   updateCastLookAt,
+  updateCastTransform,
+  nudgeCastTransform,
   getCastLayerLayout,
+  castLayerId,
   type SceneCast,
   type CastPose,
 } from './story-cast'
+import { CastTransformControls } from './CastTransformControls'
+import {
+  HEAD_ANGLES,
+  LEG_POSES,
+  headAngleLabel,
+  legPoseLabel,
+  poseMatrixSize,
+} from '../../shared/character-parts'
+import type { HeadAngleId, LegPoseId } from '../../shared/character-parts'
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
 import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
 import type { StoryArtStyleId } from '../../shared/story-art-styles'
@@ -27,6 +39,8 @@ type SessionCharacter = {
   imageUrl: string
   description?: string
   styleId: StoryArtStyleId
+  legPose?: LegPoseId
+  headAngle?: HeadAngleId
 }
 type SessionEnvironment = {
   name: string
@@ -256,6 +270,10 @@ export function StoryPlayerPage() {
   const [activeEnvironmentName, setActiveEnvironmentName] = useState<string | null>(null)
   const [sceneNotice, setSceneNotice] = useState('')
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
+  const [selectedCastLayer, setSelectedCastLayer] = useState<string | null>(null)
+  const [generateLegPose, setGenerateLegPose] = useState<LegPoseId>('sitting-forward')
+  const [generateHeadAngle, setGenerateHeadAngle] = useState<HeadAngleId>('front')
+  const [generatingPoseBatch, setGeneratingPoseBatch] = useState(false)
   const [presets] = useState<ScenePreset[]>(SCENE_PRESETS)
 
   const scene = demoScene
@@ -305,6 +323,8 @@ export function StoryPlayerPage() {
       libraryAssetId?: string
       displayName?: string
       pose?: CastPose
+      legPose?: LegPoseId
+      headAngle?: HeadAngleId
     },
   ) => {
     setCast((prev) => {
@@ -356,6 +376,8 @@ export function StoryPlayerPage() {
     description?: string
     imageUrl: string
     styleId?: StoryArtStyleId
+    legPoseId?: LegPoseId
+    headAngleId?: HeadAngleId
     key: string
   }) => {
     setSavingId(input.key)
@@ -367,6 +389,8 @@ export function StoryPlayerPage() {
         imageUrl: input.imageUrl,
         tags: parseTagsInput(saveTagsInput),
         styleId: input.styleId ?? artStyle,
+        legPoseId: input.legPoseId,
+        headAngleId: input.headAngleId,
       })
       setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
     } catch (err) {
@@ -481,15 +505,9 @@ export function StoryPlayerPage() {
       const placement = scene.characters[i]
       const castMember = i === 0 ? cast.left : i === 1 ? cast.right : null
       if (castMember) {
-        const layout = getCastLayerLayout(
-          castMember.slot,
-          castMember.pose,
-          CANVAS_W,
-          CANVAS_H,
-          castMember.lookAtPartner,
-        )
+        const layout = getCastLayerLayout(castMember, CANVAS_W, CANVAS_H)
         result.push({
-          id: `char-${castMember.slot}-generated`,
+          id: castLayerId(castMember.slot),
           src: castMember.imageUrl,
           x: layout.x,
           y: layout.y,
@@ -497,8 +515,11 @@ export function StoryPlayerPage() {
           height: layout.height,
           zIndex: layout.zIndex,
           flip: layout.flip,
+          rotation: layout.rotation,
+          rotationAnchor: { x: 0.5, y: 1 },
           keyOutWhite: true,
           sourceCrop: layout.sourceCrop,
+          draggable: true,
         })
         continue
       }
@@ -564,9 +585,25 @@ export function StoryPlayerPage() {
     setGeneratingCharacter(true)
     setCharacterError('')
     try {
-      const result = await api.story.generateCharacter(name, description, artStyle)
+      const result = await api.story.generateCharacter(
+        name,
+        description,
+        artStyle,
+        generateLegPose,
+        generateHeadAngle,
+      )
       setGeneratedCharacters((prev) =>
-        [{ name, imageUrl: result.imageUrl, description, styleId: result.styleId as StoryArtStyleId }, ...prev].slice(0, 12),
+        [
+          {
+            name,
+            imageUrl: result.imageUrl,
+            description,
+            styleId: result.styleId as StoryArtStyleId,
+            legPose: generateLegPose,
+            headAngle: generateHeadAngle,
+          },
+          ...prev,
+        ].slice(0, 24),
       )
       setActiveTab('bibliothek')
       setWorkflowStep('assets')
@@ -577,6 +614,38 @@ export function StoryPlayerPage() {
       setCharacterError(err instanceof Error ? err.message : 'Fehler')
     } finally {
       setGeneratingCharacter(false)
+    }
+  }
+
+  const handleGeneratePoseBatch = async () => {
+    const name = characterName.trim()
+    const description = characterDescription.trim()
+    if (!name || !description) return
+    setGeneratingPoseBatch(true)
+    setCharacterError('')
+    const created: SessionCharacter[] = []
+    try {
+      for (const leg of LEG_POSES) {
+        for (const head of HEAD_ANGLES) {
+          const result = await api.story.generateCharacter(name, description, artStyle, leg.id, head.id)
+          created.push({
+            name: `${name} · ${head.label} · ${leg.label}`,
+            imageUrl: result.imageUrl,
+            description,
+            styleId: result.styleId as StoryArtStyleId,
+            legPose: leg.id as LegPoseId,
+            headAngle: head.id as HeadAngleId,
+          })
+        }
+      }
+      setGeneratedCharacters((prev) => [...created, ...prev].slice(0, 56))
+      setActiveTab('bibliothek')
+      setWorkflowStep('assets')
+      setSceneNotice(`${created.length} Pose-Varianten erzeugt — in «Gerade erzeugt» speichern oder platzieren.`)
+    } catch (err) {
+      setCharacterError(err instanceof Error ? err.message : 'Pose-Serie fehlgeschlagen.')
+    } finally {
+      setGeneratingPoseBatch(false)
     }
   }
 
@@ -659,6 +728,34 @@ export function StoryPlayerPage() {
               layers={layers}
               animations={sceneAnimations}
               className="story-canvas"
+              selectedLayerId={selectedCastLayer}
+              onSelectLayer={setSelectedCastLayer}
+              onDragLayer={(layerId, dx, dy) => {
+                const slot = layerId.includes('left') ? 'left' : layerId.includes('right') ? 'right' : null
+                if (!slot) return
+                setCast((prev) => nudgeCastTransform(prev, slot, dx, dy))
+              }}
+              onWheelLayer={(layerId, deltaScale) => {
+                const slot = layerId.includes('left') ? 'left' : layerId.includes('right') ? 'right' : null
+                if (!slot) return
+                setCast((prev) => {
+                  const member = prev[slot]
+                  if (!member) return prev
+                  const nextScale = Math.min(1.8, Math.max(0.4, member.transform.scale + deltaScale))
+                  return updateCastTransform(prev, slot, { scale: nextScale })
+                })
+              }}
+              onRotateLayer={(layerId, deltaRotation) => {
+                const slot = layerId.includes('left') ? 'left' : layerId.includes('right') ? 'right' : null
+                if (!slot) return
+                setCast((prev) => {
+                  const member = prev[slot]
+                  if (!member) return prev
+                  return updateCastTransform(prev, slot, {
+                    rotation: Math.max(-90, Math.min(90, member.transform.rotation + deltaRotation)),
+                  })
+                })
+              }}
             />
             {dialogText && (
               <div className="story-dialog-bubble">
@@ -740,8 +837,8 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel">
             <h3>Besetzung dieser Szene</h3>
             <p className="muted">
-              Jede Figur braucht einen <strong>Sprecher-Namen</strong>. Der weisse KI-Hintergrund wird automatisch
-              entfernt — wähle «Auf Sofa sitzen» und «Sprechpartner anschauen» für natürliche Szenen.
+              <strong>Figur in der Vorschau anklicken und ziehen</strong> — Mausrad zoomen, Shift+Ziehen drehen,
+              Regler für Feinjustierung. Für echtes Sitzen: Julien mit passender Bein-Pose in der Bibliothek erzeugen.
             </p>
             <div className="story-cast-grid">
               {(['left', 'right'] as const).map((slot) => {
@@ -773,10 +870,33 @@ export function StoryPlayerPage() {
                               )
                             }
                           >
-                            <option value="sitting-sofa">Auf Sofa sitzen</option>
-                            <option value="standing">Stehen</option>
+                            <option value="custom">Frei platzieren</option>
+                            <option value="sitting-sofa">Start: Sofa (grob)</option>
+                            <option value="standing">Start: Stehen</option>
                           </select>
                         </label>
+                        <CastTransformControls
+                          transform={{
+                            ...member.transform,
+                            scaleX: member.transform.scaleX ?? 1,
+                            scaleY: member.transform.scaleY ?? 1,
+                          }}
+                          onChange={(patch) =>
+                            setCast((prev) => updateCastTransform(prev, slot, patch))
+                          }
+                          onReset={() =>
+                            setCast((prev) =>
+                              updateCastPose(prev, slot, member.pose === 'custom' ? 'standing' : member.pose),
+                            )
+                          }
+                        />
+                        {(member.legPose || member.headAngle) && (
+                          <p className="muted story-card-subtitle">
+                            Bibliothek-Pose:{' '}
+                            {member.headAngle ? headAngleLabel(member.headAngle) : 'Kopf vorne'}
+                            {member.legPose ? ` · ${legPoseLabel(member.legPose)}` : ''}
+                          </p>
+                        )}
                         <label className="story-cast-look-at">
                           <input
                             type="checkbox"
@@ -932,12 +1052,16 @@ export function StoryPlayerPage() {
                             handlePlaceCharacter('left', {
                               imageUrl: item.imageUrl,
                               assetName: item.name,
+                              legPose: item.legPose,
+                              headAngle: item.headAngle,
                             })
                           }
                           onPlaceRight={() =>
                             handlePlaceCharacter('right', {
                               imageUrl: item.imageUrl,
                               assetName: item.name,
+                              legPose: item.legPose,
+                              headAngle: item.headAngle,
                             })
                           }
                           onSave={() =>
@@ -947,6 +1071,8 @@ export function StoryPlayerPage() {
                               description: item.description ?? characterDescription,
                               imageUrl: item.imageUrl,
                               styleId: item.styleId,
+                              legPoseId: item.legPose,
+                              headAngleId: item.headAngle,
                               key: `session-char-${idx}`,
                             })
                           }
@@ -1066,6 +1192,8 @@ export function StoryPlayerPage() {
                               imageUrl: item.imageUrl,
                               assetName: item.name,
                               libraryAssetId: item.id,
+                              legPose: item.legPoseId as LegPoseId | undefined,
+                              headAngle: item.headAngleId as HeadAngleId | undefined,
                             })
                           }
                           onPlaceRight={() =>
@@ -1073,6 +1201,8 @@ export function StoryPlayerPage() {
                               imageUrl: item.imageUrl,
                               assetName: item.name,
                               libraryAssetId: item.id,
+                              legPose: item.legPoseId as LegPoseId | undefined,
+                              headAngle: item.headAngleId as HeadAngleId | undefined,
                             })
                           }
                           onDelete={() => void handleDeleteFromLibrary(item.id)}
@@ -1112,18 +1242,90 @@ export function StoryPlayerPage() {
                 placeholder="Beschreibung (Alter, Haare, Kleidung, Ausdruck...)"
                 value={characterDescription}
                 onChange={(e) => setCharacterDescription(e.target.value)}
-                disabled={generatingCharacter}
+                disabled={generatingCharacter || generatingPoseBatch}
               />
+              <div className="story-pose-pickers">
+                <label className="story-cast-name-label">
+                  Kopf-Richtung
+                  <select
+                    className="input"
+                    value={generateHeadAngle}
+                    onChange={(e) => setGenerateHeadAngle(e.target.value as HeadAngleId)}
+                    disabled={generatingCharacter || generatingPoseBatch}
+                  >
+                    {HEAD_ANGLES.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="story-cast-name-label">
+                  Bein-Pose
+                  <select
+                    className="input"
+                    value={generateLegPose}
+                    onChange={(e) => setGenerateLegPose(e.target.value as LegPoseId)}
+                    disabled={generatingCharacter || generatingPoseBatch}
+                  >
+                    {LEG_POSES.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={generatingCharacter}
+                disabled={generatingCharacter || generatingPoseBatch}
                 onClick={handleGenerateCharacter}
               >
-                {generatingCharacter ? 'Erzeuge Figur …' : 'Figur erzeugen'}
+                {generatingCharacter ? 'Erzeuge Figur …' : 'Eine Pose erzeugen'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={generatingCharacter || generatingPoseBatch}
+                onClick={() => void handleGeneratePoseBatch()}
+              >
+                {generatingPoseBatch
+                  ? 'Erzeuge Pose-Matrix …'
+                  : `Alle ${poseMatrixSize().total} Posen erzeugen (dauert)`}
               </button>
             </div>
             {characterError && <p className="alert alert-error">{characterError}</p>}
+          </section>
+
+          <section className="story-generate-panel">
+            <h3>Pose-Bibliothek</h3>
+            <p className="muted">
+              Kopf und Beine werden <strong>beim Erzeugen</strong> kombiniert — z.B. Julien im Schneidersitz mit
+              Blick schräg nach links. In der Szene: Figur ziehen, Mausrad zoomen, Shift drehen, Regler zerren.
+            </p>
+            <p className="muted">
+              Matrix: {poseMatrixSize().heads} Kopf-Richtungen × {poseMatrixSize().legs} Bein-Posen ={' '}
+              {poseMatrixSize().total} Varianten pro Figur.
+            </p>
+            <div className="story-pose-grid">
+              <div>
+                <h4 className="story-library-heading">Kopf-Richtungen</h4>
+                <ul className="story-pose-list">
+                  {HEAD_ANGLES.map((h) => (
+                    <li key={h.id}>{h.label}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="story-library-heading">Bein-Posen</h4>
+                <ul className="story-pose-list">
+                  {LEG_POSES.map((l) => (
+                    <li key={l.id}>{l.label}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </section>
 
           <section className="story-generate-panel">

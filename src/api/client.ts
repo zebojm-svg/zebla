@@ -415,10 +415,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ description, styleId }),
       }),
-    generateCharacter: (name: string, description: string, styleId?: string) =>
+    generateCharacter: (
+      name: string,
+      description: string,
+      styleId?: string,
+      legPoseId?: string,
+      headAngleId?: string,
+    ) =>
       request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-character', {
         method: 'POST',
-        body: JSON.stringify({ name, description, styleId }),
+        body: JSON.stringify({ name, description, styleId, legPoseId, headAngleId }),
       }),
     generateEnvironment: (name: string, description: string, styleId?: string) =>
       request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-environment', {
@@ -441,6 +447,8 @@ export const api = {
       imageUrl: string
       tags: string[]
       styleId?: string
+      legPoseId?: string
+      headAngleId?: string
     }) =>
       request<{ asset: import('../../shared/story-types').StoryLibraryAsset }>('/story-library', {
         method: 'POST',

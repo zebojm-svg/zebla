@@ -93,6 +93,7 @@ import {
   STORY_ART_STYLES,
   isStoryArtStyleId,
 } from '../shared/story-art-styles.js'
+import { isHeadAngleId, isLegPoseId } from '../shared/character-parts.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -1019,17 +1020,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-generate-character' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { description, name, styleId } = req.body as {
+      const { description, name, styleId, legPoseId, headAngleId } = req.body as {
         description?: string
         name?: string
         styleId?: string
+        legPoseId?: string
+        headAngleId?: string
       }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
       const style = isStoryArtStyleId(styleId ?? '') ? styleId : undefined
-      const result = await generateStoryCharacter(description.trim(), name.trim(), style)
+      const legPose = isLegPoseId(legPoseId ?? '') ? legPoseId : undefined
+      const headAngle = isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined
+      const result = await generateStoryCharacter(description.trim(), name.trim(), style, legPose, headAngle)
       res.json(result)
       return
     }
@@ -1062,13 +1067,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { type, name, description, imageUrl, tags, styleId } = req.body as {
+      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId } = req.body as {
         type?: StoryAssetType
         name?: string
         description?: string
         imageUrl?: string
         tags?: string[]
         styleId?: string
+        legPoseId?: string
+        headAngleId?: string
       }
       if (!type || !name?.trim() || !imageUrl?.trim()) {
         res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
@@ -1085,6 +1092,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         imageUrl: imageUrl.trim(),
         tags: Array.isArray(tags) ? tags : [],
         styleId: isStoryArtStyleId(styleId ?? '') ? styleId : undefined,
+        legPoseId: isLegPoseId(legPoseId ?? '') ? legPoseId : undefined,
+        headAngleId: isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined,
       })
       res.json({ asset })
       return

@@ -1,4 +1,5 @@
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
+import { headAnglePrompt, legPosePrompt, type HeadAngleId, type LegPoseId } from '../shared/character-parts.js'
 import { removeLightBackground } from './story-image-processing.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
@@ -93,18 +94,17 @@ export async function generateStoryCharacter(
   description: string,
   name: string,
   styleId?: StoryArtStyleId,
-  pose: 'standing' | 'sitting' = 'standing',
+  legPoseId?: LegPoseId,
+  headAngleId?: HeadAngleId,
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const poseLine =
-    pose === 'sitting'
-      ? 'sitting on a chair or sofa, relaxed natural posture, legs visible or bent naturally'
-      : 'standing naturally, full body visible'
+  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing naturally, full body visible'
+  const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const prompt =
     `${style}\n\n` +
     `Single character cutout on pure flat solid white #FFFFFF background only, no floor line, no shadow on background, ` +
-    `${poseLine}, front view:\n${description}\nCharacter name: ${name}\n` +
+    `${legHint}, ${headHint}:\n${description}\nCharacter name: ${name}\n` +
     `IMPORTANT: Only this ONE character, no room, no furniture, no other people, no gradient background.`
 
   const res = await googleApiPost(

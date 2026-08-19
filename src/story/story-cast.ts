@@ -1,18 +1,40 @@
 /** Figur in der aktuellen Szene — displayName ist der Sprechername im Dialog */
 
-export type CastPose = 'standing' | 'sitting-sofa'
+import type { HeadAngleId, LegPoseId } from '../../shared/character-parts'
+
+export type CastPose = 'standing' | 'sitting-sofa' | 'custom'
+
+export interface CastTransform {
+  offsetX: number
+  offsetY: number
+  scale: number
+  /** Horizontale Streckung (Zerren) */
+  scaleX: number
+  /** Vertikale Streckung (Zerren) */
+  scaleY: number
+  rotation: number
+}
+
+export const DEFAULT_CAST_TRANSFORM: CastTransform = {
+  offsetX: 0,
+  offsetY: 0,
+  scale: 1,
+  scaleX: 1,
+  scaleY: 1,
+  rotation: 0,
+}
 
 export interface SceneCastMember {
   slot: 'left' | 'right'
   imageUrl: string
-  /** Name in Bibliothek / bei Generierung */
   assetName: string
-  /** Anzeigename in dieser Szene (Sprecher, Aktionen) */
   displayName: string
   libraryAssetId?: string
   pose: CastPose
-  /** Zur Partnerfigur schauen (horizontal spiegeln) */
   lookAtPartner: boolean
+  transform: CastTransform
+  headAngle?: HeadAngleId
+  legPose?: LegPoseId
 }
 
 export type SceneCast = {
@@ -26,51 +48,60 @@ export interface CastLayerLayout {
   width: number
   height: number
   flip: boolean
+  rotation: number
   zIndex: number
-  /** Quellbild abschneiden (0–1) — z.B. Beine verbergen bei Sitz-Pose */
   sourceCrop?: { top?: number; bottom?: number; left?: number; right?: number }
 }
 
-/** Position & Größe der Figur auf der 1280×720-Leinwand */
 export function getCastLayerLayout(
-  slot: 'left' | 'right',
-  pose: CastPose,
+  member: SceneCastMember,
   canvasW: number,
   canvasH: number,
-  lookAtPartner: boolean,
 ): CastLayerLayout {
+  const { slot, pose, lookAtPartner, transform } = member
   const partnerOnRight = slot === 'left'
   const flip = lookAtPartner ? (partnerOnRight ? false : true) : slot === 'right'
 
+  let base: Omit<CastLayerLayout, 'rotation'>
+
   if (pose === 'sitting-sofa') {
-    // Gelbes Sofa typischer KI-Wohnzimmer: links-mitte, Sitzfläche ~66% von oben
     const width = Math.round(canvasW * 0.13)
     const height = Math.round(canvasH * 0.36)
     const seatLineY = Math.round(canvasH * 0.665)
     const centerX = slot === 'left' ? 0.235 : 0.365
-    return {
+    base = {
       x: Math.round(centerX * canvasW - width / 2),
       y: seatLineY - height,
       width,
       height,
       flip,
       zIndex: slot === 'left' ? 26 : 27,
-      // Stehendes KI-Bild: untere 48% abschneiden → wirkt wie Sitzen auf dem Sofa
-      sourceCrop: { top: 0.02, bottom: 0.48 },
+    }
+  } else {
+    const width = Math.round(canvasW * 0.17)
+    const height = Math.round(canvasH * 0.48)
+    const centerX = slot === 'left' ? 0.28 : 0.72
+    const floorY = Math.round(canvasH * 0.92)
+    base = {
+      x: Math.round(centerX * canvasW - width / 2),
+      y: floorY - height,
+      width,
+      height,
+      flip,
+      zIndex: slot === 'left' ? 22 : 23,
     }
   }
 
-  const width = Math.round(canvasW * 0.17)
-  const height = Math.round(canvasH * 0.48)
-  const centerX = slot === 'left' ? 0.28 : 0.72
-  const floorY = Math.round(canvasH * 0.92)
+  const scale = transform.scale || 1
+  const scaleX = transform.scaleX || 1
+  const scaleY = transform.scaleY || 1
   return {
-    x: Math.round(centerX * canvasW - width / 2),
-    y: floorY - height,
-    width,
-    height,
-    flip,
-    zIndex: slot === 'left' ? 22 : 23,
+    ...base,
+    x: base.x + transform.offsetX,
+    y: base.y + transform.offsetY,
+    width: Math.round(base.width * scale * scaleX),
+    height: Math.round(base.height * scale * scaleY),
+    rotation: transform.rotation,
   }
 }
 
@@ -84,6 +115,8 @@ export function placeInCast(
     libraryAssetId?: string
     pose?: CastPose
     lookAtPartner?: boolean
+    legPose?: LegPoseId
+    headAngle?: HeadAngleId
   },
 ): SceneCast {
   const partnerPresent = slot === 'left' ? Boolean(cast.right) : Boolean(cast.left)
@@ -95,10 +128,23 @@ export function placeInCast(
       assetName: input.assetName,
       displayName: input.displayName?.trim() || input.assetName,
       libraryAssetId: input.libraryAssetId,
-      pose: input.pose ?? 'sitting-sofa',
+      pose: input.pose ?? 'custom',
       lookAtPartner: input.lookAtPartner ?? partnerPresent,
+      transform: { ...DEFAULT_CAST_TRANSFORM },
+      legPose: input.legPose,
+      headAngle: input.headAngle ?? 'front',
     },
   }
+}
+
+export function updateCastHeadAngle(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  headAngle: HeadAngleId,
+): SceneCast {
+  const member = cast[slot]
+  if (!member) return cast
+  return { ...cast, [slot]: { ...member, headAngle } }
 }
 
 export function updateCastName(
@@ -114,7 +160,14 @@ export function updateCastName(
 export function updateCastPose(cast: SceneCast, slot: 'left' | 'right', pose: CastPose): SceneCast {
   const member = cast[slot]
   if (!member) return cast
-  return { ...cast, [slot]: { ...member, pose } }
+  return {
+    ...cast,
+    [slot]: {
+      ...member,
+      pose,
+      transform: { ...DEFAULT_CAST_TRANSFORM },
+    },
+  }
 }
 
 export function updateCastLookAt(
@@ -125,4 +178,39 @@ export function updateCastLookAt(
   const member = cast[slot]
   if (!member) return cast
   return { ...cast, [slot]: { ...member, lookAtPartner } }
+}
+
+export function updateCastTransform(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  patch: Partial<CastTransform>,
+): SceneCast {
+  const member = cast[slot]
+  if (!member) return cast
+  return {
+    ...cast,
+    [slot]: {
+      ...member,
+      pose: 'custom',
+      transform: { ...member.transform, ...patch },
+    },
+  }
+}
+
+export function nudgeCastTransform(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  dx: number,
+  dy: number,
+): SceneCast {
+  const member = cast[slot]
+  if (!member) return cast
+  return updateCastTransform(cast, slot, {
+    offsetX: member.transform.offsetX + dx,
+    offsetY: member.transform.offsetY + dy,
+  })
+}
+
+export function castLayerId(slot: 'left' | 'right'): string {
+  return `char-${slot}-generated`
 }

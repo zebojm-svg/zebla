@@ -12,6 +12,10 @@ export interface StoryLibraryAsset {
   tags: string[]
   /** Bildstil bei KI-Generierung */
   styleId?: string
+  /** Bein-Pose bei modularen Figuren */
+  legPoseId?: string
+  /** Kopf-Richtung bei modularen Figuren */
+  headAngleId?: string
   createdAt: string
 }
 
