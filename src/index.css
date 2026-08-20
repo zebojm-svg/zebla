@@ -1961,8 +1961,13 @@ html[dir='rtl'] .slideshow-topbar {
   margin: 1.25rem 0 0.5rem;
 }
 
-.story-library-heading-row .story-library-heading {
-  margin: 0;
+.story-sofa-cta {
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  background: rgba(22, 101, 52, 0.18);
+}
+
+.story-sofa-cta h3 {
+  color: #bbf7d0;
 }
 
 .story-tag-row {

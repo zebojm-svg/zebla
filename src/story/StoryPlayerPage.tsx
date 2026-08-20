@@ -664,12 +664,13 @@ export function StoryPlayerPage() {
     }
   }
 
-  const handleGeneratePoseBatch = async () => {
+  const handleGeneratePoseBatch = async (setId: PoseSetId = generatePoseSet) => {
     const name = characterName.trim()
     const description = characterDescription.trim()
     if (!name || !description) return
-    const combos = poseSetCombos(generatePoseSet, generateLegPose)
+    const combos = poseSetCombos(setId, generateLegPose)
     if (combos.length === 0) return
+    setGeneratePoseSet(setId)
     setGeneratingPoseBatch(true)
     setCharacterError('')
     setPoseBatchProgress(`0 / ${combos.length}`)
@@ -719,6 +720,14 @@ export function StoryPlayerPage() {
     } finally {
       setGeneratingEnvironment(false)
     }
+  }
+
+  const goToSofaDialogSet = () => {
+    setGeneratePoseSet('sofa-dialogue')
+    setGenerateLegPose('sitting-forward')
+    setActiveTab('erzeugen')
+    setWorkflowStep('assets')
+    setSceneNotice('Hier: Name + Beschreibung eintragen, dann grünen Button «Sofa-Dialog-Set erzeugen» drücken.')
   }
 
   const castNames = [cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(', ')
@@ -1154,6 +1163,29 @@ export function StoryPlayerPage() {
 
       {activeTab === 'bibliothek' && (
         <>
+          <section className="story-generate-panel story-sofa-cta">
+            <h3>Sofa-Dialog-Set (Julien sitzen + Blick wechseln)</h3>
+            <p className="muted">
+              Das findest du nicht in der Bibliothek selbst — es wird unter <strong>KI erzeugen</strong> gemacht.
+              Danach erscheinen die 5 Posen hier und du speicherst sie.
+            </p>
+            <ol className="story-steps-list">
+              <li>
+                Oben auf <strong>KI erzeugen</strong> klicken (oder den Button unten)
+              </li>
+              <li>Name + Beschreibung von Julien eintragen</li>
+              <li>
+                Grünen Button <strong>Sofa-Dialog-Set erzeugen</strong> drücken (5 Bilder)
+              </li>
+              <li>
+                Zurück hierher → <strong>Alle in Bibliothek</strong> → eine Pose «Als links»
+              </li>
+            </ol>
+            <button type="button" className="btn btn-primary" onClick={goToSofaDialogSet}>
+              Zum Sofa-Dialog-Set →
+            </button>
+          </section>
+
           <section className="story-generate-panel" ref={sessionGalleryRef}>
             <h3>Gerade erzeugt (diese Sitzung)</h3>
             <p className="muted">
@@ -1374,10 +1406,11 @@ export function StoryPlayerPage() {
 
       {activeTab === 'erzeugen' && (
         <>
-          <section className="story-generate-panel">
-            <h3>KI-Figur generieren</h3>
+          <section className="story-generate-panel story-sofa-cta" id="sofa-dialog-set">
+            <h3>1 — Sofa-Dialog-Set erzeugen</h3>
             <p className="muted">
-              Nach dem Erzeugen wechselst du automatisch zur Bibliothek — dort findest du die Figur sofort.
+              Erzeugt <strong>5 sitzende Julien-Varianten</strong> mit verschiedenen Blickrichtungen (vorne, schräg,
+              Profil). Das brauchst du fürs Wohnzimmer-Sofa.
             </p>
             <div className="story-character-form">
               <input
@@ -1386,7 +1419,7 @@ export function StoryPlayerPage() {
                 placeholder="Figurenname (z.B. Julien)"
                 value={characterName}
                 onChange={(e) => setCharacterName(e.target.value)}
-                disabled={generatingCharacter}
+                disabled={generatingCharacter || generatingPoseBatch}
               />
               <textarea
                 className="input"
@@ -1396,6 +1429,30 @@ export function StoryPlayerPage() {
                 onChange={(e) => setCharacterDescription(e.target.value)}
                 disabled={generatingCharacter || generatingPoseBatch}
               />
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={generatingCharacter || generatingPoseBatch || !characterName.trim() || !characterDescription.trim()}
+                onClick={() => {
+                  setGenerateLegPose('sitting-forward')
+                  void handleGeneratePoseBatch('sofa-dialogue')
+                }}
+              >
+                {generatingPoseBatch && generatePoseSet === 'sofa-dialogue'
+                  ? `Erzeuge Sofa-Set … ${poseBatchProgress}`
+                  : 'Sofa-Dialog-Set erzeugen (5 Bilder)'}
+              </button>
+            </div>
+            {characterError && <p className="alert alert-error">{characterError}</p>}
+            {generatingPoseBatch && (
+              <p className="muted">Dauert ein paar Minuten — bitte Fenster offen lassen.</p>
+            )}
+          </section>
+
+          <section className="story-generate-panel">
+            <h3>2 — Einzelne Pose oder anderes Set</h3>
+            <p className="muted">Nur nötig, wenn du etwas anderes als das Sofa-Set willst.</p>
+            <div className="story-character-form">
               <div className="story-pose-pickers">
                 <label className="story-cast-name-label">
                   Kopf-Richtung
@@ -1430,14 +1487,14 @@ export function StoryPlayerPage() {
               </div>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-secondary"
                 disabled={generatingCharacter || generatingPoseBatch}
                 onClick={handleGenerateCharacter}
               >
-                {generatingCharacter ? 'Erzeuge Figur …' : 'Eine Pose erzeugen'}
+                {generatingCharacter ? 'Erzeuge Figur …' : 'Nur eine Pose erzeugen'}
               </button>
               <label className="story-cast-name-label">
-                Pose-Set für die Bibliothek
+                Anderes Pose-Set
                 <select
                   className="input"
                   value={generatePoseSet}
@@ -1468,14 +1525,13 @@ export function StoryPlayerPage() {
                   : `${POSE_SETS.find((s) => s.id === generatePoseSet)?.label ?? 'Set'} erzeugen`}
               </button>
             </div>
-            {characterError && <p className="alert alert-error">{characterError}</p>}
           </section>
 
           <section className="story-generate-panel">
-            <h3>Pose-Bibliothek</h3>
+            <h3>Pose-Übersicht</h3>
             <p className="muted">
-              Empfehlung: <strong>Sofa-Dialog-Set</strong> (5 Blickrichtungen im Sitzen) erzeugen, alle fünf in die
-              Bibliothek speichern, eine platzieren — dann in der Besetzung die Blickrichtung umschalten.
+              Nach dem Sofa-Set: unter <strong>Bibliothek</strong> speichern, eine Pose platzieren, dann in der
+              Besetzung die Blickrichtung umschalten.
             </p>
             <p className="muted">
               Volle Matrix: {poseMatrixSize().heads} × {poseMatrixSize().legs} = {poseMatrixSize().total} (nur wenn
