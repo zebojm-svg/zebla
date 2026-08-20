@@ -1,6 +1,7 @@
 /** Figur in der aktuellen Szene — displayName ist der Sprechername im Dialog */
 
 import type { HeadAngleId, LegPoseId } from '../../shared/character-parts'
+import { characterBaseName } from '../../shared/character-parts'
 
 export type CastPose = 'standing' | 'sitting-sofa' | 'custom'
 
@@ -120,13 +121,14 @@ export function placeInCast(
   },
 ): SceneCast {
   const partnerPresent = slot === 'left' ? Boolean(cast.right) : Boolean(cast.left)
+  const baseName = characterBaseName(input.assetName)
   return {
     ...cast,
     [slot]: {
       slot,
       imageUrl: input.imageUrl,
       assetName: input.assetName,
-      displayName: input.displayName?.trim() || input.assetName,
+      displayName: input.displayName?.trim() || baseName,
       libraryAssetId: input.libraryAssetId,
       pose: input.pose ?? 'custom',
       lookAtPartner: input.lookAtPartner ?? partnerPresent,
@@ -145,6 +147,33 @@ export function updateCastHeadAngle(
   const member = cast[slot]
   if (!member) return cast
   return { ...cast, [slot]: { ...member, headAngle } }
+}
+
+/** Bild/Pose tauschen, Position und Sprechername behalten */
+export function swapCastVariant(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  input: {
+    imageUrl: string
+    assetName: string
+    libraryAssetId?: string
+    headAngle?: HeadAngleId
+    legPose?: LegPoseId
+  },
+): SceneCast {
+  const member = cast[slot]
+  if (!member) return cast
+  return {
+    ...cast,
+    [slot]: {
+      ...member,
+      imageUrl: input.imageUrl,
+      assetName: input.assetName,
+      libraryAssetId: input.libraryAssetId,
+      headAngle: input.headAngle ?? member.headAngle,
+      legPose: input.legPose ?? member.legPose,
+    },
+  }
 }
 
 export function updateCastName(
