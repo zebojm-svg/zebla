@@ -1,5 +1,10 @@
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
 import { headAnglePrompt, legPosePrompt, type HeadAngleId, type LegPoseId } from '../shared/character-parts.js'
+import {
+  resolveStoryCharacterAppearance,
+  STORY_CHARACTER_ANATOMY_PROMPT,
+  STORY_CHARACTER_FRAMING_PROMPT,
+} from '../shared/story-character-looks.js'
 import { removeLightBackground } from './story-image-processing.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
@@ -99,13 +104,16 @@ export async function generateStoryCharacter(
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing naturally, full body visible'
+  const appearance = resolveStoryCharacterAppearance(name, description)
+  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing full body, both shoes visible, white margin below the feet'
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const prompt =
+    `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
     `${style}\n\n` +
-    `Single character cutout on pure flat solid white #FFFFFF background only, no floor line, no shadow on background, ` +
-    `${legHint}, ${headHint}:\n${description}\nCharacter name: ${name}\n` +
-    `IMPORTANT: Only this ONE character, no room, no furniture, no other people, no gradient background.`
+    `Single character cutout on pure flat solid white #FFFFFF background only, no floor, no shadow, no furniture. ` +
+    `${legHint}. ${headHint}.\n${appearance}\nCharacter name: ${name}\n` +
+    `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
+    `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people.`
 
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
@@ -113,7 +121,7 @@ export async function generateStoryCharacter(
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: { aspectRatio: '3:4' },
+        imageConfig: { aspectRatio: '9:16' },
       },
     },
   )
@@ -149,7 +157,7 @@ export async function generateStoryEnvironment(
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const prompt = `${style}\n\nEmpty room/environment with NO people, NO characters. Show only the space, furniture, objects, lighting:\n${description}\nLocation: ${name}\nIMPORTANT: Absolutely NO people or characters. Just the empty space ready for characters to be placed in.`
+  const prompt = `${style}\n\nEmpty room/environment with NO people, NO characters, NO faces, NO mannequins, NO silhouettes sitting on furniture. Show only the space, furniture, objects, lighting:\n${description}\nLocation: ${name}\nIMPORTANT: Absolutely NO people or characters. Just the empty space ready for characters to be placed in.`
 
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,

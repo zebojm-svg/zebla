@@ -45,6 +45,13 @@ import {
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
 import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
 import type { StoryArtStyleId } from '../../shared/story-art-styles'
+import {
+  STORY_CHARACTER_LOOKS,
+  descriptionForCharacterName,
+  isKnownLookDescription,
+  lookForCharacterName,
+  normalizeCharacterLookName,
+} from '../../shared/story-character-looks'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -266,7 +273,7 @@ export function StoryPlayerPage() {
   const [generatedSceneStyleId, setGeneratedSceneStyleId] = useState<StoryArtStyleId | null>(null)
   const [characterName, setCharacterName] = useState('Julien')
   const [characterDescription, setCharacterDescription] = useState(
-    '8-year-old boy, round glasses, short brown hair, red t-shirt, blue jeans, friendly smile',
+    () => descriptionForCharacterName('Julien') ?? '',
   )
   const [generatingCharacter, setGeneratingCharacter] = useState(false)
   const [characterError, setCharacterError] = useState('')
@@ -287,7 +294,7 @@ export function StoryPlayerPage() {
   const [sceneNotice, setSceneNotice] = useState('')
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
   const [selectedCastLayer, setSelectedCastLayer] = useState<string | null>(null)
-  const [generateLegPose, setGenerateLegPose] = useState<LegPoseId>('sitting-forward')
+  const [generateLegPose, setGenerateLegPose] = useState<LegPoseId>('standing')
   const [generateHeadAngle, setGenerateHeadAngle] = useState<HeadAngleId>('front')
   const [generatePoseSet, setGeneratePoseSet] = useState<PoseSetId>('sofa-dialogue')
   const [generatingPoseBatch, setGeneratingPoseBatch] = useState(false)
@@ -346,7 +353,11 @@ export function StoryPlayerPage() {
     },
   ) => {
     setCast((prev) => {
-      let next = placeInCast(prev, slot, input)
+      const sitting = input.legPose?.startsWith('sitting')
+      let next = placeInCast(prev, slot, {
+        ...input,
+        pose: input.pose ?? (sitting ? 'sitting-sofa' : 'standing'),
+      })
       if (next.left && next.right) {
         next = {
           left: { ...next.left, lookAtPartner: true },
@@ -625,6 +636,14 @@ export function StoryPlayerPage() {
     }
   }
 
+  const applyCharacterName = (nextName: string) => {
+    setCharacterName(nextName)
+    if (isKnownLookDescription(characterDescription)) {
+      const nextDesc = descriptionForCharacterName(nextName)
+      if (nextDesc) setCharacterDescription(nextDesc)
+    }
+  }
+
   const handleGenerateCharacter = async () => {
     const name = characterName.trim()
     const description = characterDescription.trim()
@@ -724,13 +743,14 @@ export function StoryPlayerPage() {
 
   const goToSofaDialogSet = () => {
     setGeneratePoseSet('sofa-dialogue')
-    setGenerateLegPose('sitting-forward')
+    setGenerateLegPose('standing')
     setActiveTab('erzeugen')
     setWorkflowStep('assets')
-    setSceneNotice('Hier: Name + Beschreibung eintragen, dann grünen Button «Sofa-Dialog-Set erzeugen» drücken.')
+    setSceneNotice('Hier: Julien oder Lucien wählen, dann «Ganze Figur erzeugen» — Füße müssen im Bild sein.')
   }
 
   const castNames = [cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(', ')
+  const activeLook = lookForCharacterName(characterName)
 
   const handleWorkflowStep = (step: StoryWorkflowStep) => {
     setWorkflowStep(step)
@@ -745,6 +765,11 @@ export function StoryPlayerPage() {
         <h2>Story-Studio</h2>
         <p className="muted">
           Dialog → Bilder aus Bibliothek → Aktionen → Szene. Alles aus der Bibliothek kostet keine KI-Credits.
+        </p>
+        <p className="alert alert-info story-notice">
+          Alte Figuren in der Bibliothek bleiben unverändert (flacher Stil, Beine oft abgeschnitten). Stil und
+          Füße siehst du erst nach <strong>neu erzeugen</strong> unter «KI erzeugen». Bildstil oben auf
+          «Lebendige Illustration» lassen.
         </p>
       </header>
 
@@ -994,7 +1019,7 @@ export function StoryPlayerPage() {
                         )}
                         {variants.length <= 1 && (
                           <p className="muted story-card-subtitle">
-                            Noch keine weiteren Posen — unter «KI erzeugen» ein Sofa-Dialog-Set für{' '}
+                            Noch keine weiteren Posen — unter «KI erzeugen» 5 Blickrichtungen für{' '}
                             {characterBaseName(member.displayName)} erzeugen.
                           </p>
                         )}
@@ -1164,7 +1189,7 @@ export function StoryPlayerPage() {
       {activeTab === 'bibliothek' && (
         <>
           <section className="story-generate-panel story-sofa-cta">
-            <h3>Sofa-Dialog-Set (Julien sitzen + Blick wechseln)</h3>
+            <h3>Dialog-Set (ganze Figur, mit Füßen)</h3>
             <p className="muted">
               Das findest du nicht in der Bibliothek selbst — es wird unter <strong>KI erzeugen</strong> gemacht.
               Danach erscheinen die 5 Posen hier und du speicherst sie.
@@ -1173,16 +1198,16 @@ export function StoryPlayerPage() {
               <li>
                 Oben auf <strong>KI erzeugen</strong> klicken (oder den Button unten)
               </li>
-              <li>Name + Beschreibung von Julien eintragen</li>
+              <li>Julien oder Lucien wählen — sie sehen bewusst anders aus</li>
               <li>
-                Grünen Button <strong>Sofa-Dialog-Set erzeugen</strong> drücken (5 Bilder)
+                Grünen Button <strong>Ganze Figur erzeugen</strong> drücken (5 Bilder, inkl. Schuhe)
               </li>
               <li>
                 Zurück hierher → <strong>Alle in Bibliothek</strong> → eine Pose «Als links»
               </li>
             </ol>
             <button type="button" className="btn btn-primary" onClick={goToSofaDialogSet}>
-              Zum Sofa-Dialog-Set →
+              Zur ganzen Figur →
             </button>
           </section>
 
@@ -1407,18 +1432,42 @@ export function StoryPlayerPage() {
       {activeTab === 'erzeugen' && (
         <>
           <section className="story-generate-panel story-sofa-cta" id="sofa-dialog-set">
-            <h3>1 — Sofa-Dialog-Set erzeugen</h3>
+            <h3>1 — Ganze Figur erzeugen</h3>
             <p className="muted">
-              Erzeugt <strong>5 sitzende Julien-Varianten</strong> mit verschiedenen Blickrichtungen (vorne, schräg,
-              Profil). Das brauchst du fürs Wohnzimmer-Sofa.
+              Erzeugt <strong>5 stehende Varianten</strong> mit verschiedenen Blickrichtungen —{' '}
+              <strong>Kopf bis Schuhe</strong> im Bild. Julien und Lucien bekommen automatisch unterschiedliche Looks.
+              Bildstil muss «Lebendige Illustration» sein.
             </p>
             <div className="story-character-form">
+              <div className="story-look-picks" role="group" aria-label="Figuren-Looks">
+                {STORY_CHARACTER_LOOKS.map((look) => (
+                  <button
+                    key={look.name}
+                    type="button"
+                    className={`story-look-pick${
+                      normalizeCharacterLookName(characterName) === normalizeCharacterLookName(look.name)
+                        ? ' is-active'
+                        : ''
+                    }`}
+                    disabled={generatingCharacter || generatingPoseBatch}
+                    onClick={() => {
+                      setCharacterName(look.name)
+                      setCharacterDescription(look.description)
+                    }}
+                  >
+                    {look.name}
+                  </button>
+                ))}
+              </div>
+              {activeLook && (
+                <p className="muted story-look-hint">{activeLook.hintDe}</p>
+              )}
               <input
                 type="text"
                 className="input"
                 placeholder="Figurenname (z.B. Julien)"
                 value={characterName}
-                onChange={(e) => setCharacterName(e.target.value)}
+                onChange={(e) => applyCharacterName(e.target.value)}
                 disabled={generatingCharacter || generatingPoseBatch}
               />
               <textarea
@@ -1434,13 +1483,13 @@ export function StoryPlayerPage() {
                 className="btn btn-primary"
                 disabled={generatingCharacter || generatingPoseBatch || !characterName.trim() || !characterDescription.trim()}
                 onClick={() => {
-                  setGenerateLegPose('sitting-forward')
+                  setGenerateLegPose('standing')
                   void handleGeneratePoseBatch('sofa-dialogue')
                 }}
               >
                 {generatingPoseBatch && generatePoseSet === 'sofa-dialogue'
-                  ? `Erzeuge Sofa-Set … ${poseBatchProgress}`
-                  : 'Sofa-Dialog-Set erzeugen (5 Bilder)'}
+                  ? `Erzeuge Figuren … ${poseBatchProgress}`
+                  : 'Ganze Figur erzeugen (5 Bilder, mit Füßen)'}
               </button>
             </div>
             {characterError && <p className="alert alert-error">{characterError}</p>}

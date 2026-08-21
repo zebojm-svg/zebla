@@ -57,11 +57,12 @@ export const HEAD_ANGLES: CharacterPartDef[] = [
 ]
 
 export const LEG_POSES: CharacterPartDef[] = [
-  { id: 'standing', label: 'Stehen', promptHint: 'standing straight, feet on ground' },
+  { id: 'standing', label: 'Stehen', promptHint: 'standing full body, camera pulled back, both complete legs and both shoes with soles fully visible, white margin below the feet' },
   {
     id: 'sitting-forward',
     label: 'Sitzen (Beine vorne)',
-    promptHint: 'sitting on sofa, legs forward, knees bent, torso upright',
+    promptHint:
+      'sitting on an invisible seat BUT this is still a FULL BODY shot: thighs, knees, calves, ankles and both complete shoes hanging down in the lower third of the image, white margin below the soles, not a waist-up portrait, not cropped at the knees, torso upright',
   },
   { id: 'sitting-cross', label: 'Schneidersitz', promptHint: 'cross-legged sitting on floor or sofa' },
   { id: 'sitting-side', label: 'Sitzen (Beine zur Seite)', promptHint: 'sitting with legs to one side' },
@@ -98,9 +99,9 @@ export interface PoseSetDef {
 export const POSE_SETS: PoseSetDef[] = [
   {
     id: 'sofa-dialogue',
-    label: 'Sofa-Dialog-Set',
-    description: 'Sitzen (Beine vorne) × 5 Blickrichtungen — ideal für Wohnzimmer',
-    fixedLegPose: 'sitting-forward',
+    label: 'Dialog-Set (ganze Figur)',
+    description: 'Stehen, ganze Figur inkl. Schuhe × 5 Blickrichtungen — Füße bleiben im Bild',
+    fixedLegPose: 'standing',
     heads: 'dialogue',
     legs: 'fixed',
   },

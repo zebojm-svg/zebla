@@ -1,7 +1,9 @@
 /**
  * Entfernt helle/weiße Hintergründe aus KI-Figuren (Freistellen).
- * Gleiche Logik wie lib/story-image-processing.ts — für Canvas im Browser.
+ * Nur vom Rand — Augenweiß und Zähne bleiben.
  */
+
+import { keyOutConnectedBackground } from '../../shared/image-key-out-edges'
 
 export function keyOutLightBackground(
   source: CanvasImageSource,
@@ -16,24 +18,7 @@ export function keyOutLightBackground(
 
   ctx.drawImage(source, 0, 0, width, height)
   const imageData = ctx.getImageData(0, 0, width, height)
-  const d = imageData.data
-
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i]!
-    const g = d[i + 1]!
-    const b = d[i + 2]!
-    const max = Math.max(r, g, b)
-    const min = Math.min(r, g, b)
-    const saturation = max === 0 ? 0 : (max - min) / max
-
-    if (r > 235 && g > 235 && b > 235) {
-      d[i + 3] = 0
-    } else if (r > 205 && g > 205 && b > 205 && saturation < 0.18) {
-      const lum = (r + g + b) / 3
-      d[i + 3] = Math.min(d[i + 3]!, Math.round(Math.max(0, ((255 - lum) / 50) * d[i + 3]!)))
-    }
-  }
-
+  keyOutConnectedBackground(imageData.data, width, height)
   ctx.putImageData(imageData, 0, 0)
   return canvas
 }

@@ -90,6 +90,7 @@ import {
 } from '../lib/story-library.js'
 import { SCENE_PRESETS } from '../shared/scene-presets.js'
 import {
+  DEFAULT_STORY_ART_STYLE,
   STORY_ART_STYLES,
   isStoryArtStyleId,
 } from '../shared/story-art-styles.js'
@@ -998,7 +999,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // --- Story Asset Generation ---
     if (route === 'story-art-styles' && req.method === 'GET') {
       await requireAuth(req)
-      res.json({ styles: STORY_ART_STYLES, defaultStyleId: 'petit-nicolas' })
+      res.json({ styles: STORY_ART_STYLES, defaultStyleId: DEFAULT_STORY_ART_STYLE })
       return
     }
 

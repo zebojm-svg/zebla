@@ -66,23 +66,25 @@ export function getCastLayerLayout(
   let base: Omit<CastLayerLayout, 'rotation'>
 
   if (pose === 'sitting-sofa') {
-    const width = Math.round(canvasW * 0.13)
-    const height = Math.round(canvasH * 0.36)
+    // Ganzfigur sitzend: Hüfte auf der Sitzkante, Beine hängen nach unten.
+    const width = Math.round(canvasW * 0.14)
+    const height = Math.round(canvasH * 0.52)
     const seatLineY = Math.round(canvasH * 0.665)
+    const hipFromTop = 0.55
     const centerX = slot === 'left' ? 0.235 : 0.365
     base = {
       x: Math.round(centerX * canvasW - width / 2),
-      y: seatLineY - height,
+      y: Math.round(seatLineY - height * hipFromTop),
       width,
       height,
       flip,
       zIndex: slot === 'left' ? 26 : 27,
     }
   } else {
-    const width = Math.round(canvasW * 0.17)
-    const height = Math.round(canvasH * 0.48)
+    const width = Math.round(canvasW * 0.18)
+    const height = Math.round(canvasH * 0.62)
     const centerX = slot === 'left' ? 0.28 : 0.72
-    const floorY = Math.round(canvasH * 0.92)
+    const floorY = Math.round(canvasH * 0.94)
     base = {
       x: Math.round(centerX * canvasW - width / 2),
       y: floorY - height,

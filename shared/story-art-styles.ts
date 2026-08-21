@@ -1,6 +1,7 @@
 /** Bildstile für Story-Engine (Figuren, Umgebungen, Szenen) */
 
 export type StoryArtStyleId =
+  | 'illustration-lebendig'
   | 'petit-nicolas'
   | 'kinderbuch-aquarell'
   | 'comic'
@@ -19,9 +20,23 @@ const NO_TEXT = 'NO text, NO speech bubbles, NO labels, NO captions in the image
 
 export const STORY_ART_STYLES: StoryArtStyle[] = [
   {
+    id: 'illustration-lebendig',
+    label: 'Lebendige Illustration',
+    description:
+      'Comic-Linien mit Aquarell-Schatten — lebensnahe Teenager, volle Beine, wie ein Graphic Novel (nicht flaches Clipart).',
+    prompt:
+      `Style: contemporary European graphic novel / young-adult illustration, ` +
+      `thin clean dark ink outlines, painterly watercolor shading, visible fabric folds, ` +
+      `subtle paper grain, soft directional light and shadows on face and clothes. ` +
+      `LIFE-LIKE 15-year-old teen anatomy and face (not a child, not a toddler, not a mascot). ` +
+      `Rich saturated colors. NOT a children's picture book, NOT flat unshaded clipart, ` +
+      `NOT Sempé, NOT Petit Nicolas, NOT photorealistic, NOT 3D, NOT anime. ` +
+      `Full figure including both legs and both shoes. Opaque eye sclera. ${NO_TEXT}`,
+  },
+  {
     id: 'petit-nicolas',
-    label: 'Petit Nicolas (knallige Farben)',
-    description: 'Fröhliche Kinderbuch-Zeichnung mit satten Primärfarben — lebendig, nicht altbacken.',
+    label: 'Kinderbuch knallig',
+    description: 'Fröhliche Kinderbuch-Zeichnung mit satten Primärfarben — flacher, wie ein Bilderbuch.',
     prompt:
       `Style: classic French children's school-story illustration (mid-20th century European storybook), ` +
       `bold saturated primary colors — vibrant red, strong blue, sunny yellow, fresh green, ` +
@@ -78,7 +93,7 @@ export const STORY_ART_STYLES: StoryArtStyle[] = [
   },
 ]
 
-export const DEFAULT_STORY_ART_STYLE: StoryArtStyleId = 'petit-nicolas'
+export const DEFAULT_STORY_ART_STYLE: StoryArtStyleId = 'illustration-lebendig'
 
 export function getStoryArtStyle(id?: string | null): StoryArtStyle {
   const found = STORY_ART_STYLES.find((s) => s.id === id)
