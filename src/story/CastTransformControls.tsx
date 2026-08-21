@@ -10,7 +10,7 @@ export function CastTransformControls({ transform, onChange, onReset }: Props) {
   return (
     <div className="story-transform-controls">
       <p className="story-transform-hint">
-        Ziehen = schieben · Mausrad = zoomen · Shift+Ziehen = drehen · oder Regler:
+        Figur anklicken, dann: ziehen = schieben, Mausrad = grösser/kleiner, Shift+ziehen = zerren, Strg+links/rechts = drehen.
       </p>
       <label className="story-transform-row">
         <span>Links/Rechts</span>

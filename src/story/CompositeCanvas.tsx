@@ -56,6 +56,8 @@ type Props = {
   onDragLayer?: (layerId: string, dx: number, dy: number) => void
   onWheelLayer?: (layerId: string, deltaScale: number) => void
   onRotateLayer?: (layerId: string, deltaRotation: number) => void
+  /** Shift+Ziehen: Breite (dx) und Höhe (dy) zerren */
+  onStretchLayer?: (layerId: string, dScaleX: number, dScaleY: number) => void
 }
 
 interface AnimState {
@@ -109,24 +111,22 @@ export function CompositeCanvas({
   onDragLayer,
   onWheelLayer,
   onRotateLayer,
+  onStretchLayer,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const dragRef = useRef<{
     layerId: string
     lastX: number
     lastY: number
-    mode: 'move' | 'rotate'
-    rotateAnchorX?: number
-    rotateAnchorY?: number
-    lastAngleDeg?: number
+    mode: 'move' | 'rotate' | 'stretch'
   } | null>(null)
   const [images, setImages] = useState<Map<string, CanvasImageSource>>(new Map())
   const animRef = useRef<AnimState>({
     offsets: new Map(),
     blinkTimers: new Map(),
   })
-  const frameRef = useRef<number>(0)
   const lastTimeRef = useRef<number>(0)
+  const renderRef = useRef<(timestamp: number) => void>(() => {})
 
   // Load images
   useEffect(() => {
@@ -238,9 +238,13 @@ export function CompositeCanvas({
       }
 
       if (anim.type === 'bob') {
-        const amplitude = anim.amplitude ?? 4
-        const period = anim.period ?? 2000
-        offset.dy = amplitude * Math.sin((timestamp / period) * Math.PI * 2)
+        if (selectedLayerId && anim.layerId === selectedLayerId) {
+          offset.dy = 0
+        } else {
+          const amplitude = anim.amplitude ?? 4
+          const period = anim.period ?? 2000
+          offset.dy = amplitude * Math.sin((timestamp / period) * Math.PI * 2)
+        }
       }
 
       if (anim.type === 'blink') {
@@ -306,14 +310,52 @@ export function CompositeCanvas({
       ctx.restore()
     }
 
-    frameRef.current = requestAnimationFrame(render)
-  }, [layers, images, animations, width, height])
+    if (selectedLayerId) {
+      const selected = layers.find((l) => l.id === selectedLayerId)
+      if (selected) {
+        const offset = state.offsets.get(selected.id)
+        const sx = selected.x + (offset?.dx ?? 0)
+        const sy = selected.y + (offset?.dy ?? 0)
+        ctx.save()
+        ctx.strokeStyle = '#2dd4bf'
+        ctx.lineWidth = 3
+        ctx.setLineDash([10, 6])
+        ctx.strokeRect(sx - 6, sy - 6, selected.width + 12, selected.height + 12)
+        ctx.setLineDash([])
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)'
+        const label = 'Ziehen · Rad zoomen · Shift zerren · Strg drehen'
+        ctx.font = '600 18px system-ui, sans-serif'
+        const padX = 12
+        const textW = ctx.measureText(label).width
+        const boxW = textW + padX * 2
+        const boxY = Math.max(8, sy - 40)
+        ctx.fillRect(sx - 6, boxY, boxW, 28)
+        ctx.fillStyle = '#ccfbf1'
+        ctx.fillText(label, sx - 6 + padX, boxY + 20)
+        ctx.restore()
+      }
+    }
+  }, [layers, images, animations, width, height, selectedLayerId])
+
+  useEffect(() => {
+    renderRef.current = render
+  }, [render])
 
   // Animation loop
   useEffect(() => {
-    frameRef.current = requestAnimationFrame(render)
-    return () => cancelAnimationFrame(frameRef.current)
-  }, [render])
+    let alive = true
+    let id = 0
+    const loop = (timestamp: number) => {
+      if (!alive) return
+      renderRef.current(timestamp)
+      id = requestAnimationFrame(loop)
+    }
+    id = requestAnimationFrame(loop)
+    return () => {
+      alive = false
+      cancelAnimationFrame(id)
+    }
+  }, [])
 
   const hitTest = useCallback(
     (canvasX: number, canvasY: number): LayerImage | null => {
@@ -346,60 +388,47 @@ export function CompositeCanvas({
     }
   }
 
-  const layerAnchor = (layer: LayerImage) => {
-    const finalX = layer.x
-    const finalY = layer.y
-    return {
-      x: finalX + layer.width * (layer.rotationAnchor?.x ?? 0.5),
-      y: finalY + layer.height * (layer.rotationAnchor?.y ?? 1),
-    }
-  }
-
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !onWheelLayer) return
 
     const onWheel = (e: WheelEvent) => {
-      const { x, y } = toCanvasCoords(e)
-      const hit =
-        hitTest(x, y) ??
-        (selectedLayerId ? layers.find((l) => l.id === selectedLayerId && l.draggable) ?? null : null)
-      if (!hit) return
+      if (!selectedLayerId) return
+      const selected = layers.find((l) => l.id === selectedLayerId && l.draggable)
+      if (!selected) return
       e.preventDefault()
       const delta = -e.deltaY * 0.002
-      onWheelLayer(hit.id, delta)
+      onWheelLayer(selected.id, delta)
     }
 
     canvas.addEventListener('wheel', onWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', onWheel)
-  }, [layers, selectedLayerId, onWheelLayer, hitTest, width, height])
+  }, [layers, selectedLayerId, onWheelLayer, width, height])
+
+  const canvasClass = [
+    className ?? '',
+    selectedLayerId ? 'story-canvas-interactive' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <canvas
       ref={canvasRef}
       width={width}
       height={height}
-      className={`${className ?? ''}${selectedLayerId ? ' story-canvas-interactive' : ''}`}
+      className={canvasClass}
       style={{ display: 'block', maxWidth: '100%', height: 'auto', touchAction: 'none' }}
       onPointerDown={(e) => {
         const { x, y } = toCanvasCoords(e)
         const hit = hitTest(x, y)
         if (hit) {
-          if (e.shiftKey && onRotateLayer) {
-            const anchor = layerAnchor(hit)
-            const angleDeg = (Math.atan2(y - anchor.y, x - anchor.x) * 180) / Math.PI
-            dragRef.current = {
-              layerId: hit.id,
-              lastX: x,
-              lastY: y,
-              mode: 'rotate',
-              rotateAnchorX: anchor.x,
-              rotateAnchorY: anchor.y,
-              lastAngleDeg: angleDeg,
-            }
-          } else {
-            dragRef.current = { layerId: hit.id, lastX: x, lastY: y, mode: 'move' }
-          }
+          const mode: 'move' | 'rotate' | 'stretch' = e.ctrlKey || e.metaKey
+            ? 'rotate'
+            : e.shiftKey
+              ? 'stretch'
+              : 'move'
+          dragRef.current = { layerId: hit.id, lastX: x, lastY: y, mode }
           onSelectLayer?.(hit.id)
           canvasRef.current?.setPointerCapture(e.pointerId)
         } else {
@@ -410,20 +439,25 @@ export function CompositeCanvas({
         const drag = dragRef.current
         if (!drag) return
         const { x, y } = toCanvasCoords(e)
-        if (drag.mode === 'rotate' && onRotateLayer && drag.rotateAnchorX != null && drag.lastAngleDeg != null) {
-          const angleDeg = (Math.atan2(y - drag.rotateAnchorY!, x - drag.rotateAnchorX!) * 180) / Math.PI
-          let delta = angleDeg - drag.lastAngleDeg
-          if (delta > 180) delta -= 360
-          if (delta < -180) delta += 360
-          if (Math.abs(delta) > 0.2) {
-            onRotateLayer(drag.layerId, delta)
-            drag.lastAngleDeg = angleDeg
+        const dx = x - drag.lastX
+        const dy = y - drag.lastY
+        if (drag.mode === 'rotate' && onRotateLayer) {
+          if (Math.abs(dx) > 0.4) {
+            onRotateLayer(drag.layerId, dx * 0.28)
+            drag.lastX = x
+            drag.lastY = y
+          }
+          return
+        }
+        if (drag.mode === 'stretch' && onStretchLayer) {
+          if (Math.abs(dx) > 0.4 || Math.abs(dy) > 0.4) {
+            onStretchLayer(drag.layerId, dx * 0.004, dy * 0.004)
+            drag.lastX = x
+            drag.lastY = y
           }
           return
         }
         if (!onDragLayer) return
-        const dx = x - drag.lastX
-        const dy = y - drag.lastY
         if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
           onDragLayer(drag.layerId, dx, dy)
           drag.lastX = x

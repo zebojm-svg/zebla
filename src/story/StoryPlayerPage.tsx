@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CompositeCanvas, type LayerImage, type LayerAnimation } from './CompositeCanvas'
 import { api } from '../api/client'
-import type { CharacterAsset, EnvironmentAsset, Scene, StoryLibraryAsset } from '../../shared/story-types'
+import type { StoryLibraryAsset } from '../../shared/story-types'
 import type { ScenePreset } from '../../shared/scene-presets'
 import { SCENE_PRESETS } from '../../shared/scene-presets'
 import { StoryWorkflowNav, type StoryWorkflowStep } from './StoryWorkflowNav'
@@ -15,10 +15,10 @@ import {
   swapCastVariant,
   getCastLayerLayout,
   castLayerId,
+  slotFromLayerId,
   type SceneCast,
   type CastPose,
 } from './story-cast'
-import { CastTransformControls } from './CastTransformControls'
 import {
   HEAD_ANGLES,
   LEG_POSES,
@@ -36,12 +36,6 @@ import {
   type LegPoseId,
   type PoseSetId,
 } from '../../shared/character-parts'
-import {
-  availableHeadAngles,
-  availableLegPoses,
-  collectPoseVariants,
-  findPoseVariant,
-} from './pose-variants'
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
 import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
 import type { StoryArtStyleId } from '../../shared/story-art-styles'
@@ -52,6 +46,7 @@ import {
   lookForCharacterName,
   normalizeCharacterLookName,
 } from '../../shared/story-character-looks'
+import { StorySceneDock, type EnvironmentPick } from './StorySceneDock'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -74,157 +69,10 @@ type SessionEnvironment = {
 const CANVAS_W = 1280
 const CANVAS_H = 720
 
-// Demo-Assets (statisch eingebaut für Prototyp)
-const demoEnvironment: EnvironmentAsset = {
-  id: 'park',
+const PARK_BACKGROUND: EnvironmentPick = {
+  key: 'park-demo',
   name: 'Park',
-  type: 'environment',
-  tags: ['draussen', 'natur', 'grün'],
-  style: 'comic',
-  createdAt: '2026-08-19',
-  background: '/assets/environments/park/background.svg',
-  zones: [
-    { id: 'bench-left', position: { x: 25, y: 72 }, scale: 0.9 },
-    { id: 'bench-right', position: { x: 65, y: 72 }, scale: 0.9 },
-    { id: 'standing-center', position: { x: 50, y: 75 }, scale: 1 },
-  ],
-  lighting: { direction: 'left', warmth: 'warm' },
-}
-
-const demoCharacter: CharacterAsset = {
-  id: 'thomas',
-  name: 'Thomas',
-  type: 'character',
-  tags: ['mann', 'jung', 'braune-haare'],
-  style: 'comic',
-  createdAt: '2026-08-19',
-  layers: {
-    body: [{ id: 'body-front', src: '/assets/characters/thomas/body/front.svg', anchor: { x: 0.5, y: 0.9 }, size: { w: 200, h: 400 } }],
-    head: [
-      { id: 'head-neutral', src: '/assets/characters/thomas/head/neutral.svg', anchor: { x: 0.5, y: 0.9 }, size: { w: 120, h: 140 } },
-      { id: 'head-happy', src: '/assets/characters/thomas/head/happy.svg', anchor: { x: 0.5, y: 0.9 }, size: { w: 120, h: 140 } },
-    ],
-    arms: [
-      { id: 'arms-resting', src: '/assets/characters/thomas/arms/resting.svg', anchor: { x: 0.5, y: 0.2 }, size: { w: 220, h: 200 } },
-      { id: 'arms-waving', src: '/assets/characters/thomas/arms/waving.svg', anchor: { x: 0.5, y: 0.2 }, size: { w: 220, h: 200 } },
-    ],
-    legs: [],
-  },
-  poses: [
-    { id: 'standing', name: 'Stehen', body: 'body-front', head: 'head-neutral', arms: 'arms-resting' },
-    { id: 'waving', name: 'Winken', body: 'body-front', head: 'head-happy', arms: 'arms-waving' },
-  ],
-  animations: [
-    {
-      id: 'blink',
-      name: 'Blinzeln',
-      fps: 12,
-      loop: true,
-      interval: [2000, 5000],
-      frames: [
-        { layerId: 'head-neutral', duration: 100 },
-        { layerId: 'head-neutral', duration: 50 },
-      ],
-    },
-  ],
-}
-
-const demoScene: Scene = {
-  id: 'scene-1',
-  environmentId: 'park',
-  characters: [
-    {
-      characterId: 'thomas',
-      poseId: 'standing',
-      position: { x: 35, y: 75 },
-      scale: 0.7,
-      animations: ['blink'],
-    },
-    {
-      characterId: 'thomas',
-      poseId: 'waving',
-      position: { x: 65, y: 75 },
-      scale: 0.7,
-      flip: true,
-      animations: [],
-    },
-  ],
-  timeline: [
-    { at: 0, type: 'dialog', speaker: 'Thomas', text: 'Hey, schöner Tag heute!' },
-    { at: 3, type: 'pose-change', target: 'thomas-0', expression: 'happy' },
-    { at: 4, type: 'dialog', speaker: 'Kevin', text: 'Ja total! Lass uns was unternehmen.' },
-  ],
-}
-
-function buildCharacterLayers(
-  character: CharacterAsset,
-  placement: Scene['characters'][0],
-  index: number,
-): LayerImage[] {
-  const pose = character.poses.find((p) => p.id === placement.poseId) ?? character.poses[0]
-  if (!pose) return []
-
-  const scale = placement.scale ?? 1
-  const baseX = (placement.position.x / 100) * CANVAS_W
-  const baseY = (placement.position.y / 100) * CANVAS_H
-
-  const findLayer = (layers: typeof character.layers.body, id: string) =>
-    layers.find((l) => l.id === id) ?? layers[0]
-
-  const bodyLayer = findLayer(character.layers.body, pose.body)
-  const headLayer = findLayer(character.layers.head, pose.head)
-  const armsLayer = findLayer(character.layers.arms, pose.arms)
-
-  const result: LayerImage[] = []
-
-  if (bodyLayer) {
-    const w = bodyLayer.size.w * scale
-    const h = bodyLayer.size.h * scale
-    result.push({
-      id: `char-${index}-body`,
-      src: bodyLayer.src,
-      x: baseX - w * bodyLayer.anchor.x,
-      y: baseY - h * bodyLayer.anchor.y,
-      width: w,
-      height: h,
-      flip: placement.flip,
-      zIndex: 10 + index,
-    })
-  }
-
-  const bodyH = (bodyLayer?.size.h ?? 400) * scale
-
-  if (armsLayer) {
-    const w = armsLayer.size.w * scale
-    const h = armsLayer.size.h * scale
-    result.push({
-      id: `char-${index}-arms`,
-      src: armsLayer.src,
-      x: baseX - w * armsLayer.anchor.x,
-      y: baseY - bodyH * 0.7,
-      width: w,
-      height: h,
-      flip: placement.flip,
-      zIndex: 11 + index,
-    })
-  }
-
-  if (headLayer) {
-    const w = headLayer.size.w * scale
-    const h = headLayer.size.h * scale
-    result.push({
-      id: `char-${index}-head`,
-      src: headLayer.src,
-      x: baseX - w * headLayer.anchor.x,
-      y: baseY - bodyH * 0.95,
-      width: w,
-      height: h,
-      flip: placement.flip,
-      zIndex: 12 + index,
-    })
-  }
-
-  return result
+  imageUrl: '/assets/environments/park/background.svg',
 }
 
 function parseTagsInput(raw: string): string[] {
@@ -256,12 +104,6 @@ function presetLayersToCanvas(
 }
 
 export function StoryPlayerPage() {
-  const [currentAction, setCurrentAction] = useState(0)
-  const [dialogText, setDialogText] = useState('')
-  const [dialogSpeaker, setDialogSpeaker] = useState('')
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
-  const [generating, setGenerating] = useState(false)
-  const [genError, setGenError] = useState('')
   const [environmentName, setEnvironmentName] = useState('Wohnzimmer')
   const [environmentDescription, setEnvironmentDescription] = useState(
     'cozy family living room, yellow sofa, wooden coffee table with vase, newspapers on floor, warm evening light',
@@ -293,17 +135,17 @@ export function StoryPlayerPage() {
   const [activeEnvironmentName, setActiveEnvironmentName] = useState<string | null>(null)
   const [sceneNotice, setSceneNotice] = useState('')
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
-  const [selectedCastLayer, setSelectedCastLayer] = useState<string | null>(null)
+  const [selectedSlot, setSelectedSlot] = useState<'left' | 'right' | null>(null)
   const [generateLegPose, setGenerateLegPose] = useState<LegPoseId>('standing')
   const [generateHeadAngle, setGenerateHeadAngle] = useState<HeadAngleId>('front')
   const [generatePoseSet, setGeneratePoseSet] = useState<PoseSetId>('sofa-dialogue')
   const [generatingPoseBatch, setGeneratingPoseBatch] = useState(false)
   const [poseBatchProgress, setPoseBatchProgress] = useState('')
+  const [generatingDockPose, setGeneratingDockPose] = useState(false)
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState('')
   const [presets] = useState<ScenePreset[]>(SCENE_PRESETS)
-
-  const scene = demoScene
-  const env = demoEnvironment
-  const char = demoCharacter
 
   const activePreset = useMemo(
     () => presets.find((p) => p.id === activePresetId) ?? null,
@@ -315,12 +157,12 @@ export function StoryPlayerPage() {
     setActiveEnvironmentName(name)
     setActiveTab('szene')
     setWorkflowStep('scene')
-    setSceneNotice(`Hintergrund «${name}» ist gesetzt — jetzt Figuren platzieren (Tab Bibliothek).`)
+    setSceneNotice(`Hintergrund «${name}» ist gesetzt — rechts eine Figur wählen.`)
   }
 
   const activeSceneTitle =
     activeEnvironmentName ??
-    (activeEnvironmentUrl ? 'Eigenes Umfeld' : generatedEnvironments[0]?.name ?? env.name)
+    (activeEnvironmentUrl ? 'Eigenes Umfeld' : 'Kein Hintergrund')
 
   useEffect(() => {
     if (!sceneNotice) return
@@ -368,6 +210,7 @@ export function StoryPlayerPage() {
     })
     setActiveTab('szene')
     setWorkflowStep('scene')
+    setSelectedSlot(slot)
   }
 
   const reloadLibrary = useCallback(async () => {
@@ -398,6 +241,21 @@ export function StoryPlayerPage() {
 
   const libraryCharacters = filteredLibrary.filter((a) => a.type === 'character')
   const libraryEnvironments = filteredLibrary.filter((a) => a.type === 'environment')
+
+  const dockEnvironments = useMemo<EnvironmentPick[]>(() => {
+    const items: EnvironmentPick[] = [PARK_BACKGROUND]
+    for (const env of generatedEnvironments) {
+      if (!items.some((i) => i.imageUrl === env.imageUrl)) {
+        items.push({ key: `session-${env.imageUrl}`, name: env.name, imageUrl: env.imageUrl })
+      }
+    }
+    for (const env of libraryEnvironments) {
+      if (!items.some((i) => i.imageUrl === env.imageUrl)) {
+        items.push({ key: env.id, name: env.name, imageUrl: env.imageUrl })
+      }
+    }
+    return items
+  }, [generatedEnvironments, libraryEnvironments])
 
   const handleSaveToLibrary = async (input: {
     type: 'character' | 'environment' | 'scene'
@@ -467,172 +325,106 @@ export function StoryPlayerPage() {
     }
   }
 
-  useEffect(() => {
-    if (scene.timeline.length === 0) return
-    const action = scene.timeline[currentAction]
-    if (!action) return
-    if (action.type === 'dialog') {
-      setDialogSpeaker(action.speaker ?? '')
-      setDialogText(action.text ?? '')
-    }
-  }, [currentAction])
-
   const layers = useMemo<LayerImage[]>(() => {
     const result: LayerImage[] = []
 
-    const activeBackground =
-      activeEnvironmentUrl ??
-      generatedEnvironments[0]?.imageUrl ??
-      env.background
-
-    const usingCustomBackground =
-      Boolean(activeEnvironmentUrl) || generatedEnvironments.length > 0
-
-    // Hintergrund
-    result.push({
-      id: 'bg',
-      src: activeBackground,
-      x: 0,
-      y: 0,
-      width: CANVAS_W,
-      height: CANVAS_H,
-      zIndex: 0,
-    })
-
-    if (!usingCustomBackground) {
-      // Wolken (separate Layers für Animation)
+    if (activeEnvironmentUrl) {
       result.push({
-        id: 'cloud-1',
-        src: '/assets/environments/park/cloud1.svg',
-        x: 150,
-        y: 50,
-        width: 200,
-        height: 80,
-        opacity: 0.8,
-        zIndex: 1,
-      })
-      result.push({
-        id: 'cloud-2',
-        src: '/assets/environments/park/cloud2.svg',
-        x: 700,
-        y: 30,
-        width: 160,
-        height: 60,
-        opacity: 0.65,
-        zIndex: 1,
-      })
-      result.push({
-        id: 'cloud-3',
-        src: '/assets/environments/park/cloud3.svg',
-        x: 450,
-        y: 100,
-        width: 140,
-        height: 55,
-        opacity: 0.55,
-        zIndex: 1,
-      })
-
-      // Bäume (separate für Wind-Animation)
-      result.push({
-        id: 'tree-left',
-        src: '/assets/environments/park/tree-left.svg',
-        x: 20,
-        y: 200,
-        width: 160,
-        height: 320,
-        zIndex: 2,
-        rotationAnchor: { x: 0.5, y: 1 },
-      })
-      result.push({
-        id: 'tree-right',
-        src: '/assets/environments/park/tree-right.svg',
-        x: 1070,
-        y: 220,
-        width: 140,
-        height: 290,
-        zIndex: 2,
-        rotationAnchor: { x: 0.5, y: 1 },
+        id: 'bg',
+        src: activeEnvironmentUrl,
+        x: 0,
+        y: 0,
+        width: CANVAS_W,
+        height: CANVAS_H,
+        zIndex: 0,
       })
     }
 
-    // Szenen-Preset (Tisch, Stühle, …)
     result.push(...presetLayersToCanvas(activePreset, CANVAS_W, CANVAS_H, layerOverrides))
 
-    // Figuren
-    for (let i = 0; i < scene.characters.length; i++) {
-      const placement = scene.characters[i]
-      const castMember = i === 0 ? cast.left : i === 1 ? cast.right : null
-      if (castMember) {
-        const layout = getCastLayerLayout(castMember, CANVAS_W, CANVAS_H)
-        result.push({
-          id: castLayerId(castMember.slot),
-          src: castMember.imageUrl,
-          x: layout.x,
-          y: layout.y,
-          width: layout.width,
-          height: layout.height,
-          zIndex: layout.zIndex,
-          flip: layout.flip,
-          rotation: layout.rotation,
-          rotationAnchor: { x: 0.5, y: 1 },
-          keyOutWhite: true,
-          sourceCrop: layout.sourceCrop,
-          draggable: true,
-        })
-        continue
-      }
-      const charLayers = buildCharacterLayers(char, placement, i)
-      result.push(...charLayers)
+    for (const member of [cast.left, cast.right]) {
+      if (!member) continue
+      const layout = getCastLayerLayout(member, CANVAS_W, CANVAS_H)
+      result.push({
+        id: castLayerId(member.slot),
+        src: member.imageUrl,
+        x: layout.x,
+        y: layout.y,
+        width: layout.width,
+        height: layout.height,
+        zIndex: layout.zIndex,
+        flip: layout.flip,
+        rotation: layout.rotation,
+        rotationAnchor: { x: 0.5, y: 1 },
+        keyOutWhite: true,
+        sourceCrop: layout.sourceCrop,
+        draggable: true,
+      })
     }
 
     return result
-  }, [
-    scene,
-    env,
-    char,
-    generatedEnvironments,
-    activeEnvironmentUrl,
-    activePreset,
-    layerOverrides,
-    cast,
-  ])
+  }, [activeEnvironmentUrl, activePreset, layerOverrides, cast])
 
-  const usingCustomBackground =
-    Boolean(activeEnvironmentUrl) || generatedEnvironments.length > 0
-
-  const sceneAnimations = useMemo<LayerAnimation[]>(() => [
-    ...(!usingCustomBackground
-      ? [
-          { layerId: 'cloud-1', type: 'drift', speed: 12, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 250 } as LayerAnimation,
-          { layerId: 'cloud-2', type: 'drift', speed: 8, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 } as LayerAnimation,
-          { layerId: 'cloud-3', type: 'drift', speed: 15, direction: { x: 1, y: 0 }, wrap: true, wrapMargin: 200 } as LayerAnimation,
-          { layerId: 'tree-left', type: 'swing', amplitude: 1.5, period: 4000 } as LayerAnimation,
-          { layerId: 'tree-right', type: 'swing', amplitude: 2, period: 3500 } as LayerAnimation,
-        ]
-      : []),
-    ...(cast.left
-      ? [{ layerId: 'char-left-generated', type: 'bob', amplitude: 1.2, period: 4800 } as LayerAnimation]
-      : [
-          { layerId: 'char-0-head', type: 'blink', blinkDuration: 150, blinkInterval: [2500, 5500] } as LayerAnimation,
-          { layerId: 'char-0-body', type: 'bob', amplitude: 1.5, period: 5000 } as LayerAnimation,
-        ]),
-    ...(cast.right
-      ? [{ layerId: 'char-right-generated', type: 'bob', amplitude: 1.1, period: 4300 } as LayerAnimation]
-      : [
-          { layerId: 'char-1-head', type: 'blink', blinkDuration: 130, blinkInterval: [3000, 6000] } as LayerAnimation,
-          { layerId: 'char-1-body', type: 'bob', amplitude: 1.2, period: 4500 } as LayerAnimation,
-        ]),
-  ], [cast.left, cast.right, usingCustomBackground])
-
-  const next = () => {
-    if (currentAction < scene.timeline.length - 1) {
-      setCurrentAction((a) => a + 1)
+  const sceneAnimations = useMemo<LayerAnimation[]>(() => {
+    const anims: LayerAnimation[] = []
+    if (cast.left) {
+      anims.push({ layerId: 'char-left-generated', type: 'bob', amplitude: 1.2, period: 4800 })
     }
+    if (cast.right) {
+      anims.push({ layerId: 'char-right-generated', type: 'bob', amplitude: 1.1, period: 4300 })
+    }
+    return anims
+  }, [cast.left, cast.right])
+
+  const appearanceForName = (name: string): string => {
+    const key = characterBaseName(name).toLowerCase()
+    const fromSession = generatedCharacters.find(
+      (c) => characterBaseName(c.name).toLowerCase() === key && c.description,
+    )
+    if (fromSession?.description) return fromSession.description
+    const fromLib = libraryCharacters.find(
+      (c) => characterBaseName(c.name).toLowerCase() === key && c.description,
+    )
+    if (fromLib?.description) return fromLib.description
+    return descriptionForCharacterName(name) ?? characterDescription.trim()
   }
 
-  const prev = () => {
-    if (currentAction > 0) {
-      setCurrentAction((a) => a - 1)
+  const handleGenerateDockPose = async (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId) => {
+    const member = cast[slot]
+    if (!member) return
+    const name = characterBaseName(member.displayName || member.assetName)
+    const description = appearanceForName(name)
+    if (!name || !description) return
+    setGeneratingDockPose(true)
+    setCharacterError('')
+    setPoseBatchProgress(`${poseVariantLabel(head, leg)} …`)
+    try {
+      const result = await api.story.generateCharacter(name, description, artStyle, leg, head)
+      const created: SessionCharacter = {
+        name: `${name} · ${poseVariantLabel(head, leg)}`,
+        imageUrl: result.imageUrl,
+        description,
+        styleId: result.styleId as StoryArtStyleId,
+        legPose: leg,
+        headAngle: head,
+      }
+      setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
+      setCast((prev) => {
+        let next = swapCastVariant(prev, slot, {
+          imageUrl: result.imageUrl,
+          assetName: created.name,
+          headAngle: head,
+          legPose: leg,
+        })
+        next = updateCastPose(next, slot, leg.startsWith('sitting') ? 'sitting-sofa' : 'standing')
+        return next
+      })
+      setSceneNotice(`${name}: ${poseVariantLabel(head, leg)} erzeugt.`)
+    } catch (err) {
+      setCharacterError(err instanceof Error ? err.message : 'Pose konnte nicht erzeugt werden.')
+    } finally {
+      setGeneratingDockPose(false)
+      setPoseBatchProgress('')
     }
   }
 
@@ -749,7 +541,6 @@ export function StoryPlayerPage() {
     setSceneNotice('Hier: Julien oder Lucien wählen, dann «Ganze Figur erzeugen» — Füße müssen im Bild sein.')
   }
 
-  const castNames = [cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(', ')
   const activeLook = lookForCharacterName(characterName)
 
   const handleWorkflowStep = (step: StoryWorkflowStep) => {
@@ -764,12 +555,7 @@ export function StoryPlayerPage() {
       <header className="story-page-header">
         <h2>Story-Studio</h2>
         <p className="muted">
-          Dialog → Bilder aus Bibliothek → Aktionen → Szene. Alles aus der Bibliothek kostet keine KI-Credits.
-        </p>
-        <p className="alert alert-info story-notice">
-          Alte Figuren in der Bibliothek bleiben unverändert (flacher Stil, Beine oft abgeschnitten). Stil und
-          Füße siehst du erst nach <strong>neu erzeugen</strong> unter «KI erzeugen». Bildstil oben auf
-          «Lebendige Illustration» lassen.
+          Bild wählen, Figur ins Bild setzen, anklicken — sitzen, schauen, zoomen siehst du sofort.
         </p>
       </header>
 
@@ -806,385 +592,128 @@ export function StoryPlayerPage() {
         ))}
       </div>
 
-      {(activeTab === 'szene' || activeTab === 'bibliothek') && (
-        <>
-          <div className="story-canvas-wrapper">
-            <CompositeCanvas
-              width={CANVAS_W}
-              height={CANVAS_H}
-              layers={layers}
-              animations={sceneAnimations}
-              className="story-canvas"
-              selectedLayerId={selectedCastLayer}
-              onSelectLayer={setSelectedCastLayer}
-              onDragLayer={(layerId, dx, dy) => {
-                const slot = layerId.includes('left') ? 'left' : layerId.includes('right') ? 'right' : null
-                if (!slot) return
-                setCast((prev) => nudgeCastTransform(prev, slot, dx, dy))
-              }}
-              onWheelLayer={(layerId, deltaScale) => {
-                const slot = layerId.includes('left') ? 'left' : layerId.includes('right') ? 'right' : null
-                if (!slot) return
-                setCast((prev) => {
-                  const member = prev[slot]
-                  if (!member) return prev
-                  const nextScale = Math.min(1.8, Math.max(0.4, member.transform.scale + deltaScale))
-                  return updateCastTransform(prev, slot, { scale: nextScale })
-                })
-              }}
-              onRotateLayer={(layerId, deltaRotation) => {
-                const slot = layerId.includes('left') ? 'left' : layerId.includes('right') ? 'right' : null
-                if (!slot) return
-                setCast((prev) => {
-                  const member = prev[slot]
-                  if (!member) return prev
-                  return updateCastTransform(prev, slot, {
-                    rotation: Math.max(-90, Math.min(90, member.transform.rotation + deltaRotation)),
-                  })
-                })
-              }}
-            />
-            {dialogText && (
-              <div className="story-dialog-bubble">
-                <span className="story-dialog-speaker">{dialogSpeaker}</span>
-                <span className="story-dialog-text">{dialogText}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="story-controls">
-            <button type="button" className="btn btn-secondary" onClick={prev} disabled={currentAction === 0}>
-              ← Zurück
-            </button>
-            <span className="story-progress">
-              {currentAction + 1} / {scene.timeline.length}
-            </span>
-            <button type="button" className="btn btn-primary" onClick={next} disabled={currentAction >= scene.timeline.length - 1}>
-              Weiter →
-            </button>
-          </div>
-
-          <div className="story-scene-info">
-            <h3>
-              Hintergrund: {activeSceneTitle}
-              {activePreset ? ` · ${activePreset.name}` : ''}
-            </h3>
-            <p>
-              Besetzung: {castNames || '—'} · Aktionen: {scene.timeline.length}
-            </p>
-            {!activeEnvironmentUrl && generatedEnvironments.length === 0 && (
-              <p className="story-scene-hint">
-                Noch kein Hintergrund — unter «Bibliothek» bei Wohnzimmer auf <strong>Hintergrund setzen</strong> klicken.
-              </p>
-            )}
-          </div>
-          {sceneNotice && <p className="alert alert-success story-notice">{sceneNotice}</p>}
-        </>
-      )}
-
       {activeTab === 'szene' && (
         <>
-          <section className="story-generate-panel story-steps-panel">
-            <h3>So baust du die Szene</h3>
-            <ol className="story-steps-list">
-              <li className={activeEnvironmentUrl ? 'is-done' : 'is-current'}>
-                <strong>Hintergrund wählen</strong> — Wohnzimmer aus der Bibliothek (unten oder Tab Bibliothek)
-              </li>
-              <li className={cast.left || cast.right ? 'is-done' : activeEnvironmentUrl ? 'is-current' : ''}>
-                <strong>Figuren platzieren</strong> — Julien «Als links» / «Als rechts»
-              </li>
-              <li>
-                <strong>Pose anpassen</strong> — ziehen, Mausrad, Shift+Drehen, Regler; für Sitzen: «Sitzen (Beine vorne)» erzeugen
-              </li>
-            </ol>
-          </section>
-
-          {libraryEnvironments.length > 0 && (
-            <section className="story-generate-panel">
-              <h3>Schritt 1 — Hintergrund wählen</h3>
-              <p className="muted">Klicke dein Wohnzimmer — es erscheint oben in der Vorschau.</p>
-              <div className="story-character-grid">
-                {libraryEnvironments.map((item) => (
-                  <StoryEnvironmentCard
-                    key={`pick-${item.id}`}
-                    item={{
-                      key: item.id,
-                      name: item.name,
-                      imageUrl: item.imageUrl,
-                      tags: item.tags,
-                    }}
-                    isActive={activeEnvironmentUrl === item.imageUrl}
-                    onUse={() => handleApplyBackground(item.name, item.imageUrl)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="story-generate-panel">
-            <h3>Besetzung dieser Szene</h3>
-            <p className="muted">
-              <strong>Figur ziehen</strong> · Mausrad zoomen · Shift drehen. Wenn mehrere Posen in der Bibliothek
-              liegen: hier <strong>Blickrichtung</strong> und <strong>Bein-Pose</strong> umschalten.
-            </p>
-            <div className="story-cast-grid">
-              {(['left', 'right'] as const).map((slot) => {
-                const member = cast[slot]
-                const label = slot === 'left' ? 'Links' : 'Rechts'
-                const variants = member
-                  ? collectPoseVariants(member.displayName || member.assetName, libraryCharacters, generatedCharacters)
-                  : []
-                const headOptions = availableHeadAngles(variants, member?.legPose)
-                const legOptions = availableLegPoses(variants)
-                return (
-                  <div key={slot} className="story-cast-slot">
-                    <span className="story-cast-slot-label">{label}</span>
-                    {member ? (
-                      <>
-                        <img src={member.imageUrl} alt={member.displayName} className="story-cast-thumb" />
-                        <label className="story-cast-name-label">
-                          Sprecher-Name
-                          <input
-                            type="text"
-                            className="input"
-                            value={member.displayName}
-                            onChange={(e) => setCast((prev) => updateCastName(prev, slot, e.target.value))}
-                          />
-                        </label>
-                        {legOptions.length > 0 && (
-                          <label className="story-cast-name-label">
-                            Bein-Pose (Bibliothek)
-                            <select
-                              className="input"
-                              value={member.legPose ?? ''}
-                              onChange={(e) => {
-                                const nextLeg = e.target.value as LegPoseId
-                                const match = findPoseVariant(variants, {
-                                  legPose: nextLeg,
-                                  headAngle: member.headAngle,
-                                })
-                                if (!match) return
-                                setCast((prev) =>
-                                  swapCastVariant(prev, slot, {
-                                    imageUrl: match.imageUrl,
-                                    assetName: match.assetName,
-                                    libraryAssetId: match.libraryAssetId,
-                                    headAngle: match.headAngle,
-                                    legPose: match.legPose,
-                                  }),
-                                )
-                              }}
-                            >
-                              {!member.legPose && <option value="">—</option>}
-                              {legOptions.map((id) => (
-                                <option key={id} value={id}>
-                                  {legPoseLabel(id)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-                        {headOptions.length > 0 && (
-                          <label className="story-cast-name-label">
-                            Blickrichtung (Bibliothek)
-                            <select
-                              className="input"
-                              value={member.headAngle ?? ''}
-                              onChange={(e) => {
-                                const nextHead = e.target.value as HeadAngleId
-                                const match = findPoseVariant(variants, {
-                                  headAngle: nextHead,
-                                  legPose: member.legPose,
-                                })
-                                if (!match) return
-                                setCast((prev) =>
-                                  swapCastVariant(prev, slot, {
-                                    imageUrl: match.imageUrl,
-                                    assetName: match.assetName,
-                                    libraryAssetId: match.libraryAssetId,
-                                    headAngle: match.headAngle,
-                                    legPose: match.legPose,
-                                  }),
-                                )
-                              }}
-                            >
-                              {!member.headAngle && <option value="">—</option>}
-                              {headOptions.map((id) => (
-                                <option key={id} value={id}>
-                                  {headAngleLabel(id)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-                        {variants.length <= 1 && (
-                          <p className="muted story-card-subtitle">
-                            Noch keine weiteren Posen — unter «KI erzeugen» 5 Blickrichtungen für{' '}
-                            {characterBaseName(member.displayName)} erzeugen.
-                          </p>
-                        )}
-                        <label className="story-cast-name-label">
-                          Startposition
-                          <select
-                            className="input"
-                            value={member.pose}
-                            onChange={(e) =>
-                              setCast((prev) =>
-                                updateCastPose(prev, slot, e.target.value as CastPose),
-                              )
-                            }
-                          >
-                            <option value="custom">Frei platzieren</option>
-                            <option value="sitting-sofa">Start: Sofa (grob)</option>
-                            <option value="standing">Start: Stehen</option>
-                          </select>
-                        </label>
-                        <CastTransformControls
-                          transform={{
-                            ...member.transform,
-                            scaleX: member.transform.scaleX ?? 1,
-                            scaleY: member.transform.scaleY ?? 1,
-                          }}
-                          onChange={(patch) =>
-                            setCast((prev) => updateCastTransform(prev, slot, patch))
-                          }
-                          onReset={() =>
-                            setCast((prev) =>
-                              updateCastPose(prev, slot, member.pose === 'custom' ? 'standing' : member.pose),
-                            )
-                          }
-                        />
-                        {(member.legPose || member.headAngle) && (
-                          <p className="muted story-card-subtitle">
-                            Aktuell: {poseVariantLabel(member.headAngle, member.legPose)}
-                          </p>
-                        )}
-                        <label className="story-cast-look-at">
-                          <input
-                            type="checkbox"
-                            checked={member.lookAtPartner}
-                            onChange={(e) =>
-                              setCast((prev) =>
-                                updateCastLookAt(prev, slot, e.target.checked),
-                              )
-                            }
-                          />
-                          Spiegeln (Sprechpartner anschauen)
-                        </label>
-                        <p className="muted story-card-subtitle">Asset: {member.assetName}</p>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setCast((prev) => ({ ...prev, [slot]: null }))}
-                        >
-                          Entfernen
-                        </button>
-                      </>
-                    ) : (
-                      <p className="muted">Noch leer — Figur unter «Bibliothek» wählen.</p>
-                    )}
-                  </div>
+          <div className="story-stage">
+            <div className="story-canvas-wrapper">
+              <CompositeCanvas
+                width={CANVAS_W}
+                height={CANVAS_H}
+                layers={layers}
+                animations={sceneAnimations}
+                className="story-canvas"
+                selectedLayerId={
+                  selectedSlot && cast[selectedSlot] ? castLayerId(selectedSlot) : null
+                }
+                onSelectLayer={(id) => setSelectedSlot(slotFromLayerId(id))}
+                onDragLayer={(layerId, dx, dy) => {
+                  const slot = slotFromLayerId(layerId)
+                  if (!slot) return
+                  setCast((prev) => nudgeCastTransform(prev, slot, dx, dy))
+                }}
+                onWheelLayer={(layerId, deltaScale) => {
+                  const slot = slotFromLayerId(layerId)
+                  if (!slot) return
+                  setCast((prev) => {
+                    const member = prev[slot]
+                    if (!member) return prev
+                    const nextScale = Math.min(1.8, Math.max(0.4, member.transform.scale + deltaScale))
+                    return updateCastTransform(prev, slot, { scale: nextScale })
+                  })
+                }}
+                onRotateLayer={(layerId, deltaRotation) => {
+                  const slot = slotFromLayerId(layerId)
+                  if (!slot) return
+                  setCast((prev) => {
+                    const member = prev[slot]
+                    if (!member) return prev
+                    return updateCastTransform(prev, slot, {
+                      rotation: Math.max(-90, Math.min(90, member.transform.rotation + deltaRotation)),
+                    })
+                  })
+                }}
+                onStretchLayer={(layerId, dScaleX, dScaleY) => {
+                  const slot = slotFromLayerId(layerId)
+                  if (!slot) return
+                  setCast((prev) => {
+                    const member = prev[slot]
+                    if (!member) return prev
+                    return updateCastTransform(prev, slot, {
+                      scaleX: Math.min(1.5, Math.max(0.5, (member.transform.scaleX || 1) + dScaleX)),
+                      scaleY: Math.min(1.5, Math.max(0.5, (member.transform.scaleY || 1) + dScaleY)),
+                    })
+                  })
+                }}
+              />
+              {!activeEnvironmentUrl && (
+                <p className="story-canvas-empty">Rechts einen Hintergrund wählen</p>
+              )}
+            </div>
+            <StorySceneDock
+              environments={dockEnvironments}
+              activeEnvironmentUrl={activeEnvironmentUrl}
+              onPickEnvironment={handleApplyBackground}
+              libraryCharacters={libraryCharacters}
+              sessionCharacters={generatedCharacters}
+              cast={cast}
+              selectedSlot={selectedSlot}
+              onSelectSlot={(slot) => setSelectedSlot(slot)}
+              onPlaceCharacter={(slot, variant) =>
+                handlePlaceCharacter(slot, {
+                  imageUrl: variant.imageUrl,
+                  assetName: variant.assetName,
+                  libraryAssetId: variant.libraryAssetId,
+                  legPose: variant.legPose,
+                  headAngle: variant.headAngle,
+                })
+              }
+              onRemoveSlot={(slot) => {
+                setCast((prev) => ({ ...prev, [slot]: null }))
+                setSelectedSlot((prev) => (prev === slot ? null : prev))
+              }}
+              onSwapVariant={(slot, variant) => {
+                setCast((prev) =>
+                  swapCastVariant(prev, slot, {
+                    imageUrl: variant.imageUrl,
+                    assetName: variant.assetName,
+                    libraryAssetId: variant.libraryAssetId,
+                    headAngle: variant.headAngle,
+                    legPose: variant.legPose,
+                  }),
                 )
-              })}
-            </div>
-          </section>
-
-          <section className="story-generate-panel">
-            <h3>Szenen-Presets & Ebenen</h3>
-            <p className="muted">
-              Presets legen <strong>einzelne Ebenen</strong> (Tisch, Stuhl, Teller …) über dein Umfeld.
-              Ziel: jedes Teil einzeln tauschen/färben — KI-Umfelder sind heute noch ein flaches Bild.
-            </p>
-            <div className="story-preset-list">
-              {presets.map((preset) => (
-                <article
-                  key={preset.id}
-                  className={`story-preset-card${activePresetId === preset.id ? ' is-active' : ''}`}
-                >
-                  <div>
-                    <strong>{preset.name}</strong>
-                    <p className="muted">{preset.description}</p>
-                    <div className="story-tag-row">
-                      {preset.tags.map((tag) => (
-                        <span key={tag} className="story-tag">{tag}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="story-preset-actions">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      onClick={() => {
-                        setActivePresetId(preset.id)
-                        setWorkflowStep('scene')
-                      }}
-                    >
-                      Anwenden
-                    </button>
-                    {activePresetId === preset.id && (
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePresetId(null)}>
-                        Entfernen
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            {activePreset && (
-              <div className="story-layer-panel">
-                <h4 className="story-library-heading">Ebenen: {activePreset.name}</h4>
-                <ul className="story-layer-list">
-                  {activePreset.layers.map((layer) => {
-                    const override = layerOverrides[layer.id] ?? { visible: true, hueRotate: 0 }
-                    return (
-                      <li key={layer.id} className="story-layer-row">
-                        <label className="story-layer-visible">
-                          <input
-                            type="checkbox"
-                            checked={override.visible}
-                            onChange={(e) =>
-                              setLayerOverrides((prev) => ({
-                                ...prev,
-                                [layer.id]: { ...override, visible: e.target.checked },
-                              }))
-                            }
-                          />
-                          {layer.name}
-                        </label>
-                        <label className="story-layer-hue">
-                          Farbton
-                          <input
-                            type="range"
-                            min={0}
-                            max={360}
-                            value={override.hueRotate}
-                            onChange={(e) =>
-                              setLayerOverrides((prev) => ({
-                                ...prev,
-                                [layer.id]: { ...override, hueRotate: Number(e.target.value) },
-                              }))
-                            }
-                          />
-                        </label>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <section className="story-generate-panel story-coming-soon">
-            <h3>Aktionen (Schritt 3)</h3>
-            <p className="muted">
-              Sprechen, gehen, Mimik und Pose-Wechsel werden hier an die Besetzung gekoppelt — demnächst.
-              Dialoge bearbeitest du schon heute unter{' '}
-              <a href="/create">Dialog erstellen</a>.
-            </p>
-          </section>
+              }}
+              onSetPose={(slot, pose) => setCast((prev) => updateCastPose(prev, slot, pose))}
+              onLookAt={(slot, look) => setCast((prev) => updateCastLookAt(prev, slot, look))}
+              onTransform={(slot, patch) => setCast((prev) => updateCastTransform(prev, slot, patch))}
+              onResetTransform={(slot) =>
+                setCast((prev) => {
+                  const member = prev[slot]
+                  if (!member) return prev
+                  return updateCastPose(prev, slot, member.pose === 'custom' ? 'standing' : member.pose)
+                })
+              }
+              onRename={(slot, name) => setCast((prev) => updateCastName(prev, slot, name))}
+              onGeneratePose={(slot, head, leg) => void handleGenerateDockPose(slot, head, leg)}
+              generatingPose={generatingDockPose}
+              generatePoseLabel={poseBatchProgress || 'Erzeuge Pose …'}
+              presets={presets}
+              activePresetId={activePresetId}
+              onApplyPreset={setActivePresetId}
+            />
+          </div>
+          {sceneNotice && <p className="alert alert-success story-notice">{sceneNotice}</p>}
+          {characterError && activeTab === 'szene' && (
+            <p className="alert alert-error">{characterError}</p>
+          )}
+          <p className="story-scene-info">
+            {activeSceneTitle}
+            {cast.left || cast.right
+              ? ` · ${[cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(' & ')}`
+              : ''}
+          </p>
         </>
       )}
+
 
       {activeTab === 'bibliothek' && (
         <>

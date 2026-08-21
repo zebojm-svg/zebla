@@ -245,3 +245,10 @@ export function nudgeCastTransform(
 export function castLayerId(slot: 'left' | 'right'): string {
   return `char-${slot}-generated`
 }
+
+export function slotFromLayerId(layerId: string | null): 'left' | 'right' | null {
+  if (!layerId) return null
+  if (layerId.includes('left')) return 'left'
+  if (layerId.includes('right')) return 'right'
+  return null
+}

@@ -111,3 +111,27 @@ export function availableLegPoses(variants: PoseVariant[]): LegPoseId[] {
   }
   return [...ids]
 }
+
+export function uniqueCastCandidates(
+  libraryCharacters: StoryLibraryAsset[],
+  sessionCharacters: PoseVariantSource[],
+): PoseVariant[] {
+  const names = new Set<string>()
+  for (const item of sessionCharacters) names.add(characterBaseName(item.name).toLowerCase())
+  for (const item of libraryCharacters) names.add(characterBaseName(item.name).toLowerCase())
+
+  const out: PoseVariant[] = []
+  for (const name of names) {
+    const variants = collectPoseVariants(name, libraryCharacters, sessionCharacters)
+    if (variants.length === 0) continue
+    const preferred =
+      findPoseVariant(variants, { headAngle: 'front', legPose: 'standing' }) ??
+      findPoseVariant(variants, { legPose: 'standing' }) ??
+      variants[0]
+    if (preferred) out.push(preferred)
+  }
+  return out.sort((a, b) =>
+    characterBaseName(a.assetName).localeCompare(characterBaseName(b.assetName), 'de'),
+  )
+}
+
