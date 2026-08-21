@@ -25,14 +25,13 @@ export const STORY_ART_STYLES: StoryArtStyle[] = [
     description:
       'Comic-Linien mit Aquarell-Schatten — lebensnahe Teenager, volle Beine, wie ein Graphic Novel (nicht flaches Clipart).',
     prompt:
-      `Style: vibrant modern graphic-novel illustration, thin clean dark ink outlines, ` +
-      `soft watercolor-like washes and painterly shading, subtle paper grain, ` +
-      `life-like teen proportions and facial features (not a toddler, not clipart, not a mascot), ` +
-      `rich saturated colors, soft consistent lighting, gentle shadows on clothes and face, ` +
-      `more detailed than educational cartoon, NOT photorealistic, NOT 3D render, NOT anime, NOT flat unshaded fills. ` +
-      `Characters have complete visible anatomy including both legs and both shoes. ` +
-      `Eyes have opaque visible sclera and irises (solid, never transparent). ` +
-      `${NO_TEXT}`,
+      `Style: contemporary European graphic novel / young-adult illustration, ` +
+      `thin clean dark ink outlines, painterly watercolor shading, visible fabric folds, ` +
+      `subtle paper grain, soft directional light and shadows on face and clothes. ` +
+      `LIFE-LIKE 15-year-old teen anatomy and face (not a child, not a toddler, not a mascot). ` +
+      `Rich saturated colors. NOT a children's picture book, NOT flat unshaded clipart, ` +
+      `NOT Sempé, NOT Petit Nicolas, NOT photorealistic, NOT 3D, NOT anime. ` +
+      `Full figure including both legs and both shoes. Opaque eye sclera. ${NO_TEXT}`,
   },
   {
     id: 'petit-nicolas',

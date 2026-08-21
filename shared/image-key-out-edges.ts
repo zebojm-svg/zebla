@@ -47,7 +47,7 @@ export function keyOutConnectedBackground(pixels: RgbaPixels, width: number, hei
 
   for (let x = 0; x < width; x++) {
     tryEnqueue(x, 0)
-    tryEnqueue(x, height - 1)
+    // Untere Kante nicht als Start: dort liegen oft die Schuhe.
   }
   for (let y = 0; y < height; y++) {
     tryEnqueue(0, y)

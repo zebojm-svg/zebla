@@ -67,7 +67,13 @@ const LEGACY_GENERIC_DESCRIPTIONS = new Set([
 ])
 
 export const STORY_CHARACTER_ANATOMY_PROMPT =
-  'ANATOMY (mandatory): complete figure with head, torso, two arms with hands, two full legs (hips, knees, calves, ankles) and BOTH shoes visible. Never stump legs, never missing feet, never crop at the knees. Eyes fully drawn with opaque white sclera, colored iris and pupil — never transparent, never hollow, never sunglasses unless the description asks for them. If smiling, teeth are opaque. Clothing has NO letters, logos, or gibberish text. Exactly ONE person, no extra people, no crowd.'
+  'FULL-BODY FRAMING (mandatory): pull the camera back so the COMPLETE person fits in the frame — top of hair, both hands, both legs from hips through knees and calves, both ankles, BOTH shoes including soles and toes. Leave a band of empty white background BELOW the shoe soles (feet must not touch the image border). ' +
+  'FORBIDDEN: close-up, bust shot, waist-up, cropped at the knees, stump legs, missing feet, floating torso, amputated limbs. ' +
+  'Eyes fully drawn with opaque white sclera, colored iris and pupil — never transparent, never hollow, never sunglasses unless asked. ' +
+  'Shoes are saturated/dark colors (never white shoes). Clothing has NO letters or logos. Exactly ONE person.'
+
+export const STORY_CHARACTER_FRAMING_PROMPT =
+  'Vertical full-body character cutout. Entire figure from hair to shoe soles is inside the picture with white margin on all sides, especially under the feet.'
 
 export function normalizeCharacterLookName(name: string): string {
   return characterBaseName(name)

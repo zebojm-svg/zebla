@@ -3,6 +3,7 @@ import { headAnglePrompt, legPosePrompt, type HeadAngleId, type LegPoseId } from
 import {
   resolveStoryCharacterAppearance,
   STORY_CHARACTER_ANATOMY_PROMPT,
+  STORY_CHARACTER_FRAMING_PROMPT,
 } from '../shared/story-character-looks.js'
 import { removeLightBackground } from './story-image-processing.js'
 
@@ -104,14 +105,15 @@ export async function generateStoryCharacter(
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
   const appearance = resolveStoryCharacterAppearance(name, description)
-  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing naturally, full body visible from head to shoes'
+  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing full body, both shoes visible, white margin below the feet'
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const prompt =
+    `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
     `${style}\n\n` +
-    `Single character cutout on pure flat solid white #FFFFFF background only, no floor line, no shadow on background, ` +
-    `${legHint}, ${headHint}.\n${appearance}\nCharacter name: ${name}\n` +
+    `Single character cutout on pure flat solid white #FFFFFF background only, no floor, no shadow, no furniture. ` +
+    `${legHint}. ${headHint}.\n${appearance}\nCharacter name: ${name}\n` +
     `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
-    `IMPORTANT: Only this ONE character, no room, no furniture, no other people, no gradient background.`
+    `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people.`
 
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
@@ -119,7 +121,7 @@ export async function generateStoryCharacter(
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: { aspectRatio: '3:4' },
+        imageConfig: { aspectRatio: '9:16' },
       },
     },
   )
