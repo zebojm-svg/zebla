@@ -53,6 +53,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <>
               {(user.role === 'teacher' || user.role === 'master') && (
                 <nav className="zebo-shell-header__nav zebo-tabs" aria-label="Hauptnavigation">
+                  <Link to="/story" className={tabClass('/story')}>
+                    Story
+                  </Link>
                   <Link to="/explore" className={tabClass('/explore')}>
                     Öffentlich
                   </Link>

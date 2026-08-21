@@ -460,6 +460,9 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="header-actions">
+          <Link to="/story" className="btn btn-secondary">
+            Figuren & Umfeld
+          </Link>
           {canCreateFolder && (
             <button type="button" className="btn btn-secondary" onClick={createFolder}>
               + {t('dashboard.newFolder')}
