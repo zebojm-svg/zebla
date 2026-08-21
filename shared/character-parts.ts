@@ -57,11 +57,12 @@ export const HEAD_ANGLES: CharacterPartDef[] = [
 ]
 
 export const LEG_POSES: CharacterPartDef[] = [
-  { id: 'standing', label: 'Stehen', promptHint: 'standing straight, feet on ground' },
+  { id: 'standing', label: 'Stehen', promptHint: 'standing straight, both complete legs and both shoes fully visible, feet on ground' },
   {
     id: 'sitting-forward',
     label: 'Sitzen (Beine vorne)',
-    promptHint: 'sitting on sofa, legs forward, knees bent, torso upright',
+    promptHint:
+      'sitting on an invisible seat, both complete legs visible from hips to shoes, knees bent, both shoes visible, not cropped at the knees, torso upright',
   },
   { id: 'sitting-cross', label: 'Schneidersitz', promptHint: 'cross-legged sitting on floor or sofa' },
   { id: 'sitting-side', label: 'Sitzen (Beine zur Seite)', promptHint: 'sitting with legs to one side' },

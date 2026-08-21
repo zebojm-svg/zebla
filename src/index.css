@@ -1849,6 +1849,37 @@ html[dir='rtl'] .slideshow-topbar {
   min-height: 90px;
 }
 
+.story-look-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.story-look-pick {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.story-look-pick:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.story-look-pick.is-active {
+  background: rgba(13, 148, 136, 0.18);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.story-look-hint {
+  margin: 0;
+}
+
 .story-character-grid {
   margin-top: 1rem;
   display: grid;

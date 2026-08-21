@@ -45,6 +45,13 @@ import {
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
 import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
 import type { StoryArtStyleId } from '../../shared/story-art-styles'
+import {
+  STORY_CHARACTER_LOOKS,
+  descriptionForCharacterName,
+  isKnownLookDescription,
+  lookForCharacterName,
+  normalizeCharacterLookName,
+} from '../../shared/story-character-looks'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -266,7 +273,7 @@ export function StoryPlayerPage() {
   const [generatedSceneStyleId, setGeneratedSceneStyleId] = useState<StoryArtStyleId | null>(null)
   const [characterName, setCharacterName] = useState('Julien')
   const [characterDescription, setCharacterDescription] = useState(
-    '8-year-old boy, round glasses, short brown hair, red t-shirt, blue jeans, friendly smile',
+    () => descriptionForCharacterName('Julien') ?? '',
   )
   const [generatingCharacter, setGeneratingCharacter] = useState(false)
   const [characterError, setCharacterError] = useState('')
@@ -346,7 +353,11 @@ export function StoryPlayerPage() {
     },
   ) => {
     setCast((prev) => {
-      let next = placeInCast(prev, slot, input)
+      const sitting = input.legPose?.startsWith('sitting')
+      let next = placeInCast(prev, slot, {
+        ...input,
+        pose: input.pose ?? (sitting ? 'sitting-sofa' : 'standing'),
+      })
       if (next.left && next.right) {
         next = {
           left: { ...next.left, lookAtPartner: true },
@@ -625,6 +636,14 @@ export function StoryPlayerPage() {
     }
   }
 
+  const applyCharacterName = (nextName: string) => {
+    setCharacterName(nextName)
+    if (isKnownLookDescription(characterDescription)) {
+      const nextDesc = descriptionForCharacterName(nextName)
+      if (nextDesc) setCharacterDescription(nextDesc)
+    }
+  }
+
   const handleGenerateCharacter = async () => {
     const name = characterName.trim()
     const description = characterDescription.trim()
@@ -731,6 +750,7 @@ export function StoryPlayerPage() {
   }
 
   const castNames = [cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(', ')
+  const activeLook = lookForCharacterName(characterName)
 
   const handleWorkflowStep = (step: StoryWorkflowStep) => {
     setWorkflowStep(step)
@@ -1164,7 +1184,7 @@ export function StoryPlayerPage() {
       {activeTab === 'bibliothek' && (
         <>
           <section className="story-generate-panel story-sofa-cta">
-            <h3>Sofa-Dialog-Set (Julien sitzen + Blick wechseln)</h3>
+            <h3>Sofa-Dialog-Set (sitzen + Blick wechseln)</h3>
             <p className="muted">
               Das findest du nicht in der Bibliothek selbst — es wird unter <strong>KI erzeugen</strong> gemacht.
               Danach erscheinen die 5 Posen hier und du speicherst sie.
@@ -1173,7 +1193,7 @@ export function StoryPlayerPage() {
               <li>
                 Oben auf <strong>KI erzeugen</strong> klicken (oder den Button unten)
               </li>
-              <li>Name + Beschreibung von Julien eintragen</li>
+              <li>Figur wählen (Julien und Lucien sehen anders aus) und Sofa-Set erzeugen</li>
               <li>
                 Grünen Button <strong>Sofa-Dialog-Set erzeugen</strong> drücken (5 Bilder)
               </li>
@@ -1409,16 +1429,39 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel story-sofa-cta" id="sofa-dialog-set">
             <h3>1 — Sofa-Dialog-Set erzeugen</h3>
             <p className="muted">
-              Erzeugt <strong>5 sitzende Julien-Varianten</strong> mit verschiedenen Blickrichtungen (vorne, schräg,
-              Profil). Das brauchst du fürs Wohnzimmer-Sofa.
+              Erzeugt <strong>5 sitzende Varianten</strong> mit verschiedenen Blickrichtungen (vorne, schräg,
+              Profil). Julien und Lucien bekommen automatisch unterschiedliche Looks.
             </p>
             <div className="story-character-form">
+              <div className="story-look-picks" role="group" aria-label="Figuren-Looks">
+                {STORY_CHARACTER_LOOKS.map((look) => (
+                  <button
+                    key={look.name}
+                    type="button"
+                    className={`story-look-pick${
+                      normalizeCharacterLookName(characterName) === normalizeCharacterLookName(look.name)
+                        ? ' is-active'
+                        : ''
+                    }`}
+                    disabled={generatingCharacter || generatingPoseBatch}
+                    onClick={() => {
+                      setCharacterName(look.name)
+                      setCharacterDescription(look.description)
+                    }}
+                  >
+                    {look.name}
+                  </button>
+                ))}
+              </div>
+              {activeLook && (
+                <p className="muted story-look-hint">{activeLook.hintDe}</p>
+              )}
               <input
                 type="text"
                 className="input"
                 placeholder="Figurenname (z.B. Julien)"
                 value={characterName}
-                onChange={(e) => setCharacterName(e.target.value)}
+                onChange={(e) => applyCharacterName(e.target.value)}
                 disabled={generatingCharacter || generatingPoseBatch}
               />
               <textarea

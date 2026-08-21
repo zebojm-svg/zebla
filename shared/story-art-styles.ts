@@ -1,6 +1,7 @@
 /** Bildstile für Story-Engine (Figuren, Umgebungen, Szenen) */
 
 export type StoryArtStyleId =
+  | 'illustration-lebendig'
   | 'petit-nicolas'
   | 'kinderbuch-aquarell'
   | 'comic'
@@ -19,9 +20,24 @@ const NO_TEXT = 'NO text, NO speech bubbles, NO labels, NO captions in the image
 
 export const STORY_ART_STYLES: StoryArtStyle[] = [
   {
+    id: 'illustration-lebendig',
+    label: 'Lebendige Illustration',
+    description:
+      'Comic-Linien mit Aquarell-Schatten — lebensnahe Teenager, volle Beine, wie ein Graphic Novel (nicht flaches Clipart).',
+    prompt:
+      `Style: vibrant modern graphic-novel illustration, thin clean dark ink outlines, ` +
+      `soft watercolor-like washes and painterly shading, subtle paper grain, ` +
+      `life-like teen proportions and facial features (not a toddler, not clipart, not a mascot), ` +
+      `rich saturated colors, soft consistent lighting, gentle shadows on clothes and face, ` +
+      `more detailed than educational cartoon, NOT photorealistic, NOT 3D render, NOT anime, NOT flat unshaded fills. ` +
+      `Characters have complete visible anatomy including both legs and both shoes. ` +
+      `Eyes have opaque visible sclera and irises (solid, never transparent). ` +
+      `${NO_TEXT}`,
+  },
+  {
     id: 'petit-nicolas',
-    label: 'Petit Nicolas (knallige Farben)',
-    description: 'Fröhliche Kinderbuch-Zeichnung mit satten Primärfarben — lebendig, nicht altbacken.',
+    label: 'Kinderbuch knallig',
+    description: 'Fröhliche Kinderbuch-Zeichnung mit satten Primärfarben — flacher, wie ein Bilderbuch.',
     prompt:
       `Style: classic French children's school-story illustration (mid-20th century European storybook), ` +
       `bold saturated primary colors — vibrant red, strong blue, sunny yellow, fresh green, ` +
@@ -78,7 +94,7 @@ export const STORY_ART_STYLES: StoryArtStyle[] = [
   },
 ]
 
-export const DEFAULT_STORY_ART_STYLE: StoryArtStyleId = 'petit-nicolas'
+export const DEFAULT_STORY_ART_STYLE: StoryArtStyleId = 'illustration-lebendig'
 
 export function getStoryArtStyle(id?: string | null): StoryArtStyle {
   const found = STORY_ART_STYLES.find((s) => s.id === id)

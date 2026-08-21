@@ -1,5 +1,9 @@
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
 import { headAnglePrompt, legPosePrompt, type HeadAngleId, type LegPoseId } from '../shared/character-parts.js'
+import {
+  resolveStoryCharacterAppearance,
+  STORY_CHARACTER_ANATOMY_PROMPT,
+} from '../shared/story-character-looks.js'
 import { removeLightBackground } from './story-image-processing.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
@@ -99,12 +103,14 @@ export async function generateStoryCharacter(
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing naturally, full body visible'
+  const appearance = resolveStoryCharacterAppearance(name, description)
+  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing naturally, full body visible from head to shoes'
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const prompt =
     `${style}\n\n` +
     `Single character cutout on pure flat solid white #FFFFFF background only, no floor line, no shadow on background, ` +
-    `${legHint}, ${headHint}:\n${description}\nCharacter name: ${name}\n` +
+    `${legHint}, ${headHint}.\n${appearance}\nCharacter name: ${name}\n` +
+    `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
     `IMPORTANT: Only this ONE character, no room, no furniture, no other people, no gradient background.`
 
   const res = await googleApiPost(
@@ -149,7 +155,7 @@ export async function generateStoryEnvironment(
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const prompt = `${style}\n\nEmpty room/environment with NO people, NO characters. Show only the space, furniture, objects, lighting:\n${description}\nLocation: ${name}\nIMPORTANT: Absolutely NO people or characters. Just the empty space ready for characters to be placed in.`
+  const prompt = `${style}\n\nEmpty room/environment with NO people, NO characters, NO faces, NO mannequins, NO silhouettes sitting on furniture. Show only the space, furniture, objects, lighting:\n${description}\nLocation: ${name}\nIMPORTANT: Absolutely NO people or characters. Just the empty space ready for characters to be placed in.`
 
   const res = await googleApiPost(
     `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
