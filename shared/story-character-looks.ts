@@ -67,13 +67,20 @@ const LEGACY_GENERIC_DESCRIPTIONS = new Set([
 ])
 
 export const STORY_CHARACTER_ANATOMY_PROMPT =
-  'FULL-BODY FRAMING (mandatory): pull the camera back so the COMPLETE person fits in the frame — top of hair, both hands, both legs from hips through knees and calves, both ankles, BOTH shoes including soles and toes. Leave a band of empty white background BELOW the shoe soles (feet must not touch the image border). ' +
+  'FULL-BODY FRAMING (mandatory): pull the camera back so the COMPLETE person fits in the frame — top of hair, both hands, both legs from hips through knees and calves, both ankles, BOTH shoes including soles and toes. Leave a band of empty hot-magenta #FF00E5 background BELOW the shoe soles (feet must not touch the image border). ' +
   'FORBIDDEN: close-up, bust shot, waist-up, cropped at the knees, stump legs, missing feet, floating torso, amputated limbs. ' +
   'Eyes fully drawn with opaque white sclera, colored iris and pupil — never transparent, never hollow, never sunglasses unless asked. ' +
-  'Shoes are saturated/dark colors (never white shoes). Clothing has NO letters or logos. Exactly ONE person.'
+  'Shoes stay fully painted and opaque even if pale, cream, or white — never the magenta key color, never missing. Clothing has NO letters or logos. Exactly ONE person.'
 
 export const STORY_CHARACTER_FRAMING_PROMPT =
-  'Vertical full-body character cutout. Entire figure from hair to shoe soles is inside the picture with white margin on all sides, especially under the feet.'
+  'Vertical full-body character cutout. Entire figure from hair to shoe soles is inside the picture with a flat hot-magenta #FF00E5 margin on all sides, especially under the feet.'
+
+/** Hintergrund und Lücken fürs Freistellen — nicht Weiß (helle Schuhe) und nicht Grün (Hoodie). */
+export const STORY_CHARACTER_CUTOUT_PROMPT =
+  'Single character cutout on a FLAT solid hot-magenta background exactly #FF00E5 (RGB 255,0,229) only. No white backdrop, no green screen, no floor, no shadow, no furniture. ' +
+  'Fill EVERY see-through gap with that SAME magenta: between arms and torso, armpits, between fingers, between legs, inside sleeves if hollow. ' +
+  'Shoes (including pale, cream, or white sneakers) remain fully painted and opaque — never magenta, never erased. ' +
+  'Do not paint any part of the person, hair, skin, eyes, teeth, clothes or shoes in #FF00E5.'
 
 export function normalizeCharacterLookName(name: string): string {
   return characterBaseName(name)

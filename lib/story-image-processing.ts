@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import { keyOutConnectedBackground } from '../shared/image-key-out-edges.js'
 
-/** Server-seitiges Freistellen: nur Rand-Hintergrund → transparentes PNG */
+/** Server-seitiges Freistellen: Magenta-Key + reines Weiß, Löcher zwischen Armen/Fingern */
 export async function removeLightBackground(input: Buffer): Promise<Buffer> {
   const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
 

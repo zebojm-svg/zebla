@@ -13,6 +13,7 @@ export interface StoryLibraryDoc {
   styleId?: string
   legPoseId?: string
   headAngleId?: string
+  armPoseId?: string
   createdAt: string
 }
 
@@ -62,6 +63,7 @@ export async function saveStoryAsset(
     styleId?: string
     legPoseId?: string
     headAngleId?: string
+    armPoseId?: string
   },
 ): Promise<StoryLibraryAsset> {
   const id = randomUUID()
@@ -75,6 +77,7 @@ export async function saveStoryAsset(
     styleId: input.styleId,
     legPoseId: input.legPoseId,
     headAngleId: input.headAngleId,
+    armPoseId: input.armPoseId,
     createdAt: new Date().toISOString(),
   }
   await adminDb().collection('storyAssets').doc(id).set(doc)

@@ -16,6 +16,8 @@ export interface StoryLibraryAsset {
   legPoseId?: string
   /** Kopf-Richtung bei modularen Figuren */
   headAngleId?: string
+  /** Arm-Pose bei modularen Figuren */
+  armPoseId?: string
   createdAt: string
 }
 

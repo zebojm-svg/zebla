@@ -1,7 +1,10 @@
 import {
-  DIALOGUE_HEAD_ANGLES,
+  ARM_POSES,
+  HEAD_ANGLES,
+  LEG_POSES,
   characterBaseName,
-  headAngleLabel,
+  normalizeArmPoseId,
+  type ArmPoseId,
   type HeadAngleId,
   type LegPoseId,
 } from '../../shared/character-parts'
@@ -14,6 +17,7 @@ import {
 } from './story-cast'
 import { CastTransformControls } from './CastTransformControls'
 import {
+  availableArmPoses,
   availableHeadAngles,
   availableLegPoses,
   collectPoseVariants,
@@ -46,7 +50,7 @@ type Props = {
   onTransform: (slot: 'left' | 'right', patch: Partial<CastTransform>) => void
   onResetTransform: (slot: 'left' | 'right') => void
   onRename: (slot: 'left' | 'right', name: string) => void
-  onGeneratePose: (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId) => void
+  onGeneratePose: (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => void
   generatingPose: boolean
   generatePoseLabel: string
   presets: ScenePreset[]
@@ -56,6 +60,43 @@ type Props = {
 
 function poseForLeg(leg: LegPoseId): CastPose {
   return leg.startsWith('sitting') ? 'sitting-sofa' : 'standing'
+}
+
+function PosePills<T extends string>({
+  options,
+  current,
+  haveIds,
+  onPick,
+  disabled,
+  groupLabel,
+}: {
+  options: Array<{ id: T; label: string }>
+  current?: T
+  haveIds: T[]
+  onPick: (id: T) => void
+  disabled: boolean
+  groupLabel: string
+}) {
+  return (
+    <div className="story-dock-pills" role="group" aria-label={groupLabel}>
+      {options.map((opt) => {
+        const have = haveIds.includes(opt.id) || current === opt.id
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            className={`story-dock-pill${current === opt.id ? ' is-active' : ''}${have ? '' : ' is-missing'}`}
+            onClick={() => onPick(opt.id)}
+            disabled={disabled}
+            title={have ? opt.label : `${opt.label} — noch erzeugen`}
+          >
+            {opt.label}
+            {!have ? ' +' : ''}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 export function StorySceneDock({
@@ -87,28 +128,22 @@ export function StorySceneDock({
   const variants = member
     ? collectPoseVariants(member.displayName || member.assetName, libraryCharacters, sessionCharacters)
     : []
-  const headOptions = availableHeadAngles(variants, member?.legPose)
-  const legOptions = availableLegPoses(variants)
+  const currentHead: HeadAngleId = member?.headAngle ?? 'front'
+  const currentLeg: LegPoseId = member?.legPose ?? 'standing'
+  const currentArm: ArmPoseId = normalizeArmPoseId(member?.armPose)
+  const headOptions = availableHeadAngles(variants, currentLeg, currentArm)
+  const legOptions = availableLegPoses(variants, currentHead, currentArm)
+  const armOptions = availableArmPoses(variants, currentHead, currentLeg)
 
-  const applyLook = (head: HeadAngleId) => {
+  const applyCombo = (head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => {
     if (!selectedSlot || !member) return
-    const match = findPoseVariant(variants, { headAngle: head, legPose: member.legPose })
-    if (match) {
-      onSwapVariant(selectedSlot, match)
-      return
-    }
-    onGeneratePose(selectedSlot, head, member.legPose ?? 'standing')
-  }
-
-  const applyLegs = (leg: LegPoseId) => {
-    if (!selectedSlot || !member) return
-    const match = findPoseVariant(variants, { headAngle: member.headAngle, legPose: leg })
+    const match = findPoseVariant(variants, { headAngle: head, legPose: leg, armPose: arm })
     if (match) {
       onSwapVariant(selectedSlot, match)
       onSetPose(selectedSlot, poseForLeg(leg))
       return
     }
-    onGeneratePose(selectedSlot, member.headAngle ?? 'front', leg)
+    onGeneratePose(selectedSlot, head, leg, arm)
   }
 
   return (
@@ -176,9 +211,9 @@ export function StorySceneDock({
       </section>
 
       <section className="story-dock-block">
-        <h3>Position</h3>
+        <h3>Position & Pose</h3>
         {!member ? (
-          <p className="story-dock-empty">Figur im Bild anklicken — dann sitzen, schauen, zoomen.</p>
+          <p className="story-dock-empty">Figur im Bild anklicken — dann Kopf, Beine, Arme wählen.</p>
         ) : (
           <>
             <p className="story-dock-selected">
@@ -193,50 +228,40 @@ export function StorySceneDock({
                 onChange={(e) => selectedSlot && onRename(selectedSlot, e.target.value)}
               />
             </label>
-            <div className="story-dock-pills" role="group" aria-label="Haltung">
-              <button
-                type="button"
-                className={`story-dock-pill${member.pose === 'standing' || (member.legPose === 'standing' && member.pose !== 'sitting-sofa') ? ' is-active' : ''}`}
-                onClick={() => applyLegs('standing')}
-                disabled={generatingPose}
-              >
-                Stehen
-              </button>
-              <button
-                type="button"
-                className={`story-dock-pill${member.pose === 'sitting-sofa' || member.legPose?.startsWith('sitting') ? ' is-active' : ''}`}
-                onClick={() => applyLegs('sitting-forward')}
-                disabled={generatingPose}
-              >
-                Sitzen
-              </button>
-            </div>
-            {legOptions.length > 2 && (
-              <p className="story-dock-muted">Weitere Bein-Posen liegen in der Bibliothek.</p>
-            )}
 
-            <p className="story-dock-label">Blickrichtung</p>
-            <div className="story-dock-pills" role="group" aria-label="Blickrichtung">
-              {DIALOGUE_HEAD_ANGLES.map((id) => {
-                const have = headOptions.includes(id) || member.headAngle === id
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    className={`story-dock-pill${member.headAngle === id ? ' is-active' : ''}`}
-                    onClick={() => applyLook(id)}
-                    disabled={generatingPose}
-                    title={have ? headAngleLabel(id) : `${headAngleLabel(id)} — noch erzeugen`}
-                  >
-                    {headAngleLabel(id)}
-                    {!have ? ' +' : ''}
-                  </button>
-                )
-              })}
-            </div>
+            <p className="story-dock-label">Kopf</p>
+            <PosePills
+              groupLabel="Kopf"
+              options={HEAD_ANGLES}
+              current={currentHead}
+              haveIds={headOptions}
+              onPick={(head) => applyCombo(head, currentLeg, currentArm)}
+              disabled={generatingPose}
+            />
+
+            <p className="story-dock-label">Beine</p>
+            <PosePills
+              groupLabel="Beine"
+              options={LEG_POSES}
+              current={currentLeg}
+              haveIds={legOptions}
+              onPick={(leg) => applyCombo(currentHead, leg, currentArm)}
+              disabled={generatingPose}
+            />
+
+            <p className="story-dock-label">Arme</p>
+            <PosePills
+              groupLabel="Arme"
+              options={ARM_POSES}
+              current={currentArm}
+              haveIds={armOptions}
+              onPick={(arm) => applyCombo(currentHead, currentLeg, arm)}
+              disabled={generatingPose}
+            />
+
             {generatingPose && <p className="story-dock-muted">{generatePoseLabel}</p>}
             <p className="story-dock-help">
-              Fehlt eine Blickrichtung, erzeugt «+» sie neu (dauert kurz, kostet ein Bild).
+              «+» erzeugt genau diese Kombination neu (ein Bild). Fehlt z.B. «Jubelnd», einfach draufklicken.
             </p>
 
             <label className="story-cast-look-at">

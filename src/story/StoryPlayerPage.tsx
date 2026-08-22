@@ -20,11 +20,14 @@ import {
   type CastPose,
 } from './story-cast'
 import {
+  ARM_POSES,
   HEAD_ANGLES,
   LEG_POSES,
   POSE_SETS,
   characterBaseName,
+  armPoseLabel,
   headAngleLabel,
+  isArmPoseId,
   isHeadAngleId,
   isLegPoseId,
   legPoseLabel,
@@ -32,6 +35,7 @@ import {
   poseSetCombos,
   poseSetCount,
   poseVariantLabel,
+  type ArmPoseId,
   type HeadAngleId,
   type LegPoseId,
   type PoseSetId,
@@ -59,6 +63,7 @@ type SessionCharacter = {
   styleId: StoryArtStyleId
   legPose?: LegPoseId
   headAngle?: HeadAngleId
+  armPose?: ArmPoseId
 }
 type SessionEnvironment = {
   name: string
@@ -138,6 +143,7 @@ export function StoryPlayerPage() {
   const [selectedSlot, setSelectedSlot] = useState<'left' | 'right' | null>(null)
   const [generateLegPose, setGenerateLegPose] = useState<LegPoseId>('standing')
   const [generateHeadAngle, setGenerateHeadAngle] = useState<HeadAngleId>('front')
+  const [generateArmPose, setGenerateArmPose] = useState<ArmPoseId>('relaxed')
   const [generatePoseSet, setGeneratePoseSet] = useState<PoseSetId>('sofa-dialogue')
   const [generatingPoseBatch, setGeneratingPoseBatch] = useState(false)
   const [poseBatchProgress, setPoseBatchProgress] = useState('')
@@ -192,6 +198,7 @@ export function StoryPlayerPage() {
       pose?: CastPose
       legPose?: LegPoseId
       headAngle?: HeadAngleId
+      armPose?: ArmPoseId
     },
   ) => {
     setCast((prev) => {
@@ -265,6 +272,7 @@ export function StoryPlayerPage() {
     styleId?: StoryArtStyleId
     legPoseId?: LegPoseId
     headAngleId?: HeadAngleId
+    armPoseId?: ArmPoseId
     key: string
   }) => {
     setSavingId(input.key)
@@ -278,6 +286,7 @@ export function StoryPlayerPage() {
         styleId: input.styleId ?? artStyle,
         legPoseId: input.legPoseId,
         headAngleId: input.headAngleId,
+        armPoseId: input.armPoseId,
       })
       setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
     } catch (err) {
@@ -310,10 +319,12 @@ export function StoryPlayerPage() {
             ...parseTagsInput(saveTagsInput),
             ...(item.headAngle ? [item.headAngle] : []),
             ...(item.legPose ? [item.legPose] : []),
+            ...(item.armPose && item.armPose !== 'relaxed' ? [item.armPose] : []),
           ],
           styleId: item.styleId ?? artStyle,
           legPoseId: item.legPose,
           headAngleId: item.headAngle,
+          armPoseId: item.armPose,
         })
         setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
       }
@@ -389,7 +400,12 @@ export function StoryPlayerPage() {
     return descriptionForCharacterName(name) ?? characterDescription.trim()
   }
 
-  const handleGenerateDockPose = async (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId) => {
+  const handleGenerateDockPose = async (
+    slot: 'left' | 'right',
+    head: HeadAngleId,
+    leg: LegPoseId,
+    arm: ArmPoseId,
+  ) => {
     const member = cast[slot]
     if (!member) return
     const name = characterBaseName(member.displayName || member.assetName)
@@ -397,16 +413,17 @@ export function StoryPlayerPage() {
     if (!name || !description) return
     setGeneratingDockPose(true)
     setCharacterError('')
-    setPoseBatchProgress(`${poseVariantLabel(head, leg)} …`)
+    setPoseBatchProgress(`${poseVariantLabel(head, leg, arm)} …`)
     try {
-      const result = await api.story.generateCharacter(name, description, artStyle, leg, head)
+      const result = await api.story.generateCharacter(name, description, artStyle, leg, head, arm)
       const created: SessionCharacter = {
-        name: `${name} · ${poseVariantLabel(head, leg)}`,
+        name: `${name} · ${poseVariantLabel(head, leg, arm)}`,
         imageUrl: result.imageUrl,
         description,
         styleId: result.styleId as StoryArtStyleId,
         legPose: leg,
         headAngle: head,
+        armPose: arm,
       }
       setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
       setCast((prev) => {
@@ -415,11 +432,12 @@ export function StoryPlayerPage() {
           assetName: created.name,
           headAngle: head,
           legPose: leg,
+          armPose: arm,
         })
         next = updateCastPose(next, slot, leg.startsWith('sitting') ? 'sitting-sofa' : 'standing')
         return next
       })
-      setSceneNotice(`${name}: ${poseVariantLabel(head, leg)} erzeugt.`)
+      setSceneNotice(`${name}: ${poseVariantLabel(head, leg, arm)} erzeugt.`)
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Pose konnte nicht erzeugt werden.')
     } finally {
@@ -449,6 +467,7 @@ export function StoryPlayerPage() {
         artStyle,
         generateLegPose,
         generateHeadAngle,
+        generateArmPose,
       )
       setGeneratedCharacters((prev) =>
         [
@@ -459,6 +478,7 @@ export function StoryPlayerPage() {
             styleId: result.styleId as StoryArtStyleId,
             legPose: generateLegPose,
             headAngle: generateHeadAngle,
+            armPose: generateArmPose,
           },
           ...prev,
         ].slice(0, 48),
@@ -479,7 +499,7 @@ export function StoryPlayerPage() {
     const name = characterName.trim()
     const description = characterDescription.trim()
     if (!name || !description) return
-    const combos = poseSetCombos(setId, generateLegPose)
+    const combos = poseSetCombos(setId, generateLegPose, generateArmPose)
     if (combos.length === 0) return
     setGeneratePoseSet(setId)
     setGeneratingPoseBatch(true)
@@ -488,16 +508,17 @@ export function StoryPlayerPage() {
     const created: SessionCharacter[] = []
     try {
       for (let i = 0; i < combos.length; i++) {
-        const { head, leg } = combos[i]
-        setPoseBatchProgress(`${i + 1} / ${combos.length} · ${poseVariantLabel(head, leg)}`)
-        const result = await api.story.generateCharacter(name, description, artStyle, leg, head)
+        const { head, leg, arm } = combos[i]
+        setPoseBatchProgress(`${i + 1} / ${combos.length} · ${poseVariantLabel(head, leg, arm)}`)
+        const result = await api.story.generateCharacter(name, description, artStyle, leg, head, arm)
         created.push({
-          name: `${name} · ${poseVariantLabel(head, leg)}`,
+          name: `${name} · ${poseVariantLabel(head, leg, arm)}`,
           imageUrl: result.imageUrl,
           description,
           styleId: result.styleId as StoryArtStyleId,
           legPose: leg,
           headAngle: head,
+          armPose: arm,
         })
       }
       setGeneratedCharacters((prev) => [...created, ...prev].slice(0, 56))
@@ -665,6 +686,7 @@ export function StoryPlayerPage() {
                   libraryAssetId: variant.libraryAssetId,
                   legPose: variant.legPose,
                   headAngle: variant.headAngle,
+                  armPose: variant.armPose,
                 })
               }
               onRemoveSlot={(slot) => {
@@ -679,6 +701,7 @@ export function StoryPlayerPage() {
                     libraryAssetId: variant.libraryAssetId,
                     headAngle: variant.headAngle,
                     legPose: variant.legPose,
+                    armPose: variant.armPose,
                   }),
                 )
               }}
@@ -693,7 +716,9 @@ export function StoryPlayerPage() {
                 })
               }
               onRename={(slot, name) => setCast((prev) => updateCastName(prev, slot, name))}
-              onGeneratePose={(slot, head, leg) => void handleGenerateDockPose(slot, head, leg)}
+              onGeneratePose={(slot, head, leg, arm) =>
+                void handleGenerateDockPose(slot, head, leg, arm)
+              }
               generatingPose={generatingDockPose}
               generatePoseLabel={poseBatchProgress || 'Erzeuge Pose …'}
               presets={presets}
@@ -774,7 +799,7 @@ export function StoryPlayerPage() {
                             imageUrl: item.imageUrl,
                             subtitle: [
                               'Gerade erzeugt',
-                              poseVariantLabel(item.headAngle, item.legPose),
+                              poseVariantLabel(item.headAngle, item.legPose, item.armPose),
                               storyStyleLabel(item.styleId) ?? artStyle,
                             ]
                               .filter(Boolean)
@@ -786,6 +811,7 @@ export function StoryPlayerPage() {
                               assetName: item.name,
                               legPose: item.legPose,
                               headAngle: item.headAngle,
+                              armPose: item.armPose,
                             })
                           }
                           onPlaceRight={() =>
@@ -794,6 +820,7 @@ export function StoryPlayerPage() {
                               assetName: item.name,
                               legPose: item.legPose,
                               headAngle: item.headAngle,
+                              armPose: item.armPose,
                             })
                           }
                           onSave={() =>
@@ -805,6 +832,7 @@ export function StoryPlayerPage() {
                               styleId: item.styleId,
                               legPoseId: item.legPose,
                               headAngleId: item.headAngle,
+                              armPoseId: item.armPose,
                               key: `session-char-${idx}`,
                             })
                           }
@@ -923,6 +951,9 @@ export function StoryPlayerPage() {
                               ...(item.legPoseId && isLegPoseId(item.legPoseId)
                                 ? [legPoseLabel(item.legPoseId)]
                                 : []),
+                              ...(item.armPoseId && isArmPoseId(item.armPoseId) && item.armPoseId !== 'relaxed'
+                                ? [armPoseLabel(item.armPoseId)]
+                                : []),
                             ],
                           }}
                           onPlaceLeft={() =>
@@ -932,6 +963,7 @@ export function StoryPlayerPage() {
                               libraryAssetId: item.id,
                               legPose: item.legPoseId as LegPoseId | undefined,
                               headAngle: item.headAngleId as HeadAngleId | undefined,
+                              armPose: item.armPoseId as ArmPoseId | undefined,
                             })
                           }
                           onPlaceRight={() =>
@@ -941,6 +973,7 @@ export function StoryPlayerPage() {
                               libraryAssetId: item.id,
                               legPose: item.legPoseId as LegPoseId | undefined,
                               headAngle: item.headAngleId as HeadAngleId | undefined,
+                              armPose: item.armPoseId as ArmPoseId | undefined,
                             })
                           }
                           onDelete={() => void handleDeleteFromLibrary(item.id)}
@@ -1062,6 +1095,21 @@ export function StoryPlayerPage() {
                     ))}
                   </select>
                 </label>
+                <label className="story-cast-name-label">
+                  Arme
+                  <select
+                    className="input"
+                    value={generateArmPose}
+                    onChange={(e) => setGenerateArmPose(e.target.value as ArmPoseId)}
+                    disabled={generatingCharacter || generatingPoseBatch}
+                  >
+                    {ARM_POSES.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <button
                 type="button"
@@ -1089,7 +1137,7 @@ export function StoryPlayerPage() {
               <p className="muted story-card-subtitle">
                 {POSE_SETS.find((s) => s.id === generatePoseSet)?.description}
                 {generatePoseSet === 'heads-for-leg'
-                  ? ` — Bein-Pose: ${legPoseLabel(generateLegPose)}`
+                  ? ` — Beine: ${legPoseLabel(generateLegPose)} · Arme: ${armPoseLabel(generateArmPose)}`
                   : ''}
               </p>
               <button
@@ -1108,16 +1156,16 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel">
             <h3>Pose-Übersicht</h3>
             <p className="muted">
-              Nach dem Sofa-Set: unter <strong>Bibliothek</strong> speichern, eine Pose platzieren, dann in der
-              Besetzung die Blickrichtung umschalten.
+              Nach dem Sofa-Set: unter <strong>Bibliothek</strong> speichern, eine Pose platzieren, dann rechts
+              Kopf, Beine und Arme umschalten. Fehlt eine Kombination, erzeugt «+» sie.
             </p>
             <p className="muted">
-              Volle Matrix: {poseMatrixSize().heads} × {poseMatrixSize().legs} = {poseMatrixSize().total} (nur wenn
-              wirklich nötig).
+              Volle Matrix: {poseMatrixSize().heads} × {poseMatrixSize().legs} × {poseMatrixSize().arms} ={' '}
+              {poseMatrixSize().total} Bilder — nicht auf einmal erzeugen, nur per Button was du brauchst.
             </p>
             <div className="story-pose-grid">
               <div>
-                <h4 className="story-library-heading">Kopf-Richtungen</h4>
+                <h4 className="story-library-heading">Kopf</h4>
                 <ul className="story-pose-list">
                   {HEAD_ANGLES.map((h) => (
                     <li key={h.id}>{h.label}</li>
@@ -1125,10 +1173,18 @@ export function StoryPlayerPage() {
                 </ul>
               </div>
               <div>
-                <h4 className="story-library-heading">Bein-Posen</h4>
+                <h4 className="story-library-heading">Beine</h4>
                 <ul className="story-pose-list">
                   {LEG_POSES.map((l) => (
                     <li key={l.id}>{l.label}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="story-library-heading">Arme</h4>
+                <ul className="story-pose-list">
+                  {ARM_POSES.map((a) => (
+                    <li key={a.id}>{a.label}</li>
                   ))}
                 </ul>
               </div>
