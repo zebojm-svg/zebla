@@ -31,6 +31,7 @@ function borderAverageLum(mask: RgbaPixels, width: number, height: number): numb
 /**
  * Schreibt die Masken-Helligkeit als Alpha in das Farbbild.
  * Rand hell → Maske ist invertiert (Figur schwarz).
+ * Kein weiches Grau: sonst wirkt die ganze Figur halb durchsichtig.
  */
 export function applyLuminanceMask(
   color: RgbaPixels,
@@ -41,11 +42,9 @@ export function applyLuminanceMask(
   const count = width * height
   const invert = borderAverageLum(mask, width, height) > 127
   for (let i = 0; i < count; i++) {
-    let alpha = lumAt(mask, i)
-    if (invert) alpha = 255 - alpha
-    if (alpha < 28) alpha = 0
-    else if (alpha > 220) alpha = 255
-    color[i * 4 + 3] = Math.round(alpha)
+    let lum = lumAt(mask, i)
+    if (invert) lum = 255 - lum
+    color[i * 4 + 3] = lum >= 96 ? 255 : 0
   }
 }
 
@@ -53,7 +52,8 @@ function isStudioCandidate(r: number, g: number, b: number): boolean {
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const avg = (r + g + b) / 3
-  return max - min <= 30 && avg >= 148 && avg <= 245
+  // Nur echtes Studio-Grau (#D0D0D0), nicht Haut, nicht Kleidung.
+  return max - min <= 16 && avg >= 176 && avg <= 224
 }
 
 function hasClearNeighbor(
@@ -98,15 +98,13 @@ export function punchStudioBackdrop(color: RgbaPixels, width: number, height: nu
   }
 
   const alphaSnap = new Uint8Array(count)
-  for (let pass = 0; pass < 3; pass++) {
-    for (let i = 0; i < count; i++) alphaSnap[i] = color[i * 4 + 3]!
-    for (let i = 0; i < count; i++) {
-      if (!isCandidate(i)) continue
-      const y = (i / width) | 0
-      if (y >= shoeLine && pass > 0) continue
-      if (hasClearNeighbor(alphaSnap, width, height, i)) {
-        color[i * 4 + 3] = 0
-      }
+  for (let i = 0; i < count; i++) alphaSnap[i] = color[i * 4 + 3]!
+  for (let i = 0; i < count; i++) {
+    if (!isCandidate(i)) continue
+    const y = (i / width) | 0
+    if (y >= shoeLine) continue
+    if (hasClearNeighbor(alphaSnap, width, height, i)) {
+      color[i * 4 + 3] = 0
     }
   }
 

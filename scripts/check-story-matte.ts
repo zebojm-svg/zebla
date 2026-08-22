@@ -3,7 +3,7 @@
  * Aufruf: npx tsx scripts/check-story-matte.ts
  */
 import { splitRigFromPixels } from '../shared/character-rig.ts'
-import { punchStudioBackdrop } from '../shared/image-person-matte.ts'
+import { applyLuminanceMask, punchStudioBackdrop } from '../shared/image-person-matte.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -54,6 +54,25 @@ if (getA(punched, W, 18, 32) !== 0) fail('Achsel-Grau sollte transparent sein')
 if (getA(punched, W, 20, 50) < 200) fail('Grüner Hoodie darf nicht gelöscht werden')
 if (getA(punched, W, 22, 104) < 200) fail('Weisse Schuhe unten müssen bleiben')
 if (getA(punched, W, 20, 20) < 200) fail('Kopf/Haare müssen bleiben')
+
+const skin = rgba(W, H)
+for (let y = 10; y <= 50; y++) {
+  for (let x = 12; x <= 35; x++) setPx(skin, W, x, y, 210, 168, 142, 255)
+}
+punchStudioBackdrop(skin, W, H)
+if (getA(skin, W, 20, 30) < 200) fail('Haut darf nicht gelocht werden')
+
+const grayMask = rgba(W, H)
+const grayColor = rgba(W, H)
+for (let y = 10; y <= 90; y++) {
+  for (let x = 10; x <= 38; x++) {
+    setPx(grayColor, W, x, y, 40, 180, 70, 255)
+    setPx(grayMask, W, x, y, 140, 140, 140, 255)
+  }
+}
+applyLuminanceMask(grayColor, grayMask, W, H)
+if (getA(grayColor, W, 20, 40) < 250) fail('Graue Maske muss die Figur voll undurchsichtig machen')
+if (getA(grayColor, W, 2, 2) !== 0) fail('Hintergrund der grauen Maske muss durchsichtig sein')
 
 const splitRed = splitRigFromPixels(punched, W, H, redMask)
 if (!splitRed.ok) fail(`Zerlegen mit roter Maske: ${splitRed.reason}`)

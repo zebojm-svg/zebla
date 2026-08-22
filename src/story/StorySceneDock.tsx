@@ -201,7 +201,7 @@ export function StorySceneDock({
               Ausgewählt: <strong>{member.displayName}</strong>
             </p>
             <p className="story-dock-help">
-              Kopf, Beine und Arme am Rad wählen. «+» in der Liste = noch zeichnen.
+              Rad: Kopf, Beine, Arme. «+» = noch zeichnen.
             </p>
             <label className="story-dock-field">
               Name im Storyboard
@@ -276,9 +276,7 @@ export function StorySceneDock({
               />
               Zur anderen Figur drehen
             </label>
-            <p className="story-dock-muted">
-              Figur: ziehen · Rad = Grösse · Shift = zerren · Strg = drehen
-            </p>
+            <p className="story-dock-muted">Ziehen · Rad · Shift zerren · Strg drehen</p>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => onResetTransform(member.id)}>
               Position zurücksetzen
             </button>
@@ -326,7 +324,7 @@ export function StorySceneDock({
       <section className="story-dock-block">
         <h3>Figuren</h3>
         <p className="story-dock-help">
-          Antippen = ins Bild (auch denselben nochmal). Maximal {CAST_MAX}.
+          Antippen = ins Bild (auch denselben nochmal). Max. {CAST_MAX}.
         </p>
         {cast.members.length > 0 && (
           <div className="story-dock-slots">
