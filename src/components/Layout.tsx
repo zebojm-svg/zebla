@@ -68,6 +68,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </nav>
               )}
               <div className="zebo-shell-header__right">
+                <Link to="/story" className="btn btn-story-studio btn-sm">
+                  Story-Studio
+                </Link>
                 <LanguageSwitcher className="lang-switcher--topbar" />
                 <a className="zebo-hub-link" href="https://zebotools.ch">
                   ← ZeboTools
