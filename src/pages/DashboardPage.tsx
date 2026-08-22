@@ -460,8 +460,8 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="header-actions">
-          <Link to="/story" className="btn btn-secondary">
-            Figuren & Umfeld
+          <Link to="/story" className="btn btn-story-studio">
+            Story-Studio
           </Link>
           {canCreateFolder && (
             <button type="button" className="btn btn-secondary" onClick={createFolder}>
@@ -472,6 +472,16 @@ export function DashboardPage() {
             + {t('dashboard.newDialog')}
           </Link>
         </div>
+      </div>
+
+      <div className="dashboard-story-cta">
+        <p>
+          <strong>Story-Studio</strong>
+          Figuren, Hintergründe und Szenen für Bildgeschichten — wie Bookbox, Schritt für Schritt.
+        </p>
+        <Link to="/story" className="btn btn-story-studio">
+          Zum Story-Studio
+        </Link>
       </div>
 
       <nav className="breadcrumb" aria-label="Ordnerpfad">
@@ -528,6 +538,9 @@ export function DashboardPage() {
               : 'Starte mit deinem ersten Dialog – per KI-Gespräch, Thema oder Diktat.'}
           </p>
           <div className="empty-state-actions">
+            <Link to="/story" className="btn btn-story-studio">
+              Story-Studio
+            </Link>
             {canCreateFolder && (
               <button type="button" className="btn btn-secondary" onClick={createFolder}>
                 Ordner anlegen
