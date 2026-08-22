@@ -13,10 +13,9 @@ import {
   STORY_CHARACTER_CUTOUT_PROMPT,
   STORY_CHARACTER_FRAMING_PROMPT,
   STORY_CHARACTER_MASK_PROMPT,
-  STORY_CHARACTER_PART_MASK_PROMPT,
 } from '../shared/story-character-looks.js'
 import type { CharacterRig } from '../shared/character-rig.js'
-import { applyPersonMask, splitCharacterRigPng } from './story-image-processing.js'
+import { applyPersonMask, punchCutoutPng, splitCharacterRigPng } from './story-image-processing.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -229,48 +228,33 @@ export async function generateStoryCharacter(
   const cutout = await cutOutWithPersonMask(apiKey, colorPng)
   const slug = name.toLowerCase().replace(/\s+/g, '-')
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const [imageUrl2, rig] = await Promise.all([
+  const [imageUrl2, built] = await Promise.all([
     uploadStoryAsset(cutout, `story-characters/${slug}-${unique2}.png`),
-    buildCharacterRig(apiKey, cutout, slug, unique2).catch(() => undefined),
+    buildCharacterRig(cutout, slug, unique2).catch(() => undefined),
   ])
 
-  return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id, rig }
+  return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id, rig: built?.rig }
 }
 
 async function buildCharacterRig(
-  apiKey: string,
   cutoutPng: Buffer,
   slug: string,
   unique: string,
-): Promise<CharacterRig | undefined> {
-  try {
-    const partMask = await generateGeminiPng(
-      apiKey,
-      [
-        { text: STORY_CHARACTER_PART_MASK_PROMPT },
-        { inlineData: { mimeType: 'image/png', data: cutoutPng.toString('base64') } },
-      ],
-      '9:16',
-      40_000,
-      'Keine Teile-Maske erhalten.',
-    )
-    const split = await splitCharacterRigPng(cutoutPng, partMask)
-    const [head, torso, legs] = await Promise.all([
-      uploadStoryAsset(split.head, `story-characters/${slug}-${unique}-head.png`),
-      uploadStoryAsset(split.torso, `story-characters/${slug}-${unique}-torso.png`),
-      uploadStoryAsset(split.legs, `story-characters/${slug}-${unique}-legs.png`),
-    ])
-    return { parts: { head, torso, legs }, joints: split.joints }
-  } catch (err) {
-    throw err instanceof Error ? err : new Error('Teile-Maske fehlgeschlagen.')
-  }
+): Promise<{ rig: CharacterRig; punchedPng: Buffer }> {
+  const punchedPng = await punchCutoutPng(cutoutPng)
+  const split = await splitCharacterRigPng(punchedPng)
+  const [head, torso, legs] = await Promise.all([
+    uploadStoryAsset(split.head, `story-characters/${slug}-${unique}-head.png`),
+    uploadStoryAsset(split.torso, `story-characters/${slug}-${unique}-torso.png`),
+    uploadStoryAsset(split.legs, `story-characters/${slug}-${unique}-legs.png`),
+  ])
+  return { rig: { parts: { head, torso, legs }, joints: split.joints }, punchedPng }
 }
 
 export async function rigStoryCharacterFromUrl(
   imageUrl: string,
   name = 'character',
 ): Promise<{ imageUrl: string; rig: CharacterRig }> {
-  const apiKey = requireGeminiKey()
   const res = await fetch(imageUrl)
   if (!res.ok) {
     throw new Error('Figur-Bild konnte nicht geladen werden.')
@@ -278,11 +262,15 @@ export async function rigStoryCharacterFromUrl(
   const cutout = Buffer.from(await res.arrayBuffer())
   const slug = name.toLowerCase().replace(/\s+/g, '-') || 'character'
   const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const rig = await buildCharacterRig(apiKey, cutout, slug, unique)
-  if (!rig) {
-    throw new Error('Figur konnte nicht in Kopf, Rumpf und Beine zerlegt werden. Bitte ein Ganzkörperbild nehmen.')
+  try {
+    const built = await buildCharacterRig(cutout, slug, unique)
+    const punchedUrl = await uploadStoryAsset(built.punchedPng, `story-characters/${slug}-${unique}-full.png`)
+    return { imageUrl: punchedUrl, rig: built.rig }
+  } catch (err) {
+    throw err instanceof Error
+      ? err
+      : new Error('Figur konnte nicht in Kopf, Rumpf und Beine zerlegt werden. Bitte ein Ganzkörperbild nehmen.')
   }
-  return { imageUrl, rig }
 }
 
 export async function generateStoryEnvironment(

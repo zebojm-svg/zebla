@@ -240,10 +240,14 @@ export function applyCastRig(
   cast: SceneCast,
   slot: 'left' | 'right',
   rig: CharacterRig,
+  imageUrl?: string,
 ): SceneCast {
   const member = cast[slot]
   if (!member || !isCharacterRig(rig)) return cast
-  return { ...cast, [slot]: { ...member, rig } }
+  return {
+    ...cast,
+    [slot]: { ...member, rig, imageUrl: imageUrl?.trim() || member.imageUrl },
+  }
 }
 
 export function updateCastName(
@@ -322,16 +326,9 @@ export function castPartLayerId(slot: 'left' | 'right', part: 'head' | 'torso' |
 export function slotForIncomingCharacter(
   cast: SceneCast,
   selectedSlot: 'left' | 'right' | null,
-  incomingName: string,
+  _incomingName?: string,
 ): 'left' | 'right' {
-  const base = characterBaseName(incomingName).toLowerCase()
-  if (selectedSlot) {
-    const current = cast[selectedSlot]
-    if (current && characterBaseName(current.displayName).toLowerCase() === base) {
-      return selectedSlot
-    }
-    if (!current) return selectedSlot
-  }
+  if (selectedSlot && !cast[selectedSlot]) return selectedSlot
   if (!cast.left) return 'left'
   if (!cast.right) return 'right'
   return selectedSlot ?? 'left'
