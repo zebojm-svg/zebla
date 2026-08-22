@@ -8,6 +8,7 @@ import {
   type HeadAngleId,
   type LegPoseId,
 } from '../../shared/character-parts'
+import { HEAD_TWIST_MAX, HEAD_TWIST_MIN } from '../../shared/character-rig'
 import type { ScenePreset } from '../../shared/scene-presets'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import {
@@ -52,7 +53,11 @@ type Props = {
   onResetTransform: (slot: 'left' | 'right') => void
   onRename: (slot: 'left' | 'right', name: string) => void
   onGeneratePose: (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => void
+  onMixHead: (slot: 'left' | 'right', donor: PoseVariant) => void
+  onHeadTwist: (slot: 'left' | 'right', deg: number) => void
+  onBuildRig: (slot: 'left' | 'right') => void
   generatingPose: boolean
+  buildingRig: boolean
   generatePoseLabel: string
   presets: ScenePreset[]
   activePresetId: string | null
@@ -118,7 +123,11 @@ export function StorySceneDock({
   onResetTransform,
   onRename,
   onGeneratePose,
+  onMixHead,
+  onHeadTwist,
+  onBuildRig,
   generatingPose,
+  buildingRig,
   generatePoseLabel,
   presets,
   activePresetId,
@@ -133,8 +142,13 @@ export function StorySceneDock({
   const currentLeg: LegPoseId = member?.legPose ?? 'standing'
   const currentArm: ArmPoseId = normalizeArmPoseId(member?.armPose)
   const headOptions = availableHeadAngles(variants, currentLeg, currentArm)
+  const mixableHeads = member?.rig
+    ? variants.filter((v) => v.rig && v.headAngle).map((v) => v.headAngle as HeadAngleId)
+    : []
+  const readyHeads = [...new Set([...headOptions, ...mixableHeads])]
   const legOptions = availableLegPoses(variants, currentHead, currentArm)
   const armOptions = availableArmPoses(variants, currentHead, currentLeg)
+  const busy = generatingPose || buildingRig
 
   const applyCombo = (head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => {
     if (!selectedSlot || !member) return
@@ -142,6 +156,14 @@ export function StorySceneDock({
     if (match) {
       onSwapVariant(selectedSlot, match)
       onSetPose(selectedSlot, poseForLeg(leg))
+      return
+    }
+    const sameBody = head !== currentHead && leg === currentLeg && arm === currentArm
+    const donor = sameBody
+      ? variants.find((v) => v.headAngle === head && v.rig)
+      : undefined
+    if (sameBody && member.rig && donor) {
+      onMixHead(selectedSlot, donor)
       return
     }
     onGeneratePose(selectedSlot, head, leg, arm)
@@ -153,7 +175,8 @@ export function StorySceneDock({
               Ausgewählt: <strong>{member.displayName}</strong> ({selectedSlot === 'left' ? 'links' : 'rechts'})
             </p>
             <p className="story-dock-help">
-              Das ist <strong>eine</strong> Figur. Sitzen, Hüfte, Kopf und Arme hier einstellen — nicht extra in der Bibliothek sammeln.
+              Das ist <strong>eine</strong> Figur aus Teilen: Beine, Rumpf und Kopf hängen am Hals zusammen.
+              Kopf drehen braucht kein neues Bild. «+» zeichnet nur, wenn die Silhouette neu sein muss.
             </p>
             <label className="story-dock-field">
               Name im Dialog
@@ -170,9 +193,9 @@ export function StorySceneDock({
               groupLabel="Kopf"
               options={HEAD_ANGLES}
               current={currentHead}
-              haveIds={headOptions}
+              haveIds={readyHeads}
               onPick={(head) => applyCombo(head, currentLeg, currentArm)}
-              disabled={generatingPose}
+              disabled={busy}
             />
 
             <p className="story-dock-label">Beine / Hüfte</p>
@@ -182,7 +205,7 @@ export function StorySceneDock({
               current={currentLeg}
               haveIds={legOptions}
               onPick={(leg) => applyCombo(currentHead, leg, currentArm)}
-              disabled={generatingPose}
+              disabled={busy}
             />
 
             <p className="story-dock-label">Arme</p>
@@ -192,12 +215,54 @@ export function StorySceneDock({
               current={currentArm}
               haveIds={armOptions}
               onPick={(arm) => applyCombo(currentHead, currentLeg, arm)}
-              disabled={generatingPose}
+              disabled={busy}
             />
 
             {generatingPose && <p className="story-dock-muted">{generatePoseLabel}</p>}
+            {buildingRig && <p className="story-dock-muted">Zerlege Figur in Kopf, Rumpf und Beine …</p>}
+
+            {member.rig ? (
+              <div className="story-transform-controls">
+                <p className="story-transform-hint">
+                  Skelett: den Kopf am Hals drehen — Rumpf und Beine bleiben. Für ein echtes Profil
+                  (ganzes Gesicht von der Seite) eine Blickrichtung mit «+» zeichnen oder einen
+                  schon vorhandenen Kopf setzen.
+                </p>
+                <label className="story-transform-row">
+                  <span>Kopf drehen</span>
+                  <input
+                    type="range"
+                    min={HEAD_TWIST_MIN}
+                    max={HEAD_TWIST_MAX}
+                    value={member.headTwist}
+                    onChange={(e) => onHeadTwist(selectedSlot, Number(e.target.value))}
+                  />
+                  <span>{member.headTwist}°</span>
+                </label>
+                <p className="story-dock-muted">
+                  Verbunden: Beine · Rumpf · Kopf
+                </p>
+              </div>
+            ) : (
+              <div className="story-transform-controls">
+                <p className="story-transform-hint">
+                  Diese Figur ist noch ein Ganzkörperbild. Zerlegen macht daraus drei Teile, die am
+                  Hals zusammenhängen — wie Ebenen in einem Grafikprogramm.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => onBuildRig(selectedSlot)}
+                >
+                  In Kopf / Rumpf / Beine zerlegen
+                </button>
+              </div>
+            )}
+
             <p className="story-dock-help">
-              «+» erzeugt nur diese Einstellung neu. Es bleibt derselbe Guillaume / Julien.
+              «+» bei Beinen oder Armen erzeugt eine neue Ganzkörper-Zeichnung. Köpfe ohne «+» kommen
+              aus einer anderen Pose derselben Figur und werden nur aufgesetzt.
             </p>
 
             <label className="story-cast-look-at">

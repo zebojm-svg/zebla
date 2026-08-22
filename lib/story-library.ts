@@ -1,3 +1,4 @@
+import { isCharacterRig, type CharacterRig } from '../shared/character-rig.js'
 import { randomUUID } from 'crypto'
 import { adminDb } from './firebase-admin.js'
 
@@ -14,6 +15,7 @@ export interface StoryLibraryDoc {
   legPoseId?: string
   headAngleId?: string
   armPoseId?: string
+  rig?: CharacterRig
   createdAt: string
 }
 
@@ -64,9 +66,11 @@ export async function saveStoryAsset(
     legPoseId?: string
     headAngleId?: string
     armPoseId?: string
+    rig?: CharacterRig
   },
 ): Promise<StoryLibraryAsset> {
   const id = randomUUID()
+  const rig = isCharacterRig(input.rig) ? input.rig : undefined
   const doc: StoryLibraryDoc = {
     userId,
     type: input.type,
@@ -78,10 +82,26 @@ export async function saveStoryAsset(
     legPoseId: input.legPoseId,
     headAngleId: input.headAngleId,
     armPoseId: input.armPoseId,
+    rig,
     createdAt: new Date().toISOString(),
   }
   await adminDb().collection('storyAssets').doc(id).set(doc)
   return { id, ...doc }
+}
+
+export async function updateStoryAssetRig(
+  userId: string,
+  id: string,
+  rig: CharacterRig,
+): Promise<StoryLibraryAsset | null> {
+  if (!isCharacterRig(rig)) return null
+  const ref = adminDb().collection('storyAssets').doc(id)
+  const snap = await ref.get()
+  if (!snap.exists) return null
+  const data = snap.data() as StoryLibraryDoc
+  if (data.userId !== userId) return null
+  await ref.update({ rig })
+  return { id, ...data, rig }
 }
 
 export async function deleteStoryAsset(userId: string, id: string): Promise<boolean> {

@@ -1,5 +1,7 @@
 /** Asset-Bibliothek und Szenen-Typen für ZeboStories */
 
+import type { CharacterRig } from './character-rig'
+
 export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop'
 
 /** Persistiertes KI-Asset in der persönlichen Story-Bibliothek */
@@ -18,6 +20,8 @@ export interface StoryLibraryAsset {
   headAngleId?: string
   /** Arm-Pose bei modularen Figuren */
   armPoseId?: string
+  /** Kopf / Rumpf / Beine als zusammenhängende Teile */
+  rig?: CharacterRig
   createdAt: string
 }
 

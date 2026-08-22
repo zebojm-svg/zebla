@@ -13,8 +13,10 @@ import {
   STORY_CHARACTER_CUTOUT_PROMPT,
   STORY_CHARACTER_FRAMING_PROMPT,
   STORY_CHARACTER_MASK_PROMPT,
+  STORY_CHARACTER_PART_MASK_PROMPT,
 } from '../shared/story-character-looks.js'
-import { applyPersonMask } from './story-image-processing.js'
+import type { CharacterRig } from '../shared/character-rig.js'
+import { applyPersonMask, splitCharacterRigPng } from './story-image-processing.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -177,7 +179,7 @@ export async function generateStoryCharacter(
   legPoseId?: LegPoseId,
   headAngleId?: HeadAngleId,
   armPoseId?: ArmPoseId,
-): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
+): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId; rig?: CharacterRig }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
   const appearance = resolveStoryCharacterAppearance(name, description)
@@ -202,13 +204,62 @@ export async function generateStoryCharacter(
     'Kein Bild generiert.',
   )
   const cutout = await cutOutWithPersonMask(apiKey, colorPng)
+  const slug = name.toLowerCase().replace(/\s+/g, '-')
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const imageUrl2 = await uploadStoryAsset(
-    cutout,
-    `story-characters/${name.toLowerCase().replace(/\s+/g, '-')}-${unique2}.png`,
-  )
+  const [imageUrl2, rig] = await Promise.all([
+    uploadStoryAsset(cutout, `story-characters/${slug}-${unique2}.png`),
+    buildCharacterRig(apiKey, cutout, slug, unique2),
+  ])
 
-  return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id }
+  return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id, rig }
+}
+
+async function buildCharacterRig(
+  apiKey: string,
+  cutoutPng: Buffer,
+  slug: string,
+  unique: string,
+): Promise<CharacterRig | undefined> {
+  try {
+    const partMask = await generateGeminiPng(
+      apiKey,
+      [
+        { text: STORY_CHARACTER_PART_MASK_PROMPT },
+        { inlineData: { mimeType: 'image/png', data: cutoutPng.toString('base64') } },
+      ],
+      '9:16',
+      40_000,
+      'Keine Teile-Maske erhalten.',
+    )
+    const split = await splitCharacterRigPng(cutoutPng, partMask)
+    const [head, torso, legs] = await Promise.all([
+      uploadStoryAsset(split.head, `story-characters/${slug}-${unique}-head.png`),
+      uploadStoryAsset(split.torso, `story-characters/${slug}-${unique}-torso.png`),
+      uploadStoryAsset(split.legs, `story-characters/${slug}-${unique}-legs.png`),
+    ])
+    return { parts: { head, torso, legs }, joints: split.joints }
+  } catch {
+    return undefined
+  }
+}
+
+export async function rigStoryCharacterFromUrl(
+  imageUrl: string,
+  name = 'character',
+): Promise<{ imageUrl: string; rig: CharacterRig }> {
+  const apiKey = requireGeminiKey()
+  const res = await fetch(imageUrl)
+  if (!res.ok) {
+    throw new Error('Figur-Bild konnte nicht geladen werden.')
+  }
+  const cutout = Buffer.from(await res.arrayBuffer())
+  const slug = name.toLowerCase().replace(/\s+/g, '-') || 'character'
+  const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const rig = await buildCharacterRig(apiKey, cutout, slug, unique)
+  if (!rig) {
+    throw new Error('Figur konnte nicht in Kopf, Rumpf und Beine zerlegt werden. Bitte ein Ganzkörperbild nehmen.')
+  }
+  return { imageUrl, rig }
 }
 
 export async function generateStoryEnvironment(

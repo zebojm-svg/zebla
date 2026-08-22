@@ -10,6 +10,7 @@ import {
   type LegPoseId,
 } from '../../shared/character-parts'
 import type { StoryLibraryAsset } from '../../shared/story-types'
+import { isCharacterRig, type CharacterRig } from '../../shared/character-rig'
 
 export type PoseVariantSource = {
   imageUrl: string
@@ -18,6 +19,7 @@ export type PoseVariantSource = {
   headAngle?: HeadAngleId
   legPose?: LegPoseId
   armPose?: ArmPoseId
+  rig?: CharacterRig
 }
 
 export type PoseVariant = {
@@ -29,6 +31,7 @@ export type PoseVariant = {
   legPose?: LegPoseId
   armPose?: ArmPoseId
   label: string
+  rig?: CharacterRig
 }
 
 function normalizeVariant(input: PoseVariantSource): PoseVariant | null {
@@ -46,6 +49,7 @@ function normalizeVariant(input: PoseVariantSource): PoseVariant | null {
     legPose: leg,
     armPose: arm,
     label: poseVariantLabel(head, leg, arm),
+    rig: isCharacterRig(input.rig) ? input.rig : undefined,
   }
 }
 
@@ -79,6 +83,7 @@ export function collectPoseVariants(
       headAngle: item.headAngleId as HeadAngleId | undefined,
       legPose: item.legPoseId as LegPoseId | undefined,
       armPose: item.armPoseId as ArmPoseId | undefined,
+      rig: item.rig,
     })
     if (v) byKey.set(v.key, v)
   }
@@ -172,11 +177,12 @@ export function uniqueCastCandidates(
   for (const name of names) {
     const variants = collectPoseVariants(name, libraryCharacters, sessionCharacters)
     if (variants.length === 0) continue
-    const preferred =
+    const standing =
       findPoseVariant(variants, { headAngle: 'front', legPose: 'standing', armPose: 'relaxed' }) ??
       findPoseVariant(variants, { headAngle: 'front', legPose: 'standing' }) ??
-      findPoseVariant(variants, { legPose: 'standing' }) ??
-      variants[0]
+      findPoseVariant(variants, { legPose: 'standing' })
+    const preferred =
+      (standing?.rig ? standing : variants.find((v) => v.rig)) ?? standing ?? variants[0]
     if (preferred) out.push(preferred)
   }
   return out.sort((a, b) =>

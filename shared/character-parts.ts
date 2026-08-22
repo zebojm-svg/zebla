@@ -1,7 +1,9 @@
 /**
  * Modulare Figuren-Teile für die Bibliothek.
- * Jede Kombination ist ein ganzes Freistell-Bild (Kopf+Beine+Arme),
- * das bei Bedarf per Button erzeugt wird — keine Vollmatrix auf Vorrat.
+ * Kopf, Rumpf und Beine hängen am Hals-/Hüftgelenk zusammen.
+ * Eine neue Ganzkörper-Zeichnung braucht man nur, wenn die Silhouette
+ * sich stark ändert (z.B. Sitzen statt Stehen) — den Kopf kann man
+ * drehen oder aus einer anderen Pose derselben Figur setzen.
  */
 
 export type HeadAngleId =

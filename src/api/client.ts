@@ -423,13 +423,31 @@ export const api = {
       headAngleId?: string,
       armPoseId?: string,
     ) =>
-      request<{ imageUrl: string; prompt: string; styleId: string }>(
+      request<{
+        imageUrl: string
+        prompt: string
+        styleId: string
+        rig?: import('../../shared/character-rig').CharacterRig
+      }>(
         '/story-generate-character',
         {
           method: 'POST',
           body: JSON.stringify({ name, description, styleId, legPoseId, headAngleId, armPoseId }),
         },
-        110_000,
+        140_000,
+      ),
+    rigCharacter: (imageUrl: string, name?: string, libraryAssetId?: string) =>
+      request<{
+        imageUrl: string
+        rig: import('../../shared/character-rig').CharacterRig
+        asset: import('../../shared/story-types').StoryLibraryAsset | null
+      }>(
+        '/story-rig-character',
+        {
+          method: 'POST',
+          body: JSON.stringify({ imageUrl, name, libraryAssetId }),
+        },
+        80_000,
       ),
     generateEnvironment: (name: string, description: string, styleId?: string) =>
       request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-environment', {
@@ -455,6 +473,7 @@ export const api = {
       legPoseId?: string
       headAngleId?: string
       armPoseId?: string
+      rig?: import('../../shared/character-rig').CharacterRig
     }) =>
       request<{ asset: import('../../shared/story-types').StoryLibraryAsset }>('/story-library', {
         method: 'POST',

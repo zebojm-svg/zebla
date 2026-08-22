@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 
 export function ProtectedRoute() {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -12,7 +13,10 @@ export function ProtectedRoute() {
     )
   }
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    const next = `${location.pathname}${location.search}`
+    return <Navigate to={`/login?redirect=${encodeURIComponent(next)}`} replace />
+  }
   return <Outlet />
 }
 
