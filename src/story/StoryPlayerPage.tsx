@@ -518,9 +518,13 @@ export function StoryPlayerPage() {
         )
         return
       }
-      setCast((prev) => applyCastRig(prev, slot, result.rig))
+      setCast((prev) => applyCastRig(prev, slot, result.rig, result.imageUrl))
       setGeneratedCharacters((prev) =>
-        prev.map((item) => (item.imageUrl === member.imageUrl ? { ...item, rig: result.rig } : item)),
+        prev.map((item) =>
+          item.imageUrl === member.imageUrl
+            ? { ...item, rig: result.rig, imageUrl: result.imageUrl || item.imageUrl }
+            : item,
+        ),
       )
       if (result.asset) {
         setLibraryAssets((prev) => prev.map((a) => (a.id === result.asset!.id ? result.asset! : a)))

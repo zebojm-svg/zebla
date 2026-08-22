@@ -1068,7 +1068,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const result = await rigStoryCharacterFromUrl(imageUrl.trim(), name?.trim() || 'character')
       let asset = null
       if (libraryAssetId?.trim()) {
-        asset = await updateStoryAssetRig(user.uid, libraryAssetId.trim(), result.rig)
+        asset = await updateStoryAssetRig(user.uid, libraryAssetId.trim(), result.rig, result.imageUrl)
       }
       res.json({ ...result, asset })
       return

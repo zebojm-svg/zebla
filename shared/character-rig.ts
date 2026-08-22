@@ -45,7 +45,7 @@ export function clampHeadTwist(deg: number): number {
 
 /**
  * Rot/Grün/Blau-Maske: Rot = Kopf, Grün = Rumpf+Arme, Blau = Beine.
- * Schwarz und Grau = Hintergrund / unsicher.
+ * Nur Hinweis in den Gelenk-Streifen — die Höhe der Figur entscheidet.
  */
 export function classifyPartPixel(r: number, g: number, b: number): RigPartId | null {
   const max = Math.max(r, g, b)
@@ -127,16 +127,39 @@ function bboxFromAlpha(
   return { minX, minY, maxX, maxY, n }
 }
 
+/**
+ * Figur in Kopf / Rumpf / Beine schneiden.
+ * Quelle der Wahrheit ist die Körperhöhe (oben Kopf, unten Beine).
+ * Eine optionale RGB-Maske darf nur in schmalen Gelenk-Streifen mitreden —
+ * sonst landet eine durchgängig rote KI-Maske auf den Füssen und Zerlegen bricht ab.
+ */
 export function splitRigFromPixels(
   color: Uint8Array,
-  mask: Uint8Array,
   width: number,
   height: number,
+  mask?: Uint8Array | null,
 ): SplitRigPixels | SplitRigFail {
   const count = width * height
-  if (color.length < count * 4 || mask.length < count * 4) {
+  if (color.length < count * 4) {
+    return { ok: false, reason: 'Bilddaten unvollständig.' }
+  }
+  if (mask && mask.length < count * 4) {
     return { ok: false, reason: 'Maske und Bild passen nicht zusammen.' }
   }
+
+  const person = bboxFromAlpha(color, width, height)
+  if (!person) {
+    return { ok: false, reason: 'Keine Figur im Bild — bitte ein Ganzkörperbild nehmen.' }
+  }
+
+  const y0 = person.minY
+  const bodyH = Math.max(1, person.maxY - person.minY + 1)
+  const headEnd = y0 + bodyH * 0.3
+  const legsStart = y0 + bodyH * 0.5
+  const neckBand0 = y0 + bodyH * 0.24
+  const neckBand1 = y0 + bodyH * 0.34
+  const hipBand0 = y0 + bodyH * 0.46
+  const hipBand1 = y0 + bodyH * 0.56
 
   const head = emptyRgba(count)
   const torso = emptyRgba(count)
@@ -146,22 +169,36 @@ export function splitRigFromPixels(
   for (let i = 0; i < count; i++) {
     const a = color[i * 4 + 3]!
     if (a < 24) continue
-    const p = i * 4
-    const part = classifyPartPixel(mask[p]!, mask[p + 1]!, mask[p + 2]!)
-    if (!part) continue
+    const y = (i / width) | 0
+    let part: RigPartId = y < headEnd ? 'head' : y >= legsStart ? 'legs' : 'torso'
+
+    if (mask) {
+      const p = i * 4
+      const hinted = classifyPartPixel(mask[p]!, mask[p + 1]!, mask[p + 2]!)
+      if (hinted === 'head' || hinted === 'torso') {
+        if (y >= neckBand0 && y < neckBand1) part = hinted
+      }
+      if (hinted === 'torso' || hinted === 'legs') {
+        if (y >= hipBand0 && y < hipBand1) part = hinted
+      }
+    }
+
     const dest = part === 'head' ? head : part === 'torso' ? torso : legs
     copyPixel(dest, color, i, a)
     coverage[part]++
   }
 
-  const minPixels = Math.max(80, Math.round(count * 0.004))
-  if (coverage.head < minPixels || coverage.torso < minPixels || coverage.legs < minPixels) {
-    return { ok: false, reason: 'Teile-Maske hat Kopf, Rumpf oder Beine nicht erkannt.' }
+  const minPart = Math.max(20, Math.round(person.n * 0.04))
+  if (coverage.head < minPart || coverage.torso < minPart || coverage.legs < minPart) {
+    return {
+      ok: false,
+      reason: 'Zu wenig Pixel in Kopf, Rumpf oder Beinen. Bitte eine Ganzkörperfigur nehmen.',
+    }
   }
 
-  dilatePart(head, color, width, height, 3)
-  dilatePart(torso, color, width, height, 3)
-  dilatePart(legs, color, width, height, 3)
+  dilatePart(head, color, width, height, 2)
+  dilatePart(torso, color, width, height, 2)
+  dilatePart(legs, color, width, height, 2)
 
   const headBox = bboxFromAlpha(head, width, height)
   const torsoBox = bboxFromAlpha(torso, width, height)
@@ -169,17 +206,15 @@ export function splitRigFromPixels(
   if (!headBox || !torsoBox || !legsBox) {
     return { ok: false, reason: 'Teile zu klein nach dem Freistellen.' }
   }
-  if (headBox.maxY > legsBox.minY) {
-    return { ok: false, reason: 'Kopf und Beine überlappen — Maske unbrauchbar.' }
-  }
 
+  const cx = (person.minX + person.maxX) / 2 / width
   const neck: RigJoint = {
-    x: (headBox.minX + headBox.maxX) / 2 / width,
-    y: Math.min(0.48, (headBox.maxY + 4) / height),
+    x: cx,
+    y: (y0 + bodyH * 0.28) / height,
   }
   const hip: RigJoint = {
-    x: (legsBox.minX + legsBox.maxX) / 2 / width,
-    y: Math.max(neck.y + 0.08, legsBox.minY / height),
+    x: cx,
+    y: Math.max(neck.y + 0.08, (y0 + bodyH * 0.52) / height),
   }
 
   return { ok: true, head, torso, legs, joints: { neck, hip }, coverage }

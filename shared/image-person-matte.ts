@@ -49,34 +49,118 @@ export function applyLuminanceMask(
   }
 }
 
-/** Studio-Grau/Weiss in Achseln entfernen — weisse Schuhe unten bleiben. */
+function isStudioCandidate(r: number, g: number, b: number): boolean {
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const avg = (r + g + b) / 3
+  return max - min <= 30 && avg >= 148 && avg <= 245
+}
+
+function hasClearNeighbor(
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  i: number,
+): boolean {
+  const x = i % width
+  const y = (i / width) | 0
+  if (x > 0 && alpha[i - 1]! < 8) return true
+  if (x + 1 < width && alpha[i + 1]! < 8) return true
+  if (y > 0 && alpha[i - width]! < 8) return true
+  if (y + 1 < height && alpha[i + width]! < 8) return true
+  return false
+}
+
+/**
+ * Studio-Grau/Weiss in Achseln und Lücken entfernen.
+ * Weisse Schuhe unten bleiben: grosse helle Flächen unter ~72 % der Figur
+ * (Sneaker) werden nicht gelöscht, nur ein dünner Rand zur Transparenz.
+ */
 export function punchStudioBackdrop(color: RgbaPixels, width: number, height: number): void {
+  const count = width * height
   let minY = height
   let maxY = 0
-  const count = width * height
+  let personN = 0
   for (let i = 0; i < count; i++) {
     if (color[i * 4 + 3]! < 40) continue
+    personN++
     const y = (i / width) | 0
     if (y < minY) minY = y
     if (y > maxY) maxY = y
   }
-  if (maxY <= minY) return
+  if (maxY <= minY || personN < 80) return
   const shoeLine = minY + Math.round((maxY - minY) * 0.72)
 
-  for (let i = 0; i < count; i++) {
+  const isCandidate = (i: number): boolean => {
     const p = i * 4
-    if (color[p + 3]! < 8) continue
-    const r = color[p]!
-    const g = color[p + 1]!
-    const b = color[p + 2]!
-    const max = Math.max(r, g, b)
-    const min = Math.min(r, g, b)
-    const avg = (r + g + b) / 3
-    const y = (i / width) | 0
-    const studioGray = max - min <= 24 && avg >= 158 && avg <= 226
-    const paleFill = y < shoeLine && max - min <= 28 && avg >= 175 && avg <= 248
-    if (studioGray || paleFill) {
-      color[p + 3] = 0
+    if (color[p + 3]! < 8) return false
+    return isStudioCandidate(color[p]!, color[p + 1]!, color[p + 2]!)
+  }
+
+  const alphaSnap = new Uint8Array(count)
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < count; i++) alphaSnap[i] = color[i * 4 + 3]!
+    for (let i = 0; i < count; i++) {
+      if (!isCandidate(i)) continue
+      const y = (i / width) | 0
+      if (y >= shoeLine && pass > 0) continue
+      if (hasClearNeighbor(alphaSnap, width, height, i)) {
+        color[i * 4 + 3] = 0
+      }
+    }
+  }
+
+  const seen = new Uint8Array(count)
+  const queue = new Int32Array(count)
+  const members = new Int32Array(count)
+  const smallLimit = Math.max(60, Math.round(personN * 0.1))
+
+  for (let start = 0; start < count; start++) {
+    if (!isCandidate(start) || seen[start]) continue
+    let qh = 0
+    let qt = 0
+    let n = 0
+    let cMaxY = 0
+    queue[qt++] = start
+    seen[start] = 1
+    while (qh < qt) {
+      const i = queue[qh++]!
+      members[n++] = i
+      const x = i % width
+      const y = (i / width) | 0
+      if (y > cMaxY) cMaxY = y
+      if (x > 0) {
+        const ni = i - 1
+        if (isCandidate(ni) && !seen[ni]) {
+          seen[ni] = 1
+          queue[qt++] = ni
+        }
+      }
+      if (x + 1 < width) {
+        const ni = i + 1
+        if (isCandidate(ni) && !seen[ni]) {
+          seen[ni] = 1
+          queue[qt++] = ni
+        }
+      }
+      if (y > 0) {
+        const ni = i - width
+        if (isCandidate(ni) && !seen[ni]) {
+          seen[ni] = 1
+          queue[qt++] = ni
+        }
+      }
+      if (y + 1 < height) {
+        const ni = i + width
+        if (isCandidate(ni) && !seen[ni]) {
+          seen[ni] = 1
+          queue[qt++] = ni
+        }
+      }
+    }
+    if (n > smallLimit || cMaxY >= shoeLine) continue
+    for (let k = 0; k < n; k++) {
+      color[members[k]! * 4 + 3] = 0
     }
   }
 }

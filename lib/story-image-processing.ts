@@ -30,24 +30,34 @@ function rgbaToPng(pixels: Uint8Array, width: number, height: number): Promise<B
     .toBuffer()
 }
 
-/** Farbbild + RGB-Teile-Maske → drei transparente PNGs + Gelenke. */
+/** Studio-Grau in Achseln lochen — auch bei älteren Bibliotheksbildern. */
+export async function punchCutoutPng(png: Buffer): Promise<Buffer> {
+  const color = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const pixels = new Uint8Array(color.data)
+  punchStudioBackdrop(pixels, color.info.width, color.info.height)
+  return rgbaToPng(pixels, color.info.width, color.info.height)
+}
+
+/** Ganzkörper-Freisteller → drei transparente PNGs + Gelenke (Höhe, keine KI-Maske nötig). */
 export async function splitCharacterRigPng(
   cutoutPng: Buffer,
-  partMaskPng: Buffer,
+  partMaskPng?: Buffer,
 ): Promise<{ head: Buffer; torso: Buffer; legs: Buffer; joints: CharacterRig['joints'] }> {
   const color = await sharp(cutoutPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
-  const mask = await sharp(partMaskPng)
-    .resize(color.info.width, color.info.height, { fit: 'fill' })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
+  const pixels = new Uint8Array(color.data)
+  punchStudioBackdrop(pixels, color.info.width, color.info.height)
 
-  const split = splitRigFromPixels(
-    new Uint8Array(color.data),
-    new Uint8Array(mask.data),
-    color.info.width,
-    color.info.height,
-  )
+  let maskPixels: Uint8Array | undefined
+  if (partMaskPng) {
+    const mask = await sharp(partMaskPng)
+      .resize(color.info.width, color.info.height, { fit: 'fill' })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    maskPixels = new Uint8Array(mask.data)
+  }
+
+  const split = splitRigFromPixels(pixels, color.info.width, color.info.height, maskPixels)
   if (!split.ok) {
     throw new Error(split.reason)
   }

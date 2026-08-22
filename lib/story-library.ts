@@ -93,6 +93,7 @@ export async function updateStoryAssetRig(
   userId: string,
   id: string,
   rig: CharacterRig,
+  imageUrl?: string,
 ): Promise<StoryLibraryAsset | null> {
   if (!isCharacterRig(rig)) return null
   const ref = adminDb().collection('storyAssets').doc(id)
@@ -100,8 +101,10 @@ export async function updateStoryAssetRig(
   if (!snap.exists) return null
   const data = snap.data() as StoryLibraryDoc
   if (data.userId !== userId) return null
-  await ref.update({ rig })
-  return { id, ...data, rig }
+  const patch: { rig: CharacterRig; imageUrl?: string } = { rig }
+  if (imageUrl?.trim()) patch.imageUrl = imageUrl.trim()
+  await ref.update(patch)
+  return { id, ...data, rig, imageUrl: patch.imageUrl ?? data.imageUrl }
 }
 
 export async function deleteStoryAsset(userId: string, id: string): Promise<boolean> {
