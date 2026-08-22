@@ -90,12 +90,13 @@ export const STORY_CHARACTER_CUTOUT_PROMPT =
   'Clothes, hair, skin and shoes keep their real colors (red shirts stay red, white sneakers stay white).'
 
 export const STORY_CHARACTER_MASK_PROMPT =
-  'Create a black-and-white silhouette MASK of the person in this exact photo. Same size, same pose, same position. ' +
-  'WHITE = every part of the person: hair, skin, eyes, teeth, ALL clothing (even red, green, yellow), ALL shoes (even white or cream sneakers). ' +
-  'BLACK = studio background AND every see-through hole. ' +
-  'CRITICAL holes that MUST be BLACK (not white, not gray): triangular gaps BETWEEN ARMS AND TORSO, armpits, between fingers, between the legs, beside the neck, inside sleeves if the studio shows through. ' +
-  'If the photo has leftover gray studio in those gaps, paint those pixels BLACK. ' +
-  'Do not paint clothes or shoes black. Do not use other colors. Only black, white, and a 1-pixel gray edge if needed.'
+  'Create a STENCIL, not a painting: a black-and-white silhouette MASK of the person in this exact photo. Same size, same pose, same position. ' +
+  'Do NOT copy the photograph, do NOT keep clothing colors, do NOT draw a grey photo. Only a stencil. ' +
+  'WHITE (#FFFFFF) = the complete person including hair, skin, eyes, teeth, ' +
+  'ALL clothing even if it is white, cream, grey or a hoodie, ALL shoes even if white. ' +
+  'BLACK (#000000) = studio background AND true holes (between arms and torso, between fingers, between legs). ' +
+  'Never paint a white hoodie, shirt, sneaker or face WHITE-to-BLACK as if it were background. Pale clothes stay WHITE in the mask. ' +
+  'Only black and white.'
 
 /** Farbkarte zum Zerlegen in Kopf / Rumpf+Arme / Beine — gleiche Pose und Position. */
 export const STORY_CHARACTER_PART_MASK_PROMPT =

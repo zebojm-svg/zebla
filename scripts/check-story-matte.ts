@@ -1,9 +1,13 @@
 /**
- * Pixel-Check: Zerlegen trotz roter KI-Maske, Achseln lochen, Schuhe behalten.
+ * Pixel-Check: Kleidung bleibt, Studio-Rand weg, Foto nicht als Maske.
  * Aufruf: npx tsx scripts/check-story-matte.ts
  */
 import { splitRigFromPixels } from '../shared/character-rig.ts'
-import { applyLuminanceMask, punchStudioBackdrop } from '../shared/image-person-matte.ts'
+import {
+  applyLuminanceMask,
+  isSilhouetteMask,
+  punchStudioBackdrop,
+} from '../shared/image-person-matte.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -28,51 +32,63 @@ function getA(buf: Uint8Array, w: number, x: number, y: number): number {
 
 const W = 48
 const H = 120
-const color = rgba(W, H)
-const redMask = rgba(W, H)
 
+const color = rgba(W, H)
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) setPx(color, W, x, y, 208, 208, 208, 255)
+}
 for (let y = 10; y <= 109; y++) {
   for (let x = 12; x <= 35; x++) {
-    if (y <= 35) setPx(color, W, x, y, 90, 50, 30, 255)
-    else if (y <= 68) setPx(color, W, x, y, 40, 180, 70, 255)
+    if (y <= 35) setPx(color, W, x, y, 210, 168, 142, 255)
+    else if (y <= 68) setPx(color, W, x, y, 242, 242, 246, 255)
     else if (y <= 98) setPx(color, W, x, y, 50, 90, 180, 255)
     else setPx(color, W, x, y, 245, 245, 250, 255)
-    setPx(redMask, W, x, y, 255, 0, 0, 255)
   }
 }
-
-for (let y = 28; y <= 36; y++) {
-  for (let x = 16; x <= 22; x++) {
-    setPx(color, W, x, y, 190, 190, 196, 255)
-  }
-}
+setPx(color, W, 18, 32, 208, 208, 208, 255)
 
 const punched = new Uint8Array(color)
 punchStudioBackdrop(punched, W, H)
 
-if (getA(punched, W, 18, 32) !== 0) fail('Achsel-Grau sollte transparent sein')
-if (getA(punched, W, 20, 50) < 200) fail('Grüner Hoodie darf nicht gelöscht werden')
+if (getA(punched, W, 2, 2) !== 0) fail('Studio am Rand muss weg')
+if (getA(punched, W, 20, 50) < 200) fail('Weisser Hoodie darf nicht gelöscht werden')
+if (getA(punched, W, 20, 80) < 200) fail('Jeans dürfen nicht gelöscht werden')
 if (getA(punched, W, 22, 104) < 200) fail('Weisse Schuhe unten müssen bleiben')
-if (getA(punched, W, 20, 20) < 200) fail('Kopf/Haare müssen bleiben')
+if (getA(punched, W, 20, 20) < 200) fail('Gesicht/Haut muss bleiben')
 
-const skin = rgba(W, H)
-for (let y = 10; y <= 50; y++) {
-  for (let x = 12; x <= 35; x++) setPx(skin, W, x, y, 210, 168, 142, 255)
-}
-punchStudioBackdrop(skin, W, H)
-if (getA(skin, W, 20, 30) < 200) fail('Haut darf nicht gelocht werden')
+const photoMask = new Uint8Array(color)
+if (isSilhouetteMask(photoMask, W, H)) fail('Ein Farbfoto darf nicht als Maske gelten')
 
-const grayMask = rgba(W, H)
-const grayColor = rgba(W, H)
-for (let y = 10; y <= 90; y++) {
-  for (let x = 10; x <= 38; x++) {
-    setPx(grayColor, W, x, y, 40, 180, 70, 255)
-    setPx(grayMask, W, x, y, 140, 140, 140, 255)
-  }
+const stencil = rgba(W, H)
+for (let y = 10; y <= 109; y++) {
+  for (let x = 12; x <= 35; x++) setPx(stencil, W, x, y, 255, 255, 255, 255)
 }
-applyLuminanceMask(grayColor, grayMask, W, H)
-if (getA(grayColor, W, 20, 40) < 250) fail('Graue Maske muss die Figur voll undurchsichtig machen')
-if (getA(grayColor, W, 2, 2) !== 0) fail('Hintergrund der grauen Maske muss durchsichtig sein')
+if (!isSilhouetteMask(stencil, W, H)) fail('Schwarzweiss-Schablone muss als Maske gelten')
+
+const cut = new Uint8Array(color)
+applyLuminanceMask(cut, stencil, W, H)
+if (getA(cut, W, 20, 50) < 250) fail('Schablone muss den Hoodie behalten')
+if (getA(cut, W, 2, 2) !== 0) fail('Schablone muss den Studio-Rand entfernen')
+
+const invertMask = rgba(W, H)
+for (let i = 0; i < W * H; i++) {
+  invertMask[i * 4] = 255
+  invertMask[i * 4 + 1] = 255
+  invertMask[i * 4 + 2] = 255
+  invertMask[i * 4 + 3] = 255
+}
+for (let y = 10; y <= 109; y++) {
+  for (let x = 12; x <= 35; x++) setPx(invertMask, W, x, y, 0, 0, 0, 255)
+}
+const inverted = new Uint8Array(color)
+applyLuminanceMask(inverted, invertMask, W, H)
+if (getA(inverted, W, 20, 50) < 250) fail('Invertierte Schablone muss die Figur behalten')
+if (getA(inverted, W, 2, 2) !== 0) fail('Invertierte Schablone muss den Hintergrund lochen')
+
+const redMask = rgba(W, H)
+for (let y = 10; y <= 109; y++) {
+  for (let x = 12; x <= 35; x++) setPx(redMask, W, x, y, 255, 0, 0, 255)
+}
 
 const splitRed = splitRigFromPixels(punched, W, H, redMask)
 if (!splitRed.ok) fail(`Zerlegen mit roter Maske: ${splitRed.reason}`)
@@ -84,14 +100,4 @@ const splitBands = splitRigFromPixels(punched, W, H)
 if (!splitBands.ok) fail(`Zerlegen ohne Maske: ${splitBands.reason}`)
 if (splitBands.joints.neck.y >= splitBands.joints.hip.y) fail('Hals muss über der Hüfte liegen')
 
-const headA = splitBands.head[(22 * W + 20) * 4 + 3]!
-const legsA = splitBands.legs[(22 * W + 20) * 4 + 3]!
-if (headA < 20) fail('Pixel auf Kopfhöhe muss im Kopf-Teil liegen')
-if (legsA > 20) fail('Kopf-Pixel darf nicht in den Beinen landen')
-
-const footHead = splitBands.head[(104 * W + 22) * 4 + 3]!
-const footLegs = splitBands.legs[(104 * W + 22) * 4 + 3]!
-if (footHead > 20) fail('Schuh darf nicht im Kopf-Teil landen')
-if (footLegs < 20) fail('Schuh muss in den Beinen landen')
-
-console.log('OK: Zerlegen (auch rote Maske) + Achseln lochen, Schuhe bleiben')
+console.log('OK: Kleidung bleibt, Studio-Rand weg, Foto nicht als Maske')

@@ -1,10 +1,7 @@
 /**
  * Figuren werden serverseitig per Personen-Maske freigestellt.
- * Zusätzlich lochen wir Studio-Grau in Achseln — auch bei älteren Bildern,
- * die noch gefüllte Lücken haben. Schlägt CORS fehl, bleibt das Bild unverändert.
+ * Hier kein zweites Lochen — weisse Hoodies und Jeans würden sonst Löcher bekommen.
  */
-
-import { punchStudioBackdrop } from '../../shared/image-person-matte'
 
 export function keyOutLightBackground(
   source: CanvasImageSource,
@@ -14,16 +11,9 @@ export function keyOutLightBackground(
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  const ctx = canvas.getContext('2d')
   if (!ctx) return canvas
   ctx.drawImage(source, 0, 0, width, height)
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height)
-    punchStudioBackdrop(imageData.data, width, height)
-    ctx.putImageData(imageData, 0, 0)
-  } catch {
-    /* GCS ohne CORS: getImageData wirft, Figur bleibt wie geliefert */
-  }
   return canvas
 }
 
