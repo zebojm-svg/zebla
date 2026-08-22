@@ -346,18 +346,20 @@ export function CompositeCanvas({
         ctx.setLineDash([10, 6])
         ctx.strokeRect(minX - 6, minY - 6, maxX - minX + 12, maxY - minY + 12)
         ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)'
-        const label = selectedLayers.length > 1
-          ? 'Skelett: ziehen · Rad zoomen · Kopf am Hals drehen (rechts)'
-          : 'Ziehen · Rad zoomen · Shift zerren · Strg drehen'
-        ctx.font = '600 18px system-ui, sans-serif'
-        const padX = 12
-        const textW = ctx.measureText(label).width
-        const boxW = textW + padX * 2
-        const boxY = Math.max(8, minY - 40)
-        ctx.fillRect(minX - 6, boxY, boxW, 28)
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)'
+        const label = 'Ziehen · Rad · Shift · Strg'
+        ctx.font = '600 16px system-ui, sans-serif'
+        const padX = 10
+        const boxW = Math.min(width - 16, ctx.measureText(label).width + padX * 2)
+        const boxH = 26
+        let boxX = minX - 6
+        if (boxX + boxW > width - 8) boxX = width - 8 - boxW
+        if (boxX < 8) boxX = 8
+        let boxY = minY + 8
+        if (boxY + boxH > height - 8) boxY = Math.max(8, minY - 8 - boxH)
+        ctx.fillRect(boxX, boxY, boxW, boxH)
         ctx.fillStyle = '#ccfbf1'
-        ctx.fillText(label, minX - 6 + padX, boxY + 20)
+        ctx.fillText(label, boxX + padX, boxY + 18)
         ctx.restore()
       }
     }
@@ -388,11 +390,12 @@ export function CompositeCanvas({
       const sorted = [...layers].sort((a, b) => b.zIndex - a.zIndex)
       for (const layer of sorted) {
         if (!layer.draggable) continue
+        const pad = 12
         if (
-          canvasX >= layer.x &&
-          canvasX <= layer.x + layer.width &&
-          canvasY >= layer.y &&
-          canvasY <= layer.y + layer.height
+          canvasX >= layer.x - pad &&
+          canvasX <= layer.x + layer.width + pad &&
+          canvasY >= layer.y - pad &&
+          canvasY <= layer.y + layer.height + pad
         ) {
           return layer
         }
@@ -461,9 +464,23 @@ export function CompositeCanvas({
           dragRef.current = { layerId: hit.id, lastX: x, lastY: y, mode }
           onSelectLayer?.(hit.id)
           canvasRef.current?.setPointerCapture(e.pointerId)
-        } else {
-          onSelectLayer?.(null)
+          return
         }
+        if (selectedLayerId) {
+          const selectedLayers = layers.filter(
+            (l) => l.id === selectedLayerId || l.id.startsWith(`${selectedLayerId}-`),
+          )
+          const pad = 28
+          const inside = selectedLayers.some(
+            (l) =>
+              x >= l.x - pad &&
+              x <= l.x + l.width + pad &&
+              y >= l.y - pad &&
+              y <= l.y + l.height + pad,
+          )
+          if (inside) return
+        }
+        onSelectLayer?.(null)
       }}
       onPointerMove={(e) => {
         const drag = dragRef.current

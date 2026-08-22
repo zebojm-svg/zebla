@@ -62,12 +62,12 @@ export const HEAD_ANGLES: CharacterPartDef<HeadAngleId>[] = [
   { id: 'back', label: 'Hinten', promptHint: 'back of head, facing away from camera' },
   {
     id: 'back-left',
-    label: 'Schräg hinten links',
+    label: 'Hinten links',
     promptHint: 'head turned away, three-quarter back view left',
   },
   {
     id: 'back-right',
-    label: 'Schräg hinten rechts',
+    label: 'Hinten rechts',
     promptHint: 'head turned away, three-quarter back view right',
   },
 ]
