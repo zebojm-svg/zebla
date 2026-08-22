@@ -13,11 +13,9 @@ import type { ScenePreset } from '../../shared/scene-presets'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import {
   type CastPose,
-  type CastTransform,
   type SceneCast,
   slotForIncomingCharacter,
 } from './story-cast'
-import { CastTransformControls } from './CastTransformControls'
 import {
   availableArmPoses,
   availableHeadAngles,
@@ -49,7 +47,6 @@ type Props = {
   onSwapVariant: (slot: 'left' | 'right', variant: PoseVariant) => void
   onSetPose: (slot: 'left' | 'right', pose: CastPose) => void
   onLookAt: (slot: 'left' | 'right', look: boolean) => void
-  onTransform: (slot: 'left' | 'right', patch: Partial<CastTransform>) => void
   onResetTransform: (slot: 'left' | 'right') => void
   onRename: (slot: 'left' | 'right', name: string) => void
   onGeneratePose: (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => void
@@ -59,6 +56,7 @@ type Props = {
   generatingPose: boolean
   buildingRig: boolean
   generatePoseLabel: string
+  dockError?: string
   presets: ScenePreset[]
   activePresetId: string | null
   onApplyPreset: (id: string | null) => void
@@ -68,39 +66,66 @@ function poseForLeg(leg: LegPoseId): CastPose {
   return leg.startsWith('sitting') ? 'sitting-sofa' : 'standing'
 }
 
-function PosePills<T extends string>({
+function PoseWheel<T extends string>({
   options,
   current,
   haveIds,
   onPick,
   disabled,
-  groupLabel,
+  label,
 }: {
   options: Array<{ id: T; label: string }>
   current?: T
   haveIds: T[]
   onPick: (id: T) => void
   disabled: boolean
-  groupLabel: string
+  label: string
 }) {
+  const idx = Math.max(0, options.findIndex((o) => o.id === current))
+  const step = (dir: number) => {
+    const next = options[(idx + dir + options.length) % options.length]
+    if (next) onPick(next.id)
+  }
   return (
-    <div className="story-dock-pills" role="group" aria-label={groupLabel}>
-      {options.map((opt) => {
-        const have = haveIds.includes(opt.id) || current === opt.id
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            className={`story-dock-pill${current === opt.id ? ' is-active' : ''}${have ? '' : ' is-missing'}`}
-            onClick={() => onPick(opt.id)}
-            disabled={disabled}
-            title={have ? opt.label : `${opt.label} — noch erzeugen`}
-          >
-            {opt.label}
-            {!have ? ' +' : ''}
-          </button>
-        )
-      })}
+    <div className="story-pose-wheel">
+      <span className="story-pose-wheel-label">{label}</span>
+      <div className="story-pose-wheel-row">
+        <button
+          type="button"
+          className="story-pose-wheel-btn"
+          aria-label={`${label}: vorherige`}
+          disabled={disabled}
+          onClick={() => step(-1)}
+        >
+          ‹
+        </button>
+        <select
+          className="story-pose-wheel-select"
+          aria-label={label}
+          value={current ?? options[0]?.id}
+          disabled={disabled}
+          onChange={(e) => onPick(e.target.value as T)}
+        >
+          {options.map((opt) => {
+            const have = haveIds.includes(opt.id) || opt.id === current
+            return (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+                {have ? '' : ' +'}
+              </option>
+            )
+          })}
+        </select>
+        <button
+          type="button"
+          className="story-pose-wheel-btn"
+          aria-label={`${label}: nächste`}
+          disabled={disabled}
+          onClick={() => step(1)}
+        >
+          ›
+        </button>
+      </div>
     </div>
   )
 }
@@ -119,7 +144,6 @@ export function StorySceneDock({
   onSwapVariant,
   onSetPose,
   onLookAt,
-  onTransform,
   onResetTransform,
   onRename,
   onGeneratePose,
@@ -129,6 +153,7 @@ export function StorySceneDock({
   generatingPose,
   buildingRig,
   generatePoseLabel,
+  dockError,
   presets,
   activePresetId,
   onApplyPreset,
@@ -175,8 +200,7 @@ export function StorySceneDock({
               Ausgewählt: <strong>{member.displayName}</strong> ({selectedSlot === 'left' ? 'links' : 'rechts'})
             </p>
             <p className="story-dock-help">
-              Das ist <strong>eine</strong> Figur aus Teilen: Beine, Rumpf und Kopf hängen am Hals zusammen.
-              Kopf drehen braucht kein neues Bild. «+» zeichnet nur, wenn die Silhouette neu sein muss.
+              Kopf, Beine und Arme am Rad wählen. «+» in der Liste = noch zeichnen.
             </p>
             <label className="story-dock-field">
               Name im Dialog
@@ -188,29 +212,24 @@ export function StorySceneDock({
               />
             </label>
 
-            <p className="story-dock-label">Kopf</p>
-            <PosePills
-              groupLabel="Kopf"
+            <PoseWheel
+              label="Kopf"
               options={HEAD_ANGLES}
               current={currentHead}
               haveIds={readyHeads}
               onPick={(head) => applyCombo(head, currentLeg, currentArm)}
               disabled={busy}
             />
-
-            <p className="story-dock-label">Beine / Hüfte</p>
-            <PosePills
-              groupLabel="Beine"
+            <PoseWheel
+              label="Beine / Hüfte"
               options={LEG_POSES}
               current={currentLeg}
               haveIds={legOptions}
               onPick={(leg) => applyCombo(currentHead, leg, currentArm)}
               disabled={busy}
             />
-
-            <p className="story-dock-label">Arme</p>
-            <PosePills
-              groupLabel="Arme"
+            <PoseWheel
+              label="Arme"
               options={ARM_POSES}
               current={currentArm}
               haveIds={armOptions}
@@ -220,16 +239,13 @@ export function StorySceneDock({
 
             {generatingPose && <p className="story-dock-muted">{generatePoseLabel}</p>}
             {buildingRig && <p className="story-dock-muted">Zerlege Figur in Kopf, Rumpf und Beine …</p>}
+            {dockError && <p className="alert alert-error story-dock-error">{dockError}</p>}
 
             {member.rig ? (
-              <div className="story-transform-controls">
-                <p className="story-transform-hint">
-                  Skelett: den Kopf am Hals drehen — Rumpf und Beine bleiben. Für ein echtes Profil
-                  (ganzes Gesicht von der Seite) eine Blickrichtung mit «+» zeichnen oder einen
-                  schon vorhandenen Kopf setzen.
-                </p>
+              <div className="story-rig-box">
+                <p className="story-dock-muted">Skelett aktiv — Kopf am Hals drehen:</p>
                 <label className="story-transform-row">
-                  <span>Kopf drehen</span>
+                  <span>Kopf</span>
                   <input
                     type="range"
                     min={HEAD_TWIST_MIN}
@@ -239,31 +255,17 @@ export function StorySceneDock({
                   />
                   <span>{member.headTwist}°</span>
                 </label>
-                <p className="story-dock-muted">
-                  Verbunden: Beine · Rumpf · Kopf
-                </p>
               </div>
             ) : (
-              <div className="story-transform-controls">
-                <p className="story-transform-hint">
-                  Diese Figur ist noch ein Ganzkörperbild. Zerlegen macht daraus drei Teile, die am
-                  Hals zusammenhängen — wie Ebenen in einem Grafikprogramm.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={busy}
-                  onClick={() => onBuildRig(selectedSlot)}
-                >
-                  In Kopf / Rumpf / Beine zerlegen
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => onBuildRig(selectedSlot)}
+              >
+                {buildingRig ? 'Zerlege …' : 'In Kopf / Rumpf / Beine zerlegen'}
+              </button>
             )}
-
-            <p className="story-dock-help">
-              «+» bei Beinen oder Armen erzeugt eine neue Ganzkörper-Zeichnung. Köpfe ohne «+» kommen
-              aus einer anderen Pose derselben Figur und werden nur aufgesetzt.
-            </p>
 
             <label className="story-cast-look-at">
               <input
@@ -271,14 +273,14 @@ export function StorySceneDock({
                 checked={member.lookAtPartner}
                 onChange={(e) => onLookAt(selectedSlot, e.target.checked)}
               />
-              Zur anderen Figur drehen (spiegeln)
+              Zur anderen Figur drehen
             </label>
-
-            <CastTransformControls
-              transform={member.transform}
-              onChange={(patch) => onTransform(selectedSlot, patch)}
-              onReset={() => onResetTransform(selectedSlot)}
-            />
+            <p className="story-dock-muted">
+              Figur: ziehen · Rad = Grösse · Shift = zerren · Strg = drehen
+            </p>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onResetTransform(selectedSlot)}>
+              Position zurücksetzen
+            </button>
 
             <button
               type="button"
@@ -322,9 +324,7 @@ export function StorySceneDock({
 
       <section className="story-dock-block">
         <h3>Figuren (zwei Plätze)</h3>
-        <p className="story-dock-help">
-          Links und rechts je eine Person. Die zweite Figur füllt den leeren Platz — sie ersetzt die erste nicht.
-        </p>
+        <p className="story-dock-help">Zwei Plätze: links und rechts.</p>
         <div className="story-dock-slots">
           {(['left', 'right'] as const).map((slot) => (
             <button

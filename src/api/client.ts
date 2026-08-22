@@ -422,6 +422,7 @@ export const api = {
       legPoseId?: string,
       headAngleId?: string,
       armPoseId?: string,
+      referenceImageUrl?: string,
     ) =>
       request<{
         imageUrl: string
@@ -432,7 +433,15 @@ export const api = {
         '/story-generate-character',
         {
           method: 'POST',
-          body: JSON.stringify({ name, description, styleId, legPoseId, headAngleId, armPoseId }),
+          body: JSON.stringify({
+            name,
+            description,
+            styleId,
+            legPoseId,
+            headAngleId,
+            armPoseId,
+            referenceImageUrl,
+          }),
         },
         140_000,
       ),

@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import { applyLuminanceMask } from '../shared/image-person-matte.js'
+import { applyLuminanceMask, punchStudioBackdrop } from '../shared/image-person-matte.js'
 import { splitRigFromPixels, type CharacterRig } from '../shared/character-rig.js'
 
 /** Farbbild + gleich große Maske → transparentes PNG. Nicht beschneiden (Füße!). */
@@ -13,6 +13,7 @@ export async function applyPersonMask(colorPng: Buffer, maskPng: Buffer): Promis
 
   const pixels = new Uint8Array(color.data)
   applyLuminanceMask(pixels, new Uint8Array(mask.data), color.info.width, color.info.height)
+  punchStudioBackdrop(pixels, color.info.width, color.info.height)
 
   return sharp(pixels, {
     raw: { width: color.info.width, height: color.info.height, channels: 4 },
