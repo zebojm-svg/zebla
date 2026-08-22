@@ -1974,8 +1974,9 @@ html[dir='rtl'] .slideshow-topbar {
 .story-character-card img {
   width: 100%;
   aspect-ratio: 3 / 4;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+  background: #0f172a;
 }
 
 .story-character-card p {
@@ -2411,8 +2412,8 @@ html[dir='rtl'] .slideshow-topbar {
 
 .story-dock-thumb img {
   width: 100%;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
   border-radius: 7px;
   background: #020617;
 }

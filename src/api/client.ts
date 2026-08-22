@@ -34,7 +34,7 @@ async function request<T>(
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(
-        'Zeitlimit überschritten (60 s). Bitte nur ein Bild auf einmal generieren.',
+        'Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.',
       )
     }
     throw err
@@ -423,10 +423,14 @@ export const api = {
       headAngleId?: string,
       armPoseId?: string,
     ) =>
-      request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-character', {
-        method: 'POST',
-        body: JSON.stringify({ name, description, styleId, legPoseId, headAngleId, armPoseId }),
-      }),
+      request<{ imageUrl: string; prompt: string; styleId: string }>(
+        '/story-generate-character',
+        {
+          method: 'POST',
+          body: JSON.stringify({ name, description, styleId, legPoseId, headAngleId, armPoseId }),
+        },
+        110_000,
+      ),
     generateEnvironment: (name: string, description: string, styleId?: string) =>
       request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-environment', {
         method: 'POST',

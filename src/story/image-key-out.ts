@@ -1,9 +1,7 @@
 /**
- * Entfernt Magenta-Key und reines Weiß aus KI-Figuren (Freistellen).
- * Lücken zwischen Armen/Fingern werden mitgelöscht; helle Schuhe, Augen und Zähne bleiben.
+ * Figuren werden serverseitig per Personen-Maske freigestellt (nicht per Kleidungsfarbe).
+ * Hier nur durchreichen — kein zweites Farb-Keying, das Schuhe und rote Shirts zerstört.
  */
-
-import { keyOutConnectedBackground } from '../../shared/image-key-out-edges'
 
 export function keyOutLightBackground(
   source: CanvasImageSource,
@@ -15,11 +13,7 @@ export function keyOutLightBackground(
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) return canvas
-
   ctx.drawImage(source, 0, 0, width, height)
-  const imageData = ctx.getImageData(0, 0, width, height)
-  keyOutConnectedBackground(imageData.data, width, height)
-  ctx.putImageData(imageData, 0, 0)
   return canvas
 }
 

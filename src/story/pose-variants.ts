@@ -183,3 +183,28 @@ export function uniqueCastCandidates(
     characterBaseName(a.assetName).localeCompare(characterBaseName(b.assetName), 'de'),
   )
 }
+
+export type CharacterIdentity = {
+  baseName: string
+  preview: PoseVariant
+  variantCount: number
+  libraryIds: string[]
+}
+
+/** Eine Karte pro Person, egal wie viele Posen gespeichert sind. */
+export function listCharacterIdentities(
+  libraryCharacters: StoryLibraryAsset[],
+  sessionCharacters: PoseVariantSource[],
+): CharacterIdentity[] {
+  const previews = uniqueCastCandidates(libraryCharacters, sessionCharacters)
+  return previews.map((preview) => {
+    const baseName = characterBaseName(preview.assetName)
+    const variants = collectPoseVariants(baseName, libraryCharacters, sessionCharacters)
+    return {
+      baseName,
+      preview,
+      variantCount: Math.max(1, variants.length),
+      libraryIds: variants.map((v) => v.libraryAssetId).filter((id): id is string => Boolean(id)),
+    }
+  })
+}
