@@ -15,7 +15,7 @@ export function getCastRenderLayers(
     flip: layout.flip,
     rotation: layout.rotation,
     rotationAnchor: { x: 0.5, y: 1 },
-    keyOutWhite: true as const,
+    keyOutWhite: false as const,
     sourceCrop: layout.sourceCrop,
     draggable: true,
   }

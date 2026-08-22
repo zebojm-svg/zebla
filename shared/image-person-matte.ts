@@ -1,6 +1,6 @@
 /**
  * Personen-Freistellen über eine Hell/Dunkel-Maske (Silhouette), nicht über Kleidungsfarbe.
- * Weiß in der Maske = Figur (inkl. Schuhe), Schwarz = Hintergrund und echte Lücken.
+ * Weiß in der Maske = Figur (inkl. helle Kleidung und Schuhe), Schwarz = Hintergrund.
  */
 
 export type RgbaPixels = Uint8Array | Uint8ClampedArray
@@ -29,6 +29,33 @@ function borderAverageLum(mask: RgbaPixels, width: number, height: number): numb
 }
 
 /**
+ * Echte Schablone: fast nur Schwarz/Weiss, kaum Farbe.
+ * Ein Foto als «Maske» würde weisse Hoodies und Gesichter löschen — das verwerfen wir.
+ */
+export function isSilhouetteMask(mask: RgbaPixels, width: number, height: number): boolean {
+  const count = width * height
+  if (count < 16) return false
+  const step = Math.max(1, Math.floor(count / 12_000))
+  let n = 0
+  let chroma = 0
+  let mid = 0
+  for (let i = 0; i < count; i += step) {
+    n++
+    const p = i * 4
+    const r = mask[p]!
+    const g = mask[p + 1]!
+    const b = mask[p + 2]!
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 28) chroma++
+    const lum = (r + g + b) / 3
+    if (lum > 48 && lum < 208) mid++
+  }
+  if (n === 0) return false
+  if (chroma / n > 0.1) return false
+  if (mid / n > 0.55) return false
+  return true
+}
+
+/**
  * Schreibt die Masken-Helligkeit als Alpha in das Farbbild.
  * Rand hell → Maske ist invertiert (Figur schwarz).
  * Kein weiches Grau: sonst wirkt die ganze Figur halb durchsichtig.
@@ -48,117 +75,73 @@ export function applyLuminanceMask(
   }
 }
 
-function isStudioCandidate(r: number, g: number, b: number): boolean {
+/** Studio #D0D0D0 — nicht weisse Kleidung (~240+) und nicht Jeans/Haut. */
+function isStudioGray(r: number, g: number, b: number): boolean {
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const avg = (r + g + b) / 3
-  // Nur echtes Studio-Grau (#D0D0D0), nicht Haut, nicht Kleidung.
-  return max - min <= 16 && avg >= 176 && avg <= 224
-}
-
-function hasClearNeighbor(
-  alpha: Uint8Array,
-  width: number,
-  height: number,
-  i: number,
-): boolean {
-  const x = i % width
-  const y = (i / width) | 0
-  if (x > 0 && alpha[i - 1]! < 8) return true
-  if (x + 1 < width && alpha[i + 1]! < 8) return true
-  if (y > 0 && alpha[i - width]! < 8) return true
-  if (y + 1 < height && alpha[i + width]! < 8) return true
-  return false
+  return max - min <= 12 && avg >= 196 && avg <= 218
 }
 
 /**
- * Studio-Grau/Weiss in Achseln und Lücken entfernen.
- * Weisse Schuhe unten bleiben: grosse helle Flächen unter ~72 % der Figur
- * (Sneaker) werden nicht gelöscht, nur ein dünner Rand zur Transparenz.
+ * Nur Studio-Grau, das mit dem Bildrand zusammenhängt, entfernen.
+ * Innenflächen (Hoodie, Achseln, Jeans-Glanz) bleiben — sonst entsteht Swiss Cheese.
  */
 export function punchStudioBackdrop(color: RgbaPixels, width: number, height: number): void {
   const count = width * height
-  let minY = height
-  let maxY = 0
-  let personN = 0
-  for (let i = 0; i < count; i++) {
-    if (color[i * 4 + 3]! < 40) continue
-    personN++
-    const y = (i / width) | 0
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-  }
-  if (maxY <= minY || personN < 80) return
-  const shoeLine = minY + Math.round((maxY - minY) * 0.72)
-
-  const isCandidate = (i: number): boolean => {
-    const p = i * 4
-    if (color[p + 3]! < 8) return false
-    return isStudioCandidate(color[p]!, color[p + 1]!, color[p + 2]!)
-  }
-
-  const alphaSnap = new Uint8Array(count)
-  for (let i = 0; i < count; i++) alphaSnap[i] = color[i * 4 + 3]!
-  for (let i = 0; i < count; i++) {
-    if (!isCandidate(i)) continue
-    const y = (i / width) | 0
-    if (y >= shoeLine) continue
-    if (hasClearNeighbor(alphaSnap, width, height, i)) {
-      color[i * 4 + 3] = 0
-    }
-  }
-
   const seen = new Uint8Array(count)
   const queue = new Int32Array(count)
-  const members = new Int32Array(count)
-  const smallLimit = Math.max(60, Math.round(personN * 0.14))
+  let qh = 0
+  let qt = 0
 
-  for (let start = 0; start < count; start++) {
-    if (!isCandidate(start) || seen[start]) continue
-    let qh = 0
-    let qt = 0
-    let n = 0
-    let cMaxY = 0
-    queue[qt++] = start
-    seen[start] = 1
-    while (qh < qt) {
-      const i = queue[qh++]!
-      members[n++] = i
-      const x = i % width
-      const y = (i / width) | 0
-      if (y > cMaxY) cMaxY = y
-      if (x > 0) {
-        const ni = i - 1
-        if (isCandidate(ni) && !seen[ni]) {
-          seen[ni] = 1
-          queue[qt++] = ni
-        }
-      }
-      if (x + 1 < width) {
-        const ni = i + 1
-        if (isCandidate(ni) && !seen[ni]) {
-          seen[ni] = 1
-          queue[qt++] = ni
-        }
-      }
-      if (y > 0) {
-        const ni = i - width
-        if (isCandidate(ni) && !seen[ni]) {
-          seen[ni] = 1
-          queue[qt++] = ni
-        }
-      }
-      if (y + 1 < height) {
-        const ni = i + width
-        if (isCandidate(ni) && !seen[ni]) {
-          seen[ni] = 1
-          queue[qt++] = ni
-        }
-      }
+  const enqueue = (i: number): void => {
+    if (seen[i]) return
+    seen[i] = 1
+    queue[qt++] = i
+  }
+
+  const seed = (i: number): void => {
+    const a = color[i * 4 + 3]!
+    if (a < 8) {
+      enqueue(i)
+      return
     }
-    if (n > smallLimit || cMaxY >= shoeLine) continue
-    for (let k = 0; k < n; k++) {
-      color[members[k]! * 4 + 3] = 0
+    if (isStudioGray(color[i * 4]!, color[i * 4 + 1]!, color[i * 4 + 2]!)) enqueue(i)
+  }
+
+  for (let x = 0; x < width; x++) {
+    seed(x)
+    seed((height - 1) * width + x)
+  }
+  for (let y = 1; y < height - 1; y++) {
+    seed(y * width)
+    seed(y * width + (width - 1))
+  }
+  if (qt === 0) return
+
+  while (qh < qt) {
+    const i = queue[qh++]!
+    const p = i * 4
+    const a = color[p + 3]!
+    if (a >= 8 && isStudioGray(color[p]!, color[p + 1]!, color[p + 2]!)) {
+      color[p + 3] = 0
     }
+    const x = i % width
+    const y = (i / width) | 0
+    const tryN = (nx: number, ny: number): void => {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) return
+      const ni = ny * width + nx
+      if (seen[ni]) return
+      const na = color[ni * 4 + 3]!
+      if (na < 8) {
+        enqueue(ni)
+        return
+      }
+      if (isStudioGray(color[ni * 4]!, color[ni * 4 + 1]!, color[ni * 4 + 2]!)) enqueue(ni)
+    }
+    tryN(x - 1, y)
+    tryN(x + 1, y)
+    tryN(x, y - 1)
+    tryN(x, y + 1)
   }
 }
