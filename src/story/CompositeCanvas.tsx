@@ -23,6 +23,9 @@ export interface LayerImage {
   sourceCrop?: { top?: number; bottom?: number; left?: number; right?: number }
   /** Auf der Leinwand verschiebbar */
   draggable?: boolean
+  /** Zusätzliche Drehung um ein Gelenk (Kopf am Hals), nach der Layer-Drehung */
+  localRotation?: number
+  localRotationAnchor?: { x: number; y: number }
 }
 
 export interface LayerAnimation {
@@ -283,6 +286,7 @@ export function CompositeCanvas({
       const finalX = layer.x + dx
       const finalY = layer.y + dy
       const totalRotation = (layer.rotation ?? 0) + animRotation
+      const localRotation = layer.localRotation ?? 0
 
       ctx.save()
       ctx.globalAlpha = (layer.opacity ?? 1) * animOpacity
@@ -299,6 +303,14 @@ export function CompositeCanvas({
         ctx.translate(-anchorX, -anchorY)
       }
 
+      if (localRotation !== 0) {
+        const lx = finalX + layer.width * (layer.localRotationAnchor?.x ?? 0.5)
+        const ly = finalY + layer.height * (layer.localRotationAnchor?.y ?? 0.22)
+        ctx.translate(lx, ly)
+        ctx.rotate((localRotation * Math.PI) / 180)
+        ctx.translate(-lx, -ly)
+      }
+
       if (layer.flip) {
         ctx.translate(finalX + layer.width, finalY)
         ctx.scale(-1, 1)
@@ -311,27 +323,41 @@ export function CompositeCanvas({
     }
 
     if (selectedLayerId) {
-      const selected = layers.find((l) => l.id === selectedLayerId)
-      if (selected) {
-        const offset = state.offsets.get(selected.id)
-        const sx = selected.x + (offset?.dx ?? 0)
-        const sy = selected.y + (offset?.dy ?? 0)
+      const selectedLayers = layers.filter(
+        (l) => l.id === selectedLayerId || l.id.startsWith(`${selectedLayerId}-`),
+      )
+      if (selectedLayers.length > 0) {
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const selected of selectedLayers) {
+          const offset = state.offsets.get(selected.id)
+          const sx = selected.x + (offset?.dx ?? 0)
+          const sy = selected.y + (offset?.dy ?? 0)
+          minX = Math.min(minX, sx)
+          minY = Math.min(minY, sy)
+          maxX = Math.max(maxX, sx + selected.width)
+          maxY = Math.max(maxY, sy + selected.height)
+        }
         ctx.save()
         ctx.strokeStyle = '#2dd4bf'
         ctx.lineWidth = 3
         ctx.setLineDash([10, 6])
-        ctx.strokeRect(sx - 6, sy - 6, selected.width + 12, selected.height + 12)
+        ctx.strokeRect(minX - 6, minY - 6, maxX - minX + 12, maxY - minY + 12)
         ctx.setLineDash([])
         ctx.fillStyle = 'rgba(15, 23, 42, 0.88)'
-        const label = 'Ziehen · Rad zoomen · Shift zerren · Strg drehen'
+        const label = selectedLayers.length > 1
+          ? 'Skelett: ziehen · Rad zoomen · Kopf am Hals drehen (rechts)'
+          : 'Ziehen · Rad zoomen · Shift zerren · Strg drehen'
         ctx.font = '600 18px system-ui, sans-serif'
         const padX = 12
         const textW = ctx.measureText(label).width
         const boxW = textW + padX * 2
-        const boxY = Math.max(8, sy - 40)
-        ctx.fillRect(sx - 6, boxY, boxW, 28)
+        const boxY = Math.max(8, minY - 40)
+        ctx.fillRect(minX - 6, boxY, boxW, 28)
         ctx.fillStyle = '#ccfbf1'
-        ctx.fillText(label, sx - 6 + padX, boxY + 20)
+        ctx.fillText(label, minX - 6 + padX, boxY + 20)
         ctx.restore()
       }
     }
@@ -394,7 +420,11 @@ export function CompositeCanvas({
 
     const onWheel = (e: WheelEvent) => {
       if (!selectedLayerId) return
-      const selected = layers.find((l) => l.id === selectedLayerId && l.draggable)
+      const selected = layers.find(
+        (l) =>
+          l.draggable &&
+          (l.id === selectedLayerId || l.id.startsWith(`${selectedLayerId}-`)),
+      )
       if (!selected) return
       e.preventDefault()
       const delta = -e.deltaY * 0.002

@@ -87,6 +87,15 @@ export const STORY_CHARACTER_MASK_PROMPT =
   'BLACK = studio background AND every see-through hole: between arms and torso, armpits, between fingers, between legs. ' +
   'Do not paint clothes or shoes black. Do not use other colors. Only black, white, and a 1-pixel gray edge if needed.'
 
+/** Farbkarte zum Zerlegen in Kopf / Rumpf+Arme / Beine — gleiche Pose und Position. */
+export const STORY_CHARACTER_PART_MASK_PROMPT =
+  'Create a color PART MAP of the person in this exact photo. Same size, same pose, same position. No art, no shading, no outlines. ' +
+  'RED (#FF0000) = head, hair, face, neck down to the base of the neck — stop at the collarbone, do not include shoulders. ' +
+  'GREEN (#00FF00) = torso, all clothing on the chest and belly, BOTH arms, BOTH hands. ' +
+  'BLUE (#0000FF) = hips, both legs from the hip joints down, both shoes. ' +
+  'BLACK (#000000) = studio background AND holes (between legs, under arms, between fingers). ' +
+  'Use only these four colors. Do not move or resize the person.'
+
 export function normalizeCharacterLookName(name: string): string {
   return characterBaseName(name)
     .normalize('NFD')

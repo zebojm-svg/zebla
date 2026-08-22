@@ -81,11 +81,13 @@ import {
   generateStoryScene,
   generateStoryCharacter,
   generateStoryEnvironment,
+  rigStoryCharacterFromUrl,
 } from '../lib/story-asset-gen.js'
 import {
   listStoryAssets,
   saveStoryAsset,
   deleteStoryAsset,
+  updateStoryAssetRig,
   type StoryAssetType,
 } from '../lib/story-library.js'
 import { SCENE_PRESETS } from '../shared/scene-presets.js'
@@ -95,6 +97,7 @@ import {
   isStoryArtStyleId,
 } from '../shared/story-art-styles.js'
 import { isArmPoseId, isHeadAngleId, isLegPoseId } from '../shared/character-parts.js'
+import { isCharacterRig } from '../shared/character-rig.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -1049,6 +1052,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (route === 'story-rig-character' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { imageUrl, name, libraryAssetId } = req.body as {
+        imageUrl?: string
+        name?: string
+        libraryAssetId?: string
+      }
+      if (!imageUrl?.trim()) {
+        res.status(400).json({ error: 'Bild-URL fehlt.' })
+        return
+      }
+      const result = await rigStoryCharacterFromUrl(imageUrl.trim(), name?.trim() || 'character')
+      let asset = null
+      if (libraryAssetId?.trim()) {
+        asset = await updateStoryAssetRig(user.uid, libraryAssetId.trim(), result.rig)
+      }
+      res.json({ ...result, asset })
+      return
+    }
+
     if (route === 'story-generate-environment' && req.method === 'POST') {
       const user = await requireAuth(req)
       const { description, name, styleId } = req.body as {
@@ -1077,7 +1100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId } = req.body as {
+      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, rig } = req.body as {
         type?: StoryAssetType
         name?: string
         description?: string
@@ -1087,6 +1110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         legPoseId?: string
         headAngleId?: string
         armPoseId?: string
+        rig?: unknown
       }
       if (!type || !name?.trim() || !imageUrl?.trim()) {
         res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
@@ -1106,6 +1130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         legPoseId: isLegPoseId(legPoseId ?? '') ? legPoseId : undefined,
         headAngleId: isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined,
         armPoseId: isArmPoseId(armPoseId ?? '') ? armPoseId : undefined,
+        rig: isCharacterRig(rig) ? rig : undefined,
       })
       res.json({ asset })
       return

@@ -2,6 +2,11 @@
 
 import type { ArmPoseId, HeadAngleId, LegPoseId } from '../../shared/character-parts'
 import { characterBaseName } from '../../shared/character-parts'
+import {
+  clampHeadTwist,
+  isCharacterRig,
+  type CharacterRig,
+} from '../../shared/character-rig'
 
 export type CastPose = 'standing' | 'sitting-sofa' | 'custom'
 
@@ -37,6 +42,10 @@ export interface SceneCastMember {
   headAngle?: HeadAngleId
   legPose?: LegPoseId
   armPose?: ArmPoseId
+  /** Kopf / Rumpf / Beine — fehlt bei älteren Ganzkörper-Bildern */
+  rig?: CharacterRig
+  /** Kopf am Hals drehen (Grad), ohne neues Bild */
+  headTwist: number
 }
 
 export type SceneCast = {
@@ -126,6 +135,7 @@ export function placeInCast(
     legPose?: LegPoseId
     headAngle?: HeadAngleId
     armPose?: ArmPoseId
+    rig?: CharacterRig
   },
 ): SceneCast {
   const partnerPresent = slot === 'left' ? Boolean(cast.right) : Boolean(cast.left)
@@ -144,6 +154,8 @@ export function placeInCast(
       legPose: input.legPose,
       headAngle: input.headAngle ?? 'front',
       armPose: input.armPose ?? 'relaxed',
+      rig: isCharacterRig(input.rig) ? input.rig : undefined,
+      headTwist: 0,
     },
   }
 }
@@ -169,6 +181,7 @@ export function swapCastVariant(
     headAngle?: HeadAngleId
     legPose?: LegPoseId
     armPose?: ArmPoseId
+    rig?: CharacterRig
   },
 ): SceneCast {
   const member = cast[slot]
@@ -183,8 +196,54 @@ export function swapCastVariant(
       headAngle: input.headAngle ?? member.headAngle,
       legPose: input.legPose ?? member.legPose,
       armPose: input.armPose ?? member.armPose,
+      rig: isCharacterRig(input.rig) ? input.rig : undefined,
     },
   }
+}
+
+/** Nur den Kopf tauschen, Rumpf und Beine behalten — Gelenk am Hals. */
+export function mixCastHead(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  headSource: { headAngle?: HeadAngleId; rig?: CharacterRig },
+): SceneCast {
+  const member = cast[slot]
+  if (!member?.rig || !headSource.rig) return cast
+  return {
+    ...cast,
+    [slot]: {
+      ...member,
+      headAngle: headSource.headAngle ?? member.headAngle,
+      rig: {
+        parts: {
+          ...member.rig.parts,
+          head: headSource.rig.parts.head,
+        },
+        joints: member.rig.joints,
+        headSourceJoints: headSource.rig.joints,
+      },
+    },
+  }
+}
+
+export function updateCastHeadTwist(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  headTwist: number,
+): SceneCast {
+  const member = cast[slot]
+  if (!member) return cast
+  return { ...cast, [slot]: { ...member, headTwist: clampHeadTwist(headTwist) } }
+}
+
+export function applyCastRig(
+  cast: SceneCast,
+  slot: 'left' | 'right',
+  rig: CharacterRig,
+): SceneCast {
+  const member = cast[slot]
+  if (!member || !isCharacterRig(rig)) return cast
+  return { ...cast, [slot]: { ...member, rig } }
 }
 
 export function updateCastName(
@@ -206,6 +265,7 @@ export function updateCastPose(cast: SceneCast, slot: 'left' | 'right', pose: Ca
       ...member,
       pose,
       transform: { ...DEFAULT_CAST_TRANSFORM },
+      headTwist: 0,
     },
   }
 }
@@ -252,7 +312,11 @@ export function nudgeCastTransform(
 }
 
 export function castLayerId(slot: 'left' | 'right'): string {
-  return `char-${slot}-generated`
+  return `char-${slot}`
+}
+
+export function castPartLayerId(slot: 'left' | 'right', part: 'head' | 'torso' | 'legs' | 'full'): string {
+  return `char-${slot}-${part}`
 }
 
 export function slotForIncomingCharacter(

@@ -13,7 +13,9 @@ import {
   updateCastTransform,
   nudgeCastTransform,
   swapCastVariant,
-  getCastLayerLayout,
+  mixCastHead,
+  updateCastHeadTwist,
+  applyCastRig,
   castLayerId,
   slotFromLayerId,
   type SceneCast,
@@ -48,6 +50,8 @@ import {
 } from '../../shared/story-character-looks'
 import { StorySceneDock, type EnvironmentPick } from './StorySceneDock'
 import { listCharacterIdentities, type PoseVariant } from './pose-variants'
+import { getCastRenderLayers, bobLayerIds } from './cast-puppet'
+import { type CharacterRig } from '../../shared/character-rig'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -61,6 +65,7 @@ type SessionCharacter = {
   legPose?: LegPoseId
   headAngle?: HeadAngleId
   armPose?: ArmPoseId
+  rig?: CharacterRig
 }
 type SessionEnvironment = {
   name: string
@@ -145,6 +150,7 @@ export function StoryPlayerPage() {
   const [generatingPoseBatch, setGeneratingPoseBatch] = useState(false)
   const [poseBatchProgress, setPoseBatchProgress] = useState('')
   const [generatingDockPose, setGeneratingDockPose] = useState(false)
+  const [buildingRig, setBuildingRig] = useState(false)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState('')
@@ -196,6 +202,7 @@ export function StoryPlayerPage() {
       legPose?: LegPoseId
       headAngle?: HeadAngleId
       armPose?: ArmPoseId
+      rig?: CharacterRig
     },
   ) => {
     setCast((prev) => {
@@ -278,6 +285,7 @@ export function StoryPlayerPage() {
     legPoseId?: LegPoseId
     headAngleId?: HeadAngleId
     armPoseId?: ArmPoseId
+    rig?: CharacterRig
     key: string
   }) => {
     setSavingId(input.key)
@@ -292,6 +300,7 @@ export function StoryPlayerPage() {
         legPoseId: input.legPoseId,
         headAngleId: input.headAngleId,
         armPoseId: input.armPoseId,
+        rig: input.rig,
       })
       setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
     } catch (err) {
@@ -339,6 +348,7 @@ export function StoryPlayerPage() {
           legPoseId: item.legPose,
           headAngleId: item.headAngle,
           armPoseId: item.armPose,
+          rig: item.rig,
         })
         setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
       }
@@ -370,6 +380,7 @@ export function StoryPlayerPage() {
           legPoseId: item.legPose,
           headAngleId: item.headAngle,
           armPoseId: item.armPose,
+          rig: item.rig,
         })
         setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
       }
@@ -400,22 +411,7 @@ export function StoryPlayerPage() {
 
     for (const member of [cast.left, cast.right]) {
       if (!member) continue
-      const layout = getCastLayerLayout(member, CANVAS_W, CANVAS_H)
-      result.push({
-        id: castLayerId(member.slot),
-        src: member.imageUrl,
-        x: layout.x,
-        y: layout.y,
-        width: layout.width,
-        height: layout.height,
-        zIndex: layout.zIndex,
-        flip: layout.flip,
-        rotation: layout.rotation,
-        rotationAnchor: { x: 0.5, y: 1 },
-        keyOutWhite: false,
-        sourceCrop: layout.sourceCrop,
-        draggable: true,
-      })
+      result.push(...getCastRenderLayers(member, CANVAS_W, CANVAS_H))
     }
 
     return result
@@ -424,10 +420,14 @@ export function StoryPlayerPage() {
   const sceneAnimations = useMemo<LayerAnimation[]>(() => {
     const anims: LayerAnimation[] = []
     if (cast.left) {
-      anims.push({ layerId: 'char-left-generated', type: 'bob', amplitude: 1.2, period: 4800 })
+      for (const layerId of bobLayerIds(cast.left)) {
+        anims.push({ layerId, type: 'bob', amplitude: 1.2, period: 4800 })
+      }
     }
     if (cast.right) {
-      anims.push({ layerId: 'char-right-generated', type: 'bob', amplitude: 1.1, period: 4300 })
+      for (const layerId of bobLayerIds(cast.right)) {
+        anims.push({ layerId, type: 'bob', amplitude: 1.1, period: 4300 })
+      }
     }
     return anims
   }, [cast.left, cast.right])
@@ -469,6 +469,7 @@ export function StoryPlayerPage() {
         legPose: leg,
         headAngle: head,
         armPose: arm,
+        rig: result.rig,
       }
       setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
       setCast((prev) => {
@@ -478,6 +479,7 @@ export function StoryPlayerPage() {
           headAngle: head,
           legPose: leg,
           armPose: arm,
+          rig: result.rig,
         })
         next = updateCastPose(next, slot, leg.startsWith('sitting') ? 'sitting-sofa' : 'standing')
         return next
@@ -488,6 +490,32 @@ export function StoryPlayerPage() {
     } finally {
       setGeneratingDockPose(false)
       setPoseBatchProgress('')
+    }
+  }
+
+  const handleBuildRig = async (slot: 'left' | 'right') => {
+    const member = cast[slot]
+    if (!member) return
+    setBuildingRig(true)
+    setCharacterError('')
+    try {
+      const result = await api.story.rigCharacter(
+        member.imageUrl,
+        characterBaseName(member.displayName || member.assetName),
+        member.libraryAssetId,
+      )
+      setCast((prev) => applyCastRig(prev, slot, result.rig))
+      setGeneratedCharacters((prev) =>
+        prev.map((item) => (item.imageUrl === member.imageUrl ? { ...item, rig: result.rig } : item)),
+      )
+      if (result.asset) {
+        setLibraryAssets((prev) => prev.map((a) => (a.id === result.asset!.id ? result.asset! : a)))
+      }
+      setSceneNotice('Figur ist jetzt ein Skelett: Kopf, Rumpf und Beine hängen zusammen.')
+    } catch (err) {
+      setCharacterError(err instanceof Error ? err.message : 'Zerlegen fehlgeschlagen.')
+    } finally {
+      setBuildingRig(false)
     }
   }
 
@@ -524,6 +552,7 @@ export function StoryPlayerPage() {
             legPose: leg,
             headAngle: head,
             armPose: arm,
+            rig: result.rig,
           },
           ...prev,
         ].slice(0, 48),
@@ -564,6 +593,7 @@ export function StoryPlayerPage() {
           legPose: leg,
           headAngle: head,
           armPose: arm,
+          rig: result.rig,
         })
       }
       setGeneratedCharacters((prev) => [...created, ...prev].slice(0, 56))
@@ -683,6 +713,7 @@ export function StoryPlayerPage() {
                     legPose: parsed.variant.legPose,
                     headAngle: parsed.variant.headAngle,
                     armPose: parsed.variant.armPose,
+                    rig: parsed.variant.rig,
                   })
                 } catch {
                   /* ignore */
@@ -759,6 +790,7 @@ export function StoryPlayerPage() {
                   legPose: variant.legPose,
                   headAngle: variant.headAngle,
                   armPose: variant.armPose,
+                  rig: variant.rig,
                 })
               }
               onRemoveSlot={(slot) => {
@@ -774,9 +806,16 @@ export function StoryPlayerPage() {
                     headAngle: variant.headAngle,
                     legPose: variant.legPose,
                     armPose: variant.armPose,
+                    rig: variant.rig,
                   }),
                 )
               }}
+              onMixHead={(slot, donor) => {
+                setCast((prev) => mixCastHead(prev, slot, donor))
+                setSceneNotice('Kopf aufgesetzt — Rumpf und Beine bleiben.')
+              }}
+              onHeadTwist={(slot, deg) => setCast((prev) => updateCastHeadTwist(prev, slot, deg))}
+              onBuildRig={(slot) => void handleBuildRig(slot)}
               onSetPose={(slot, pose) => setCast((prev) => updateCastPose(prev, slot, pose))}
               onLookAt={(slot, look) => setCast((prev) => updateCastLookAt(prev, slot, look))}
               onTransform={(slot, patch) => setCast((prev) => updateCastTransform(prev, slot, patch))}
@@ -792,6 +831,7 @@ export function StoryPlayerPage() {
                 void handleGenerateDockPose(slot, head, leg, arm)
               }
               generatingPose={generatingDockPose}
+              buildingRig={buildingRig}
               generatePoseLabel={poseBatchProgress || 'Erzeuge Pose …'}
               presets={presets}
               activePresetId={activePresetId}
@@ -817,7 +857,7 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel story-sofa-cta">
             <h3>Eine Figur, dann einstellen</h3>
             <p className="muted">
-              Guillaume einmal erzeugen. Sitzen, Hüfte und Kopf stellst du in der <strong>Szene</strong> ein — nicht als fünf Karten hier.
+              Julien einmal erzeugen. Danach in der Szene: Kopf am Hals drehen, oder in Kopf/Rumpf/Beine zerlegen. Nicht fünf Karten sammeln.
             </p>
             <button type="button" className="btn btn-primary" onClick={goToSofaDialogSet}>
               Figur erzeugen →
@@ -858,6 +898,7 @@ export function StoryPlayerPage() {
                             imageUrl: identity.preview.imageUrl,
                             subtitle: [
                               'Gerade erzeugt',
+                              identity.preview.rig ? 'Skelett' : null,
                               identity.variantCount > 1
                                 ? `${identity.variantCount} Einstellungen`
                                 : poseVariantLabel(
@@ -877,6 +918,7 @@ export function StoryPlayerPage() {
                               legPose: identity.preview.legPose,
                               headAngle: identity.preview.headAngle,
                               armPose: identity.preview.armPose,
+                              rig: identity.preview.rig,
                             })
                           }
                           onPlaceRight={() =>
@@ -886,6 +928,7 @@ export function StoryPlayerPage() {
                               legPose: identity.preview.legPose,
                               headAngle: identity.preview.headAngle,
                               armPose: identity.preview.armPose,
+                              rig: identity.preview.rig,
                             })
                           }
                           onSave={() => void handleSaveCharacterIdentity(identity.baseName)}
@@ -995,6 +1038,7 @@ export function StoryPlayerPage() {
                             name: identity.baseName,
                             imageUrl: identity.preview.imageUrl,
                             tags: [
+                              identity.preview.rig ? 'Skelett' : '',
                               identity.variantCount > 1
                                 ? `${identity.variantCount} Einstellungen`
                                 : poseVariantLabel(
@@ -1012,6 +1056,7 @@ export function StoryPlayerPage() {
                               legPose: identity.preview.legPose,
                               headAngle: identity.preview.headAngle,
                               armPose: identity.preview.armPose,
+                              rig: identity.preview.rig,
                             })
                           }
                           onPlaceRight={() =>
@@ -1022,6 +1067,7 @@ export function StoryPlayerPage() {
                               legPose: identity.preview.legPose,
                               headAngle: identity.preview.headAngle,
                               armPose: identity.preview.armPose,
+                              rig: identity.preview.rig,
                             })
                           }
                           onDelete={
