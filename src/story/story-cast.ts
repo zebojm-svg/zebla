@@ -67,12 +67,16 @@ export function getCastLayerLayout(
   let base: Omit<CastLayerLayout, 'rotation'>
 
   if (pose === 'sitting-sofa') {
-    // Ganzfigur sitzend: Hüfte auf der Sitzkante, Beine hängen nach unten.
-    const width = Math.round(canvasW * 0.14)
-    const height = Math.round(canvasH * 0.52)
-    const seatLineY = Math.round(canvasH * 0.665)
-    const hipFromTop = 0.55
-    const centerX = slot === 'left' ? 0.235 : 0.365
+    // Hüfte auf der Sitzkante, ganzer Körper inkl. Füße innerhalb der Leinwand.
+    const width = Math.round(canvasW * 0.17)
+    const seatLineY = Math.round(canvasH * 0.62)
+    const hipFromTop = 0.46
+    const floorMargin = Math.round(canvasH * 0.03)
+    const maxBelowSeat = Math.max(120, canvasH - floorMargin - seatLineY)
+    const height = Math.round(
+      Math.min(canvasH * 0.68, maxBelowSeat / Math.max(0.2, 1 - hipFromTop)),
+    )
+    const centerX = slot === 'left' ? 0.22 : 0.40
     base = {
       x: Math.round(centerX * canvasW - width / 2),
       y: Math.round(seatLineY - height * hipFromTop),
@@ -249,6 +253,24 @@ export function nudgeCastTransform(
 
 export function castLayerId(slot: 'left' | 'right'): string {
   return `char-${slot}-generated`
+}
+
+export function slotForIncomingCharacter(
+  cast: SceneCast,
+  selectedSlot: 'left' | 'right' | null,
+  incomingName: string,
+): 'left' | 'right' {
+  const base = characterBaseName(incomingName).toLowerCase()
+  if (selectedSlot) {
+    const current = cast[selectedSlot]
+    if (current && characterBaseName(current.displayName).toLowerCase() === base) {
+      return selectedSlot
+    }
+    if (!current) return selectedSlot
+  }
+  if (!cast.left) return 'left'
+  if (!cast.right) return 'right'
+  return selectedSlot ?? 'left'
 }
 
 export function slotFromLayerId(layerId: string | null): 'left' | 'right' | null {

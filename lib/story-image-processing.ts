@@ -1,17 +1,21 @@
 import sharp from 'sharp'
-import { keyOutConnectedBackground } from '../shared/image-key-out-edges.js'
+import { applyLuminanceMask } from '../shared/image-person-matte.js'
 
-/** Server-seitiges Freistellen: Magenta-Key + reines Weiß, Löcher zwischen Armen/Fingern */
-export async function removeLightBackground(input: Buffer): Promise<Buffer> {
-  const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+/** Farbbild + gleich große Maske → transparentes PNG. Nicht beschneiden (Füße!). */
+export async function applyPersonMask(colorPng: Buffer, maskPng: Buffer): Promise<Buffer> {
+  const color = await sharp(colorPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const mask = await sharp(maskPng)
+    .resize(color.info.width, color.info.height, { fit: 'fill' })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
 
-  const pixels = new Uint8Array(data)
-  keyOutConnectedBackground(pixels, info.width, info.height)
+  const pixels = new Uint8Array(color.data)
+  applyLuminanceMask(pixels, new Uint8Array(mask.data), color.info.width, color.info.height)
 
   return sharp(pixels, {
-    raw: { width: info.width, height: info.height, channels: 4 },
+    raw: { width: color.info.width, height: color.info.height, channels: 4 },
   })
     .png()
-    .trim({ threshold: 10 })
     .toBuffer()
 }

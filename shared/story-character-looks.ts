@@ -67,20 +67,25 @@ const LEGACY_GENERIC_DESCRIPTIONS = new Set([
 ])
 
 export const STORY_CHARACTER_ANATOMY_PROMPT =
-  'FULL-BODY FRAMING (mandatory): pull the camera back so the COMPLETE person fits in the frame — top of hair, both hands, both legs from hips through knees and calves, both ankles, BOTH shoes including soles and toes. Leave a band of empty hot-magenta #FF00E5 background BELOW the shoe soles (feet must not touch the image border). ' +
+  'FULL-BODY FRAMING (mandatory): pull the camera back so the COMPLETE person fits in the frame — top of hair, both hands, both legs from hips through knees and calves, both ankles, BOTH shoes including soles and toes. Leave empty studio space BELOW the shoe soles (feet must not touch the image border). ' +
   'FORBIDDEN: close-up, bust shot, waist-up, cropped at the knees, stump legs, missing feet, floating torso, amputated limbs. ' +
-  'Eyes fully drawn with opaque white sclera, colored iris and pupil — never transparent, never hollow, never sunglasses unless asked. ' +
-  'Shoes stay fully painted and opaque even if pale, cream, or white — never the magenta key color, never missing. Clothing has NO letters or logos. Exactly ONE person.'
+  'Eyes fully drawn with opaque white sclera, colored iris and pupil — never hollow, never sunglasses unless asked. ' +
+  'Shoes stay fully painted even if pale, cream, or white. Clothing has NO letters or logos. Exactly ONE person. ' +
+  'Hold the arms slightly away from the torso so the gaps under the armpits are visible. Spread the fingers slightly.'
 
 export const STORY_CHARACTER_FRAMING_PROMPT =
-  'Vertical full-body character cutout. Entire figure from hair to shoe soles is inside the picture with a flat hot-magenta #FF00E5 margin on all sides, especially under the feet.'
+  'Vertical full-body character. Entire figure from hair to shoe soles is inside the picture with empty studio margin on all sides, especially under the feet.'
 
-/** Hintergrund und Lücken fürs Freistellen — nicht Weiß (helle Schuhe) und nicht Grün (Hoodie). */
+/** Neutraler Studiohintergrund — Freistellen passiert danach über eine Personen-Maske, nicht über eine Key-Farbe. */
 export const STORY_CHARACTER_CUTOUT_PROMPT =
-  'Single character cutout on a FLAT solid hot-magenta background exactly #FF00E5 (RGB 255,0,229) only. No white backdrop, no green screen, no floor, no shadow, no furniture. ' +
-  'Fill EVERY see-through gap with that SAME magenta: between arms and torso, armpits, between fingers, between legs, inside sleeves if hollow. ' +
-  'Shoes (including pale, cream, or white sneakers) remain fully painted and opaque — never magenta, never erased. ' +
-  'Do not paint any part of the person, hair, skin, eyes, teeth, clothes or shoes in #FF00E5.'
+  'Single character on a plain even light-gray studio backdrop (#D0D0D0) only. No floor, no shadow, no furniture, no other people. ' +
+  'Clothes, hair, skin and shoes keep their real colors (red shirts stay red, white sneakers stay white).'
+
+export const STORY_CHARACTER_MASK_PROMPT =
+  'Create a black-and-white silhouette MASK of the person in this exact photo. Same size, same pose, same position. ' +
+  'WHITE = every part of the person: hair, skin, eyes, teeth, ALL clothing (even red, green, yellow), ALL shoes (even white or cream sneakers). ' +
+  'BLACK = studio background AND every see-through hole: between arms and torso, armpits, between fingers, between legs. ' +
+  'Do not paint clothes or shoes black. Do not use other colors. Only black, white, and a 1-pixel gray edge if needed.'
 
 export function normalizeCharacterLookName(name: string): string {
   return characterBaseName(name)

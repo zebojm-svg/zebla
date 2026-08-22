@@ -14,6 +14,7 @@ import {
   type CastPose,
   type CastTransform,
   type SceneCast,
+  slotForIncomingCharacter,
 } from './story-cast'
 import { CastTransformControls } from './CastTransformControls'
 import {
@@ -146,8 +147,93 @@ export function StorySceneDock({
     onGeneratePose(selectedSlot, head, leg, arm)
   }
 
+  const poseEditor = member && selectedSlot && (
+          <>
+            <p className="story-dock-selected">
+              Ausgewählt: <strong>{member.displayName}</strong> ({selectedSlot === 'left' ? 'links' : 'rechts'})
+            </p>
+            <p className="story-dock-help">
+              Das ist <strong>eine</strong> Figur. Sitzen, Hüfte, Kopf und Arme hier einstellen — nicht extra in der Bibliothek sammeln.
+            </p>
+            <label className="story-dock-field">
+              Name im Dialog
+              <input
+                type="text"
+                className="input"
+                value={member.displayName}
+                onChange={(e) => onRename(selectedSlot, e.target.value)}
+              />
+            </label>
+
+            <p className="story-dock-label">Kopf</p>
+            <PosePills
+              groupLabel="Kopf"
+              options={HEAD_ANGLES}
+              current={currentHead}
+              haveIds={headOptions}
+              onPick={(head) => applyCombo(head, currentLeg, currentArm)}
+              disabled={generatingPose}
+            />
+
+            <p className="story-dock-label">Beine / Hüfte</p>
+            <PosePills
+              groupLabel="Beine"
+              options={LEG_POSES}
+              current={currentLeg}
+              haveIds={legOptions}
+              onPick={(leg) => applyCombo(currentHead, leg, currentArm)}
+              disabled={generatingPose}
+            />
+
+            <p className="story-dock-label">Arme</p>
+            <PosePills
+              groupLabel="Arme"
+              options={ARM_POSES}
+              current={currentArm}
+              haveIds={armOptions}
+              onPick={(arm) => applyCombo(currentHead, currentLeg, arm)}
+              disabled={generatingPose}
+            />
+
+            {generatingPose && <p className="story-dock-muted">{generatePoseLabel}</p>}
+            <p className="story-dock-help">
+              «+» erzeugt nur diese Einstellung neu. Es bleibt derselbe Guillaume / Julien.
+            </p>
+
+            <label className="story-cast-look-at">
+              <input
+                type="checkbox"
+                checked={member.lookAtPartner}
+                onChange={(e) => onLookAt(selectedSlot, e.target.checked)}
+              />
+              Zur anderen Figur drehen (spiegeln)
+            </label>
+
+            <CastTransformControls
+              transform={member.transform}
+              onChange={(patch) => onTransform(selectedSlot, patch)}
+              onReset={() => onResetTransform(selectedSlot)}
+            />
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => onRemoveSlot(selectedSlot)}
+            >
+              Figur entfernen
+            </button>
+          </>
+  )
+
   return (
     <aside className="story-dock" aria-label="Szene steuern">
+      {member && (
+        <section className="story-dock-block" id="story-dock-pose">
+          <h3>Diese Figur einstellen</h3>
+          {poseEditor}
+        </section>
+      )}
+
       <section className="story-dock-block">
         <h3>Hintergrund</h3>
         {environments.length === 0 ? (
@@ -170,8 +256,10 @@ export function StorySceneDock({
       </section>
 
       <section className="story-dock-block">
-        <h3>Figur</h3>
-        <p className="story-dock-help">Zuerst links oder rechts wählen, dann eine Figur klicken.</p>
+        <h3>Figuren (zwei Plätze)</h3>
+        <p className="story-dock-help">
+          Links und rechts je eine Person. Die zweite Figur füllt den leeren Platz — sie ersetzt die erste nicht.
+        </p>
         <div className="story-dock-slots">
           {(['left', 'right'] as const).map((slot) => (
             <button
@@ -198,8 +286,18 @@ export function StorySceneDock({
                 <button
                   key={item.key}
                   type="button"
+                  draggable
                   className={`story-dock-thumb${inUse ? ' is-active' : ''}`}
-                  onClick={() => onPlaceCharacter(selectedSlot ?? (cast.left ? 'right' : 'left'), item)}
+                  onClick={() =>
+                    onPlaceCharacter(slotForIncomingCharacter(cast, selectedSlot, item.assetName), item)
+                  }
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(
+                      'application/json',
+                      JSON.stringify({ kind: 'zebla-character', variant: item }),
+                    )
+                    e.dataTransfer.effectAllowed = 'copy'
+                  }}
                 >
                   <img src={item.imageUrl} alt="" />
                   <span>{name}</span>
@@ -210,85 +308,12 @@ export function StorySceneDock({
         )}
       </section>
 
-      <section className="story-dock-block">
-        <h3>Position & Pose</h3>
-        {!member ? (
-          <p className="story-dock-empty">Figur im Bild anklicken — dann Kopf, Beine, Arme wählen.</p>
-        ) : (
-          <>
-            <p className="story-dock-selected">
-              Ausgewählt: <strong>{member.displayName}</strong> ({selectedSlot === 'left' ? 'links' : 'rechts'})
-            </p>
-            <label className="story-dock-field">
-              Name im Dialog
-              <input
-                type="text"
-                className="input"
-                value={member.displayName}
-                onChange={(e) => selectedSlot && onRename(selectedSlot, e.target.value)}
-              />
-            </label>
-
-            <p className="story-dock-label">Kopf</p>
-            <PosePills
-              groupLabel="Kopf"
-              options={HEAD_ANGLES}
-              current={currentHead}
-              haveIds={headOptions}
-              onPick={(head) => applyCombo(head, currentLeg, currentArm)}
-              disabled={generatingPose}
-            />
-
-            <p className="story-dock-label">Beine</p>
-            <PosePills
-              groupLabel="Beine"
-              options={LEG_POSES}
-              current={currentLeg}
-              haveIds={legOptions}
-              onPick={(leg) => applyCombo(currentHead, leg, currentArm)}
-              disabled={generatingPose}
-            />
-
-            <p className="story-dock-label">Arme</p>
-            <PosePills
-              groupLabel="Arme"
-              options={ARM_POSES}
-              current={currentArm}
-              haveIds={armOptions}
-              onPick={(arm) => applyCombo(currentHead, currentLeg, arm)}
-              disabled={generatingPose}
-            />
-
-            {generatingPose && <p className="story-dock-muted">{generatePoseLabel}</p>}
-            <p className="story-dock-help">
-              «+» erzeugt genau diese Kombination neu (ein Bild). Fehlt z.B. «Jubelnd», einfach draufklicken.
-            </p>
-
-            <label className="story-cast-look-at">
-              <input
-                type="checkbox"
-                checked={member.lookAtPartner}
-                onChange={(e) => selectedSlot && onLookAt(selectedSlot, e.target.checked)}
-              />
-              Zur anderen Figur drehen (spiegeln)
-            </label>
-
-            <CastTransformControls
-              transform={member.transform}
-              onChange={(patch) => selectedSlot && onTransform(selectedSlot, patch)}
-              onReset={() => selectedSlot && onResetTransform(selectedSlot)}
-            />
-
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => selectedSlot && onRemoveSlot(selectedSlot)}
-            >
-              Figur entfernen
-            </button>
-          </>
-        )}
-      </section>
+      {!member && (
+        <section className="story-dock-block">
+          <h3>Diese Figur einstellen</h3>
+          <p className="story-dock-empty">Figur im Bild oder links/rechts anklicken — dann Kopf, Hüfte, Arme.</p>
+        </section>
+      )}
 
       <section className="story-dock-block">
         <h3>Möbel dazu</h3>

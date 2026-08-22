@@ -26,10 +26,6 @@ import {
   POSE_SETS,
   characterBaseName,
   armPoseLabel,
-  headAngleLabel,
-  isArmPoseId,
-  isHeadAngleId,
-  isLegPoseId,
   legPoseLabel,
   poseMatrixSize,
   poseSetCombos,
@@ -51,6 +47,7 @@ import {
   normalizeCharacterLookName,
 } from '../../shared/story-character-looks'
 import { StorySceneDock, type EnvironmentPick } from './StorySceneDock'
+import { listCharacterIdentities, type PoseVariant } from './pose-variants'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -248,6 +245,14 @@ export function StoryPlayerPage() {
 
   const libraryCharacters = filteredLibrary.filter((a) => a.type === 'character')
   const libraryEnvironments = filteredLibrary.filter((a) => a.type === 'environment')
+  const sessionIdentities = useMemo(
+    () => listCharacterIdentities([], generatedCharacters),
+    [generatedCharacters],
+  )
+  const libraryIdentities = useMemo(
+    () => listCharacterIdentities(libraryCharacters, []),
+    [libraryCharacters],
+  )
 
   const dockEnvironments = useMemo<EnvironmentPick[]>(() => {
     const items: EnvironmentPick[] = [PARK_BACKGROUND]
@@ -302,6 +307,46 @@ export function StoryPlayerPage() {
       setLibraryAssets((prev) => prev.filter((a) => a.id !== id))
     } catch (err) {
       setLibraryError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
+    }
+  }
+
+  const handleDeleteCharacterIdentity = async (libraryIds: string[]) => {
+    for (const id of libraryIds) {
+      await handleDeleteFromLibrary(id)
+    }
+  }
+
+  const handleSaveCharacterIdentity = async (baseName: string) => {
+    const items = generatedCharacters.filter(
+      (c) => characterBaseName(c.name).toLowerCase() === baseName.toLowerCase(),
+    )
+    if (items.length === 0) return
+    setSavingId(`identity-${baseName}`)
+    try {
+      for (const item of items) {
+        const { asset } = await api.story.saveToLibrary({
+          type: 'character',
+          name: characterBaseName(item.name),
+          description: item.description,
+          imageUrl: item.imageUrl,
+          tags: [
+            ...parseTagsInput(saveTagsInput),
+            ...(item.headAngle ? [item.headAngle] : []),
+            ...(item.legPose ? [item.legPose] : []),
+            ...(item.armPose && item.armPose !== 'relaxed' ? [item.armPose] : []),
+          ],
+          styleId: item.styleId ?? artStyle,
+          legPoseId: item.legPose,
+          headAngleId: item.headAngle,
+          armPoseId: item.armPose,
+        })
+        setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
+      }
+      setSceneNotice(`«${baseName}» mit ${items.length} Einstellung(en) gespeichert.`)
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -367,7 +412,7 @@ export function StoryPlayerPage() {
         flip: layout.flip,
         rotation: layout.rotation,
         rotationAnchor: { x: 0.5, y: 1 },
-        keyOutWhite: true,
+        keyOutWhite: false,
         sourceCrop: layout.sourceCrop,
         draggable: true,
       })
@@ -454,21 +499,21 @@ export function StoryPlayerPage() {
     }
   }
 
-  const handleGenerateCharacter = async () => {
+  const handleGenerateCharacter = async (pose?: {
+    leg: LegPoseId
+    head: HeadAngleId
+    arm: ArmPoseId
+  }) => {
     const name = characterName.trim()
     const description = characterDescription.trim()
     if (!name || !description) return
+    const leg = pose?.leg ?? generateLegPose
+    const head = pose?.head ?? generateHeadAngle
+    const arm = pose?.arm ?? generateArmPose
     setGeneratingCharacter(true)
     setCharacterError('')
     try {
-      const result = await api.story.generateCharacter(
-        name,
-        description,
-        artStyle,
-        generateLegPose,
-        generateHeadAngle,
-        generateArmPose,
-      )
+      const result = await api.story.generateCharacter(name, description, artStyle, leg, head, arm)
       setGeneratedCharacters((prev) =>
         [
           {
@@ -476,9 +521,9 @@ export function StoryPlayerPage() {
             imageUrl: result.imageUrl,
             description,
             styleId: result.styleId as StoryArtStyleId,
-            legPose: generateLegPose,
-            headAngle: generateHeadAngle,
-            armPose: generateArmPose,
+            legPose: leg,
+            headAngle: head,
+            armPose: arm,
           },
           ...prev,
         ].slice(0, 48),
@@ -616,7 +661,34 @@ export function StoryPlayerPage() {
       {activeTab === 'szene' && (
         <>
           <div className="story-stage">
-            <div className="story-canvas-wrapper">
+            <div
+              className="story-canvas-wrapper"
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'copy'
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const raw = e.dataTransfer.getData('application/json')
+                if (!raw) return
+                try {
+                  const parsed = JSON.parse(raw) as { kind?: string; variant?: PoseVariant }
+                  if (parsed.kind !== 'zebla-character' || !parsed.variant) return
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const side: 'left' | 'right' = e.clientX < rect.left + rect.width / 2 ? 'left' : 'right'
+                  handlePlaceCharacter(side, {
+                    imageUrl: parsed.variant.imageUrl,
+                    assetName: parsed.variant.assetName,
+                    libraryAssetId: parsed.variant.libraryAssetId,
+                    legPose: parsed.variant.legPose,
+                    headAngle: parsed.variant.headAngle,
+                    armPose: parsed.variant.armPose,
+                  })
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
               <CompositeCanvas
                 width={CANVAS_W}
                 height={CANVAS_H}
@@ -743,25 +815,12 @@ export function StoryPlayerPage() {
       {activeTab === 'bibliothek' && (
         <>
           <section className="story-generate-panel story-sofa-cta">
-            <h3>Dialog-Set (ganze Figur, mit Füßen)</h3>
+            <h3>Eine Figur, dann einstellen</h3>
             <p className="muted">
-              Das findest du nicht in der Bibliothek selbst — es wird unter <strong>KI erzeugen</strong> gemacht.
-              Danach erscheinen die 5 Posen hier und du speicherst sie.
+              Guillaume einmal erzeugen. Sitzen, Hüfte und Kopf stellst du in der <strong>Szene</strong> ein — nicht als fünf Karten hier.
             </p>
-            <ol className="story-steps-list">
-              <li>
-                Oben auf <strong>KI erzeugen</strong> klicken (oder den Button unten)
-              </li>
-              <li>Julien oder Lucien wählen — sie sehen bewusst anders aus</li>
-              <li>
-                Grünen Button <strong>Ganze Figur erzeugen</strong> drücken (5 Bilder, inkl. Schuhe)
-              </li>
-              <li>
-                Zurück hierher → <strong>Alle in Bibliothek</strong> → eine Pose «Als links»
-              </li>
-            </ol>
             <button type="button" className="btn btn-primary" onClick={goToSofaDialogSet}>
-              Zur ganzen Figur →
+              Figur erzeugen →
             </button>
           </section>
 
@@ -790,53 +849,47 @@ export function StoryPlayerPage() {
                       </button>
                     </div>
                     <div className="story-character-grid">
-                      {generatedCharacters.map((item, idx) => (
+                      {sessionIdentities.map((identity) => (
                         <StoryCharacterCard
-                          key={`session-char-${item.imageUrl}`}
+                          key={`session-char-${identity.baseName}`}
                           item={{
-                            key: `session-char-${idx}`,
-                            name: item.name,
-                            imageUrl: item.imageUrl,
+                            key: `session-char-${identity.baseName}`,
+                            name: identity.baseName,
+                            imageUrl: identity.preview.imageUrl,
                             subtitle: [
                               'Gerade erzeugt',
-                              poseVariantLabel(item.headAngle, item.legPose, item.armPose),
-                              storyStyleLabel(item.styleId) ?? artStyle,
+                              identity.variantCount > 1
+                                ? `${identity.variantCount} Einstellungen`
+                                : poseVariantLabel(
+                                    identity.preview.headAngle,
+                                    identity.preview.legPose,
+                                    identity.preview.armPose,
+                                  ),
+                              storyStyleLabel(artStyle),
                             ]
                               .filter(Boolean)
                               .join(' · '),
                           }}
                           onPlaceLeft={() =>
                             handlePlaceCharacter('left', {
-                              imageUrl: item.imageUrl,
-                              assetName: item.name,
-                              legPose: item.legPose,
-                              headAngle: item.headAngle,
-                              armPose: item.armPose,
+                              imageUrl: identity.preview.imageUrl,
+                              assetName: identity.preview.assetName,
+                              legPose: identity.preview.legPose,
+                              headAngle: identity.preview.headAngle,
+                              armPose: identity.preview.armPose,
                             })
                           }
                           onPlaceRight={() =>
                             handlePlaceCharacter('right', {
-                              imageUrl: item.imageUrl,
-                              assetName: item.name,
-                              legPose: item.legPose,
-                              headAngle: item.headAngle,
-                              armPose: item.armPose,
+                              imageUrl: identity.preview.imageUrl,
+                              assetName: identity.preview.assetName,
+                              legPose: identity.preview.legPose,
+                              headAngle: identity.preview.headAngle,
+                              armPose: identity.preview.armPose,
                             })
                           }
-                          onSave={() =>
-                            void handleSaveToLibrary({
-                              type: 'character',
-                              name: characterBaseName(item.name),
-                              description: item.description ?? characterDescription,
-                              imageUrl: item.imageUrl,
-                              styleId: item.styleId,
-                              legPoseId: item.legPose,
-                              headAngleId: item.headAngle,
-                              armPoseId: item.armPose,
-                              key: `session-char-${idx}`,
-                            })
-                          }
-                          saving={savingId === `session-char-${idx}`}
+                          onSave={() => void handleSaveCharacterIdentity(identity.baseName)}
+                          saving={savingId === `identity-${identity.baseName}`}
                         />
                       ))}
                     </div>
@@ -929,54 +982,53 @@ export function StoryPlayerPage() {
                     </div>
                   </>
                 )}
-                {libraryCharacters.length > 0 && (
+                {libraryIdentities.length > 0 && (
                   <>
                     <h4 className="story-library-heading">Figuren</h4>
+                    <p className="muted">Eine Karte pro Person. Posen stellst du in der Szene ein.</p>
                     <div className="story-character-grid">
-                      {libraryCharacters.map((item) => (
+                      {libraryIdentities.map((identity) => (
                         <StoryCharacterCard
-                          key={item.id}
+                          key={identity.baseName}
                           item={{
-                            key: item.id,
-                            name: item.name,
-                            imageUrl: item.imageUrl,
+                            key: identity.baseName,
+                            name: identity.baseName,
+                            imageUrl: identity.preview.imageUrl,
                             tags: [
-                              ...item.tags,
-                              ...(item.styleId && storyStyleLabel(item.styleId)
-                                ? [storyStyleLabel(item.styleId)!]
-                                : []),
-                              ...(item.headAngleId && isHeadAngleId(item.headAngleId)
-                                ? [headAngleLabel(item.headAngleId)]
-                                : []),
-                              ...(item.legPoseId && isLegPoseId(item.legPoseId)
-                                ? [legPoseLabel(item.legPoseId)]
-                                : []),
-                              ...(item.armPoseId && isArmPoseId(item.armPoseId) && item.armPoseId !== 'relaxed'
-                                ? [armPoseLabel(item.armPoseId)]
-                                : []),
-                            ],
+                              identity.variantCount > 1
+                                ? `${identity.variantCount} Einstellungen`
+                                : poseVariantLabel(
+                                    identity.preview.headAngle,
+                                    identity.preview.legPose,
+                                    identity.preview.armPose,
+                                  ),
+                            ].filter(Boolean),
                           }}
                           onPlaceLeft={() =>
                             handlePlaceCharacter('left', {
-                              imageUrl: item.imageUrl,
-                              assetName: item.name,
-                              libraryAssetId: item.id,
-                              legPose: item.legPoseId as LegPoseId | undefined,
-                              headAngle: item.headAngleId as HeadAngleId | undefined,
-                              armPose: item.armPoseId as ArmPoseId | undefined,
+                              imageUrl: identity.preview.imageUrl,
+                              assetName: identity.preview.assetName,
+                              libraryAssetId: identity.preview.libraryAssetId,
+                              legPose: identity.preview.legPose,
+                              headAngle: identity.preview.headAngle,
+                              armPose: identity.preview.armPose,
                             })
                           }
                           onPlaceRight={() =>
                             handlePlaceCharacter('right', {
-                              imageUrl: item.imageUrl,
-                              assetName: item.name,
-                              libraryAssetId: item.id,
-                              legPose: item.legPoseId as LegPoseId | undefined,
-                              headAngle: item.headAngleId as HeadAngleId | undefined,
-                              armPose: item.armPoseId as ArmPoseId | undefined,
+                              imageUrl: identity.preview.imageUrl,
+                              assetName: identity.preview.assetName,
+                              libraryAssetId: identity.preview.libraryAssetId,
+                              legPose: identity.preview.legPose,
+                              headAngle: identity.preview.headAngle,
+                              armPose: identity.preview.armPose,
                             })
                           }
-                          onDelete={() => void handleDeleteFromLibrary(item.id)}
+                          onDelete={
+                            identity.libraryIds.length > 0
+                              ? () => void handleDeleteCharacterIdentity(identity.libraryIds)
+                              : undefined
+                          }
                         />
                       ))}
                     </div>
@@ -994,11 +1046,10 @@ export function StoryPlayerPage() {
       {activeTab === 'erzeugen' && (
         <>
           <section className="story-generate-panel story-sofa-cta" id="sofa-dialog-set">
-            <h3>1 — Ganze Figur erzeugen</h3>
+            <h3>1 — Eine Figur erzeugen</h3>
             <p className="muted">
-              Erzeugt <strong>5 stehende Varianten</strong> mit verschiedenen Blickrichtungen —{' '}
-              <strong>Kopf bis Schuhe</strong> im Bild. Julien und Lucien bekommen automatisch unterschiedliche Looks.
-              Bildstil muss «Lebendige Illustration» sein.
+              Ein Bild: <strong>Kopf bis Schuhe</strong>. Danach in der Szene sitzen, Hüfte und Kopf einstellen.
+              Julien, Lucien, Guillaume usw. bekommen feste Looks.
             </p>
             <div className="story-character-form">
               <div className="story-look-picks" role="group" aria-label="Figuren-Looks">
@@ -1045,13 +1096,14 @@ export function StoryPlayerPage() {
                 className="btn btn-primary"
                 disabled={generatingCharacter || generatingPoseBatch || !characterName.trim() || !characterDescription.trim()}
                 onClick={() => {
-                  setGenerateLegPose('standing')
-                  void handleGeneratePoseBatch('sofa-dialogue')
+                  void handleGenerateCharacter({
+                    leg: 'standing',
+                    head: 'front',
+                    arm: 'relaxed',
+                  })
                 }}
               >
-                {generatingPoseBatch && generatePoseSet === 'sofa-dialogue'
-                  ? `Erzeuge Figuren … ${poseBatchProgress}`
-                  : 'Ganze Figur erzeugen (5 Bilder, mit Füßen)'}
+                {generatingCharacter ? 'Erzeuge Figur …' : 'Figur erzeugen (ein Bild, mit Füßen)'}
               </button>
             </div>
             {characterError && <p className="alert alert-error">{characterError}</p>}
@@ -1061,8 +1113,10 @@ export function StoryPlayerPage() {
           </section>
 
           <section className="story-generate-panel">
-            <h3>2 — Einzelne Pose oder anderes Set</h3>
-            <p className="muted">Nur nötig, wenn du etwas anderes als das Sofa-Set willst.</p>
+            <h3>2 — Extra-Pose (nur wenn nötig)</h3>
+            <p className="muted">
+              Normalerweise reicht die Szene rechts: Kopf / Beine / Arme. Hier nur, wenn du absichtlich ein zweites Bild vorab willst.
+            </p>
             <div className="story-character-form">
               <div className="story-pose-pickers">
                 <label className="story-cast-name-label">
@@ -1115,7 +1169,7 @@ export function StoryPlayerPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={generatingCharacter || generatingPoseBatch}
-                onClick={handleGenerateCharacter}
+                onClick={() => void handleGenerateCharacter()}
               >
                 {generatingCharacter ? 'Erzeuge Figur …' : 'Nur eine Pose erzeugen'}
               </button>

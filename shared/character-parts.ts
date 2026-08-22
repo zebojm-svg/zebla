@@ -73,39 +73,39 @@ export const HEAD_ANGLES: CharacterPartDef<HeadAngleId>[] = [
 export const LEG_POSES: CharacterPartDef<LegPoseId>[] = [
   {
     id: 'standing',
-    label: 'Stehen nach vorn',
+    label: 'Stehen',
     promptHint:
-      'standing full body facing camera, camera pulled back, both complete legs and both shoes with soles fully visible, empty key-color margin below the feet',
+      'standing full body facing camera, camera pulled back, both complete legs and both shoes with soles fully visible, empty studio margin below the feet',
   },
   {
     id: 'standing-left',
-    label: 'Stehen nach links',
+    label: 'Hüfte nach links',
     promptHint:
-      'standing full body, body turned toward viewer left, both complete legs and both shoes fully visible, empty key-color margin below the feet',
+      'standing full body, hips and torso turned toward viewer left, both complete legs and both shoes fully visible, empty studio margin below the feet',
   },
   {
     id: 'standing-right',
-    label: 'Stehen nach rechts',
+    label: 'Hüfte nach rechts',
     promptHint:
-      'standing full body, body turned toward viewer right, both complete legs and both shoes fully visible, empty key-color margin below the feet',
+      'standing full body, hips and torso turned toward viewer right, both complete legs and both shoes fully visible, empty studio margin below the feet',
   },
   {
     id: 'sitting-forward',
     label: 'Sitzen nach vorn',
     promptHint:
-      'sitting on an invisible seat BUT this is still a FULL BODY shot: thighs, knees, calves, ankles and both complete shoes hanging down toward the camera in the lower third of the image, empty key-color margin below the soles, not a waist-up portrait, not cropped at the knees, torso upright',
+      'sitting on an invisible seat BUT this is still a FULL BODY shot: thighs, knees, calves, ankles and both complete shoes hanging down toward the camera in the lower third of the image, empty studio margin below the soles, not a waist-up portrait, not cropped at the knees, torso upright',
   },
   {
     id: 'sitting-left',
     label: 'Sitzen nach links',
     promptHint:
-      'sitting on an invisible seat, legs and knees angled to viewer left, FULL BODY including both complete shoes, empty key-color margin below the soles',
+      'sitting on an invisible seat, legs and knees angled to viewer left, FULL BODY including both complete shoes hanging down, empty studio margin below the soles, not cropped at the knees',
   },
   {
     id: 'sitting-right',
     label: 'Sitzen nach rechts',
     promptHint:
-      'sitting on an invisible seat, legs and knees angled to viewer right, FULL BODY including both complete shoes, empty key-color margin below the soles',
+      'sitting on an invisible seat, legs and knees angled to viewer right, FULL BODY including both complete shoes hanging down, empty studio margin below the soles, not cropped at the knees',
   },
   { id: 'sitting-cross', label: 'Schneidersitz', promptHint: 'cross-legged sitting on floor or sofa, both shoes visible' },
   { id: 'sitting-side', label: 'Sitzen, Beine zur Seite', promptHint: 'sitting with both legs tucked to one side, both shoes visible' },
@@ -122,27 +122,27 @@ export const ARM_POSES: CharacterPartDef<ArmPoseId>[] = [
   {
     id: 'relaxed',
     label: 'Locker',
-    promptHint: 'arms relaxed naturally at the sides, both hands fully visible, fingers slightly apart so gaps between fingers show the background color',
+    promptHint: 'arms relaxed naturally at the sides, both hands fully visible, fingers slightly apart so gaps between fingers are visible against the studio backdrop',
   },
   {
     id: 'crossed',
     label: 'Verschränkt',
-    promptHint: 'arms folded/crossed over the chest, both hands visible, gaps between arms and torso filled with the background key color',
+    promptHint: 'arms folded/crossed over the chest, both hands visible, gaps between arms and torso visible against the studio backdrop',
   },
   {
     id: 'waving',
     label: 'Winken',
-    promptHint: 'one hand waving hello at shoulder height, other arm relaxed, fingers spread so gaps between fingers show the background key color',
+    promptHint: 'one hand waving hello at shoulder height, other arm relaxed, fingers spread so gaps between fingers are visible',
   },
   {
     id: 'cheering',
     label: 'Jubelnd',
-    promptHint: 'both arms raised in the air cheering, hands open, gaps between arms and head filled with the background key color',
+    promptHint: 'both arms raised in the air cheering, hands open, gaps between arms and head visible against the studio backdrop',
   },
   {
     id: 'shrug',
     label: 'Tja (Achselzucken)',
-    promptHint: 'shrugging with both palms up at shoulder height as if saying well / tja, elbows out, gaps under the arms filled with the background key color',
+    promptHint: 'shrugging with both palms up at shoulder height as if saying well / tja, elbows out, gaps under the arms visible against the studio backdrop',
   },
   {
     id: 'talking',
@@ -152,7 +152,7 @@ export const ARM_POSES: CharacterPartDef<ArmPoseId>[] = [
   {
     id: 'hips',
     label: 'Hände in die Hüfte',
-    promptHint: 'both hands on hips, elbows out, triangular gaps between arms and torso filled with the background key color',
+    promptHint: 'both hands on hips, elbows out, triangular gaps between arms and torso visible against the studio backdrop',
   },
 ]
 
