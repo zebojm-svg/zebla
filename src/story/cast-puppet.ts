@@ -6,8 +6,9 @@ export function getCastRenderLayers(
   member: SceneCastMember,
   canvasW: number,
   canvasH: number,
+  allMembers: SceneCastMember[] = [member],
 ): LayerImage[] {
-  const layout = getCastLayerLayout(member, canvasW, canvasH)
+  const layout = getCastLayerLayout(member, canvasW, canvasH, allMembers)
   const shared = {
     width: layout.width,
     height: layout.height,
@@ -23,7 +24,7 @@ export function getCastRenderLayers(
     return [
       {
         ...shared,
-        id: castPartLayerId(member.slot, 'full'),
+        id: castPartLayerId(member.id, 'full'),
         src: member.imageUrl,
         x: layout.x,
         y: layout.y,
@@ -41,7 +42,7 @@ export function getCastRenderLayers(
   return [
     {
       ...shared,
-      id: castPartLayerId(member.slot, 'legs'),
+      id: castPartLayerId(member.id, 'legs'),
       src: member.rig.parts.legs,
       x: layout.x,
       y: layout.y,
@@ -49,7 +50,7 @@ export function getCastRenderLayers(
     },
     {
       ...shared,
-      id: castPartLayerId(member.slot, 'torso'),
+      id: castPartLayerId(member.id, 'torso'),
       src: member.rig.parts.torso,
       x: layout.x,
       y: layout.y,
@@ -57,7 +58,7 @@ export function getCastRenderLayers(
     },
     {
       ...shared,
-      id: castPartLayerId(member.slot, 'head'),
+      id: castPartLayerId(member.id, 'head'),
       src: member.rig.parts.head,
       x: layout.x + dx,
       y: layout.y + dy,
@@ -74,14 +75,14 @@ export function getCastRenderLayers(
 export function bobLayerIds(member: SceneCastMember): string[] {
   if (member.rig) {
     return [
-      castPartLayerId(member.slot, 'legs'),
-      castPartLayerId(member.slot, 'torso'),
-      castPartLayerId(member.slot, 'head'),
+      castPartLayerId(member.id, 'legs'),
+      castPartLayerId(member.id, 'torso'),
+      castPartLayerId(member.id, 'head'),
     ]
   }
-  return [castPartLayerId(member.slot, 'full')]
+  return [castPartLayerId(member.id, 'full')]
 }
 
-export function selectionLayerId(slot: 'left' | 'right'): string {
-  return castLayerId(slot)
+export function selectionLayerId(id: string): string {
+  return castLayerId(id)
 }

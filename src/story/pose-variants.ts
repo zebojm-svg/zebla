@@ -190,6 +190,22 @@ export function uniqueCastCandidates(
   )
 }
 
+/** Immer dasselbe Referenzbild für neue Posen — nicht das zuletzt gezeichnete (kann schon abweichen). */
+export function pickIdentityReference(
+  baseName: string,
+  libraryCharacters: StoryLibraryAsset[],
+  sessionCharacters: PoseVariantSource[],
+): string | undefined {
+  const variants = collectPoseVariants(baseName, libraryCharacters, sessionCharacters)
+  const hero =
+    findPoseVariant(variants, { headAngle: 'front', legPose: 'standing', armPose: 'relaxed' }) ??
+    findPoseVariant(variants, { headAngle: 'front', legPose: 'standing' }) ??
+    findPoseVariant(variants, { legPose: 'standing' }) ??
+    variants.find((v) => v.rig) ??
+    variants[0]
+  return hero?.imageUrl
+}
+
 export type CharacterIdentity = {
   baseName: string
   preview: PoseVariant

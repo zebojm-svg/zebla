@@ -113,7 +113,7 @@ export function punchStudioBackdrop(color: RgbaPixels, width: number, height: nu
   const seen = new Uint8Array(count)
   const queue = new Int32Array(count)
   const members = new Int32Array(count)
-  const smallLimit = Math.max(60, Math.round(personN * 0.1))
+  const smallLimit = Math.max(60, Math.round(personN * 0.14))
 
   for (let start = 0; start < count; start++) {
     if (!isCandidate(start) || seen[start]) continue

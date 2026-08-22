@@ -10,8 +10,7 @@ type CharacterCardItem = {
 
 type Props = {
   item: CharacterCardItem
-  onPlaceLeft: () => void
-  onPlaceRight: () => void
+  onPlace: () => void
   onSave?: () => void
   saving?: boolean
   onDelete?: () => void
@@ -20,8 +19,7 @@ type Props = {
 
 export function StoryCharacterCard({
   item,
-  onPlaceLeft,
-  onPlaceRight,
+  onPlace,
   onSave,
   saving,
   onDelete,
@@ -40,11 +38,8 @@ export function StoryCharacterCard({
         </div>
       )}
       <div className="story-character-card-actions">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={onPlaceLeft}>
-          Als links
-        </button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={onPlaceRight}>
-          Als rechts
+        <button type="button" className="btn btn-primary btn-sm" onClick={onPlace}>
+          Ins Bild
         </button>
         {extraAction && (
           <button

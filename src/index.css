@@ -2501,15 +2501,17 @@ html[dir='rtl'] .slideshow-topbar {
 }
 
 .story-dock-slots {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.45rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   margin-bottom: 0.65rem;
 }
 
 .story-dock-slot {
   display: grid;
   gap: 0.15rem;
+  flex: 1 1 28%;
+  min-width: 4.4rem;
   padding: 0.55rem 0.6rem;
   border-radius: 10px;
   border: 2px solid #64748b;

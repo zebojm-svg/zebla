@@ -1,4 +1,4 @@
-/** Figur in der aktuellen Szene — displayName ist der Sprechername im Dialog */
+/** Figur in der aktuellen Szene — displayName ist der Sprechername im Storyboard */
 
 import type { ArmPoseId, HeadAngleId, LegPoseId } from '../../shared/character-parts'
 import { characterBaseName } from '../../shared/character-parts'
@@ -9,6 +9,8 @@ import {
 } from '../../shared/character-rig'
 
 export type CastPose = 'standing' | 'sitting-sofa' | 'custom'
+
+export const CAST_MAX = 8
 
 export interface CastTransform {
   offsetX: number
@@ -31,7 +33,7 @@ export const DEFAULT_CAST_TRANSFORM: CastTransform = {
 }
 
 export interface SceneCastMember {
-  slot: 'left' | 'right'
+  id: string
   imageUrl: string
   assetName: string
   displayName: string
@@ -49,9 +51,10 @@ export interface SceneCastMember {
 }
 
 export type SceneCast = {
-  left: SceneCastMember | null
-  right: SceneCastMember | null
+  members: SceneCastMember[]
 }
+
+export const EMPTY_CAST: SceneCast = { members: [] }
 
 export interface CastLayerLayout {
   x: number
@@ -64,19 +67,54 @@ export interface CastLayerLayout {
   sourceCrop?: { top?: number; bottom?: number; left?: number; right?: number }
 }
 
+export function newCastMemberId(): string {
+  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+}
+
+export function getCastMember(cast: SceneCast, id: string | null | undefined): SceneCastMember | null {
+  if (!id) return null
+  return cast.members.find((m) => m.id === id) ?? null
+}
+
+function withMember(
+  cast: SceneCast,
+  id: string,
+  fn: (member: SceneCastMember) => SceneCastMember,
+): SceneCast {
+  let found = false
+  const members = cast.members.map((member) => {
+    if (member.id !== id) return member
+    found = true
+    return fn(member)
+  })
+  return found ? { members } : cast
+}
+
+function spreadCenterX(index: number, count: number, sitting: boolean): number {
+  if (sitting) {
+    if (count <= 1) return 0.32
+    return 0.14 + (index / Math.max(1, count - 1)) * 0.36
+  }
+  if (count <= 1) return 0.5
+  return 0.14 + (index / Math.max(1, count - 1)) * 0.72
+}
+
 export function getCastLayerLayout(
   member: SceneCastMember,
   canvasW: number,
   canvasH: number,
+  allMembers: SceneCastMember[] = [member],
 ): CastLayerLayout {
-  const { slot, pose, lookAtPartner, transform } = member
-  const partnerOnRight = slot === 'left'
-  const flip = lookAtPartner ? (partnerOnRight ? false : true) : slot === 'right'
+  const { pose, lookAtPartner, transform } = member
+  const index = Math.max(0, allMembers.findIndex((m) => m.id === member.id))
+  const count = Math.max(1, allMembers.length)
+  const sitting = pose === 'sitting-sofa'
+  const centerX = spreadCenterX(index, count, sitting)
+  const flip = lookAtPartner ? centerX > 0.5 : false
 
   let base: Omit<CastLayerLayout, 'rotation'>
 
-  if (pose === 'sitting-sofa') {
-    // Hüfte auf der Sitzkante, ganzer Körper inkl. Füße innerhalb der Leinwand.
+  if (sitting) {
     const width = Math.round(canvasW * 0.17)
     const seatLineY = Math.round(canvasH * 0.62)
     const hipFromTop = 0.46
@@ -85,19 +123,17 @@ export function getCastLayerLayout(
     const height = Math.round(
       Math.min(canvasH * 0.68, maxBelowSeat / Math.max(0.2, 1 - hipFromTop)),
     )
-    const centerX = slot === 'left' ? 0.22 : 0.40
     base = {
       x: Math.round(centerX * canvasW - width / 2),
       y: Math.round(seatLineY - height * hipFromTop),
       width,
       height,
       flip,
-      zIndex: slot === 'left' ? 26 : 27,
+      zIndex: 24 + index,
     }
   } else {
     const width = Math.round(canvasW * 0.18)
     const height = Math.round(canvasH * 0.62)
-    const centerX = slot === 'left' ? 0.28 : 0.72
     const floorY = Math.round(canvasH * 0.94)
     base = {
       x: Math.round(centerX * canvasW - width / 2),
@@ -105,7 +141,7 @@ export function getCastLayerLayout(
       width,
       height,
       flip,
-      zIndex: slot === 'left' ? 22 : 23,
+      zIndex: 20 + index,
     }
   }
 
@@ -122,9 +158,8 @@ export function getCastLayerLayout(
   }
 }
 
-export function placeInCast(
+export function addCastMember(
   cast: SceneCast,
-  slot: 'left' | 'right',
   input: {
     imageUrl: string
     assetName: string
@@ -137,43 +172,49 @@ export function placeInCast(
     armPose?: ArmPoseId
     rig?: CharacterRig
   },
-): SceneCast {
-  const partnerPresent = slot === 'left' ? Boolean(cast.right) : Boolean(cast.left)
+): { cast: SceneCast; id: string | null } {
+  if (cast.members.length >= CAST_MAX) return { cast, id: null }
+  const id = newCastMemberId()
+  const partnerPresent = cast.members.length > 0
   const baseName = characterBaseName(input.assetName)
-  return {
-    ...cast,
-    [slot]: {
-      slot,
-      imageUrl: input.imageUrl,
-      assetName: input.assetName,
-      displayName: input.displayName?.trim() || baseName,
-      libraryAssetId: input.libraryAssetId,
-      pose: input.pose ?? 'custom',
-      lookAtPartner: input.lookAtPartner ?? partnerPresent,
-      transform: { ...DEFAULT_CAST_TRANSFORM },
-      legPose: input.legPose,
-      headAngle: input.headAngle ?? 'front',
-      armPose: input.armPose ?? 'relaxed',
-      rig: isCharacterRig(input.rig) ? input.rig : undefined,
-      headTwist: 0,
-    },
+  const member: SceneCastMember = {
+    id,
+    imageUrl: input.imageUrl,
+    assetName: input.assetName,
+    displayName: input.displayName?.trim() || baseName,
+    libraryAssetId: input.libraryAssetId,
+    pose: input.pose ?? 'custom',
+    lookAtPartner: input.lookAtPartner ?? partnerPresent,
+    transform: { ...DEFAULT_CAST_TRANSFORM },
+    legPose: input.legPose,
+    headAngle: input.headAngle ?? 'front',
+    armPose: input.armPose ?? 'relaxed',
+    rig: isCharacterRig(input.rig) ? input.rig : undefined,
+    headTwist: 0,
   }
+  let members = [...cast.members, member]
+  if (members.length >= 2) {
+    members = members.map((item) => ({ ...item, lookAtPartner: true }))
+  }
+  return { cast: { members }, id }
+}
+
+export function removeCastMember(cast: SceneCast, id: string): SceneCast {
+  return { members: cast.members.filter((m) => m.id !== id) }
 }
 
 export function updateCastHeadAngle(
   cast: SceneCast,
-  slot: 'left' | 'right',
+  id: string,
   headAngle: HeadAngleId,
 ): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return { ...cast, [slot]: { ...member, headAngle } }
+  return withMember(cast, id, (member) => ({ ...member, headAngle }))
 }
 
 /** Bild/Pose tauschen, Position und Sprechername behalten */
 export function swapCastVariant(
   cast: SceneCast,
-  slot: 'left' | 'right',
+  id: string,
   input: {
     imageUrl: string
     assetName: string
@@ -184,34 +225,27 @@ export function swapCastVariant(
     rig?: CharacterRig
   },
 ): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return {
-    ...cast,
-    [slot]: {
-      ...member,
-      imageUrl: input.imageUrl,
-      assetName: input.assetName,
-      libraryAssetId: input.libraryAssetId,
-      headAngle: input.headAngle ?? member.headAngle,
-      legPose: input.legPose ?? member.legPose,
-      armPose: input.armPose ?? member.armPose,
-      rig: isCharacterRig(input.rig) ? input.rig : undefined,
-    },
-  }
+  return withMember(cast, id, (member) => ({
+    ...member,
+    imageUrl: input.imageUrl,
+    assetName: input.assetName,
+    libraryAssetId: input.libraryAssetId,
+    headAngle: input.headAngle ?? member.headAngle,
+    legPose: input.legPose ?? member.legPose,
+    armPose: input.armPose ?? member.armPose,
+    rig: isCharacterRig(input.rig) ? input.rig : undefined,
+  }))
 }
 
 /** Nur den Kopf tauschen, Rumpf und Beine behalten — Gelenk am Hals. */
 export function mixCastHead(
   cast: SceneCast,
-  slot: 'left' | 'right',
+  id: string,
   headSource: { headAngle?: HeadAngleId; rig?: CharacterRig },
 ): SceneCast {
-  const member = cast[slot]
-  if (!member?.rig || !headSource.rig) return cast
-  return {
-    ...cast,
-    [slot]: {
+  return withMember(cast, id, (member) => {
+    if (!member.rig || !headSource.rig) return member
+    return {
       ...member,
       headAngle: headSource.headAngle ?? member.headAngle,
       rig: {
@@ -222,121 +256,83 @@ export function mixCastHead(
         joints: member.rig.joints,
         headSourceJoints: headSource.rig.joints,
       },
-    },
-  }
+    }
+  })
 }
 
-export function updateCastHeadTwist(
-  cast: SceneCast,
-  slot: 'left' | 'right',
-  headTwist: number,
-): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return { ...cast, [slot]: { ...member, headTwist: clampHeadTwist(headTwist) } }
+export function updateCastHeadTwist(cast: SceneCast, id: string, headTwist: number): SceneCast {
+  return withMember(cast, id, (member) => ({ ...member, headTwist: clampHeadTwist(headTwist) }))
 }
 
 export function applyCastRig(
   cast: SceneCast,
-  slot: 'left' | 'right',
+  id: string,
   rig: CharacterRig,
   imageUrl?: string,
 ): SceneCast {
-  const member = cast[slot]
-  if (!member || !isCharacterRig(rig)) return cast
-  return {
-    ...cast,
-    [slot]: { ...member, rig, imageUrl: imageUrl?.trim() || member.imageUrl },
-  }
+  if (!isCharacterRig(rig)) return cast
+  return withMember(cast, id, (member) => ({
+    ...member,
+    rig,
+    imageUrl: imageUrl?.trim() || member.imageUrl,
+  }))
 }
 
-export function updateCastName(
-  cast: SceneCast,
-  slot: 'left' | 'right',
-  displayName: string,
-): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return { ...cast, [slot]: { ...member, displayName: displayName.trim() || member.assetName } }
+export function updateCastName(cast: SceneCast, id: string, displayName: string): SceneCast {
+  return withMember(cast, id, (member) => ({
+    ...member,
+    displayName: displayName.trim() || member.assetName,
+  }))
 }
 
-export function updateCastPose(cast: SceneCast, slot: 'left' | 'right', pose: CastPose): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return {
-    ...cast,
-    [slot]: {
-      ...member,
-      pose,
-      transform: { ...DEFAULT_CAST_TRANSFORM },
-      headTwist: 0,
-    },
-  }
+export function updateCastPose(cast: SceneCast, id: string, pose: CastPose): SceneCast {
+  return withMember(cast, id, (member) => ({
+    ...member,
+    pose,
+    transform: { ...DEFAULT_CAST_TRANSFORM },
+    headTwist: 0,
+  }))
 }
 
-export function updateCastLookAt(
-  cast: SceneCast,
-  slot: 'left' | 'right',
-  lookAtPartner: boolean,
-): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return { ...cast, [slot]: { ...member, lookAtPartner } }
+export function updateCastLookAt(cast: SceneCast, id: string, lookAtPartner: boolean): SceneCast {
+  return withMember(cast, id, (member) => ({ ...member, lookAtPartner }))
 }
 
 export function updateCastTransform(
   cast: SceneCast,
-  slot: 'left' | 'right',
+  id: string,
   patch: Partial<CastTransform>,
 ): SceneCast {
-  const member = cast[slot]
-  if (!member) return cast
-  return {
-    ...cast,
-    [slot]: {
-      ...member,
-      pose: 'custom',
-      transform: { ...member.transform, ...patch },
-    },
-  }
+  return withMember(cast, id, (member) => ({
+    ...member,
+    pose: 'custom',
+    transform: { ...member.transform, ...patch },
+  }))
 }
 
-export function nudgeCastTransform(
-  cast: SceneCast,
-  slot: 'left' | 'right',
-  dx: number,
-  dy: number,
-): SceneCast {
-  const member = cast[slot]
+export function nudgeCastTransform(cast: SceneCast, id: string, dx: number, dy: number): SceneCast {
+  const member = getCastMember(cast, id)
   if (!member) return cast
-  return updateCastTransform(cast, slot, {
+  return updateCastTransform(cast, id, {
     offsetX: member.transform.offsetX + dx,
     offsetY: member.transform.offsetY + dy,
   })
 }
 
-export function castLayerId(slot: 'left' | 'right'): string {
-  return `char-${slot}`
+export function castLayerId(id: string): string {
+  return `char-${id}`
 }
 
-export function castPartLayerId(slot: 'left' | 'right', part: 'head' | 'torso' | 'legs' | 'full'): string {
-  return `char-${slot}-${part}`
+export function castPartLayerId(id: string, part: 'head' | 'torso' | 'legs' | 'full'): string {
+  return `char-${id}-${part}`
 }
 
-export function slotForIncomingCharacter(
-  cast: SceneCast,
-  selectedSlot: 'left' | 'right' | null,
-  _incomingName?: string,
-): 'left' | 'right' {
-  if (selectedSlot && !cast[selectedSlot]) return selectedSlot
-  if (!cast.left) return 'left'
-  if (!cast.right) return 'right'
-  return selectedSlot ?? 'left'
-}
-
-export function slotFromLayerId(layerId: string | null): 'left' | 'right' | null {
-  if (!layerId) return null
-  if (layerId.includes('left')) return 'left'
-  if (layerId.includes('right')) return 'right'
-  return null
+export function memberIdFromLayerId(layerId: string | null): string | null {
+  if (!layerId?.startsWith('char-')) return null
+  const rest = layerId.slice('char-'.length)
+  for (const part of ['head', 'torso', 'legs', 'full'] as const) {
+    const suffix = `-${part}`
+    if (rest.endsWith(suffix)) return rest.slice(0, -suffix.length) || null
+  }
+  return rest || null
 }

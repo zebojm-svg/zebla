@@ -6,7 +6,11 @@ import type { ScenePreset } from '../../shared/scene-presets'
 import { SCENE_PRESETS } from '../../shared/scene-presets'
 import { StoryWorkflowNav, type StoryWorkflowStep } from './StoryWorkflowNav'
 import {
-  placeInCast,
+  addCastMember,
+  CAST_MAX,
+  EMPTY_CAST,
+  removeCastMember,
+  getCastMember,
   updateCastName,
   updateCastPose,
   updateCastLookAt,
@@ -17,7 +21,7 @@ import {
   updateCastHeadTwist,
   applyCastRig,
   castLayerId,
-  slotFromLayerId,
+  memberIdFromLayerId,
   type SceneCast,
   type CastPose,
 } from './story-cast'
@@ -49,7 +53,7 @@ import {
   normalizeCharacterLookName,
 } from '../../shared/story-character-looks'
 import { StorySceneDock, type EnvironmentPick } from './StorySceneDock'
-import { listCharacterIdentities, type PoseVariant } from './pose-variants'
+import { listCharacterIdentities, pickIdentityReference, type PoseVariant } from './pose-variants'
 import { getCastRenderLayers, bobLayerIds } from './cast-puppet'
 import { isCharacterRig, type CharacterRig } from '../../shared/character-rig'
 
@@ -127,7 +131,7 @@ export function StoryPlayerPage() {
   const [generatingCharacter, setGeneratingCharacter] = useState(false)
   const [characterError, setCharacterError] = useState('')
   const [generatedCharacters, setGeneratedCharacters] = useState<SessionCharacter[]>([])
-  const [cast, setCast] = useState<SceneCast>({ left: null, right: null })
+  const [cast, setCast] = useState<SceneCast>(EMPTY_CAST)
   const [activeTab, setActiveTab] = useState<StoryTab>('szene')
   const [workflowStep, setWorkflowStep] = useState<StoryWorkflowStep>('scene')
   const [layerOverrides, setLayerOverrides] = useState<Record<string, LayerOverride>>({})
@@ -142,7 +146,7 @@ export function StoryPlayerPage() {
   const [activeEnvironmentName, setActiveEnvironmentName] = useState<string | null>(null)
   const [sceneNotice, setSceneNotice] = useState('')
   const [activePresetId, setActivePresetId] = useState<string | null>(null)
-  const [selectedSlot, setSelectedSlot] = useState<'left' | 'right' | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [generateLegPose, setGenerateLegPose] = useState<LegPoseId>('standing')
   const [generateHeadAngle, setGenerateHeadAngle] = useState<HeadAngleId>('front')
   const [generateArmPose, setGenerateArmPose] = useState<ArmPoseId>('relaxed')
@@ -191,9 +195,7 @@ export function StoryPlayerPage() {
     setLayerOverrides(next)
   }, [activePresetId, activePreset])
 
-  const handlePlaceCharacter = (
-    slot: 'left' | 'right',
-    input: {
+  const handlePlaceCharacter = (input: {
       imageUrl: string
       assetName: string
       libraryAssetId?: string
@@ -203,25 +205,22 @@ export function StoryPlayerPage() {
       headAngle?: HeadAngleId
       armPose?: ArmPoseId
       rig?: CharacterRig
-    },
-  ) => {
+    }) => {
+    const sitting = input.legPose?.startsWith('sitting')
     setCast((prev) => {
-      const sitting = input.legPose?.startsWith('sitting')
-      let next = placeInCast(prev, slot, {
+      const { cast: next, id } = addCastMember(prev, {
         ...input,
         pose: input.pose ?? (sitting ? 'sitting-sofa' : 'standing'),
       })
-      if (next.left && next.right) {
-        next = {
-          left: { ...next.left, lookAtPartner: true },
-          right: { ...next.right, lookAtPartner: true },
-        }
+      if (!id) {
+        setSceneNotice(`Höchstens ${CAST_MAX} Figuren in einer Szene.`)
+        return prev
       }
+      setSelectedId(id)
       return next
     })
     setActiveTab('szene')
     setWorkflowStep('scene')
-    setSelectedSlot(slot)
   }
 
   const reloadLibrary = useCallback(async () => {
@@ -409,9 +408,8 @@ export function StoryPlayerPage() {
 
     result.push(...presetLayersToCanvas(activePreset, CANVAS_W, CANVAS_H, layerOverrides))
 
-    for (const member of [cast.left, cast.right]) {
-      if (!member) continue
-      result.push(...getCastRenderLayers(member, CANVAS_W, CANVAS_H))
+    for (const member of cast.members) {
+      result.push(...getCastRenderLayers(member, CANVAS_W, CANVAS_H, cast.members))
     }
 
     return result
@@ -419,18 +417,18 @@ export function StoryPlayerPage() {
 
   const sceneAnimations = useMemo<LayerAnimation[]>(() => {
     const anims: LayerAnimation[] = []
-    if (cast.left) {
-      for (const layerId of bobLayerIds(cast.left)) {
-        anims.push({ layerId, type: 'bob', amplitude: 1.2, period: 4800 })
+    cast.members.forEach((member, index) => {
+      for (const layerId of bobLayerIds(member)) {
+        anims.push({
+          layerId,
+          type: 'bob',
+          amplitude: index % 2 === 0 ? 1.2 : 1.1,
+          period: 4300 + index * 220,
+        })
       }
-    }
-    if (cast.right) {
-      for (const layerId of bobLayerIds(cast.right)) {
-        anims.push({ layerId, type: 'bob', amplitude: 1.1, period: 4300 })
-      }
-    }
+    })
     return anims
-  }, [cast.left, cast.right])
+  }, [cast.members])
 
   const appearanceForName = (name: string): string => {
     const key = characterBaseName(name).toLowerCase()
@@ -446,12 +444,12 @@ export function StoryPlayerPage() {
   }
 
   const handleGenerateDockPose = async (
-    slot: 'left' | 'right',
+    id: string,
     head: HeadAngleId,
     leg: LegPoseId,
     arm: ArmPoseId,
   ) => {
-    const member = cast[slot]
+    const member = getCastMember(cast, id)
     if (!member) return
     const name = characterBaseName(member.displayName || member.assetName)
     const description = appearanceForName(name)
@@ -460,6 +458,7 @@ export function StoryPlayerPage() {
     setCharacterError('')
     setPoseBatchProgress(`${poseVariantLabel(head, leg, arm)} …`)
     try {
+      const refUrl = pickIdentityReference(name, libraryCharacters, generatedCharacters) ?? member.imageUrl
       const result = await api.story.generateCharacter(
         name,
         description,
@@ -467,7 +466,7 @@ export function StoryPlayerPage() {
         leg,
         head,
         arm,
-        member.imageUrl,
+        refUrl,
       )
       const created: SessionCharacter = {
         name: `${name} · ${poseVariantLabel(head, leg, arm)}`,
@@ -481,7 +480,7 @@ export function StoryPlayerPage() {
       }
       setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
       setCast((prev) => {
-        let next = swapCastVariant(prev, slot, {
+        let next = swapCastVariant(prev, id, {
           imageUrl: result.imageUrl,
           assetName: created.name,
           headAngle: head,
@@ -489,10 +488,14 @@ export function StoryPlayerPage() {
           armPose: arm,
           rig: result.rig,
         })
-        next = updateCastPose(next, slot, leg.startsWith('sitting') ? 'sitting-sofa' : 'standing')
+        next = updateCastPose(next, id, leg.startsWith('sitting') ? 'sitting-sofa' : 'standing')
         return next
       })
-      setSceneNotice(`${name}: ${poseVariantLabel(head, leg, arm)} erzeugt.`)
+      setSceneNotice(
+        result.rig
+          ? `${name}: ${poseVariantLabel(head, leg, arm)} erzeugt — Skelett aktiv.`
+          : `${name}: ${poseVariantLabel(head, leg, arm)} erzeugt.`,
+      )
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Pose konnte nicht erzeugt werden.')
     } finally {
@@ -501,8 +504,8 @@ export function StoryPlayerPage() {
     }
   }
 
-  const handleBuildRig = async (slot: 'left' | 'right') => {
-    const member = cast[slot]
+  const handleBuildRig = async (id: string) => {
+    const member = getCastMember(cast, id)
     if (!member) return
     setBuildingRig(true)
     setCharacterError('')
@@ -518,7 +521,7 @@ export function StoryPlayerPage() {
         )
         return
       }
-      setCast((prev) => applyCastRig(prev, slot, result.rig, result.imageUrl))
+      setCast((prev) => applyCastRig(prev, id, result.rig, result.imageUrl))
       setGeneratedCharacters((prev) =>
         prev.map((item) =>
           item.imageUrl === member.imageUrl
@@ -559,9 +562,7 @@ export function StoryPlayerPage() {
     setGeneratingCharacter(true)
     setCharacterError('')
     try {
-      const refUrl = generatedCharacters.find(
-        (c) => characterBaseName(c.name).toLowerCase() === characterBaseName(name).toLowerCase(),
-      )?.imageUrl
+      const refUrl = pickIdentityReference(name, libraryCharacters, generatedCharacters)
       const result = await api.story.generateCharacter(
         name,
         description,
@@ -609,9 +610,7 @@ export function StoryPlayerPage() {
     setCharacterError('')
     setPoseBatchProgress(`0 / ${combos.length}`)
     const created: SessionCharacter[] = []
-    let refUrl = generatedCharacters.find(
-      (c) => characterBaseName(c.name).toLowerCase() === characterBaseName(name).toLowerCase(),
-    )?.imageUrl
+    let refUrl = pickIdentityReference(name, libraryCharacters, generatedCharacters)
     try {
       for (let i = 0; i < combos.length; i++) {
         const { head, leg, arm } = combos[i]
@@ -745,9 +744,7 @@ export function StoryPlayerPage() {
                 try {
                   const parsed = JSON.parse(raw) as { kind?: string; variant?: PoseVariant }
                   if (parsed.kind !== 'zebla-character' || !parsed.variant) return
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const side: 'left' | 'right' = e.clientX < rect.left + rect.width / 2 ? 'left' : 'right'
-                  handlePlaceCharacter(side, {
+                  handlePlaceCharacter({
                     imageUrl: parsed.variant.imageUrl,
                     assetName: parsed.variant.assetName,
                     libraryAssetId: parsed.variant.libraryAssetId,
@@ -767,50 +764,48 @@ export function StoryPlayerPage() {
                 layers={layers}
                 animations={sceneAnimations}
                 className="story-canvas"
-                selectedLayerId={
-                  selectedSlot && cast[selectedSlot] ? castLayerId(selectedSlot) : null
-                }
-                onSelectLayer={(id) => setSelectedSlot(slotFromLayerId(id))}
+                selectedLayerId={selectedId ? castLayerId(selectedId) : null}
+                onSelectLayer={(id) => setSelectedId(memberIdFromLayerId(id))}
                 onDragLayer={(layerId, dx, dy) => {
-                  const slot = slotFromLayerId(layerId)
-                  if (!slot) return
-                  setCast((prev) => nudgeCastTransform(prev, slot, dx, dy))
+                  const id = memberIdFromLayerId(layerId)
+                  if (!id) return
+                  setCast((prev) => nudgeCastTransform(prev, id, dx, dy))
                 }}
                 onWheelLayer={(layerId, deltaScale) => {
-                  const slot = slotFromLayerId(layerId)
-                  if (!slot) return
+                  const id = memberIdFromLayerId(layerId)
+                  if (!id) return
                   setCast((prev) => {
-                    const member = prev[slot]
+                    const member = getCastMember(prev, id)
                     if (!member) return prev
                     const nextScale = Math.min(1.8, Math.max(0.4, member.transform.scale + deltaScale))
-                    return updateCastTransform(prev, slot, { scale: nextScale })
+                    return updateCastTransform(prev, id, { scale: nextScale })
                   })
                 }}
                 onRotateLayer={(layerId, deltaRotation) => {
-                  const slot = slotFromLayerId(layerId)
-                  if (!slot) return
+                  const id = memberIdFromLayerId(layerId)
+                  if (!id) return
                   setCast((prev) => {
-                    const member = prev[slot]
+                    const member = getCastMember(prev, id)
                     if (!member) return prev
-                    return updateCastTransform(prev, slot, {
+                    return updateCastTransform(prev, id, {
                       rotation: Math.max(-90, Math.min(90, member.transform.rotation + deltaRotation)),
                     })
                   })
                 }}
                 onStretchLayer={(layerId, dScaleX, dScaleY) => {
-                  const slot = slotFromLayerId(layerId)
-                  if (!slot) return
+                  const id = memberIdFromLayerId(layerId)
+                  if (!id) return
                   setCast((prev) => {
-                    const member = prev[slot]
+                    const member = getCastMember(prev, id)
                     if (!member) return prev
-                    return updateCastTransform(prev, slot, {
+                    return updateCastTransform(prev, id, {
                       scaleX: Math.min(1.5, Math.max(0.5, (member.transform.scaleX || 1) + dScaleX)),
                       scaleY: Math.min(1.5, Math.max(0.5, (member.transform.scaleY || 1) + dScaleY)),
                     })
                   })
                 }}
               />
-              {!activeEnvironmentUrl && !cast.left && !cast.right && (
+              {!activeEnvironmentUrl && cast.members.length === 0 && (
                 <p className="story-canvas-empty">Rechts einen Hintergrund wählen</p>
               )}
             </div>
@@ -821,10 +816,10 @@ export function StoryPlayerPage() {
               libraryCharacters={libraryCharacters}
               sessionCharacters={generatedCharacters}
               cast={cast}
-              selectedSlot={selectedSlot}
-              onSelectSlot={(slot) => setSelectedSlot(slot)}
-              onPlaceCharacter={(slot, variant) =>
-                handlePlaceCharacter(slot, {
+              selectedId={selectedId}
+              onSelectMember={(id) => setSelectedId(id)}
+              onPlaceCharacter={(variant) =>
+                handlePlaceCharacter({
                   imageUrl: variant.imageUrl,
                   assetName: variant.assetName,
                   libraryAssetId: variant.libraryAssetId,
@@ -834,13 +829,13 @@ export function StoryPlayerPage() {
                   rig: variant.rig,
                 })
               }
-              onRemoveSlot={(slot) => {
-                setCast((prev) => ({ ...prev, [slot]: null }))
-                setSelectedSlot((prev) => (prev === slot ? null : prev))
+              onRemoveMember={(id) => {
+                setCast((prev) => removeCastMember(prev, id))
+                setSelectedId((prev) => (prev === id ? null : prev))
               }}
-              onSwapVariant={(slot, variant) => {
+              onSwapVariant={(id, variant) => {
                 setCast((prev) =>
-                  swapCastVariant(prev, slot, {
+                  swapCastVariant(prev, id, {
                     imageUrl: variant.imageUrl,
                     assetName: variant.assetName,
                     libraryAssetId: variant.libraryAssetId,
@@ -851,24 +846,24 @@ export function StoryPlayerPage() {
                   }),
                 )
               }}
-              onMixHead={(slot, donor) => {
-                setCast((prev) => mixCastHead(prev, slot, donor))
+              onMixHead={(id, donor) => {
+                setCast((prev) => mixCastHead(prev, id, donor))
                 setSceneNotice('Kopf aufgesetzt — Rumpf und Beine bleiben.')
               }}
-              onHeadTwist={(slot, deg) => setCast((prev) => updateCastHeadTwist(prev, slot, deg))}
-              onBuildRig={(slot) => void handleBuildRig(slot)}
-              onSetPose={(slot, pose) => setCast((prev) => updateCastPose(prev, slot, pose))}
-              onLookAt={(slot, look) => setCast((prev) => updateCastLookAt(prev, slot, look))}
-              onResetTransform={(slot) =>
+              onHeadTwist={(id, deg) => setCast((prev) => updateCastHeadTwist(prev, id, deg))}
+              onBuildRig={(id) => void handleBuildRig(id)}
+              onSetPose={(id, pose) => setCast((prev) => updateCastPose(prev, id, pose))}
+              onLookAt={(id, look) => setCast((prev) => updateCastLookAt(prev, id, look))}
+              onResetTransform={(id) =>
                 setCast((prev) => {
-                  const member = prev[slot]
+                  const member = getCastMember(prev, id)
                   if (!member) return prev
-                  return updateCastPose(prev, slot, member.pose === 'custom' ? 'standing' : member.pose)
+                  return updateCastPose(prev, id, member.pose === 'custom' ? 'standing' : member.pose)
                 })
               }
-              onRename={(slot, name) => setCast((prev) => updateCastName(prev, slot, name))}
-              onGeneratePose={(slot, head, leg, arm) =>
-                void handleGenerateDockPose(slot, head, leg, arm)
+              onRename={(id, name) => setCast((prev) => updateCastName(prev, id, name))}
+              onGeneratePose={(id, head, leg, arm) =>
+                void handleGenerateDockPose(id, head, leg, arm)
               }
               generatingPose={generatingDockPose}
               buildingRig={buildingRig}
@@ -885,8 +880,8 @@ export function StoryPlayerPage() {
           )}
           <p className="story-scene-info">
             {activeSceneTitle}
-            {cast.left || cast.right
-              ? ` · ${[cast.left?.displayName, cast.right?.displayName].filter(Boolean).join(' & ')}`
+            {cast.members.length > 0
+              ? ` · ${cast.members.map((m) => m.displayName).join(' & ')}`
               : ''}
           </p>
         </>
@@ -908,7 +903,7 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel" ref={sessionGalleryRef}>
             <h3>Gerade erzeugt (diese Sitzung)</h3>
             <p className="muted">
-              <strong>Umgebung:</strong> «Hintergrund setzen» · <strong>Figur:</strong> «Als links» / «Als rechts»
+              <strong>Umgebung:</strong> «Hintergrund setzen» · <strong>Figur:</strong> «Ins Bild» (auch mehrmals denselben)
             </p>
             {generatedCharacters.length === 0 && generatedEnvironments.length === 0 ? (
               <p className="muted">Noch nichts erzeugt. Tab «KI erzeugen» oder unten aus gespeicherter Bibliothek wählen.</p>
@@ -952,18 +947,8 @@ export function StoryPlayerPage() {
                               .filter(Boolean)
                               .join(' · '),
                           }}
-                          onPlaceLeft={() =>
-                            handlePlaceCharacter('left', {
-                              imageUrl: identity.preview.imageUrl,
-                              assetName: identity.preview.assetName,
-                              legPose: identity.preview.legPose,
-                              headAngle: identity.preview.headAngle,
-                              armPose: identity.preview.armPose,
-                              rig: identity.preview.rig,
-                            })
-                          }
-                          onPlaceRight={() =>
-                            handlePlaceCharacter('right', {
+                          onPlace={() =>
+                            handlePlaceCharacter({
                               imageUrl: identity.preview.imageUrl,
                               assetName: identity.preview.assetName,
                               legPose: identity.preview.legPose,
@@ -1089,19 +1074,8 @@ export function StoryPlayerPage() {
                                   ),
                             ].filter(Boolean),
                           }}
-                          onPlaceLeft={() =>
-                            handlePlaceCharacter('left', {
-                              imageUrl: identity.preview.imageUrl,
-                              assetName: identity.preview.assetName,
-                              libraryAssetId: identity.preview.libraryAssetId,
-                              legPose: identity.preview.legPose,
-                              headAngle: identity.preview.headAngle,
-                              armPose: identity.preview.armPose,
-                              rig: identity.preview.rig,
-                            })
-                          }
-                          onPlaceRight={() =>
-                            handlePlaceCharacter('right', {
+                          onPlace={() =>
+                            handlePlaceCharacter({
                               imageUrl: identity.preview.imageUrl,
                               assetName: identity.preview.assetName,
                               libraryAssetId: identity.preview.libraryAssetId,
