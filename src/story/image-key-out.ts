@@ -1,6 +1,6 @@
 /**
- * Entfernt helle/weiße Hintergründe aus KI-Figuren (Freistellen).
- * Nur vom Rand — Augenweiß und Zähne bleiben.
+ * Entfernt Magenta-Key und reines Weiß aus KI-Figuren (Freistellen).
+ * Lücken zwischen Armen/Fingern werden mitgelöscht; helle Schuhe, Augen und Zähne bleiben.
  */
 
 import { keyOutConnectedBackground } from '../../shared/image-key-out-edges'

@@ -1,8 +1,16 @@
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
-import { headAnglePrompt, legPosePrompt, type HeadAngleId, type LegPoseId } from '../shared/character-parts.js'
+import {
+  armPosePrompt,
+  headAnglePrompt,
+  legPosePrompt,
+  type ArmPoseId,
+  type HeadAngleId,
+  type LegPoseId,
+} from '../shared/character-parts.js'
 import {
   resolveStoryCharacterAppearance,
   STORY_CHARACTER_ANATOMY_PROMPT,
+  STORY_CHARACTER_CUTOUT_PROMPT,
   STORY_CHARACTER_FRAMING_PROMPT,
 } from '../shared/story-character-looks.js'
 import { removeLightBackground } from './story-image-processing.js'
@@ -101,17 +109,21 @@ export async function generateStoryCharacter(
   styleId?: StoryArtStyleId,
   legPoseId?: LegPoseId,
   headAngleId?: HeadAngleId,
+  armPoseId?: ArmPoseId,
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
   const appearance = resolveStoryCharacterAppearance(name, description)
-  const legHint = legPoseId ? legPosePrompt(legPoseId) : 'standing full body, both shoes visible, white margin below the feet'
+  const legHint = legPoseId
+    ? legPosePrompt(legPoseId)
+    : 'standing full body, both shoes visible, magenta #FF00E5 margin below the feet'
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
+  const armHint = armPoseId ? armPosePrompt(armPoseId) : armPosePrompt('relaxed')
   const prompt =
     `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
     `${style}\n\n` +
-    `Single character cutout on pure flat solid white #FFFFFF background only, no floor, no shadow, no furniture. ` +
-    `${legHint}. ${headHint}.\n${appearance}\nCharacter name: ${name}\n` +
+    `${STORY_CHARACTER_CUTOUT_PROMPT} ` +
+    `${legHint}. ${headHint}. ${armHint}.\n${appearance}\nCharacter name: ${name}\n` +
     `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
     `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people.`
 

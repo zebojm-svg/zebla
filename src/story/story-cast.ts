@@ -1,6 +1,6 @@
 /** Figur in der aktuellen Szene — displayName ist der Sprechername im Dialog */
 
-import type { HeadAngleId, LegPoseId } from '../../shared/character-parts'
+import type { ArmPoseId, HeadAngleId, LegPoseId } from '../../shared/character-parts'
 import { characterBaseName } from '../../shared/character-parts'
 
 export type CastPose = 'standing' | 'sitting-sofa' | 'custom'
@@ -36,6 +36,7 @@ export interface SceneCastMember {
   transform: CastTransform
   headAngle?: HeadAngleId
   legPose?: LegPoseId
+  armPose?: ArmPoseId
 }
 
 export type SceneCast = {
@@ -120,6 +121,7 @@ export function placeInCast(
     lookAtPartner?: boolean
     legPose?: LegPoseId
     headAngle?: HeadAngleId
+    armPose?: ArmPoseId
   },
 ): SceneCast {
   const partnerPresent = slot === 'left' ? Boolean(cast.right) : Boolean(cast.left)
@@ -137,6 +139,7 @@ export function placeInCast(
       transform: { ...DEFAULT_CAST_TRANSFORM },
       legPose: input.legPose,
       headAngle: input.headAngle ?? 'front',
+      armPose: input.armPose ?? 'relaxed',
     },
   }
 }
@@ -161,6 +164,7 @@ export function swapCastVariant(
     libraryAssetId?: string
     headAngle?: HeadAngleId
     legPose?: LegPoseId
+    armPose?: ArmPoseId
   },
 ): SceneCast {
   const member = cast[slot]
@@ -174,6 +178,7 @@ export function swapCastVariant(
       libraryAssetId: input.libraryAssetId,
       headAngle: input.headAngle ?? member.headAngle,
       legPose: input.legPose ?? member.legPose,
+      armPose: input.armPose ?? member.armPose,
     },
   }
 }
