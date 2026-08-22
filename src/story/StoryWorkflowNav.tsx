@@ -12,8 +12,8 @@ const STEPS: Array<{
   {
     id: 'dialog',
     num: 1,
-    title: 'Dialog',
-    hint: 'Text schreiben oder per KI erzeugen',
+    title: 'Storyboard',
+    hint: 'Geschichte und Dialog schreiben oder per KI erzeugen',
     href: '/create',
   },
   {

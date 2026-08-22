@@ -116,7 +116,7 @@ async function cutOutWithPersonMask(apiKey: string, colorPng: Buffer): Promise<B
     )
     return await applyPersonMask(colorPng, maskPng)
   } catch {
-    return colorPng
+    return punchCutoutPng(colorPng)
   }
 }
 
@@ -199,7 +199,7 @@ export async function generateStoryCharacter(
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const armHint = armPoseId ? armPosePrompt(armPoseId) : armPosePrompt('relaxed')
   const identityRule = referenceImageUrl
-    ? 'The attached photo is the SAME person. Copy face, haircut, hair color, clothes and ESPECIALLY shoe model and shoe colors exactly. Do not redesign. Only the pose changes.\n'
+    ? 'IDENTITY BIBLE: The attached photo is this exact person. Copy face, haircut, hair color, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only the pose changes.\n'
     : ''
   const prompt =
     `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
@@ -228,9 +228,10 @@ export async function generateStoryCharacter(
   const cutout = await cutOutWithPersonMask(apiKey, colorPng)
   const slug = name.toLowerCase().replace(/\s+/g, '-')
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const punched = await punchCutoutPng(cutout)
   const [imageUrl2, built] = await Promise.all([
-    uploadStoryAsset(cutout, `story-characters/${slug}-${unique2}.png`),
-    buildCharacterRig(cutout, slug, unique2).catch(() => undefined),
+    uploadStoryAsset(punched, `story-characters/${slug}-${unique2}.png`),
+    buildCharacterRig(punched, slug, unique2).catch(() => undefined),
   ])
 
   return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id, rig: built?.rig }

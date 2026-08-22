@@ -12,9 +12,10 @@ import { HEAD_TWIST_MAX, HEAD_TWIST_MIN } from '../../shared/character-rig'
 import type { ScenePreset } from '../../shared/scene-presets'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import {
+  CAST_MAX,
   type CastPose,
   type SceneCast,
-  slotForIncomingCharacter,
+  getCastMember,
 } from './story-cast'
 import {
   availableArmPoses,
@@ -40,19 +41,19 @@ type Props = {
   libraryCharacters: StoryLibraryAsset[]
   sessionCharacters: PoseVariantSource[]
   cast: SceneCast
-  selectedSlot: 'left' | 'right' | null
-  onSelectSlot: (slot: 'left' | 'right') => void
-  onPlaceCharacter: (slot: 'left' | 'right', variant: PoseVariant) => void
-  onRemoveSlot: (slot: 'left' | 'right') => void
-  onSwapVariant: (slot: 'left' | 'right', variant: PoseVariant) => void
-  onSetPose: (slot: 'left' | 'right', pose: CastPose) => void
-  onLookAt: (slot: 'left' | 'right', look: boolean) => void
-  onResetTransform: (slot: 'left' | 'right') => void
-  onRename: (slot: 'left' | 'right', name: string) => void
-  onGeneratePose: (slot: 'left' | 'right', head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => void
-  onMixHead: (slot: 'left' | 'right', donor: PoseVariant) => void
-  onHeadTwist: (slot: 'left' | 'right', deg: number) => void
-  onBuildRig: (slot: 'left' | 'right') => void
+  selectedId: string | null
+  onSelectMember: (id: string) => void
+  onPlaceCharacter: (variant: PoseVariant) => void
+  onRemoveMember: (id: string) => void
+  onSwapVariant: (id: string, variant: PoseVariant) => void
+  onSetPose: (id: string, pose: CastPose) => void
+  onLookAt: (id: string, look: boolean) => void
+  onResetTransform: (id: string) => void
+  onRename: (id: string, name: string) => void
+  onGeneratePose: (id: string, head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => void
+  onMixHead: (id: string, donor: PoseVariant) => void
+  onHeadTwist: (id: string, deg: number) => void
+  onBuildRig: (id: string) => void
   generatingPose: boolean
   buildingRig: boolean
   generatePoseLabel: string
@@ -137,10 +138,10 @@ export function StorySceneDock({
   libraryCharacters,
   sessionCharacters,
   cast,
-  selectedSlot,
-  onSelectSlot,
+  selectedId,
+  onSelectMember,
   onPlaceCharacter,
-  onRemoveSlot,
+  onRemoveMember,
   onSwapVariant,
   onSetPose,
   onLookAt,
@@ -159,7 +160,7 @@ export function StorySceneDock({
   onApplyPreset,
 }: Props) {
   const candidates = uniqueCastCandidates(libraryCharacters, sessionCharacters)
-  const member = selectedSlot ? cast[selectedSlot] : null
+  const member = getCastMember(cast, selectedId)
   const variants = member
     ? collectPoseVariants(member.displayName || member.assetName, libraryCharacters, sessionCharacters)
     : []
@@ -176,11 +177,11 @@ export function StorySceneDock({
   const busy = generatingPose || buildingRig
 
   const applyCombo = (head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => {
-    if (!selectedSlot || !member) return
+    if (!member) return
     const match = findPoseVariant(variants, { headAngle: head, legPose: leg, armPose: arm })
     if (match) {
-      onSwapVariant(selectedSlot, match)
-      onSetPose(selectedSlot, poseForLeg(leg))
+      onSwapVariant(member.id, match)
+      onSetPose(member.id, poseForLeg(leg))
       return
     }
     const sameBody = head !== currentHead && leg === currentLeg && arm === currentArm
@@ -188,27 +189,27 @@ export function StorySceneDock({
       ? variants.find((v) => v.headAngle === head && v.rig)
       : undefined
     if (sameBody && member.rig && donor) {
-      onMixHead(selectedSlot, donor)
+      onMixHead(member.id, donor)
       return
     }
-    onGeneratePose(selectedSlot, head, leg, arm)
+    onGeneratePose(member.id, head, leg, arm)
   }
 
-  const poseEditor = member && selectedSlot && (
+  const poseEditor = member && (
           <>
             <p className="story-dock-selected">
-              Ausgewählt: <strong>{member.displayName}</strong> ({selectedSlot === 'left' ? 'links' : 'rechts'})
+              Ausgewählt: <strong>{member.displayName}</strong>
             </p>
             <p className="story-dock-help">
               Kopf, Beine und Arme am Rad wählen. «+» in der Liste = noch zeichnen.
             </p>
             <label className="story-dock-field">
-              Name im Dialog
+              Name im Storyboard
               <input
                 type="text"
                 className="input"
                 value={member.displayName}
-                onChange={(e) => onRename(selectedSlot, e.target.value)}
+                onChange={(e) => onRename(member.id, e.target.value)}
               />
             </label>
 
@@ -251,7 +252,7 @@ export function StorySceneDock({
                     min={HEAD_TWIST_MIN}
                     max={HEAD_TWIST_MAX}
                     value={member.headTwist}
-                    onChange={(e) => onHeadTwist(selectedSlot, Number(e.target.value))}
+                    onChange={(e) => onHeadTwist(member.id, Number(e.target.value))}
                   />
                   <span>{member.headTwist}°</span>
                 </label>
@@ -261,7 +262,7 @@ export function StorySceneDock({
                 type="button"
                 className="btn btn-primary"
                 disabled={busy}
-                onClick={() => onBuildRig(selectedSlot)}
+                onClick={() => onBuildRig(member.id)}
               >
                 {buildingRig ? 'Zerlege …' : 'In Kopf / Rumpf / Beine zerlegen'}
               </button>
@@ -271,21 +272,21 @@ export function StorySceneDock({
               <input
                 type="checkbox"
                 checked={member.lookAtPartner}
-                onChange={(e) => onLookAt(selectedSlot, e.target.checked)}
+                onChange={(e) => onLookAt(member.id, e.target.checked)}
               />
               Zur anderen Figur drehen
             </label>
             <p className="story-dock-muted">
               Figur: ziehen · Rad = Grösse · Shift = zerren · Strg = drehen
             </p>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onResetTransform(selectedSlot)}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onResetTransform(member.id)}>
               Position zurücksetzen
             </button>
 
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => onRemoveSlot(selectedSlot)}
+              onClick={() => onRemoveMember(member.id)}
             >
               Figur entfernen
             </button>
@@ -323,39 +324,41 @@ export function StorySceneDock({
       </section>
 
       <section className="story-dock-block">
-        <h3>Figuren (zwei Plätze)</h3>
-        <p className="story-dock-help">Zwei Plätze: links und rechts.</p>
-        <div className="story-dock-slots">
-          {(['left', 'right'] as const).map((slot) => (
-            <button
-              key={slot}
-              type="button"
-              className={`story-dock-slot${selectedSlot === slot ? ' is-active' : ''}${cast[slot] ? ' has-char' : ''}`}
-              onClick={() => onSelectSlot(slot)}
-            >
-              {slot === 'left' ? 'Links' : 'Rechts'}
-              <strong>{cast[slot]?.displayName ?? 'leer'}</strong>
-            </button>
-          ))}
-        </div>
+        <h3>Figuren</h3>
+        <p className="story-dock-help">
+          Antippen = ins Bild (auch denselben nochmal). Maximal {CAST_MAX}.
+        </p>
+        {cast.members.length > 0 && (
+          <div className="story-dock-slots">
+            {cast.members.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`story-dock-slot${selectedId === item.id ? ' is-active' : ''} has-char`}
+                onClick={() => onSelectMember(item.id)}
+              >
+                {index + 1}
+                <strong>{item.displayName}</strong>
+              </button>
+            ))}
+          </div>
+        )}
         {candidates.length === 0 ? (
           <p className="story-dock-empty">Keine Figuren — unter «KI erzeugen» Julien oder Lucien erzeugen.</p>
         ) : (
           <div className="story-dock-thumbs">
             {candidates.map((item) => {
               const name = characterBaseName(item.assetName)
-              const inUse =
-                characterBaseName(cast.left?.displayName ?? '') === name ||
-                characterBaseName(cast.right?.displayName ?? '') === name
+              const inUse = cast.members.some(
+                (m) => characterBaseName(m.displayName) === name,
+              )
               return (
                 <button
                   key={item.key}
                   type="button"
                   draggable
                   className={`story-dock-thumb${inUse ? ' is-active' : ''}`}
-                  onClick={() =>
-                    onPlaceCharacter(slotForIncomingCharacter(cast, selectedSlot, item.assetName), item)
-                  }
+                  onClick={() => onPlaceCharacter(item)}
                   onDragStart={(e) => {
                     e.dataTransfer.setData(
                       'application/json',
@@ -376,7 +379,7 @@ export function StorySceneDock({
       {!member && (
         <section className="story-dock-block">
           <h3>Diese Figur einstellen</h3>
-          <p className="story-dock-empty">Figur im Bild oder links/rechts anklicken — dann Kopf, Hüfte, Arme.</p>
+          <p className="story-dock-empty">Figur im Bild oder in der Liste anklicken — dann Kopf, Hüfte, Arme.</p>
         </section>
       )}
 

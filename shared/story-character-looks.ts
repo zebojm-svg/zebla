@@ -27,14 +27,14 @@ export const STORY_CHARACTER_LOOKS: StoryCharacterLook[] = [
     hintDe: 'Grüner Hoodie, Scheitel',
     description: JULIEN_DESC,
     identityLock:
-      'This is JULIEN: about 15, life-like French teen (not a toddler), chestnut-brown hair with a middle part, brown eyes, wide friendly smile, saturated green pullover hoodie (NO printed text or logos), blue jeans, green flat sneakers. He must not look like Lucien.',
+      'This is JULIEN: about 15, life-like French teen (not a toddler), chestnut-brown hair with a middle part, brown eyes, wide friendly smile, saturated green pullover hoodie (NO printed text or logos), blue jeans, green flat sneakers. He must not look like Lucien. If a reference photo is attached, copy that photo exactly and only change the pose.',
   },
   {
     name: 'Lucien',
     hintDe: 'Locken, Brille, senfgelb',
     description: LUCIEN_DESC,
     identityLock:
-      'This is LUCIEN: about 15, life-like French teen, DISTINCT from Julien, NOT twins. Dark curly brown-black hair, round eyeglasses, hazel-green eyes, mustard-yellow cardigan over a navy polo, charcoal grey trousers, brown sneakers. NEVER a green hoodie, NEVER the same haircut or outfit as Julien.',
+      'This is LUCIEN: about 15, life-like French teen, DISTINCT from Julien, NOT twins. Dark curly brown-black hair, round eyeglasses, hazel-green eyes, mustard-yellow cardigan over a navy polo, charcoal grey trousers, brown sneakers. NEVER a green hoodie, NEVER the same haircut or outfit as Julien. If a reference photo is attached, copy that photo exactly and only change the pose.',
   },
   {
     name: 'Guillaume',
@@ -42,7 +42,7 @@ export const STORY_CHARACTER_LOOKS: StoryCharacterLook[] = [
     description:
       '15-year-old boy, sandy-blond hair with a clear middle part and curtain bangs, blue-grey eyes, friendly smile, plain bright red crew-neck t-shirt with no text or logos, medium-wash blue jeans, white canvas sneakers with white laces and a thin black stripe on the rubber sole',
     identityLock:
-      'This is GUILLAUME: about 15, the SAME boy every time. Sandy-blond hair with a middle part and curtain bangs (never dark brown, never a different cut). Blue-grey eyes. Plain bright red crew-neck t-shirt (no text). Medium-wash blue jeans. ALWAYS white canvas sneakers with white laces and a thin black stripe on the sole — never red shoes, never green shoes, never a different model. Same face, same hair, same clothes in every pose.',
+      'This is GUILLAUME: about 15, the SAME boy every time — one identity, never a redesign. Sandy-blond hair with a middle part and curtain bangs (never dark brown, never a different cut). Blue-grey eyes. Plain bright red crew-neck t-shirt (no text). Medium-wash blue jeans. ALWAYS white canvas sneakers with white laces and a thin black stripe on the sole — never red shoes, never green shoes, never a different model. Same face, same hair, same clothes in every pose. If a reference photo is attached, copy that photo exactly and only change the pose.',
   },
   {
     name: 'Marc',
@@ -92,8 +92,9 @@ export const STORY_CHARACTER_CUTOUT_PROMPT =
 export const STORY_CHARACTER_MASK_PROMPT =
   'Create a black-and-white silhouette MASK of the person in this exact photo. Same size, same pose, same position. ' +
   'WHITE = every part of the person: hair, skin, eyes, teeth, ALL clothing (even red, green, yellow), ALL shoes (even white or cream sneakers). ' +
-  'BLACK = studio background AND every see-through hole: the triangular gaps BETWEEN ARMS AND TORSO, armpits, between fingers, between legs, beside the neck. ' +
-  'Those holes must be BLACK so the background shows through — do not fill them with white. ' +
+  'BLACK = studio background AND every see-through hole. ' +
+  'CRITICAL holes that MUST be BLACK (not white, not gray): triangular gaps BETWEEN ARMS AND TORSO, armpits, between fingers, between the legs, beside the neck, inside sleeves if the studio shows through. ' +
+  'If the photo has leftover gray studio in those gaps, paint those pixels BLACK. ' +
   'Do not paint clothes or shoes black. Do not use other colors. Only black, white, and a 1-pixel gray edge if needed.'
 
 /** Farbkarte zum Zerlegen in Kopf / Rumpf+Arme / Beine — gleiche Pose und Position. */
