@@ -1024,13 +1024,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-generate-character' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { description, name, styleId, legPoseId, headAngleId, armPoseId } = req.body as {
+      const { description, name, styleId, legPoseId, headAngleId, armPoseId, referenceImageUrl } = req.body as {
         description?: string
         name?: string
         styleId?: string
         legPoseId?: string
         headAngleId?: string
         armPoseId?: string
+        referenceImageUrl?: string
       }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
@@ -1047,6 +1048,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         legPose,
         headAngle,
         armPose,
+        typeof referenceImageUrl === 'string' ? referenceImageUrl : undefined,
       )
       res.json(result)
       return

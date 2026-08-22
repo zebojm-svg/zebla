@@ -172,6 +172,16 @@ export async function generateStoryScene(
   return { imageUrl, prompt, styleId: getStoryArtStyle(styleId).id }
 }
 
+async function fetchPngBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return Buffer.from(await res.arrayBuffer())
+  } catch {
+    return null
+  }
+}
+
 export async function generateStoryCharacter(
   description: string,
   name: string,
@@ -179,6 +189,7 @@ export async function generateStoryCharacter(
   legPoseId?: LegPoseId,
   headAngleId?: HeadAngleId,
   armPoseId?: ArmPoseId,
+  referenceImageUrl?: string,
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId; rig?: CharacterRig }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
@@ -188,17 +199,29 @@ export async function generateStoryCharacter(
     : 'standing full body, both shoes visible, empty studio margin below the feet'
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const armHint = armPoseId ? armPosePrompt(armPoseId) : armPosePrompt('relaxed')
+  const identityRule = referenceImageUrl
+    ? 'The attached photo is the SAME person. Copy face, haircut, hair color, clothes and ESPECIALLY shoe model and shoe colors exactly. Do not redesign. Only the pose changes.\n'
+    : ''
   const prompt =
     `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
     `${style}\n\n` +
+    `${identityRule}` +
     `${STORY_CHARACTER_CUTOUT_PROMPT} ` +
     `${legHint}. ${headHint}. ${armHint}.\n${appearance}\nCharacter name: ${name}\n` +
     `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
-    `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people.`
+    `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people. Same identity as the reference if attached.`
+
+  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [{ text: prompt }]
+  if (referenceImageUrl) {
+    const ref = await fetchPngBuffer(referenceImageUrl)
+    if (ref) {
+      parts.push({ inlineData: { mimeType: 'image/png', data: ref.toString('base64') } })
+    }
+  }
 
   const colorPng = await generateGeminiPng(
     apiKey,
-    [{ text: prompt }],
+    parts,
     '9:16',
     50_000,
     'Kein Bild generiert.',
@@ -208,7 +231,7 @@ export async function generateStoryCharacter(
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const [imageUrl2, rig] = await Promise.all([
     uploadStoryAsset(cutout, `story-characters/${slug}-${unique2}.png`),
-    buildCharacterRig(apiKey, cutout, slug, unique2),
+    buildCharacterRig(apiKey, cutout, slug, unique2).catch(() => undefined),
   ])
 
   return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id, rig }
@@ -238,8 +261,8 @@ async function buildCharacterRig(
       uploadStoryAsset(split.legs, `story-characters/${slug}-${unique}-legs.png`),
     ])
     return { parts: { head, torso, legs }, joints: split.joints }
-  } catch {
-    return undefined
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('Teile-Maske fehlgeschlagen.')
   }
 }
 

@@ -51,7 +51,7 @@ import {
 import { StorySceneDock, type EnvironmentPick } from './StorySceneDock'
 import { listCharacterIdentities, type PoseVariant } from './pose-variants'
 import { getCastRenderLayers, bobLayerIds } from './cast-puppet'
-import { type CharacterRig } from '../../shared/character-rig'
+import { isCharacterRig, type CharacterRig } from '../../shared/character-rig'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -460,7 +460,15 @@ export function StoryPlayerPage() {
     setCharacterError('')
     setPoseBatchProgress(`${poseVariantLabel(head, leg, arm)} …`)
     try {
-      const result = await api.story.generateCharacter(name, description, artStyle, leg, head, arm)
+      const result = await api.story.generateCharacter(
+        name,
+        description,
+        artStyle,
+        leg,
+        head,
+        arm,
+        member.imageUrl,
+      )
       const created: SessionCharacter = {
         name: `${name} · ${poseVariantLabel(head, leg, arm)}`,
         imageUrl: result.imageUrl,
@@ -504,6 +512,12 @@ export function StoryPlayerPage() {
         characterBaseName(member.displayName || member.assetName),
         member.libraryAssetId,
       )
+      if (!isCharacterRig(result.rig)) {
+        setCharacterError(
+          'Zerlegen hat keine Teile geliefert. Bitte eine Ganzkörperfigur nehmen, Arme leicht vom Rumpf weg.',
+        )
+        return
+      }
       setCast((prev) => applyCastRig(prev, slot, result.rig))
       setGeneratedCharacters((prev) =>
         prev.map((item) => (item.imageUrl === member.imageUrl ? { ...item, rig: result.rig } : item)),
@@ -511,7 +525,7 @@ export function StoryPlayerPage() {
       if (result.asset) {
         setLibraryAssets((prev) => prev.map((a) => (a.id === result.asset!.id ? result.asset! : a)))
       }
-      setSceneNotice('Figur ist jetzt ein Skelett: Kopf, Rumpf und Beine hängen zusammen.')
+      setSceneNotice('Zerlegt. Grünes Feld «Skelett aktiv» — dort den Kopf drehen.')
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Zerlegen fehlgeschlagen.')
     } finally {
@@ -541,7 +555,18 @@ export function StoryPlayerPage() {
     setGeneratingCharacter(true)
     setCharacterError('')
     try {
-      const result = await api.story.generateCharacter(name, description, artStyle, leg, head, arm)
+      const refUrl = generatedCharacters.find(
+        (c) => characterBaseName(c.name).toLowerCase() === characterBaseName(name).toLowerCase(),
+      )?.imageUrl
+      const result = await api.story.generateCharacter(
+        name,
+        description,
+        artStyle,
+        leg,
+        head,
+        arm,
+        refUrl,
+      )
       setGeneratedCharacters((prev) =>
         [
           {
@@ -580,11 +605,23 @@ export function StoryPlayerPage() {
     setCharacterError('')
     setPoseBatchProgress(`0 / ${combos.length}`)
     const created: SessionCharacter[] = []
+    let refUrl = generatedCharacters.find(
+      (c) => characterBaseName(c.name).toLowerCase() === characterBaseName(name).toLowerCase(),
+    )?.imageUrl
     try {
       for (let i = 0; i < combos.length; i++) {
         const { head, leg, arm } = combos[i]
         setPoseBatchProgress(`${i + 1} / ${combos.length} · ${poseVariantLabel(head, leg, arm)}`)
-        const result = await api.story.generateCharacter(name, description, artStyle, leg, head, arm)
+        const result = await api.story.generateCharacter(
+          name,
+          description,
+          artStyle,
+          leg,
+          head,
+          arm,
+          refUrl,
+        )
+        if (!refUrl) refUrl = result.imageUrl
         created.push({
           name: `${name} · ${poseVariantLabel(head, leg, arm)}`,
           imageUrl: result.imageUrl,
@@ -769,7 +806,7 @@ export function StoryPlayerPage() {
                   })
                 }}
               />
-              {!activeEnvironmentUrl && (
+              {!activeEnvironmentUrl && !cast.left && !cast.right && (
                 <p className="story-canvas-empty">Rechts einen Hintergrund wählen</p>
               )}
             </div>
@@ -818,7 +855,6 @@ export function StoryPlayerPage() {
               onBuildRig={(slot) => void handleBuildRig(slot)}
               onSetPose={(slot, pose) => setCast((prev) => updateCastPose(prev, slot, pose))}
               onLookAt={(slot, look) => setCast((prev) => updateCastLookAt(prev, slot, look))}
-              onTransform={(slot, patch) => setCast((prev) => updateCastTransform(prev, slot, patch))}
               onResetTransform={(slot) =>
                 setCast((prev) => {
                   const member = prev[slot]
@@ -833,6 +869,7 @@ export function StoryPlayerPage() {
               generatingPose={generatingDockPose}
               buildingRig={buildingRig}
               generatePoseLabel={poseBatchProgress || 'Erzeuge Pose …'}
+              dockError={characterError}
               presets={presets}
               activePresetId={activePresetId}
               onApplyPreset={setActivePresetId}

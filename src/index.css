@@ -1789,7 +1789,7 @@ html[dir='rtl'] .slideshow-topbar {
 
 @media (min-width: 960px) {
   .story-stage {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
   }
 }
 
@@ -2410,11 +2410,13 @@ html[dir='rtl'] .slideshow-topbar {
 
 .story-dock {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   position: sticky;
   top: 0.75rem;
   max-height: calc(100vh - 2rem);
   overflow: auto;
+  overflow-x: hidden;
+  min-width: 0;
   padding: 0.15rem;
 }
 
@@ -2573,6 +2575,78 @@ html[dir='rtl'] .slideshow-topbar {
   background: #0f766e;
   border-color: #0f766e;
   color: #fff;
+}
+
+.story-pose-wheel {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.35rem 0;
+}
+
+.story-pose-wheel-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.story-pose-wheel-row {
+  display: grid;
+  grid-template-columns: 2.1rem minmax(0, 1fr) 2.1rem;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.story-pose-wheel-btn {
+  font: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  min-height: 2.25rem;
+  border-radius: 8px;
+  border: 2px solid #475569;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.story-pose-wheel-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.story-pose-wheel-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.story-pose-wheel-select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0f172a;
+  background: #fff;
+  border: 2px solid #475569;
+  border-radius: 8px;
+  min-height: 2.25rem;
+  padding: 0.2rem 0.35rem;
+}
+
+.story-dock-error {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.story-rig-box {
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 2px solid #0f766e;
+}
+
+.story-rig-box .story-transform-row {
+  margin: 0.25rem 0 0;
 }
 
 .story-cast-look-at {

@@ -37,6 +37,14 @@ export const STORY_CHARACTER_LOOKS: StoryCharacterLook[] = [
       'This is LUCIEN: about 15, life-like French teen, DISTINCT from Julien, NOT twins. Dark curly brown-black hair, round eyeglasses, hazel-green eyes, mustard-yellow cardigan over a navy polo, charcoal grey trousers, brown sneakers. NEVER a green hoodie, NEVER the same haircut or outfit as Julien.',
   },
   {
+    name: 'Guillaume',
+    hintDe: 'Rotes Shirt, Scheitel, weisse Sneaker',
+    description:
+      '15-year-old boy, sandy-blond hair with a clear middle part and curtain bangs, blue-grey eyes, friendly smile, plain bright red crew-neck t-shirt with no text or logos, medium-wash blue jeans, white canvas sneakers with white laces and a thin black stripe on the rubber sole',
+    identityLock:
+      'This is GUILLAUME: about 15, the SAME boy every time. Sandy-blond hair with a middle part and curtain bangs (never dark brown, never a different cut). Blue-grey eyes. Plain bright red crew-neck t-shirt (no text). Medium-wash blue jeans. ALWAYS white canvas sneakers with white laces and a thin black stripe on the sole — never red shoes, never green shoes, never a different model. Same face, same hair, same clothes in every pose.',
+  },
+  {
     name: 'Marc',
     hintDe: 'Rotes Shirt, blond',
     description:
@@ -84,7 +92,8 @@ export const STORY_CHARACTER_CUTOUT_PROMPT =
 export const STORY_CHARACTER_MASK_PROMPT =
   'Create a black-and-white silhouette MASK of the person in this exact photo. Same size, same pose, same position. ' +
   'WHITE = every part of the person: hair, skin, eyes, teeth, ALL clothing (even red, green, yellow), ALL shoes (even white or cream sneakers). ' +
-  'BLACK = studio background AND every see-through hole: between arms and torso, armpits, between fingers, between legs. ' +
+  'BLACK = studio background AND every see-through hole: the triangular gaps BETWEEN ARMS AND TORSO, armpits, between fingers, between legs, beside the neck. ' +
+  'Those holes must be BLACK so the background shows through — do not fill them with white. ' +
   'Do not paint clothes or shoes black. Do not use other colors. Only black, white, and a 1-pixel gray edge if needed.'
 
 /** Farbkarte zum Zerlegen in Kopf / Rumpf+Arme / Beine — gleiche Pose und Position. */

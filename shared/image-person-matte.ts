@@ -48,3 +48,35 @@ export function applyLuminanceMask(
     color[i * 4 + 3] = Math.round(alpha)
   }
 }
+
+/** Studio-Grau/Weiss in Achseln entfernen — weisse Schuhe unten bleiben. */
+export function punchStudioBackdrop(color: RgbaPixels, width: number, height: number): void {
+  let minY = height
+  let maxY = 0
+  const count = width * height
+  for (let i = 0; i < count; i++) {
+    if (color[i * 4 + 3]! < 40) continue
+    const y = (i / width) | 0
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+  if (maxY <= minY) return
+  const shoeLine = minY + Math.round((maxY - minY) * 0.72)
+
+  for (let i = 0; i < count; i++) {
+    const p = i * 4
+    if (color[p + 3]! < 8) continue
+    const r = color[p]!
+    const g = color[p + 1]!
+    const b = color[p + 2]!
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const avg = (r + g + b) / 3
+    const y = (i / width) | 0
+    const studioGray = max - min <= 24 && avg >= 158 && avg <= 226
+    const paleFill = y < shoeLine && max - min <= 28 && avg >= 175 && avg <= 248
+    if (studioGray || paleFill) {
+      color[p + 3] = 0
+    }
+  }
+}
