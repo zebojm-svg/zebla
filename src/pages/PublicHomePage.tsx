@@ -70,13 +70,23 @@ export function PublicHomePage() {
             ← ZeboTools
           </a>
           {user ? (
-            <Link to="/" className="btn btn-ghost btn-sm">
-              Meine Bibliothek
-            </Link>
+            <>
+              <Link to="/story" className="btn btn-story-studio btn-sm">
+                Story-Studio
+              </Link>
+              <Link to="/" className="btn btn-ghost btn-sm">
+                Meine Bibliothek
+              </Link>
+            </>
           ) : (
-            <Link to="/login" className="btn btn-ghost btn-sm">
-              Anmelden
-            </Link>
+            <>
+              <Link to="/story" className="btn btn-story-studio btn-sm">
+                Story-Studio
+              </Link>
+              <Link to="/login" className="btn btn-ghost btn-sm">
+                Anmelden
+              </Link>
+            </>
           )}
         </div>
       </header>
