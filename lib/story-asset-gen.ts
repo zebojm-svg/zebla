@@ -1,9 +1,11 @@
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
 import {
   armPosePrompt,
+  faceExpressionPrompt,
   headAnglePrompt,
   legPosePrompt,
   type ArmPoseId,
+  type FaceExpressionId,
   type HeadAngleId,
   type LegPoseId,
 } from '../shared/character-parts.js'
@@ -189,6 +191,7 @@ export async function generateStoryCharacter(
   headAngleId?: HeadAngleId,
   armPoseId?: ArmPoseId,
   referenceImageUrl?: string,
+  faceExpressionId?: FaceExpressionId,
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId; rig?: CharacterRig }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
@@ -198,6 +201,7 @@ export async function generateStoryCharacter(
     : 'standing full body, both shoes visible, empty studio margin below the feet'
   const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
   const armHint = armPoseId ? armPosePrompt(armPoseId) : armPosePrompt('relaxed')
+  const faceHint = faceExpressionId ? faceExpressionPrompt(faceExpressionId) : faceExpressionPrompt('normal')
   const identityRule = referenceImageUrl
     ? 'IDENTITY BIBLE: The attached photo is this exact person. Copy face, haircut, hair color, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only the pose changes.\n'
     : ''
@@ -206,7 +210,7 @@ export async function generateStoryCharacter(
     `${style}\n\n` +
     `${identityRule}` +
     `${STORY_CHARACTER_CUTOUT_PROMPT} ` +
-    `${legHint}. ${headHint}. ${armHint}.\n${appearance}\nCharacter name: ${name}\n` +
+    `${legHint}. ${headHint}. ${armHint}. Facial expression: ${faceHint}.\n${appearance}\nCharacter name: ${name}\n` +
     `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
     `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people. Same identity as the reference if attached.`
 

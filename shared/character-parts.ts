@@ -158,6 +158,23 @@ export const ARM_POSES: CharacterPartDef<ArmPoseId>[] = [
   },
 ]
 
+export type FaceExpressionId = 'normal' | 'surprised'
+
+export const FACE_EXPRESSIONS: CharacterPartDef<FaceExpressionId>[] = [
+  {
+    id: 'normal',
+    label: 'Normal',
+    promptHint:
+      'neutral friendly face, relaxed eyebrows, mouth closed or a small smile, not exaggerated, same person',
+  },
+  {
+    id: 'surprised',
+    label: 'Überrascht',
+    promptHint:
+      'surprised face: raised eyebrows, widened eyes, mouth slightly open, still the SAME person and clothes, not a different character',
+  },
+]
+
 /** Häufigste Blickrichtungen für Dialoge (Sofa) */
 export const DIALOGUE_HEAD_ANGLES: HeadAngleId[] = [
   'front',
@@ -250,13 +267,61 @@ export function characterBaseName(name: string): string {
   return name.split(' · ')[0]?.trim() || name.trim()
 }
 
-export function poseVariantLabel(head?: HeadAngleId, leg?: LegPoseId, arm?: ArmPoseId): string {
+export function poseVariantLabel(
+  head?: HeadAngleId,
+  leg?: LegPoseId,
+  arm?: ArmPoseId,
+  face?: FaceExpressionId,
+): string {
   const parts = [
     head ? headAngleLabel(head) : null,
     leg ? legPoseLabel(leg) : null,
     arm && arm !== 'relaxed' ? armPoseLabel(arm) : null,
+    face && face !== 'normal' ? faceExpressionLabel(face) : null,
   ].filter(Boolean)
   return parts.join(' · ') || 'Pose'
+}
+
+export type PuppetCombo = {
+  head: HeadAngleId
+  leg: LegPoseId
+  arm: ArmPoseId
+  face: FaceExpressionId
+}
+
+/**
+ * 8 Zeichnungen = je 2 Teile (Beine, Arme, Kopf, Mimik).
+ * 16 Looks entstehen durch Aufsetzen am Hals und an der Hüfte.
+ * Sitzen und Stehen sind zwei Körper — die Hüfte sitzt anders.
+ */
+export const PUPPET_KIT_COMBOS: PuppetCombo[] = [
+  { head: 'front', leg: 'standing', arm: 'relaxed', face: 'normal' },
+  { head: 'front', leg: 'standing', arm: 'relaxed', face: 'surprised' },
+  { head: 'front-right', leg: 'standing', arm: 'relaxed', face: 'normal' },
+  { head: 'front-right', leg: 'standing', arm: 'relaxed', face: 'surprised' },
+  { head: 'front', leg: 'standing', arm: 'waving', face: 'normal' },
+  { head: 'front', leg: 'sitting-forward', arm: 'relaxed', face: 'normal' },
+  { head: 'front', leg: 'sitting-forward', arm: 'waving', face: 'normal' },
+  { head: 'front-right', leg: 'sitting-forward', arm: 'relaxed', face: 'normal' },
+]
+
+/** Alle 2×2×2×2 Kombis als ganze Bilder — teuer, zum Vergleich mit dem Baukasten. */
+export function puppetMatrixCombos(): PuppetCombo[] {
+  const heads: HeadAngleId[] = ['front', 'front-right']
+  const legs: LegPoseId[] = ['standing', 'sitting-forward']
+  const arms: ArmPoseId[] = ['relaxed', 'waving']
+  const faces: FaceExpressionId[] = ['normal', 'surprised']
+  const out: PuppetCombo[] = []
+  for (const leg of legs) {
+    for (const arm of arms) {
+      for (const head of heads) {
+        for (const face of faces) {
+          out.push({ head, leg, arm, face })
+        }
+      }
+    }
+  }
+  return out
 }
 
 export function headAngleLabel(id: HeadAngleId): string {
@@ -297,6 +362,22 @@ export function isArmPoseId(value: string): value is ArmPoseId {
 
 export function normalizeArmPoseId(value?: string | null): ArmPoseId {
   return value && isArmPoseId(value) ? value : 'relaxed'
+}
+
+export function isFaceExpressionId(value: string): value is FaceExpressionId {
+  return FACE_EXPRESSIONS.some((p) => p.id === value)
+}
+
+export function normalizeFaceExpressionId(value?: string | null): FaceExpressionId {
+  return value && isFaceExpressionId(value) ? value : 'normal'
+}
+
+export function faceExpressionLabel(id: FaceExpressionId): string {
+  return FACE_EXPRESSIONS.find((p) => p.id === id)?.label ?? id
+}
+
+export function faceExpressionPrompt(id: FaceExpressionId): string {
+  return FACE_EXPRESSIONS.find((p) => p.id === id)?.promptHint ?? 'neutral friendly face'
 }
 
 /** Sitzen und Stehen nicht ineinander mischen — die Hüfte sitzt anders. */

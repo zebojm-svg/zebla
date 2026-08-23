@@ -20,6 +20,8 @@ export interface StoryLibraryAsset {
   headAngleId?: string
   /** Arm-Pose bei modularen Figuren */
   armPoseId?: string
+  /** Mimik bei modularen Figuren */
+  faceExpressionId?: string
   /** Kopf / Rumpf / Beine als zusammenhängende Teile */
   rig?: CharacterRig
   createdAt: string

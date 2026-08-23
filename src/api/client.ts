@@ -423,6 +423,7 @@ export const api = {
       headAngleId?: string,
       armPoseId?: string,
       referenceImageUrl?: string,
+      faceExpressionId?: string,
     ) =>
       request<{
         imageUrl: string
@@ -441,6 +442,7 @@ export const api = {
             headAngleId,
             armPoseId,
             referenceImageUrl,
+            faceExpressionId,
           }),
         },
         140_000,
@@ -482,6 +484,7 @@ export const api = {
       legPoseId?: string
       headAngleId?: string
       armPoseId?: string
+      faceExpressionId?: string
       rig?: import('../../shared/character-rig').CharacterRig
     }) =>
       request<{ asset: import('../../shared/story-types').StoryLibraryAsset }>('/story-library', {

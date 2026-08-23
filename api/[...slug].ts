@@ -96,7 +96,7 @@ import {
   STORY_ART_STYLES,
   isStoryArtStyleId,
 } from '../shared/story-art-styles.js'
-import { isArmPoseId, isHeadAngleId, isLegPoseId } from '../shared/character-parts.js'
+import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../shared/character-parts.js'
 import { isCharacterRig } from '../shared/character-rig.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
@@ -1024,7 +1024,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-generate-character' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { description, name, styleId, legPoseId, headAngleId, armPoseId, referenceImageUrl } = req.body as {
+      const { description, name, styleId, legPoseId, headAngleId, armPoseId, referenceImageUrl, faceExpressionId } = req.body as {
         description?: string
         name?: string
         styleId?: string
@@ -1032,6 +1032,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         headAngleId?: string
         armPoseId?: string
         referenceImageUrl?: string
+        faceExpressionId?: string
       }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
@@ -1041,6 +1042,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const legPose = isLegPoseId(legPoseId ?? '') ? legPoseId : undefined
       const headAngle = isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined
       const armPose = isArmPoseId(armPoseId ?? '') ? armPoseId : undefined
+      const face = isFaceExpressionId(faceExpressionId ?? '') ? faceExpressionId : undefined
       const result = await generateStoryCharacter(
         description.trim(),
         name.trim(),
@@ -1049,6 +1051,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         headAngle,
         armPose,
         typeof referenceImageUrl === 'string' ? referenceImageUrl : undefined,
+        face,
       )
       res.json(result)
       return
@@ -1102,7 +1105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, rig } = req.body as {
+      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig } = req.body as {
         type?: StoryAssetType
         name?: string
         description?: string
@@ -1112,6 +1115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         legPoseId?: string
         headAngleId?: string
         armPoseId?: string
+        faceExpressionId?: string
         rig?: unknown
       }
       if (!type || !name?.trim() || !imageUrl?.trim()) {
@@ -1132,6 +1136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         legPoseId: isLegPoseId(legPoseId ?? '') ? legPoseId : undefined,
         headAngleId: isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined,
         armPoseId: isArmPoseId(armPoseId ?? '') ? armPoseId : undefined,
+        faceExpressionId: isFaceExpressionId(faceExpressionId ?? '') ? faceExpressionId : undefined,
         rig: isCharacterRig(rig) ? rig : undefined,
       })
       res.json({ asset })
