@@ -14,15 +14,16 @@ import type { StoryLibraryAsset } from '../../shared/story-types'
 import {
   CAST_MAX,
   type CastPose,
+  type MixedCastPart,
   type SceneCast,
   getCastMember,
 } from './story-cast'
 import {
-  availableArmPoses,
-  availableHeadAngles,
-  availableLegPoses,
+  allArmPoses,
+  allHeadAngles,
+  allLegPoses,
   collectPoseVariants,
-  findPoseVariant,
+  decidePoseApply,
   uniqueCastCandidates,
   type PoseVariant,
   type PoseVariantSource,
@@ -51,7 +52,7 @@ type Props = {
   onResetTransform: (id: string) => void
   onRename: (id: string, name: string) => void
   onGeneratePose: (id: string, head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => void
-  onMixHead: (id: string, donor: PoseVariant) => void
+  onMixPart: (id: string, part: MixedCastPart, donor: PoseVariant) => void
   onHeadTwist: (id: string, deg: number) => void
   onBuildRig: (id: string) => void
   generatingPose: boolean
@@ -148,7 +149,7 @@ export function StorySceneDock({
   onResetTransform,
   onRename,
   onGeneratePose,
-  onMixHead,
+  onMixPart,
   onHeadTwist,
   onBuildRig,
   generatingPose,
@@ -167,29 +168,26 @@ export function StorySceneDock({
   const currentHead: HeadAngleId = member?.headAngle ?? 'front'
   const currentLeg: LegPoseId = member?.legPose ?? 'standing'
   const currentArm: ArmPoseId = normalizeArmPoseId(member?.armPose)
-  const headOptions = availableHeadAngles(variants, currentLeg, currentArm)
-  const mixableHeads = member?.rig
-    ? variants.filter((v) => v.rig && v.headAngle).map((v) => v.headAngle as HeadAngleId)
-    : []
-  const readyHeads = [...new Set([...headOptions, ...mixableHeads])]
-  const legOptions = availableLegPoses(variants, currentHead, currentArm)
-  const armOptions = availableArmPoses(variants, currentHead, currentLeg)
+  const readyHeads = allHeadAngles(variants)
+  const readyLegs = allLegPoses(variants)
+  const readyArms = allArmPoses(variants)
   const busy = generatingPose || buildingRig
 
   const applyCombo = (head: HeadAngleId, leg: LegPoseId, arm: ArmPoseId) => {
     if (!member) return
-    const match = findPoseVariant(variants, { headAngle: head, legPose: leg, armPose: arm })
-    if (match) {
-      onSwapVariant(member.id, match)
-      onSetPose(member.id, poseForLeg(leg))
+    const decision = decidePoseApply({
+      memberHasRig: Boolean(member.rig),
+      current: { head: currentHead, leg: currentLeg, arm: currentArm },
+      next: { head, leg, arm },
+      variants,
+    })
+    if (decision.action === 'mix') {
+      onMixPart(member.id, decision.part, decision.donor)
       return
     }
-    const sameBody = head !== currentHead && leg === currentLeg && arm === currentArm
-    const donor = sameBody
-      ? variants.find((v) => v.headAngle === head && v.rig)
-      : undefined
-    if (sameBody && member.rig && donor) {
-      onMixHead(member.id, donor)
+    if (decision.action === 'swap') {
+      onSwapVariant(member.id, decision.variant)
+      onSetPose(member.id, poseForLeg(leg))
       return
     }
     onGeneratePose(member.id, head, leg, arm)
@@ -201,7 +199,7 @@ export function StorySceneDock({
               Ausgewählt: <strong>{member.displayName}</strong>
             </p>
             <p className="story-dock-help">
-              Rad: Kopf, Beine, Arme. «+» = noch zeichnen.
+              Räder: echte Ansicht. «+» = dieses Teil fehlt — jetzt zeichnen.
             </p>
             <label className="story-dock-field">
               Name im Storyboard
@@ -225,7 +223,7 @@ export function StorySceneDock({
               label="Beine / Hüfte"
               options={LEG_POSES}
               current={currentLeg}
-              haveIds={legOptions}
+              haveIds={readyLegs}
               onPick={(leg) => applyCombo(currentHead, leg, currentArm)}
               disabled={busy}
             />
@@ -233,7 +231,7 @@ export function StorySceneDock({
               label="Arme"
               options={ARM_POSES}
               current={currentArm}
-              haveIds={armOptions}
+              haveIds={readyArms}
               onPick={(arm) => applyCombo(currentHead, currentLeg, arm)}
               disabled={busy}
             />
@@ -244,9 +242,11 @@ export function StorySceneDock({
 
             {member.rig ? (
               <div className="story-rig-box">
-                <p className="story-dock-muted">Skelett aktiv — Kopf am Hals drehen:</p>
+                <p className="story-dock-muted">
+                  Skelett aktiv — Schieber nur Nicken / kleiner Blick. Große Drehung: Kopf-Rad.
+                </p>
                 <label className="story-transform-row">
-                  <span>Kopf</span>
+                  <span>Nicken</span>
                   <input
                     type="range"
                     min={HEAD_TWIST_MIN}

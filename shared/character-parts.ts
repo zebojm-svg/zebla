@@ -298,3 +298,8 @@ export function isArmPoseId(value: string): value is ArmPoseId {
 export function normalizeArmPoseId(value?: string | null): ArmPoseId {
   return value && isArmPoseId(value) ? value : 'relaxed'
 }
+
+/** Sitzen und Stehen nicht ineinander mischen — die Hüfte sitzt anders. */
+export function sameLegSilhouette(a: LegPoseId, b: LegPoseId): boolean {
+  return a.startsWith('sitting') === b.startsWith('sitting')
+}
