@@ -65,6 +65,14 @@ import { StorySceneDock, type EnvironmentPick } from './StorySceneDock'
 import { listCharacterIdentities, pickIdentityReference, type PoseVariant } from './pose-variants'
 import { getCastRenderLayers, bobLayerIds } from './cast-puppet'
 import { isCharacterRig, type CharacterRig } from '../../shared/character-rig'
+import { StoryStillsPanel } from './StoryStillsPanel'
+import {
+  getStillPose,
+  stillsEngineLabelDe,
+  type StillPoseId,
+  type StillsEngineId,
+  type StillsEngineInfo,
+} from '../../shared/story-stills'
 
 type StoryTab = 'szene' | 'bibliothek' | 'erzeugen'
 
@@ -79,6 +87,9 @@ type SessionCharacter = {
   headAngle?: HeadAngleId
   armPose?: ArmPoseId
   face?: FaceExpressionId
+  stillPoseId?: StillPoseId
+  engine?: StillsEngineId
+  locked?: boolean
   rig?: CharacterRig
 }
 type SessionEnvironment = {
@@ -188,6 +199,9 @@ export function StoryPlayerPage() {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState('')
   const [presets] = useState<ScenePreset[]>(SCENE_PRESETS)
+  const [stillsLockEngine, setStillsLockEngine] = useState<StillsEngineId | undefined>()
+  const [stillsEngines, setStillsEngines] = useState<StillsEngineInfo[]>([])
+  const [generatingStillPose, setGeneratingStillPose] = useState<StillPoseId | null>(null)
 
   const activePreset = useMemo(
     () => presets.find((p) => p.id === activePresetId) ?? null,
@@ -270,6 +284,18 @@ export function StoryPlayerPage() {
     void reloadLibrary()
   }, [reloadLibrary])
 
+  useEffect(() => {
+    void api.story
+      .stillsStatus()
+      .then((status) => {
+        setStillsLockEngine(status.lockEngine)
+        setStillsEngines(status.engines)
+      })
+      .catch(() => {
+        setStillsLockEngine('gemini-i2i')
+      })
+  }, [])
+
   const filteredLibrary = useMemo(() => {
     const needle = tagFilter.trim().toLowerCase()
     if (!needle) return libraryAssets
@@ -289,6 +315,19 @@ export function StoryPlayerPage() {
     () => listCharacterIdentities(libraryCharacters, []),
     [libraryCharacters],
   )
+
+  const masterStill = useMemo(() => {
+    const needle = characterBaseName(characterName).toLowerCase()
+    if (!needle) return undefined
+    const same = generatedCharacters.filter(
+      (c) => characterBaseName(c.name).toLowerCase() === needle,
+    )
+    return (
+      same.find((c) => c.stillPoseId === 'standing-front') ??
+      same.find((c) => c.legPose === 'standing' && (c.headAngle ?? 'front') === 'front') ??
+      same[0]
+    )
+  }, [characterName, generatedCharacters])
 
   const dockEnvironments = useMemo<EnvironmentPick[]>(() => {
     const items: EnvironmentPick[] = [PARK_BACKGROUND]
@@ -590,13 +629,15 @@ export function StoryPlayerPage() {
     leg: LegPoseId
     head: HeadAngleId
     arm: ArmPoseId
+    stillPoseId?: StillPoseId
   }) => {
     const name = characterName.trim()
     const description = characterDescription.trim()
     if (!name || !description) return
-    const leg = pose?.leg ?? generateLegPose
-    const head = pose?.head ?? generateHeadAngle
-    const arm = pose?.arm ?? generateArmPose
+    const still = pose?.stillPoseId ? getStillPose(pose.stillPoseId) : undefined
+    const leg = still?.legPoseId ?? pose?.leg ?? generateLegPose
+    const head = still?.headAngleId ?? pose?.head ?? generateHeadAngle
+    const arm = still?.armPoseId ?? pose?.arm ?? generateArmPose
     setGeneratingCharacter(true)
     setCharacterError('')
     try {
@@ -609,6 +650,8 @@ export function StoryPlayerPage() {
         head,
         arm,
         refUrl,
+        undefined,
+        pose?.stillPoseId,
       )
       setGeneratedCharacters((prev) =>
         [
@@ -620,6 +663,9 @@ export function StoryPlayerPage() {
             legPose: leg,
             headAngle: head,
             armPose: arm,
+            stillPoseId: pose?.stillPoseId,
+            engine: result.engine,
+            locked: result.locked,
             rig: result.rig,
           },
           ...prev,
@@ -633,6 +679,61 @@ export function StoryPlayerPage() {
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Fehler')
     } finally {
+      setGeneratingCharacter(false)
+    }
+  }
+
+  const handleGenerateStill = async (poseId: StillPoseId, asMaster: boolean) => {
+    const name = characterName.trim()
+    const description = characterDescription.trim()
+    if (!name || !description) return
+    const pose = getStillPose(poseId)
+    const refUrl = asMaster
+      ? undefined
+      : masterStill?.imageUrl ?? pickIdentityReference(name, libraryCharacters, generatedCharacters)
+    if (!asMaster && !refUrl) {
+      setCharacterError('Zuerst das Stamm-Bild zeichnen. Ohne Foto malt die KI ein neues Gesicht.')
+      return
+    }
+    setGeneratingStillPose(poseId)
+    setGeneratingCharacter(true)
+    setCharacterError('')
+    try {
+      const result = await api.story.generateCharacter(
+        name,
+        description,
+        artStyle,
+        pose.legPoseId,
+        pose.headAngleId,
+        pose.armPoseId,
+        refUrl,
+        undefined,
+        poseId,
+      )
+      const created: SessionCharacter = {
+        name: asMaster ? name : `${name} · ${pose.label}`,
+        imageUrl: result.imageUrl,
+        description,
+        styleId: result.styleId as StoryArtStyleId,
+        legPose: pose.legPoseId,
+        headAngle: pose.headAngleId,
+        armPose: pose.armPoseId,
+        stillPoseId: poseId,
+        engine: result.engine,
+        locked: result.locked,
+      }
+      setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
+      setActiveTab('erzeugen')
+      setWorkflowStep('assets')
+      setSceneNotice(
+        asMaster
+          ? `${name}: Stamm-Bild fertig (${stillsEngineLabelDe(result.engine)}). Jetzt eine Pose wählen.`
+          : `${name}: Pose «${pose.label}» aus dem Stamm-Bild (${stillsEngineLabelDe(result.engine)}).`,
+      )
+    } catch (err) {
+      setCharacterError(err instanceof Error ? err.message : 'Standbild fehlgeschlagen.')
+    } finally {
+      setGeneratingStillPose(null)
       setGeneratingCharacter(false)
     }
   }
@@ -791,7 +892,7 @@ export function StoryPlayerPage() {
     setGenerateLegPose('standing')
     setActiveTab('erzeugen')
     setWorkflowStep('assets')
-    setSceneNotice('Hier: Julien oder Lucien wählen, dann «Ganze Figur erzeugen» — Füße müssen im Bild sein.')
+    setSceneNotice('Zuerst Stamm-Bild, dann Posen. Das alte Pose-Rad bleibt unten eingeklappt.')
   }
 
   const activeLook = lookForCharacterName(characterName)
@@ -808,7 +909,8 @@ export function StoryPlayerPage() {
       <header className="story-page-header">
         <h2>Story-Studio</h2>
         <p className="muted">
-          Bild wählen, Figur ins Bild setzen, anklicken — sitzen, schauen, zoomen siehst du sofort.
+          Zuerst dieselbe Figur als Standbilder (Stamm-Bild, dann Posen). Sprechen/Blinzeln und
+          Film kommen später — nicht mit dem alten Pose-Rad mischen.
         </p>
       </header>
 
@@ -1016,7 +1118,8 @@ export function StoryPlayerPage() {
           <section className="story-generate-panel story-sofa-cta">
             <h3>Eine Figur, dann einstellen</h3>
             <p className="muted">
-              Julien einmal erzeugen. Danach in der Szene: Kopf am Hals drehen, oder in Kopf/Rumpf/Beine zerlegen. Nicht fünf Karten sammeln.
+              Julien einmal als Stamm-Bild. Danach Posen aus diesem Foto. Altes Puppen-Rad ist
+              eingefroren.
             </p>
             <button type="button" className="btn btn-primary" onClick={goToSofaDialogSet}>
               Figur erzeugen →
@@ -1231,7 +1334,36 @@ export function StoryPlayerPage() {
 
       {activeTab === 'erzeugen' && (
         <>
-          <section className="story-generate-panel story-sofa-cta" id="sofa-dialog-set">
+          <StoryStillsPanel
+            looks={STORY_CHARACTER_LOOKS}
+            characterName={characterName}
+            characterDescription={characterDescription}
+            activeLook={activeLook}
+            onPickLook={(look) => {
+              setCharacterName(look.name)
+              setCharacterDescription(look.description)
+            }}
+            onName={applyCharacterName}
+            onDescription={setCharacterDescription}
+            generating={generatingCharacter}
+            generatingPoseId={generatingStillPose}
+            error={characterError}
+            lockEngine={stillsLockEngine}
+            engines={stillsEngines}
+            masterUrl={masterStill?.imageUrl}
+            masterName={masterStill ? characterBaseName(masterStill.name) : undefined}
+            onGenerateMaster={() => void handleGenerateStill('standing-front', true)}
+            onGeneratePose={(poseId) => void handleGenerateStill(poseId, false)}
+          />
+
+          <details className="story-legacy-path">
+            <summary>Altes Pose-Rad / Puppen-Baukasten (eingefroren)</summary>
+            <p className="muted">
+              Nicht der Weg zum Kurzfilm. Bleibt da, damit vorhandene Szenen nicht weg sind.
+              Neue Figuren bitte oben über Stamm-Bild + Posen.
+            </p>
+
+          <section className="story-generate-panel" id="sofa-dialog-set">
             <h3>1 — Eine Figur erzeugen</h3>
             <p className="muted">
               Ein Bild: <strong>Kopf bis Schuhe</strong>. Danach in der Szene sitzen, Hüfte und Kopf einstellen.
@@ -1292,7 +1424,6 @@ export function StoryPlayerPage() {
                 {generatingCharacter ? 'Erzeuge Figur …' : 'Figur erzeugen (ein Bild, mit Füßen)'}
               </button>
             </div>
-            {characterError && <p className="alert alert-error">{characterError}</p>}
             {generatingPoseBatch && (
               <p className="muted">Dauert ein paar Minuten — bitte Fenster offen lassen.</p>
             )}
@@ -1473,6 +1604,7 @@ export function StoryPlayerPage() {
               </div>
             </div>
           </section>
+          </details>
 
           <section className="story-generate-panel">
             <h3>KI-Umfeld generieren</h3>
