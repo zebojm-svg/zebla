@@ -1,12 +1,15 @@
 import {
   characterBaseName,
   isArmPoseId,
+  isFaceExpressionId,
   isHeadAngleId,
   isLegPoseId,
   normalizeArmPoseId,
+  normalizeFaceExpressionId,
   poseVariantLabel,
   sameLegSilhouette,
   type ArmPoseId,
+  type FaceExpressionId,
   type HeadAngleId,
   type LegPoseId,
 } from '../../shared/character-parts'
@@ -20,6 +23,7 @@ export type PoseVariantSource = {
   headAngle?: HeadAngleId
   legPose?: LegPoseId
   armPose?: ArmPoseId
+  face?: FaceExpressionId
   rig?: CharacterRig
 }
 
@@ -31,6 +35,7 @@ export type PoseVariant = {
   headAngle?: HeadAngleId
   legPose?: LegPoseId
   armPose?: ArmPoseId
+  face?: FaceExpressionId
   label: string
   rig?: CharacterRig
 }
@@ -40,7 +45,8 @@ function normalizeVariant(input: PoseVariantSource): PoseVariant | null {
     input.headAngle && isHeadAngleId(input.headAngle) ? input.headAngle : undefined
   const leg = input.legPose && isLegPoseId(input.legPose) ? input.legPose : undefined
   const arm = input.armPose && isArmPoseId(input.armPose) ? input.armPose : undefined
-  if (!head && !leg && !arm && !input.imageUrl) return null
+  const face = input.face && isFaceExpressionId(input.face) ? input.face : undefined
+  if (!head && !leg && !arm && !face && !input.imageUrl) return null
   return {
     key: input.libraryAssetId ?? input.imageUrl,
     imageUrl: input.imageUrl,
@@ -49,13 +55,18 @@ function normalizeVariant(input: PoseVariantSource): PoseVariant | null {
     headAngle: head,
     legPose: leg,
     armPose: arm,
-    label: poseVariantLabel(head, leg, arm),
+    face,
+    label: poseVariantLabel(head, leg, arm, face),
     rig: isCharacterRig(input.rig) ? input.rig : undefined,
   }
 }
 
 function variantArm(v: PoseVariant): ArmPoseId {
   return normalizeArmPoseId(v.armPose)
+}
+
+function variantFace(v: PoseVariant): FaceExpressionId {
+  return normalizeFaceExpressionId(v.face)
 }
 
 /** Varianten derselben Figur aus Sitzung + Bibliothek (gleicher Basisname). */
@@ -84,6 +95,7 @@ export function collectPoseVariants(
       headAngle: item.headAngleId as HeadAngleId | undefined,
       legPose: item.legPoseId as LegPoseId | undefined,
       armPose: item.armPoseId as ArmPoseId | undefined,
+      face: item.faceExpressionId as FaceExpressionId | undefined,
       rig: item.rig,
     })
     if (v) byKey.set(v.key, v)
@@ -120,21 +132,31 @@ export function findPoseVariant(
 /** Nur die genaue Kombination — nicht «irgendeine Figur mit diesem Kopf». */
 export function findExactPoseVariant(
   variants: PoseVariant[],
-  opts: { headAngle?: HeadAngleId; legPose?: LegPoseId; armPose?: ArmPoseId },
+  opts: {
+    headAngle?: HeadAngleId
+    legPose?: LegPoseId
+    armPose?: ArmPoseId
+    face?: FaceExpressionId
+  },
 ): PoseVariant | undefined {
   return variants.find(
     (v) =>
       (opts.headAngle == null || v.headAngle === opts.headAngle) &&
       (opts.legPose == null || v.legPose === opts.legPose) &&
-      (opts.armPose == null || variantArm(v) === opts.armPose),
+      (opts.armPose == null || variantArm(v) === opts.armPose) &&
+      (opts.face == null || variantFace(v) === opts.face),
   )
 }
 
 export function findRiggedHead(
   variants: PoseVariant[],
   head: HeadAngleId,
+  face: FaceExpressionId = 'normal',
 ): PoseVariant | undefined {
-  return variants.find((v) => v.headAngle === head && v.rig)
+  return (
+    variants.find((v) => v.headAngle === head && variantFace(v) === face && v.rig) ??
+    variants.find((v) => v.headAngle === head && v.rig)
+  )
 }
 
 export function findRiggedLegs(
@@ -147,8 +169,14 @@ export function findRiggedLegs(
 export function findRiggedTorso(
   variants: PoseVariant[],
   arm: ArmPoseId,
+  preferLeg?: LegPoseId,
 ): PoseVariant | undefined {
-  return variants.find((v) => variantArm(v) === arm && v.rig)
+  const matches = variants.filter((v) => variantArm(v) === arm && v.rig)
+  if (preferLeg) {
+    const same = matches.find((v) => v.legPose && sameLegSilhouette(v.legPose, preferLeg))
+    return same
+  }
+  return matches[0]
 }
 
 export type PoseApply =
@@ -159,25 +187,27 @@ export type PoseApply =
 /** Rad-Klick: vorhandenes Teil aufsetzen, sonst genau tauschen, sonst zeichnen. */
 export function decidePoseApply(opts: {
   memberHasRig: boolean
-  current: { head: HeadAngleId; leg: LegPoseId; arm: ArmPoseId }
-  next: { head: HeadAngleId; leg: LegPoseId; arm: ArmPoseId }
+  current: { head: HeadAngleId; leg: LegPoseId; arm: ArmPoseId; face: FaceExpressionId }
+  next: { head: HeadAngleId; leg: LegPoseId; arm: ArmPoseId; face: FaceExpressionId }
   variants: PoseVariant[]
 }): PoseApply {
   const { memberHasRig, current, next, variants } = opts
-  const headChanged = next.head !== current.head
+  const headPartChanged = next.head !== current.head || next.face !== current.face
   const legChanged = next.leg !== current.leg
   const armChanged = next.arm !== current.arm
-  const changed = [headChanged, legChanged, armChanged].filter(Boolean).length
+  const changed = [headPartChanged, legChanged, armChanged].filter(Boolean).length
 
   if (memberHasRig && changed === 1) {
-    if (headChanged) {
-      const donor = findRiggedHead(variants, next.head)
-      if (donor) return { action: 'mix', part: 'head', donor }
+    if (headPartChanged) {
+      const donor = findRiggedHead(variants, next.head, next.face)
+      if (donor && donor.headAngle === next.head && variantFace(donor) === next.face) {
+        return { action: 'mix', part: 'head', donor }
+      }
     } else if (legChanged && sameLegSilhouette(current.leg, next.leg)) {
       const donor = findRiggedLegs(variants, next.leg)
       if (donor) return { action: 'mix', part: 'legs', donor }
     } else if (armChanged) {
-      const donor = findRiggedTorso(variants, next.arm)
+      const donor = findRiggedTorso(variants, next.arm, current.leg)
       if (donor) return { action: 'mix', part: 'torso', donor }
     }
   }
@@ -186,6 +216,7 @@ export function decidePoseApply(opts: {
     headAngle: next.head,
     legPose: next.leg,
     armPose: next.arm,
+    face: next.face,
   })
   if (exact) return { action: 'swap', variant: exact }
   return { action: 'generate' }
@@ -207,6 +238,12 @@ export function allLegPoses(variants: PoseVariant[]): LegPoseId[] {
 export function allArmPoses(variants: PoseVariant[]): ArmPoseId[] {
   const ids = new Set<ArmPoseId>()
   for (const v of variants) ids.add(variantArm(v))
+  return [...ids]
+}
+
+export function allFaceExpressions(variants: PoseVariant[]): FaceExpressionId[] {
+  const ids = new Set<FaceExpressionId>()
+  for (const v of variants) ids.add(variantFace(v))
   return [...ids]
 }
 

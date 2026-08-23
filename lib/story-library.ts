@@ -15,6 +15,7 @@ export interface StoryLibraryDoc {
   legPoseId?: string
   headAngleId?: string
   armPoseId?: string
+  faceExpressionId?: string
   rig?: CharacterRig
   createdAt: string
 }
@@ -66,6 +67,7 @@ export async function saveStoryAsset(
     legPoseId?: string
     headAngleId?: string
     armPoseId?: string
+    faceExpressionId?: string
     rig?: CharacterRig
   },
 ): Promise<StoryLibraryAsset> {
@@ -82,6 +84,7 @@ export async function saveStoryAsset(
     legPoseId: input.legPoseId,
     headAngleId: input.headAngleId,
     armPoseId: input.armPoseId,
+    faceExpressionId: input.faceExpressionId,
     rig,
     createdAt: new Date().toISOString(),
   }

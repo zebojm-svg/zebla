@@ -31,9 +31,11 @@ import {
 } from './story-cast'
 import {
   ARM_POSES,
+  FACE_EXPRESSIONS,
   HEAD_ANGLES,
   LEG_POSES,
   POSE_SETS,
+  PUPPET_KIT_COMBOS,
   characterBaseName,
   armPoseLabel,
   legPoseLabel,
@@ -41,10 +43,13 @@ import {
   poseSetCombos,
   poseSetCount,
   poseVariantLabel,
+  puppetMatrixCombos,
   type ArmPoseId,
+  type FaceExpressionId,
   type HeadAngleId,
   type LegPoseId,
   type PoseSetId,
+  type PuppetCombo,
 } from '../../shared/character-parts'
 import { StoryCharacterCard, StoryEnvironmentCard } from './StoryAssetCards'
 import { StoryStylePicker, loadStoryArtStyle, storyStyleLabel } from './StoryStylePicker'
@@ -73,6 +78,7 @@ type SessionCharacter = {
   legPose?: LegPoseId
   headAngle?: HeadAngleId
   armPose?: ArmPoseId
+  face?: FaceExpressionId
   rig?: CharacterRig
 }
 type SessionEnvironment = {
@@ -227,6 +233,7 @@ export function StoryPlayerPage() {
       legPose?: LegPoseId
       headAngle?: HeadAngleId
       armPose?: ArmPoseId
+      face?: FaceExpressionId
       rig?: CharacterRig
     }) => {
     const sitting = input.legPose?.startsWith('sitting')
@@ -307,6 +314,7 @@ export function StoryPlayerPage() {
     legPoseId?: LegPoseId
     headAngleId?: HeadAngleId
     armPoseId?: ArmPoseId
+    faceExpressionId?: FaceExpressionId
     rig?: CharacterRig
     key: string
   }) => {
@@ -322,6 +330,7 @@ export function StoryPlayerPage() {
         legPoseId: input.legPoseId,
         headAngleId: input.headAngleId,
         armPoseId: input.armPoseId,
+        faceExpressionId: input.faceExpressionId,
         rig: input.rig,
       })
       setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
@@ -365,11 +374,13 @@ export function StoryPlayerPage() {
             ...(item.headAngle ? [item.headAngle] : []),
             ...(item.legPose ? [item.legPose] : []),
             ...(item.armPose && item.armPose !== 'relaxed' ? [item.armPose] : []),
+            ...(item.face && item.face !== 'normal' ? [item.face] : []),
           ],
           styleId: item.styleId ?? artStyle,
           legPoseId: item.legPose,
           headAngleId: item.headAngle,
           armPoseId: item.armPose,
+          faceExpressionId: item.face,
           rig: item.rig,
         })
         setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
@@ -397,11 +408,13 @@ export function StoryPlayerPage() {
             ...(item.headAngle ? [item.headAngle] : []),
             ...(item.legPose ? [item.legPose] : []),
             ...(item.armPose && item.armPose !== 'relaxed' ? [item.armPose] : []),
+            ...(item.face && item.face !== 'normal' ? [item.face] : []),
           ],
           styleId: item.styleId ?? artStyle,
           legPoseId: item.legPose,
           headAngleId: item.headAngle,
           armPoseId: item.armPose,
+          faceExpressionId: item.face,
           rig: item.rig,
         })
         setLibraryAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
@@ -471,6 +484,7 @@ export function StoryPlayerPage() {
     head: HeadAngleId,
     leg: LegPoseId,
     arm: ArmPoseId,
+    face: FaceExpressionId = 'normal',
   ) => {
     const member = getCastMember(cast, id)
     if (!member) return
@@ -479,7 +493,7 @@ export function StoryPlayerPage() {
     if (!name || !description) return
     setGeneratingDockPose(true)
     setCharacterError('')
-    setPoseBatchProgress(`${poseVariantLabel(head, leg, arm)} …`)
+    setPoseBatchProgress(`${poseVariantLabel(head, leg, arm, face)} …`)
     try {
       const refUrl = pickIdentityReference(name, libraryCharacters, generatedCharacters) ?? member.imageUrl
       const result = await api.story.generateCharacter(
@@ -490,15 +504,17 @@ export function StoryPlayerPage() {
         head,
         arm,
         refUrl,
+        face,
       )
       const created: SessionCharacter = {
-        name: `${name} · ${poseVariantLabel(head, leg, arm)}`,
+        name: `${name} · ${poseVariantLabel(head, leg, arm, face)}`,
         imageUrl: result.imageUrl,
         description,
         styleId: result.styleId as StoryArtStyleId,
         legPose: leg,
         headAngle: head,
         armPose: arm,
+        face,
         rig: result.rig,
       }
       setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
@@ -506,6 +522,7 @@ export function StoryPlayerPage() {
         imageUrl: result.imageUrl,
         assetName: created.name,
         headAngle: head,
+        face,
         legPose: leg,
         armPose: arm,
         rig: result.rig,
@@ -516,7 +533,7 @@ export function StoryPlayerPage() {
         mixed = applied.mixed
         return applied.cast
       })
-      setSceneNotice(generatedPoseNotice(name, mixed, Boolean(result.rig), poseVariantLabel(head, leg, arm)))
+      setSceneNotice(generatedPoseNotice(name, mixed, Boolean(result.rig), poseVariantLabel(head, leg, arm, face)))
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Pose konnte nicht erzeugt werden.')
     } finally {
@@ -671,6 +688,85 @@ export function StoryPlayerPage() {
     }
   }
 
+  const handleGeneratePuppetKit = async (mode: 'kit' | 'matrix') => {
+    let name = characterName.trim()
+    let description = characterDescription.trim()
+    if (!name) {
+      name = 'Lucien'
+      applyCharacterName('Lucien')
+    }
+    if (!description) {
+      description = descriptionForCharacterName(name) ?? ''
+      if (description) setCharacterDescription(description)
+    }
+    if (!name || !description) return
+    const combos: PuppetCombo[] = mode === 'kit' ? PUPPET_KIT_COMBOS : puppetMatrixCombos()
+    setGeneratingPoseBatch(true)
+    setCharacterError('')
+    setPoseBatchProgress(`0 / ${combos.length}`)
+    const created: SessionCharacter[] = []
+    let refUrl = pickIdentityReference(name, libraryCharacters, generatedCharacters)
+    try {
+      for (let i = 0; i < combos.length; i++) {
+        const { head, leg, arm, face } = combos[i]
+        setPoseBatchProgress(`${i + 1} / ${combos.length} · ${poseVariantLabel(head, leg, arm, face)}`)
+        const result = await api.story.generateCharacter(
+          name,
+          description,
+          artStyle,
+          leg,
+          head,
+          arm,
+          refUrl,
+          face,
+        )
+        if (!refUrl) refUrl = result.imageUrl
+        created.push({
+          name: `${name} · ${poseVariantLabel(head, leg, arm, face)}`,
+          imageUrl: result.imageUrl,
+          description,
+          styleId: result.styleId as StoryArtStyleId,
+          legPose: leg,
+          headAngle: head,
+          armPose: arm,
+          face,
+          rig: result.rig,
+        })
+      }
+      setGeneratedCharacters((prev) => [...created, ...prev].slice(0, 56))
+      const hero =
+        created.find(
+          (c) =>
+            c.headAngle === 'front' &&
+            c.legPose === 'standing' &&
+            (c.armPose ?? 'relaxed') === 'relaxed' &&
+            (c.face ?? 'normal') === 'normal',
+        ) ?? created[0]
+      if (hero) {
+        handlePlaceCharacter({
+          imageUrl: hero.imageUrl,
+          assetName: hero.name,
+          displayName: name,
+          legPose: hero.legPose,
+          headAngle: hero.headAngle,
+          armPose: hero.armPose,
+          face: hero.face,
+          rig: hero.rig,
+        })
+      }
+      setSceneNotice(
+        mode === 'kit'
+          ? `${name}: ${created.length} Teile gezeichnet. Jetzt Räder drehen — Überrascht oder Winken wird aufgesetzt, nicht neu gemalt, wenn das Teil schon da ist.`
+          : `${name}: ${created.length} ganze Kombis gezeichnet (zum Vergleich). Der Baukasten braucht nur 8.`,
+      )
+    } catch (err) {
+      setCharacterError(err instanceof Error ? err.message : 'Baukasten fehlgeschlagen.')
+    } finally {
+      setGeneratingPoseBatch(false)
+      setPoseBatchProgress('')
+    }
+  }
+
   const handleGenerateEnvironment = async () => {
     const name = environmentName.trim()
     const description = environmentDescription.trim()
@@ -772,6 +868,7 @@ export function StoryPlayerPage() {
                     legPose: parsed.variant.legPose,
                     headAngle: parsed.variant.headAngle,
                     armPose: parsed.variant.armPose,
+                    face: parsed.variant.face,
                     rig: parsed.variant.rig,
                   })
                 } catch {
@@ -847,6 +944,7 @@ export function StoryPlayerPage() {
                   legPose: variant.legPose,
                   headAngle: variant.headAngle,
                   armPose: variant.armPose,
+                  face: variant.face,
                   rig: variant.rig,
                 })
               }
@@ -887,8 +985,8 @@ export function StoryPlayerPage() {
                 })
               }
               onRename={(id, name) => setCast((prev) => updateCastName(prev, id, name))}
-              onGeneratePose={(id, head, leg, arm) =>
-                void handleGenerateDockPose(id, head, leg, arm)
+              onGeneratePose={(id, head, leg, arm, face) =>
+                void handleGenerateDockPose(id, head, leg, arm, face)
               }
               generatingPose={generatingDockPose}
               buildingRig={buildingRig}
@@ -979,6 +1077,7 @@ export function StoryPlayerPage() {
                               legPose: identity.preview.legPose,
                               headAngle: identity.preview.headAngle,
                               armPose: identity.preview.armPose,
+                              face: identity.preview.face,
                               rig: identity.preview.rig,
                             })
                           }
@@ -1107,6 +1206,7 @@ export function StoryPlayerPage() {
                               legPose: identity.preview.legPose,
                               headAngle: identity.preview.headAngle,
                               armPose: identity.preview.armPose,
+                              face: identity.preview.face,
                               rig: identity.preview.rig,
                             })
                           }
@@ -1196,6 +1296,40 @@ export function StoryPlayerPage() {
             {generatingPoseBatch && (
               <p className="muted">Dauert ein paar Minuten — bitte Fenster offen lassen.</p>
             )}
+          </section>
+
+          <section className="story-generate-panel">
+            <h3>Baukasten an einer Figur</h3>
+            <p className="muted">
+              Lucien braucht <strong>nicht 16 ganze Bilder</strong>. Hals und Hüfte sind Gelenke:
+              8 Zeichnungen (je zwei Beine, Arme, Köpfe, Mimiken) ergeben 16 Looks, wenn die Teile
+              zusammenpassen. Sitzen und Stehen bleiben zwei Körper — die Hüfte sitzt anders.
+            </p>
+            <p className="muted">
+              Name oben = wer gezeichnet wird (leer = Lucien). Nach dem Baukasten steht er in der Szene.
+              Dann Räder drehen: Überrascht auf dem sitzenden Körper ist kein extra Bild — der Kopf
+              wird am Hals aufgesetzt.
+            </p>
+            <div className="story-character-form">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={generatingCharacter || generatingPoseBatch}
+                onClick={() => void handleGeneratePuppetKit('kit')}
+              >
+                {generatingPoseBatch
+                  ? `Zeichne Baukasten … ${poseBatchProgress}`
+                  : `Baukasten zeichnen (${PUPPET_KIT_COMBOS.length} Bilder)`}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={generatingCharacter || generatingPoseBatch}
+                onClick={() => void handleGeneratePuppetKit('matrix')}
+              >
+                Alle 16 Kombis extra (teuer, zum Vergleich)
+              </button>
+            </div>
           </section>
 
           <section className="story-generate-panel">
@@ -1302,6 +1436,7 @@ export function StoryPlayerPage() {
             <p className="muted">
               Volle Matrix: {poseMatrixSize().heads} × {poseMatrixSize().legs} × {poseMatrixSize().arms} ={' '}
               {poseMatrixSize().total} Bilder — nicht auf einmal erzeugen, nur per Button was du brauchst.
+              Mimik (Normal / Überrascht) sitzt am Kopf: {FACE_EXPRESSIONS.map((f) => f.label).join(' / ')}.
             </p>
             <div className="story-pose-grid">
               <div>
@@ -1309,6 +1444,14 @@ export function StoryPlayerPage() {
                 <ul className="story-pose-list">
                   {HEAD_ANGLES.map((h) => (
                     <li key={h.id}>{h.label}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="story-library-heading">Mimik</h4>
+                <ul className="story-pose-list">
+                  {FACE_EXPRESSIONS.map((f) => (
+                    <li key={f.id}>{f.label}</li>
                   ))}
                 </ul>
               </div>

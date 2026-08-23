@@ -1,7 +1,12 @@
 /** Figur in der aktuellen Szene — displayName ist der Sprechername im Storyboard */
 
-import type { ArmPoseId, HeadAngleId, LegPoseId } from '../../shared/character-parts'
-import { characterBaseName, normalizeArmPoseId, sameLegSilhouette } from '../../shared/character-parts'
+import type { ArmPoseId, FaceExpressionId, HeadAngleId, LegPoseId } from '../../shared/character-parts'
+import {
+  characterBaseName,
+  normalizeArmPoseId,
+  normalizeFaceExpressionId,
+  sameLegSilhouette,
+} from '../../shared/character-parts'
 import {
   clampHeadTwist,
   isCharacterRig,
@@ -44,6 +49,7 @@ export interface SceneCastMember {
   headAngle?: HeadAngleId
   legPose?: LegPoseId
   armPose?: ArmPoseId
+  face?: FaceExpressionId
   /** Kopf / Rumpf / Beine — fehlt bei älteren Ganzkörper-Bildern */
   rig?: CharacterRig
   /** Kopf am Hals drehen (Grad), ohne neues Bild */
@@ -170,6 +176,7 @@ export function addCastMember(
     legPose?: LegPoseId
     headAngle?: HeadAngleId
     armPose?: ArmPoseId
+    face?: FaceExpressionId
     rig?: CharacterRig
   },
 ): { cast: SceneCast; id: string | null } {
@@ -189,6 +196,7 @@ export function addCastMember(
     legPose: input.legPose,
     headAngle: input.headAngle ?? 'front',
     armPose: input.armPose ?? 'relaxed',
+    face: normalizeFaceExpressionId(input.face),
     rig: isCharacterRig(input.rig) ? input.rig : undefined,
     headTwist: 0,
   }
@@ -222,6 +230,7 @@ export function swapCastVariant(
     headAngle?: HeadAngleId
     legPose?: LegPoseId
     armPose?: ArmPoseId
+    face?: FaceExpressionId
     rig?: CharacterRig
   },
 ): SceneCast {
@@ -233,6 +242,7 @@ export function swapCastVariant(
     headAngle: input.headAngle ?? member.headAngle,
     legPose: input.legPose ?? member.legPose,
     armPose: input.armPose ?? member.armPose,
+    face: input.face ?? member.face,
     rig: isCharacterRig(input.rig) ? input.rig : undefined,
   }))
 }
@@ -243,13 +253,14 @@ export type MixedCastPart = 'head' | 'torso' | 'legs'
 export function mixCastHead(
   cast: SceneCast,
   id: string,
-  headSource: { headAngle?: HeadAngleId; rig?: CharacterRig },
+  headSource: { headAngle?: HeadAngleId; face?: FaceExpressionId; rig?: CharacterRig },
 ): SceneCast {
   return withMember(cast, id, (member) => {
     if (!member.rig || !headSource.rig) return member
     return {
       ...member,
       headAngle: headSource.headAngle ?? member.headAngle,
+      face: headSource.face ?? member.face,
       rig: {
         ...member.rig,
         parts: {
@@ -313,6 +324,7 @@ function mixPart(
   part: MixedCastPart,
   source: {
     headAngle?: HeadAngleId
+    face?: FaceExpressionId
     legPose?: LegPoseId
     armPose?: ArmPoseId
     rig?: CharacterRig
@@ -334,6 +346,7 @@ export function applyGeneratedPose(
     imageUrl: string
     assetName: string
     headAngle: HeadAngleId
+    face?: FaceExpressionId
     legPose: LegPoseId
     armPose: ArmPoseId
     rig?: CharacterRig
@@ -345,15 +358,17 @@ export function applyGeneratedPose(
   const currentHead = member.headAngle ?? 'front'
   const currentLeg = member.legPose ?? 'standing'
   const currentArm = normalizeArmPoseId(member.armPose)
-  const headChanged = generated.headAngle !== currentHead
+  const currentFace = normalizeFaceExpressionId(member.face)
+  const generatedFace = normalizeFaceExpressionId(generated.face)
+  const headPartChanged = generated.headAngle !== currentHead || generatedFace !== currentFace
   const legChanged = generated.legPose !== currentLeg
   const armChanged = generated.armPose !== currentArm
-  const changed = [headChanged, legChanged, armChanged].filter(Boolean).length
+  const changed = [headPartChanged, legChanged, armChanged].filter(Boolean).length
   const canMix = Boolean(member.rig && isCharacterRig(generated.rig))
 
   let mixed: MixedCastPart | null = null
   if (canMix && changed === 1) {
-    if (headChanged) mixed = 'head'
+    if (headPartChanged) mixed = 'head'
     else if (armChanged) mixed = 'torso'
     else if (legChanged && sameLegSilhouette(currentLeg, generated.legPose)) mixed = 'legs'
   }
