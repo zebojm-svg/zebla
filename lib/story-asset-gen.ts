@@ -17,7 +17,11 @@ import {
   STORY_CHARACTER_MASK_PROMPT,
 } from '../shared/story-character-looks.js'
 import type { CharacterRig } from '../shared/character-rig.js'
-import { applyPersonMask, punchCutoutPng, splitCharacterRigPng } from './story-image-processing.js'
+import { applyPersonMask, pngHasUsefulAlpha, punchCutoutPng, splitCharacterRigPng } from './story-image-processing.js'
+import {
+  geminiImageModelCandidates,
+  isGeminiImageUnavailable,
+} from './gemini-image-model.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -51,10 +55,7 @@ async function googleApiPost(url: string, body: object, timeoutMs = 50_000): Pro
   }
 }
 
-const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL
-  ?.replace('gemini-2.5-flash-preview-image', 'gemini-2.5-flash-image')
-  .replace(/^models\//, '')
-  ?? 'gemini-2.5-flash-image'
+const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
 
 type GeminiImageResponse = {
   candidates?: Array<{
@@ -63,21 +64,16 @@ type GeminiImageResponse = {
   error?: { message?: string }
 }
 
-function extractGeminiImage(data: GeminiImageResponse, fallback: string): Buffer {
+function extractGeminiImage(data: GeminiImageResponse, fallback: string, model: string): Buffer {
   if (data.error?.message) {
     const msg = data.error.message
-    if (msg.includes('is not found') || msg.includes('not supported')) {
-      throw new Error(
-        'Bildmodell nicht verfügbar. Bitte GEMINI_IMAGE_MODEL auf gemini-2.5-flash-image setzen.',
-      )
-    }
-    throw new Error(`Gemini: ${msg}`)
+    throw new Error(`Gemini (${model}): ${msg}`)
   }
   const parts = data.candidates?.[0]?.content?.parts ?? []
   const imgPart = parts.find((p) => p.inlineData?.data)
   if (!imgPart?.inlineData?.data) {
     const textPart = parts.find((p) => p.text)
-    throw new Error(textPart?.text ?? fallback)
+    throw new Error(textPart?.text ?? `${fallback} (Modell: ${model})`)
   }
   return Buffer.from(imgPart.inlineData.data, 'base64')
 }
@@ -89,22 +85,33 @@ async function generateGeminiPng(
   timeoutMs: number,
   fallback: string,
 ): Promise<Buffer> {
-  const res = await googleApiPost(
-    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
-    {
-      contents: [{ parts }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: { aspectRatio },
-      },
-    },
-    timeoutMs,
-  )
-  const data = (await res.json()) as GeminiImageResponse
-  return extractGeminiImage(data, fallback)
+  let lastError = fallback
+  for (const model of IMAGE_MODEL_CANDIDATES) {
+    try {
+      const res = await googleApiPost(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          contents: [{ parts }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            imageConfig: { aspectRatio },
+          },
+        },
+        timeoutMs,
+      )
+      const data = (await res.json()) as GeminiImageResponse
+      return extractGeminiImage(data, fallback, model)
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : fallback
+      if (isGeminiImageUnavailable(lastError)) continue
+      throw err
+    }
+  }
+  throw new Error(lastError)
 }
 
 async function cutOutWithPersonMask(apiKey: string, colorPng: Buffer): Promise<Buffer> {
+  if (await pngHasUsefulAlpha(colorPng)) return colorPng
   try {
     const maskPng = await generateGeminiPng(
       apiKey,
@@ -131,42 +138,13 @@ export async function generateStoryScene(
   const style = getStoryStylePrompt(styleId)
   const prompt = `${style}\n\nScene: ${description}`
 
-  const res = await googleApiPost(
-    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
-    {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: { aspectRatio },
-      },
-    },
+  const buffer = await generateGeminiPng(
+    apiKey,
+    [{ text: prompt }],
+    aspectRatio,
+    50_000,
+    'Kein Bild generiert.',
   )
-
-  const data = (await res.json()) as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }
-    }>
-    error?: { message?: string }
-  }
-
-  if (data.error?.message) {
-    const msg = data.error.message
-    if (msg.includes('is not found') || msg.includes('not supported')) {
-      throw new Error(
-        'Bildmodell nicht verfügbar. Bitte GEMINI_IMAGE_MODEL auf gemini-2.5-flash-image setzen.',
-      )
-    }
-    throw new Error(`Gemini: ${msg}`)
-  }
-
-  const parts = data.candidates?.[0]?.content?.parts ?? []
-  const imgPart = parts.find((p) => p.inlineData?.data)
-  if (!imgPart?.inlineData) {
-    const textPart = parts.find((p) => p.text)
-    throw new Error(textPart?.text ?? `Kein Bild generiert. Model: ${IMAGE_MODEL}`)
-  }
-
-  const buffer = Buffer.from(imgPart.inlineData.data, 'base64')
   const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const imageUrl = await uploadStoryAsset(buffer, `story-scenes/${unique}.png`)
 
@@ -203,7 +181,7 @@ export async function generateStoryCharacter(
   const armHint = armPoseId ? armPosePrompt(armPoseId) : armPosePrompt('relaxed')
   const faceHint = faceExpressionId ? faceExpressionPrompt(faceExpressionId) : faceExpressionPrompt('normal')
   const identityRule = referenceImageUrl
-    ? 'IDENTITY BIBLE: The attached photo is this exact person. Copy face, haircut, hair color, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only the pose changes.\n'
+    ? 'The FIRST attached image is the identity photo of THIS EXACT PERSON. Copy face, haircut, hair color, glasses, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only pose, camera angle and facial expression change.\n'
     : ''
   const prompt =
     `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
@@ -214,13 +192,14 @@ export async function generateStoryCharacter(
     `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
     `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people. Same identity as the reference if attached.`
 
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [{ text: prompt }]
+  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
   if (referenceImageUrl) {
     const ref = await fetchPngBuffer(referenceImageUrl)
     if (ref) {
       parts.push({ inlineData: { mimeType: 'image/png', data: ref.toString('base64') } })
     }
   }
+  parts.push({ text: prompt })
 
   const colorPng = await generateGeminiPng(
     apiKey,
@@ -232,7 +211,7 @@ export async function generateStoryCharacter(
   const cutout = await cutOutWithPersonMask(apiKey, colorPng)
   const slug = name.toLowerCase().replace(/\s+/g, '-')
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const punched = await punchCutoutPng(cutout)
+  const punched = (await pngHasUsefulAlpha(cutout)) ? cutout : await punchCutoutPng(cutout)
   const [imageUrl2, built] = await Promise.all([
     uploadStoryAsset(punched, `story-characters/${slug}-${unique2}.png`),
     buildCharacterRig(punched, slug, unique2).catch(() => undefined),
@@ -287,31 +266,13 @@ export async function generateStoryEnvironment(
   const style = getStoryStylePrompt(styleId)
   const prompt = `${style}\n\nEmpty room/environment with NO people, NO characters, NO faces, NO mannequins, NO silhouettes sitting on furniture. Show only the space, furniture, objects, lighting:\n${description}\nLocation: ${name}\nIMPORTANT: Absolutely NO people or characters. Just the empty space ready for characters to be placed in.`
 
-  const res = await googleApiPost(
-    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
-    {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: { aspectRatio: '16:9' },
-      },
-    },
+  const buffer3 = await generateGeminiPng(
+    apiKey,
+    [{ text: prompt }],
+    '16:9',
+    50_000,
+    'Kein Bild generiert.',
   )
-
-  const data = (await res.json()) as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }
-    }>
-  }
-
-  const parts3 = data.candidates?.[0]?.content?.parts ?? []
-  const imgPart3 = parts3.find((p) => p.inlineData?.data)
-  if (!imgPart3?.inlineData) {
-    const textPart = parts3.find((p) => p.text)
-    throw new Error(textPart?.text ?? 'Kein Bild generiert.')
-  }
-
-  const buffer3 = Buffer.from(imgPart3.inlineData.data, 'base64')
   const unique3 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const imageUrl3 = await uploadStoryAsset(buffer3, `story-environments/${name.toLowerCase().replace(/\s+/g, '-')}-${unique3}.png`)
 

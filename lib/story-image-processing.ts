@@ -2,6 +2,18 @@ import sharp from 'sharp'
 import { applyLuminanceMask, isSilhouetteMask, punchStudioBackdrop } from '../shared/image-person-matte.js'
 import { splitRigFromPixels, type CharacterRig } from '../shared/character-rig.js'
 
+/** True, wenn das PNG schon wirklich freigestellt ist (wie Gemini-App-Export). */
+export async function pngHasUsefulAlpha(png: Buffer): Promise<boolean> {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const pixels = new Uint8Array(data)
+  const count = info.width * info.height
+  let clear = 0
+  for (let i = 0; i < count; i++) {
+    if (pixels[i * 4 + 3]! < 24) clear++
+  }
+  return clear > count * 0.12
+}
+
 /** Farbbild + gleich große Maske → transparentes PNG. Nicht beschneiden (Füße!). */
 export async function applyPersonMask(colorPng: Buffer, maskPng: Buffer): Promise<Buffer> {
   const color = await sharp(colorPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })

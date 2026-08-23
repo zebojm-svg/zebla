@@ -27,14 +27,14 @@ export const STORY_CHARACTER_LOOKS: StoryCharacterLook[] = [
     hintDe: 'Grüner Hoodie, Scheitel',
     description: JULIEN_DESC,
     identityLock:
-      'This is JULIEN: about 15, life-like French teen (not a toddler), chestnut-brown hair with a middle part, brown eyes, wide friendly smile, saturated green pullover hoodie (NO printed text or logos), blue jeans, green flat sneakers. He must not look like Lucien. If a reference photo is attached, copy that photo exactly and only change the pose.',
+      'This is JULIEN: about 15, life-like French teen (not a toddler), chestnut-brown hair with a middle part, brown eyes, wide friendly smile, saturated green pullover hoodie (NO printed text or logos), blue jeans, green flat sneakers. He must not look like Lucien. If a reference photo is attached: THIS EXACT PERSON — same face, hair, clothes, shoes. Only pose and expression change.',
   },
   {
     name: 'Lucien',
     hintDe: 'Locken, Brille, senfgelb',
     description: LUCIEN_DESC,
     identityLock:
-      'This is LUCIEN: about 15, life-like French teen, DISTINCT from Julien, NOT twins. Dark curly brown-black hair, round eyeglasses, hazel-green eyes, mustard-yellow cardigan over a navy polo, charcoal grey trousers, brown sneakers. NEVER a green hoodie, NEVER the same haircut or outfit as Julien. If a reference photo is attached, copy that photo exactly and only change the pose.',
+      'This is LUCIEN: about 15, life-like French teen, DISTINCT from Julien, NOT twins. Dark curly brown-black hair, round eyeglasses, hazel-green eyes, mustard-yellow cardigan over a navy polo, charcoal grey trousers, brown sneakers. NEVER a green hoodie, NEVER the same haircut or outfit as Julien. If a reference photo is attached: THIS EXACT PERSON — same face, hair, glasses, clothes, shoes. Only pose and expression change.',
   },
   {
     name: 'Guillaume',
@@ -42,7 +42,7 @@ export const STORY_CHARACTER_LOOKS: StoryCharacterLook[] = [
     description:
       '15-year-old boy, sandy-blond hair with a clear middle part and curtain bangs, blue-grey eyes, friendly smile, plain bright red crew-neck t-shirt with no text or logos, medium-wash blue jeans, white canvas sneakers with white laces and a thin black stripe on the rubber sole',
     identityLock:
-      'This is GUILLAUME: about 15, the SAME boy every time — one identity, never a redesign. Sandy-blond hair with a middle part and curtain bangs (never dark brown, never a different cut). Blue-grey eyes. Plain bright red crew-neck t-shirt (no text). Medium-wash blue jeans. ALWAYS white canvas sneakers with white laces and a thin black stripe on the sole — never red shoes, never green shoes, never a different model. Same face, same hair, same clothes in every pose. If a reference photo is attached, copy that photo exactly and only change the pose.',
+      'This is GUILLAUME: about 15, the SAME boy every time — one identity, never a redesign. Sandy-blond hair with a middle part and curtain bangs (never dark brown, never a different cut). Blue-grey eyes. Plain bright red crew-neck t-shirt (no text). Medium-wash blue jeans. ALWAYS white canvas sneakers with white laces and a thin black stripe on the sole — never red shoes, never green shoes, never a different model. Same face, same hair, same clothes in every pose. If a reference photo is attached: THIS EXACT PERSON. Only pose and expression change.',
   },
   {
     name: 'Marc',
@@ -84,9 +84,10 @@ export const STORY_CHARACTER_ANATOMY_PROMPT =
 export const STORY_CHARACTER_FRAMING_PROMPT =
   'Vertical full-body character. Entire figure from hair to shoe soles is inside the picture with empty studio margin on all sides, especially under the feet.'
 
-/** Neutraler Studiohintergrund — Freistellen passiert danach über eine Personen-Maske, nicht über eine Key-Farbe. */
+/** Freisteller wie in der Gemini-App: echte Transparenz, kein Studio, kein Schachbrett gemalt. */
 export const STORY_CHARACTER_CUTOUT_PROMPT =
-  'Single character on a plain even light-gray studio backdrop (#D0D0D0) only. No floor, no shadow, no furniture, no other people. ' +
+  'Isolated full-body character sprite on a TRUE TRANSPARENT background (PNG alpha). ' +
+  'Do NOT draw a checkerboard. Do NOT draw a studio wall, floor, shadow, furniture or other people. ' +
   'Clothes, hair, skin and shoes keep their real colors (red shirts stay red, white sneakers stay white).'
 
 export const STORY_CHARACTER_MASK_PROMPT =
