@@ -34,13 +34,11 @@ import {
   beatsToSpeakerPortraits,
 } from './visual-script.js'
 import type { DialogVisualScript } from '../shared/types.js'
+import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
-const IMAGE_MODEL =
-  process.env.GEMINI_IMAGE_MODEL?.replace(
-    'gemini-2.5-flash-preview-image',
-    'gemini-2.5-flash-image',
-  ) ?? 'gemini-2.5-flash-image'
+const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
+const IMAGE_MODEL = IMAGE_MODEL_CANDIDATES[0] ?? 'gemini-3.1-flash-image'
 
 async function googleApiPost(url: string, body: object, timeoutMs = 45_000): Promise<Response> {
   const controller = new AbortController()
@@ -436,29 +434,38 @@ async function generateImageWithGemini(
   }
   parts.push({ text: prompt })
 
-  const res = await googleApiPost(
-    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`,
-    {
-      contents: [{ parts }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-        imageConfig: { aspectRatio: IMAGE_ASPECT_RATIO },
-      },
-    },
-  )
-
-  const data = (await res.json()) as {
-    candidates?: {
-      content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }
-    }[]
-    error?: { message?: string }
+  let lastError = 'Kein Bild generiert.'
+  for (const model of IMAGE_MODEL_CANDIDATES) {
+    try {
+      const res = await googleApiPost(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          contents: [{ parts }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            imageConfig: { aspectRatio: IMAGE_ASPECT_RATIO },
+          },
+        },
+      )
+      const data = (await res.json()) as {
+        candidates?: {
+          content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }
+        }[]
+        error?: { message?: string }
+      }
+      if (data.error?.message) throw new Error(data.error.message)
+      const inlineData = data.candidates?.[0]?.content?.parts?.find(
+        (part) => part.inlineData?.data,
+      )?.inlineData
+      if (!inlineData?.data) throw new Error('Kein Bild generiert.')
+      return `data:${inlineData.mimeType ?? 'image/png'};base64,${inlineData.data}`
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : lastError
+      if (isGeminiImageUnavailable(lastError)) continue
+      throw err
+    }
   }
-  if (data.error?.message) throw new Error(data.error.message)
-  const inlineData = data.candidates?.[0]?.content?.parts?.find(
-    (part) => part.inlineData?.data,
-  )?.inlineData
-  if (!inlineData?.data) throw new Error('Kein Bild generiert.')
-  return `data:${inlineData.mimeType ?? 'image/png'};base64,${inlineData.data}`
+  throw new Error(lastError)
 }
 
 function parseRetryHint(raw: string): string {
@@ -490,7 +497,7 @@ function imageGenerationErrorMessage(raw: string): string {
     return 'Imagen ist nur mit kostenpflichtigem Google-AI-Konto verfügbar. Entferne GEMINI_IMAGE_MODEL in Vercel oder setze gemini-2.5-flash-image.'
   }
   if (raw.includes('is not found') || raw.includes('NOT_FOUND')) {
-    return `Bildmodell „${IMAGE_MODEL}“ ist nicht verfügbar. Setze GEMINI_IMAGE_MODEL auf gemini-2.5-flash-image.`
+    return `Bildmodell nicht verfügbar. Wir versuchen automatisch ein neueres Gemini-Bildmodell, sonst das bewährte. Prüfe GEMINI_IMAGE_MODEL in Vercel.`
   }
   return `Bildgenerierung fehlgeschlagen: ${raw.slice(0, 280)}`
 }
