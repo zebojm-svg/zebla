@@ -1,7 +1,7 @@
 /** Figur in der aktuellen Szene — displayName ist der Sprechername im Storyboard */
 
 import type { ArmPoseId, HeadAngleId, LegPoseId } from '../../shared/character-parts'
-import { characterBaseName } from '../../shared/character-parts'
+import { characterBaseName, normalizeArmPoseId, sameLegSilhouette } from '../../shared/character-parts'
 import {
   clampHeadTwist,
   isCharacterRig,
@@ -237,6 +237,8 @@ export function swapCastVariant(
   }))
 }
 
+export type MixedCastPart = 'head' | 'torso' | 'legs'
+
 /** Nur den Kopf tauschen, Rumpf und Beine behalten — Gelenk am Hals. */
 export function mixCastHead(
   cast: SceneCast,
@@ -249,6 +251,7 @@ export function mixCastHead(
       ...member,
       headAngle: headSource.headAngle ?? member.headAngle,
       rig: {
+        ...member.rig,
         parts: {
           ...member.rig.parts,
           head: headSource.rig.parts.head,
@@ -258,6 +261,108 @@ export function mixCastHead(
       },
     }
   })
+}
+
+/** Nur die Beine tauschen, Kopf und Rumpf behalten — Hüfte bleibt. */
+export function mixCastLegs(
+  cast: SceneCast,
+  id: string,
+  legSource: { legPose?: LegPoseId; rig?: CharacterRig },
+): SceneCast {
+  return withMember(cast, id, (member) => {
+    if (!member.rig || !legSource.rig) return member
+    return {
+      ...member,
+      legPose: legSource.legPose ?? member.legPose,
+      rig: {
+        ...member.rig,
+        parts: {
+          ...member.rig.parts,
+          legs: legSource.rig.parts.legs,
+        },
+      },
+    }
+  })
+}
+
+/** Nur den Rumpf (Arme sitzen dort) tauschen, Kopf und Beine behalten. */
+export function mixCastTorso(
+  cast: SceneCast,
+  id: string,
+  torsoSource: { armPose?: ArmPoseId; rig?: CharacterRig },
+): SceneCast {
+  return withMember(cast, id, (member) => {
+    if (!member.rig || !torsoSource.rig) return member
+    return {
+      ...member,
+      armPose: torsoSource.armPose ?? member.armPose,
+      rig: {
+        ...member.rig,
+        parts: {
+          ...member.rig.parts,
+          torso: torsoSource.rig.parts.torso,
+        },
+      },
+    }
+  })
+}
+
+function mixPart(
+  cast: SceneCast,
+  id: string,
+  part: MixedCastPart,
+  source: {
+    headAngle?: HeadAngleId
+    legPose?: LegPoseId
+    armPose?: ArmPoseId
+    rig?: CharacterRig
+  },
+): SceneCast {
+  if (part === 'head') return mixCastHead(cast, id, source)
+  if (part === 'legs') return mixCastLegs(cast, id, source)
+  return mixCastTorso(cast, id, source)
+}
+
+/**
+ * Nach einer neuen Zeichnung: immer die Ganzkörper-Variante merken (Aufrufer),
+ * hier nur das geänderte Teil auf die aktuelle Figur setzen — sonst ganz tauschen.
+ */
+export function applyGeneratedPose(
+  cast: SceneCast,
+  id: string,
+  generated: {
+    imageUrl: string
+    assetName: string
+    headAngle: HeadAngleId
+    legPose: LegPoseId
+    armPose: ArmPoseId
+    rig?: CharacterRig
+  },
+): { cast: SceneCast; mixed: MixedCastPart | null } {
+  const member = getCastMember(cast, id)
+  if (!member) return { cast, mixed: null }
+
+  const currentHead = member.headAngle ?? 'front'
+  const currentLeg = member.legPose ?? 'standing'
+  const currentArm = normalizeArmPoseId(member.armPose)
+  const headChanged = generated.headAngle !== currentHead
+  const legChanged = generated.legPose !== currentLeg
+  const armChanged = generated.armPose !== currentArm
+  const changed = [headChanged, legChanged, armChanged].filter(Boolean).length
+  const canMix = Boolean(member.rig && isCharacterRig(generated.rig))
+
+  let mixed: MixedCastPart | null = null
+  if (canMix && changed === 1) {
+    if (headChanged) mixed = 'head'
+    else if (armChanged) mixed = 'torso'
+    else if (legChanged && sameLegSilhouette(currentLeg, generated.legPose)) mixed = 'legs'
+  }
+
+  if (mixed) return { cast: mixPart(cast, id, mixed, generated), mixed }
+
+  let next = swapCastVariant(cast, id, generated)
+  next = updateCastPose(next, id, generated.legPose.startsWith('sitting') ? 'sitting-sofa' : 'standing')
+  return { cast: next, mixed: null }
 }
 
 export function updateCastHeadTwist(cast: SceneCast, id: string, headTwist: number): SceneCast {

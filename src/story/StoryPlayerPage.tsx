@@ -18,7 +18,11 @@ import {
   nudgeCastTransform,
   swapCastVariant,
   mixCastHead,
+  mixCastLegs,
+  mixCastTorso,
+  applyGeneratedPose,
   updateCastHeadTwist,
+  type MixedCastPart,
   applyCastRig,
   castLayerId,
   memberIdFromLayerId,
@@ -79,6 +83,25 @@ type SessionEnvironment = {
 
 const CANVAS_W = 1280
 const CANVAS_H = 720
+
+function mixedPartNotice(part: MixedCastPart): string {
+  if (part === 'head') return 'Kopf aufgesetzt — Rumpf und Beine bleiben.'
+  if (part === 'legs') return 'Beine aufgesetzt — Kopf und Rumpf bleiben.'
+  return 'Arme aufgesetzt — Kopf und Beine bleiben.'
+}
+
+function generatedPoseNotice(
+  name: string,
+  mixed: MixedCastPart | null,
+  hasRig: boolean,
+  label: string,
+): string {
+  if (mixed === 'head') return `${name}: Kopf gezeichnet und aufgesetzt — Rumpf und Beine bleiben.`
+  if (mixed === 'legs') return `${name}: Beine gezeichnet und aufgesetzt — Kopf und Rumpf bleiben.`
+  if (mixed === 'torso') return `${name}: Arme gezeichnet und aufgesetzt — Kopf und Beine bleiben.`
+  if (hasRig) return `${name}: ${label} erzeugt — Skelett aktiv.`
+  return `${name}: ${label} erzeugt.`
+}
 
 const PARK_BACKGROUND: EnvironmentPick = {
   key: 'park-demo',
@@ -479,23 +502,21 @@ export function StoryPlayerPage() {
         rig: result.rig,
       }
       setGeneratedCharacters((prev) => [created, ...prev].slice(0, 56))
+      const generated = {
+        imageUrl: result.imageUrl,
+        assetName: created.name,
+        headAngle: head,
+        legPose: leg,
+        armPose: arm,
+        rig: result.rig,
+      }
+      let mixed: MixedCastPart | null = null
       setCast((prev) => {
-        let next = swapCastVariant(prev, id, {
-          imageUrl: result.imageUrl,
-          assetName: created.name,
-          headAngle: head,
-          legPose: leg,
-          armPose: arm,
-          rig: result.rig,
-        })
-        next = updateCastPose(next, id, leg.startsWith('sitting') ? 'sitting-sofa' : 'standing')
-        return next
+        const applied = applyGeneratedPose(prev, id, generated)
+        mixed = applied.mixed
+        return applied.cast
       })
-      setSceneNotice(
-        result.rig
-          ? `${name}: ${poseVariantLabel(head, leg, arm)} erzeugt — Skelett aktiv.`
-          : `${name}: ${poseVariantLabel(head, leg, arm)} erzeugt.`,
-      )
+      setSceneNotice(generatedPoseNotice(name, mixed, Boolean(result.rig), poseVariantLabel(head, leg, arm)))
     } catch (err) {
       setCharacterError(err instanceof Error ? err.message : 'Pose konnte nicht erzeugt werden.')
     } finally {
@@ -846,9 +867,13 @@ export function StoryPlayerPage() {
                   }),
                 )
               }}
-              onMixHead={(id, donor) => {
-                setCast((prev) => mixCastHead(prev, id, donor))
-                setSceneNotice('Kopf aufgesetzt — Rumpf und Beine bleiben.')
+              onMixPart={(id, part, donor) => {
+                setCast((prev) => {
+                  if (part === 'head') return mixCastHead(prev, id, donor)
+                  if (part === 'legs') return mixCastLegs(prev, id, donor)
+                  return mixCastTorso(prev, id, donor)
+                })
+                setSceneNotice(mixedPartNotice(part))
               }}
               onHeadTwist={(id, deg) => setCast((prev) => updateCastHeadTwist(prev, id, deg))}
               onBuildRig={(id) => void handleBuildRig(id)}

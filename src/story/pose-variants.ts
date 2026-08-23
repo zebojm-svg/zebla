@@ -5,6 +5,7 @@ import {
   isLegPoseId,
   normalizeArmPoseId,
   poseVariantLabel,
+  sameLegSilhouette,
   type ArmPoseId,
   type HeadAngleId,
   type LegPoseId,
@@ -95,12 +96,7 @@ export function findPoseVariant(
   variants: PoseVariant[],
   opts: { headAngle?: HeadAngleId; legPose?: LegPoseId; armPose?: ArmPoseId },
 ): PoseVariant | undefined {
-  const exact = variants.find(
-    (v) =>
-      (opts.headAngle == null || v.headAngle === opts.headAngle) &&
-      (opts.legPose == null || v.legPose === opts.legPose) &&
-      (opts.armPose == null || variantArm(v) === opts.armPose),
-  )
+  const exact = findExactPoseVariant(variants, opts)
   if (exact) return exact
   if (opts.headAngle != null && opts.legPose != null) {
     const headLeg = variants.find(
@@ -119,6 +115,99 @@ export function findPoseVariant(
     return variants.find((v) => variantArm(v) === opts.armPose)
   }
   return undefined
+}
+
+/** Nur die genaue Kombination — nicht «irgendeine Figur mit diesem Kopf». */
+export function findExactPoseVariant(
+  variants: PoseVariant[],
+  opts: { headAngle?: HeadAngleId; legPose?: LegPoseId; armPose?: ArmPoseId },
+): PoseVariant | undefined {
+  return variants.find(
+    (v) =>
+      (opts.headAngle == null || v.headAngle === opts.headAngle) &&
+      (opts.legPose == null || v.legPose === opts.legPose) &&
+      (opts.armPose == null || variantArm(v) === opts.armPose),
+  )
+}
+
+export function findRiggedHead(
+  variants: PoseVariant[],
+  head: HeadAngleId,
+): PoseVariant | undefined {
+  return variants.find((v) => v.headAngle === head && v.rig)
+}
+
+export function findRiggedLegs(
+  variants: PoseVariant[],
+  leg: LegPoseId,
+): PoseVariant | undefined {
+  return variants.find((v) => v.legPose === leg && v.rig)
+}
+
+export function findRiggedTorso(
+  variants: PoseVariant[],
+  arm: ArmPoseId,
+): PoseVariant | undefined {
+  return variants.find((v) => variantArm(v) === arm && v.rig)
+}
+
+export type PoseApply =
+  | { action: 'swap'; variant: PoseVariant }
+  | { action: 'mix'; part: 'head' | 'torso' | 'legs'; donor: PoseVariant }
+  | { action: 'generate' }
+
+/** Rad-Klick: vorhandenes Teil aufsetzen, sonst genau tauschen, sonst zeichnen. */
+export function decidePoseApply(opts: {
+  memberHasRig: boolean
+  current: { head: HeadAngleId; leg: LegPoseId; arm: ArmPoseId }
+  next: { head: HeadAngleId; leg: LegPoseId; arm: ArmPoseId }
+  variants: PoseVariant[]
+}): PoseApply {
+  const { memberHasRig, current, next, variants } = opts
+  const headChanged = next.head !== current.head
+  const legChanged = next.leg !== current.leg
+  const armChanged = next.arm !== current.arm
+  const changed = [headChanged, legChanged, armChanged].filter(Boolean).length
+
+  if (memberHasRig && changed === 1) {
+    if (headChanged) {
+      const donor = findRiggedHead(variants, next.head)
+      if (donor) return { action: 'mix', part: 'head', donor }
+    } else if (legChanged && sameLegSilhouette(current.leg, next.leg)) {
+      const donor = findRiggedLegs(variants, next.leg)
+      if (donor) return { action: 'mix', part: 'legs', donor }
+    } else if (armChanged) {
+      const donor = findRiggedTorso(variants, next.arm)
+      if (donor) return { action: 'mix', part: 'torso', donor }
+    }
+  }
+
+  const exact = findExactPoseVariant(variants, {
+    headAngle: next.head,
+    legPose: next.leg,
+    armPose: next.arm,
+  })
+  if (exact) return { action: 'swap', variant: exact }
+  return { action: 'generate' }
+}
+
+/** «+» am Rad: dieses Teil existiert schon (egal welche Kombi). */
+export function allHeadAngles(variants: PoseVariant[]): HeadAngleId[] {
+  const ids = new Set<HeadAngleId>()
+  for (const v of variants) if (v.headAngle) ids.add(v.headAngle)
+  return [...ids]
+}
+
+export function allLegPoses(variants: PoseVariant[]): LegPoseId[] {
+  const ids = new Set<LegPoseId>()
+  for (const v of variants) if (v.legPose) ids.add(v.legPose)
+  return [...ids]
+}
+
+export function allArmPoses(variants: PoseVariant[]): ArmPoseId[] {
+  const ids = new Set<ArmPoseId>()
+  for (const v of variants) ids.add(variantArm(v))
+  return [...ids]
 }
 
 export function availableHeadAngles(
