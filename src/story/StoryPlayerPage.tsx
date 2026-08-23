@@ -1352,6 +1352,31 @@ export function StoryPlayerPage() {
             engines={stillsEngines}
             masterUrl={masterStill?.imageUrl}
             masterName={masterStill ? characterBaseName(masterStill.name) : undefined}
+            recent={generatedCharacters
+              .filter(
+                (c) =>
+                  characterBaseName(c.name).toLowerCase() ===
+                  characterBaseName(characterName).toLowerCase(),
+              )
+              .slice(0, 8)
+              .map((c) => ({
+                name: c.name,
+                imageUrl: c.imageUrl,
+                label: c.stillPoseId ? getStillPose(c.stillPoseId).label : c.name,
+              }))}
+            onPlace={(imageUrl, name) => {
+              const item = generatedCharacters.find((c) => c.imageUrl === imageUrl)
+              handlePlaceCharacter({
+                imageUrl,
+                assetName: name,
+                displayName: characterBaseName(characterName),
+                legPose: item?.legPose,
+                headAngle: item?.headAngle,
+                armPose: item?.armPose,
+                face: item?.face,
+                rig: item?.rig,
+              })
+            }}
             onGenerateMaster={() => void handleGenerateStill('standing-front', true)}
             onGeneratePose={(poseId) => void handleGenerateStill(poseId, false)}
           />

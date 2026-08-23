@@ -23,6 +23,8 @@ type Props = {
   engines?: StillsEngineInfo[]
   masterUrl?: string
   masterName?: string
+  recent: Array<{ name: string; imageUrl: string; label: string }>
+  onPlace: (imageUrl: string, name: string) => void
   onGenerateMaster: () => void
   onGeneratePose: (poseId: StillPoseId) => void
 }
@@ -42,6 +44,8 @@ export function StoryStillsPanel({
   engines,
   masterUrl,
   masterName,
+  recent,
+  onPlace,
   onGenerateMaster,
   onGeneratePose,
 }: Props) {
@@ -141,6 +145,28 @@ export function StoryStillsPanel({
       </div>
       {!masterUrl && (
         <p className="muted">Ohne Stamm-Bild sind die Pose-Knöpfe gesperrt — sonst malt die KI ein neues Gesicht.</p>
+      )}
+      {recent.length > 0 && (
+        <div className="story-still-recent">
+          <h4 className="story-library-heading">Gerade gezeichnet</h4>
+          <div className="story-character-grid">
+            {recent.map((item) => (
+              <article key={item.imageUrl} className="story-character-card">
+                <img src={item.imageUrl} alt={item.name} />
+                <p>{item.label}</p>
+                <div className="story-character-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => onPlace(item.imageUrl, item.name)}
+                  >
+                    Ins Bild
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
       )}
       {error && <p className="alert alert-error">{error}</p>}
     </section>
