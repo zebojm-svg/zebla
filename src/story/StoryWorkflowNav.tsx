@@ -26,7 +26,7 @@ const STEPS: Array<{
     id: 'actions',
     num: 3,
     title: 'Aktionen',
-    hint: 'Sprechen, gehen, Mimik (demnächst)',
+    hint: 'Später: sprechen / blinzeln (günstig), dann erst Film',
   },
   {
     id: 'scene',

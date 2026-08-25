@@ -16,12 +16,19 @@ import {
   STORY_CHARACTER_FRAMING_PROMPT,
   STORY_CHARACTER_MASK_PROMPT,
 } from '../shared/story-character-looks.js'
+import {
+  buildModularStillPrompt,
+  getStillPose,
+  type StillPoseId,
+  type StillsEngineId,
+} from '../shared/story-stills.js'
 import type { CharacterRig } from '../shared/character-rig.js'
 import { applyPersonMask, pngHasUsefulAlpha, punchCutoutPng, splitCharacterRigPng } from './story-image-processing.js'
 import {
   geminiImageModelCandidates,
   isGeminiImageUnavailable,
 } from './gemini-image-model.js'
+import { fluxLockAvailable, generateLockedStillPng } from './story-stills-gen.js'
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -161,6 +168,65 @@ async function fetchPngBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
+export type StoryCharacterResult = {
+  imageUrl: string
+  prompt: string
+  styleId: StoryArtStyleId
+  engine: StillsEngineId
+  locked: boolean
+  stillPoseId?: StillPoseId
+  rig?: CharacterRig
+}
+
+function geminiLockPrompt(opts: {
+  name: string
+  appearance: string
+  styleId?: StoryArtStyleId
+  legPoseId?: LegPoseId
+  headAngleId?: HeadAngleId
+  armPoseId?: ArmPoseId
+  faceExpressionId?: FaceExpressionId
+  stillPoseId?: StillPoseId
+  hasReference: boolean
+}): string {
+  const style = getStoryStylePrompt(opts.styleId)
+  if (opts.hasReference && opts.stillPoseId) {
+    return buildModularStillPrompt({
+      poseId: opts.stillPoseId,
+      styleId: opts.styleId,
+      appearance: opts.appearance,
+    })
+  }
+  const still = opts.stillPoseId ? getStillPose(opts.stillPoseId) : undefined
+  const legHint = still
+    ? still.posePrompt
+    : opts.legPoseId
+      ? legPosePrompt(opts.legPoseId)
+      : 'standing full body, both shoes visible, empty studio margin below the feet'
+  const headHint = still
+    ? ''
+    : opts.headAngleId
+      ? headAnglePrompt(opts.headAngleId)
+      : 'face toward camera, front view'
+  const armHint = still ? '' : opts.armPoseId ? armPosePrompt(opts.armPoseId) : armPosePrompt('relaxed')
+  const faceHint = opts.faceExpressionId
+    ? faceExpressionPrompt(opts.faceExpressionId)
+    : faceExpressionPrompt('normal')
+  const identityRule = opts.hasReference
+    ? 'The FIRST attached image is the identity photo of THIS EXACT PERSON. Copy face, haircut, hair color, glasses, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only pose, camera angle and facial expression change.\n'
+    : ''
+  const poseBits = [legHint, headHint, armHint].filter(Boolean).join('. ')
+  return (
+    `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
+    `${style}\n\n` +
+    `${identityRule}` +
+    `${STORY_CHARACTER_CUTOUT_PROMPT} ` +
+    `${poseBits}. Facial expression: ${faceHint}.\n${opts.appearance}\nCharacter name: ${opts.name}\n` +
+    `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
+    `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people. Same identity as the reference if attached.`
+  )
+}
+
 export async function generateStoryCharacter(
   description: string,
   name: string,
@@ -170,54 +236,138 @@ export async function generateStoryCharacter(
   armPoseId?: ArmPoseId,
   referenceImageUrl?: string,
   faceExpressionId?: FaceExpressionId,
-): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId; rig?: CharacterRig }> {
-  const apiKey = requireGeminiKey()
-  const style = getStoryStylePrompt(styleId)
+  stillPoseId?: StillPoseId,
+  buildRig = false,
+): Promise<StoryCharacterResult> {
   const appearance = resolveStoryCharacterAppearance(name, description)
-  const legHint = legPoseId
-    ? legPosePrompt(legPoseId)
-    : 'standing full body, both shoes visible, empty studio margin below the feet'
-  const headHint = headAngleId ? headAnglePrompt(headAngleId) : 'face toward camera, front view'
-  const armHint = armPoseId ? armPosePrompt(armPoseId) : armPosePrompt('relaxed')
-  const faceHint = faceExpressionId ? faceExpressionPrompt(faceExpressionId) : faceExpressionPrompt('normal')
-  const identityRule = referenceImageUrl
-    ? 'The FIRST attached image is the identity photo of THIS EXACT PERSON. Copy face, haircut, hair color, glasses, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only pose, camera angle and facial expression change.\n'
-    : ''
-  const prompt =
-    `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
-    `${style}\n\n` +
-    `${identityRule}` +
-    `${STORY_CHARACTER_CUTOUT_PROMPT} ` +
-    `${legHint}. ${headHint}. ${armHint}. Facial expression: ${faceHint}.\n${appearance}\nCharacter name: ${name}\n` +
-    `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
-    `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people. Same identity as the reference if attached.`
+  const still = stillPoseId ? getStillPose(stillPoseId) : undefined
+  const resolvedLeg = still?.legPoseId ?? legPoseId
+  const resolvedHead = still?.headAngleId ?? headAngleId
+  const resolvedArm = still?.armPoseId ?? armPoseId
+  const composedPosePrompt = still
+    ? still.posePrompt
+    : [
+        resolvedLeg ? legPosePrompt(resolvedLeg) : '',
+        resolvedHead ? headAnglePrompt(resolvedHead) : '',
+        resolvedArm ? armPosePrompt(resolvedArm) : '',
+        faceExpressionId ? faceExpressionPrompt(faceExpressionId) : '',
+      ]
+        .filter(Boolean)
+        .join('. ')
+  const wantLock = Boolean(referenceImageUrl)
+  let colorPng: Buffer
+  let prompt: string
+  let engine: StillsEngineId
 
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
-  if (referenceImageUrl) {
-    const ref = await fetchPngBuffer(referenceImageUrl)
-    if (ref) {
-      parts.push({ inlineData: { mimeType: 'image/png', data: ref.toString('base64') } })
+  if (wantLock && referenceImageUrl) {
+    const refPng = await fetchPngBuffer(referenceImageUrl)
+    if (!refPng) {
+      throw new Error(
+        'Stamm-Bild konnte nicht geladen werden. Ohne Foto zeichnet die KI ein neues Gesicht — abgebrochen.',
+      )
     }
+    if (fluxLockAvailable()) {
+      try {
+        const locked = await generateLockedStillPng({
+          poseId: stillPoseId,
+          posePrompt: composedPosePrompt,
+          styleId,
+          appearance,
+          referenceImageUrl,
+          referencePng: refPng,
+        })
+        colorPng = locked.buffer
+        prompt = locked.prompt
+        engine = locked.engine
+      } catch {
+        prompt = geminiLockPrompt({
+          name,
+          appearance,
+          styleId,
+          legPoseId: resolvedLeg,
+          headAngleId: resolvedHead,
+          armPoseId: resolvedArm,
+          faceExpressionId,
+          stillPoseId,
+          hasReference: true,
+        })
+        colorPng = await generateGeminiPng(
+          requireGeminiKey(),
+          [
+            { inlineData: { mimeType: 'image/png', data: refPng.toString('base64') } },
+            { text: prompt },
+          ],
+          '9:16',
+          50_000,
+          'Kein Bild generiert.',
+        )
+        engine = 'gemini-i2i'
+      }
+    } else {
+      prompt = geminiLockPrompt({
+        name,
+        appearance,
+        styleId,
+        legPoseId: resolvedLeg,
+        headAngleId: resolvedHead,
+        armPoseId: resolvedArm,
+        faceExpressionId,
+        stillPoseId,
+        hasReference: true,
+      })
+      colorPng = await generateGeminiPng(
+        requireGeminiKey(),
+        [
+          { inlineData: { mimeType: 'image/png', data: refPng.toString('base64') } },
+          { text: prompt },
+        ],
+        '9:16',
+        50_000,
+        'Kein Bild generiert.',
+      )
+      engine = 'gemini-i2i'
+    }
+  } else {
+    prompt = geminiLockPrompt({
+      name,
+      appearance,
+      styleId,
+      legPoseId: resolvedLeg,
+      headAngleId: resolvedHead,
+      armPoseId: resolvedArm,
+      faceExpressionId,
+      stillPoseId,
+      hasReference: false,
+    })
+    colorPng = await generateGeminiPng(
+      requireGeminiKey(),
+      [{ text: prompt }],
+      '9:16',
+      50_000,
+      'Kein Bild generiert.',
+    )
+    engine = 'gemini-t2i'
   }
-  parts.push({ text: prompt })
 
-  const colorPng = await generateGeminiPng(
-    apiKey,
-    parts,
-    '9:16',
-    50_000,
-    'Kein Bild generiert.',
-  )
+  const apiKey = requireGeminiKey()
   const cutout = await cutOutWithPersonMask(apiKey, colorPng)
   const slug = name.toLowerCase().replace(/\s+/g, '-')
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const punched = (await pngHasUsefulAlpha(cutout)) ? cutout : await punchCutoutPng(cutout)
-  const [imageUrl2, built] = await Promise.all([
-    uploadStoryAsset(punched, `story-characters/${slug}-${unique2}.png`),
-    buildCharacterRig(punched, slug, unique2).catch(() => undefined),
-  ])
+  const imageUrl2 = await uploadStoryAsset(punched, `story-characters/${slug}-${unique2}.png`)
+  const built = buildRig
+    ? await buildCharacterRig(punched, slug, unique2).catch(() => undefined)
+    : undefined
 
-  return { imageUrl: imageUrl2, prompt, styleId: getStoryArtStyle(styleId).id, rig: built?.rig }
+  return {
+    imageUrl: imageUrl2,
+    prompt,
+    styleId: getStoryArtStyle(styleId).id,
+    engine,
+    locked: wantLock,
+    stillPoseId,
+    rig: built?.rig,
+  }
 }
 
 async function buildCharacterRig(

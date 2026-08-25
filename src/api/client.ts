@@ -410,6 +410,13 @@ export const api = {
         styles: import('../../shared/story-art-styles').StoryArtStyle[]
         defaultStyleId: import('../../shared/story-art-styles').StoryArtStyleId
       }>('/story-art-styles'),
+    stillsStatus: () =>
+      request<{
+        lockEngine: import('../../shared/story-stills').StillsEngineId
+        masterEngine: import('../../shared/story-stills').StillsEngineId
+        engines: import('../../shared/story-stills').StillsEngineInfo[]
+        poses: Array<{ id: string; label: string; hintDe: string }>
+      }>('/story-stills-status'),
     generateScene: (description: string, styleId?: string) =>
       request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-scene', {
         method: 'POST',
@@ -424,11 +431,15 @@ export const api = {
       armPoseId?: string,
       referenceImageUrl?: string,
       faceExpressionId?: string,
+      stillPoseId?: string,
     ) =>
       request<{
         imageUrl: string
         prompt: string
         styleId: string
+        engine: import('../../shared/story-stills').StillsEngineId
+        locked: boolean
+        stillPoseId?: import('../../shared/story-stills').StillPoseId
         rig?: import('../../shared/character-rig').CharacterRig
       }>(
         '/story-generate-character',
@@ -443,6 +454,7 @@ export const api = {
             armPoseId,
             referenceImageUrl,
             faceExpressionId,
+            stillPoseId,
           }),
         },
         140_000,
