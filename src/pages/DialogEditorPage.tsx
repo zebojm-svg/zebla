@@ -22,6 +22,7 @@ import {
   lineCount,
 } from '../lib/costEstimates'
 import { VisualBriefPanel } from '../components/VisualBriefPanel'
+import { FilmProjectNav } from '../story/FilmProjectNav'
 import type { Dialog, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
@@ -38,6 +39,8 @@ export function DialogEditorPage() {
   const [shareBusy, setShareBusy] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
   const [imageDirectionDraft, setImageDirectionDraft] = useState('')
+  const [soundDirectionDraft, setSoundDirectionDraft] = useState('')
+  const [speechDirectionDraft, setSpeechDirectionDraft] = useState('')
   const [askVisualQuestions, setAskVisualQuestionsState] = useState(true)
   const [visualQuestions, setVisualQuestions] = useState<VisualQuestion[]>([])
   const [pendingSectionId, setPendingSectionId] = useState<string | null>(null)
@@ -51,6 +54,8 @@ export function DialogEditorPage() {
     setBirkenbihlLang(d.sourceLanguage)
     setIncludeRomanizationState(getIncludeRomanization())
     setImageDirectionDraft(d.imageDirection ?? '')
+    setSoundDirectionDraft(d.soundDirection ?? '')
+    setSpeechDirectionDraft(d.speechDirection ?? '')
     setAskVisualQuestionsState(getAskVisualQuestions())
   }
 
@@ -213,8 +218,31 @@ export function DialogEditorPage() {
     await generateSceneImages(sectionId, current)
   }
 
+  const saveLineCue = async (
+    sectionId: string,
+    lineId: string,
+    field: 'cueImage' | 'cueSound' | 'cueSpeech',
+    value: string,
+  ) => {
+    const sections = dialog.sections.map((sec) =>
+      sec.id !== sectionId
+        ? sec
+        : {
+            ...sec,
+            lines: sec.lines.map((ln) =>
+              ln.id === lineId ? { ...ln, [field]: value.trim() || undefined } : ln,
+            ),
+          },
+    )
+    await runAction(`cue-${lineId}-${field}`, async () => {
+      const { dialog: d } = await api.dialogs.update(dialog.id, { sections })
+      setDialog(d)
+    })
+  }
+
   return (
     <div className="editor-page">
+      <FilmProjectNav dialogId={dialog.id} />
       <div className="page-header">
         <div>
           <h1>{dialog.title}</h1>
@@ -226,16 +254,21 @@ export function DialogEditorPage() {
             {dialog.sections.length !== 1 ? 'e' : ''}
           </p>
         </div>
-        <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
-          {t('editor.slideshow')}
-        </Link>
+        <div className="header-actions">
+          <Link to={`/dialog/${dialog.id}/board`} className="btn btn-story-studio">
+            Ins Storyboard
+          </Link>
+          <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
+            {t('editor.slideshow')}
+          </Link>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-warn">{status}</div>}
 
       <section className="panel dialog-meta-panel">
-        <h2>Dialog-Auftrag &amp; Bilder</h2>
+        <h2>Regie für Sprache, Ton und Bild</h2>
         {formatCreationPromptForDisplay(dialog) && (
           <div className="dialog-meta-block">
             <h3 className="dialog-meta-label">Ursprüngliche Eingabe</h3>
@@ -243,13 +276,33 @@ export function DialogEditorPage() {
           </div>
         )}
         <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Bild-Hinweise für die KI</span>
+          <span className="dialog-meta-label">Bild-Regie</span>
           <textarea
-            rows={4}
+            rows={3}
             value={imageDirectionDraft}
             onChange={(e) => setImageDirectionDraft(e.target.value)}
-            placeholder="Setting, Figuren, Emotionen pro Stelle (z.B. lachen, schluchzen, weinen), Licht …"
+            placeholder="Ort, Figuren, Posen (z.B. Julien sitzt links im Park) …"
           />
+        </label>
+        <label className="dialog-meta-block">
+          <span className="dialog-meta-label">Ton-Regie</span>
+          <textarea
+            rows={2}
+            value={soundDirectionDraft}
+            onChange={(e) => setSoundDirectionDraft(e.target.value)}
+            placeholder="Vögel, Straßenlärm, Stille, Musik …"
+          />
+        </label>
+        <label className="dialog-meta-block">
+          <span className="dialog-meta-label">Sprach-Regie</span>
+          <textarea
+            rows={2}
+            value={speechDirectionDraft}
+            onChange={(e) => setSpeechDirectionDraft(e.target.value)}
+            placeholder="laut, flüstern, Pause, fröhlich …"
+          />
+        </label>
+        <div className="dialog-meta-block">
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -258,20 +311,22 @@ export function DialogEditorPage() {
               void runAction('image-direction', async () => {
                 const { dialog: d } = await api.dialogs.update(dialog.id, {
                   imageDirection: imageDirectionDraft.trim(),
+                  soundDirection: soundDirectionDraft.trim(),
+                  speechDirection: speechDirectionDraft.trim(),
                   visualBrief: null,
                 })
                 setDialog(d)
-                setStatus('Bild-Hinweise gespeichert. Beim nächsten „Bilder / Bilderskript (KI)“ werden sie berücksichtigt.')
+                setStatus('Regie gespeichert. Danach «Ins Storyboard» — die KI schaut zuerst in der Bibliothek nach.')
               })
             }
           >
-            {busy === 'image-direction' ? '…' : 'Bild-Hinweise speichern'}
+            {busy === 'image-direction' ? '…' : 'Regie speichern'}
           </button>
           <p className="muted dialog-meta-hint">
-            Emotionen wie lachen, weinen oder schluchzen kannst du hier oder im Dialogtext beschreiben – die KI
-            plant passende Gesichtsausdrücke. Speichern setzt die Bild-Regie zurück (neues Testbild).
+            Pro Zeile kannst du unten noch Bild / Ton / Sprache ergänzen. Das Storyboard klebt vorhandene Posen
+            und Hintergründe, statt alles neu zu malen.
           </p>
-        </label>
+        </div>
 
         <VisualBriefPanel
           dialog={dialog}
@@ -660,6 +715,41 @@ export function DialogEditorPage() {
                     nativeLanguage={dialog.sourceLanguage}
                     showRomanization={includeRomanization}
                   />
+                  <div className="film-line-cues">
+                    <input
+                      className="input"
+                      defaultValue={line.cueImage ?? ''}
+                      placeholder="Bild: sitzt links …"
+                      disabled={!!busy}
+                      onBlur={(e) => {
+                        if ((e.target.value.trim() || '') !== (line.cueImage ?? '')) {
+                          void saveLineCue(section.id, line.id, 'cueImage', e.target.value)
+                        }
+                      }}
+                    />
+                    <input
+                      className="input"
+                      defaultValue={line.cueSound ?? ''}
+                      placeholder="Ton …"
+                      disabled={!!busy}
+                      onBlur={(e) => {
+                        if ((e.target.value.trim() || '') !== (line.cueSound ?? '')) {
+                          void saveLineCue(section.id, line.id, 'cueSound', e.target.value)
+                        }
+                      }}
+                    />
+                    <input
+                      className="input"
+                      defaultValue={line.cueSpeech ?? ''}
+                      placeholder="Sprache: flüstert …"
+                      disabled={!!busy}
+                      onBlur={(e) => {
+                        if ((e.target.value.trim() || '') !== (line.cueSpeech ?? '')) {
+                          void saveLineCue(section.id, line.id, 'cueSpeech', e.target.value)
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
                 {line.imageUrl && (
                   <img

@@ -53,8 +53,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <>
               {(user.role === 'teacher' || user.role === 'master') && (
                 <nav className="zebo-shell-header__nav zebo-tabs" aria-label="Hauptnavigation">
+                  <Link to="/library" className={tabClass('/library')}>
+                    Bibliothek
+                  </Link>
                   <Link to="/story" className={tabClass('/story')}>
-                    Story
+                    Zeichnen
                   </Link>
                   <Link to="/explore" className={tabClass('/explore')}>
                     Öffentlich
@@ -68,8 +71,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </nav>
               )}
               <div className="zebo-shell-header__right">
-                <Link to="/story" className="btn btn-story-studio btn-sm">
-                  Story-Studio
+                <Link to="/library" className="btn btn-story-studio btn-sm">
+                  Bibliothek
                 </Link>
                 <LanguageSwitcher className="lang-switcher--topbar" />
                 <a className="zebo-hub-link" href="https://zebotools.ch">

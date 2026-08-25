@@ -328,6 +328,22 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId, targetLanguage }),
       }),
+    filmStoryboard: (dialogId: string, cheapAi = true) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, cheapAi }),
+      }),
+    filmStoryboardTweak: (dialogId: string, panelId: string, note: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-tweak', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId, note }),
+      }),
     birkenbihl: (
       dialogId: string,
       nativeLanguage: string,

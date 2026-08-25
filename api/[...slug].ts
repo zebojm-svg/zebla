@@ -100,6 +100,7 @@ import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../
 import { isCharacterRig } from '../shared/character-rig.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
+import { planFilmStoryboard, tweakFilmPanel } from '../lib/film-storyboard.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -999,6 +1000,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       req.method === 'POST'
     ) {
       return handleVisualCritic(req, res)
+    }
+
+    // --- Film: Dialog → billiges Storyboard, Bibliothek zuerst ---
+    if (route === 'film-storyboard' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, cheapAi } = req.body as { dialogId?: string; cheapAi?: boolean }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await planFilmStoryboard(dialogId.trim(), user.uid, profile, {
+        cheapAi: cheapAi !== false,
+      })
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-tweak' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId, note } = req.body as {
+        dialogId?: string
+        panelId?: string
+        note?: string
+      }
+      if (!dialogId?.trim() || !panelId?.trim() || !note?.trim()) {
+        res.status(400).json({ error: 'dialogId, panelId und note fehlen.' })
+        return
+      }
+      const result = await tweakFilmPanel(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        note.trim(),
+        profile,
+      )
+      res.json(result)
+      return
     }
 
     // --- Story Asset Generation ---

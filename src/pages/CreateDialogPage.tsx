@@ -5,6 +5,7 @@ import { LanguageFlag } from '../components/LanguageFlag'
 import type { ChatMessage, CreateMode, DialogLength } from '../types'
 import { LENGTH_LABELS, LANGUAGES } from '../types'
 import { useI18n } from '../i18n/I18nContext'
+import { FilmProjectNav } from '../story/FilmProjectNav'
 
 export function CreateDialogPage() {
   const { t } = useI18n()
@@ -143,6 +144,7 @@ export function CreateDialogPage() {
 
   return (
     <div className="create-page">
+      <FilmProjectNav />
       <div className="page-header">
         <h1>{t('create.title')}</h1>
       </div>
@@ -176,15 +178,15 @@ export function CreateDialogPage() {
       </div>
 
       <label className="create-image-direction">
-        Bild-Hinweise (optional)
+        Bild-Regie (optional)
         <textarea
           rows={3}
           value={imageDirection}
           onChange={(e) => setImageDirection(e.target.value)}
-          placeholder="z.B. Café in Teheran, zwei junge Freunde, bei Zeile 4 lacht Ubaid, bei Zeile 7 weint Shome leise …"
+          placeholder="z.B. Julien sitzt im Park, Herbst, Vögel. Bei Zeile 4 winkt er."
         />
         <span className="muted create-image-direction-hint">
-          Hilft der KI bei Bildern: Ort, Kleidung, Lachen, Weinen, Stimmung. Bleibt am Dialog gespeichert.
+          Ort, Pose, Ton. Danach «Ins Storyboard» — vorhandene Julien-Bilder werden zuerst genommen.
         </span>
       </label>
 

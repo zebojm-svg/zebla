@@ -39,6 +39,9 @@ interface DialogDoc {
   creationPrompt?: string
   creationChat?: Dialog['creationChat']
   imageDirection?: string
+  soundDirection?: string
+  speechDirection?: string
+  filmStoryboard?: Dialog['filmStoryboard']
   referenceImageUrl?: string
   referenceImagePrompt?: string
   speakerProfiles?: Dialog['speakerProfiles']
@@ -84,6 +87,9 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
     imageDirection: data.imageDirection,
+    soundDirection: data.soundDirection,
+    speechDirection: data.speechDirection,
+    filmStoryboard: data.filmStoryboard ?? null,
     referenceImageUrl: data.referenceImageUrl,
     referenceImagePrompt: data.referenceImagePrompt,
     speakerProfiles: data.speakerProfiles,
@@ -328,6 +334,8 @@ export async function createDialog(
     creationPrompt?: string
     creationChat?: Dialog['creationChat']
     imageDirection?: string
+    soundDirection?: string
+    speechDirection?: string
     referenceImageUrl?: string
     referenceImagePrompt?: string
     speakerProfiles?: Dialog['speakerProfiles']
@@ -355,6 +363,8 @@ export async function createDialog(
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
     imageDirection: data.imageDirection,
+    soundDirection: data.soundDirection,
+    speechDirection: data.speechDirection,
     referenceImageUrl: data.referenceImageUrl,
     referenceImagePrompt: data.referenceImagePrompt,
     speakerProfiles: data.speakerProfiles,
@@ -378,6 +388,9 @@ export async function updateDialog(
     creationPrompt: string
     creationChat: Dialog['creationChat']
     imageDirection: string
+    soundDirection: string
+    speechDirection: string
+    filmStoryboard: Dialog['filmStoryboard']
     /** null = Feld löschen (z. B. bei Bild-Neuaufbau). */
     referenceImageUrl: string | null
     referenceImagePrompt: string | null
@@ -436,6 +449,11 @@ export async function updateDialog(
     creationChat: data.creationChat !== undefined ? data.creationChat : existing.creationChat,
     imageDirection:
       data.imageDirection !== undefined ? data.imageDirection : existing.imageDirection,
+    soundDirection:
+      data.soundDirection !== undefined ? data.soundDirection : existing.soundDirection,
+    speechDirection:
+      data.speechDirection !== undefined ? data.speechDirection : existing.speechDirection,
+    filmStoryboard: pick(data.filmStoryboard, existing.filmStoryboard ?? undefined),
     referenceImageUrl: pick(data.referenceImageUrl, existing.referenceImageUrl),
     referenceImagePrompt: pick(data.referenceImagePrompt, existing.referenceImagePrompt),
     speakerProfiles:
@@ -579,6 +597,11 @@ export async function cloneDialog(
     creationPrompt: source.creationPrompt,
     // Kein creationChat — private Prompt-Historie bleibt beim Original.
     imageDirection: source.imageDirection,
+    soundDirection: source.soundDirection,
+    speechDirection: source.speechDirection,
+    filmStoryboard: source.filmStoryboard
+      ? JSON.parse(JSON.stringify(source.filmStoryboard))
+      : undefined,
     referenceImageUrl: source.referenceImageUrl,
     referenceImagePrompt: source.referenceImagePrompt,
     speakerProfiles: source.speakerProfiles

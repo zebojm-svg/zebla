@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import type { ScenePreset } from '../../shared/scene-presets'
 import { SCENE_PRESETS } from '../../shared/scene-presets'
+import { FilmProjectNav } from './FilmProjectNav'
 import { StoryWorkflowNav, type StoryWorkflowStep } from './StoryWorkflowNav'
 import {
   addCastMember,
@@ -906,11 +907,12 @@ export function StoryPlayerPage() {
 
   return (
     <div className="story-player">
+      <FilmProjectNav />
       <header className="story-page-header">
-        <h2>Story-Studio</h2>
+        <h2>Neu zeichnen</h2>
         <p className="muted">
-          Zuerst dieselbe Figur als Standbilder (Stamm-Bild, dann Posen). Sprechen/Blinzeln und
-          Film kommen später — nicht mit dem alten Pose-Rad mischen.
+          Nur wenn im Storyboard etwas fehlt. Stamm-Bild einmal, Posen speichern sich in der Bibliothek.
+          Danach gilt: wiederverwenden, spiegeln, zoomen — ohne neue KI.
         </p>
       </header>
 
