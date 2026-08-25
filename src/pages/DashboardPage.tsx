@@ -460,8 +460,8 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="header-actions">
-          <Link to="/story" className="btn btn-story-studio">
-            Story-Studio
+          <Link to="/library" className="btn btn-story-studio">
+            Bibliothek
           </Link>
           {canCreateFolder && (
             <button type="button" className="btn btn-secondary" onClick={createFolder}>
@@ -476,12 +476,17 @@ export function DashboardPage() {
 
       <div className="dashboard-story-cta">
         <p>
-          <strong>Story-Studio</strong>
-          Figuren, Hintergründe und Szenen für Bildgeschichten — wie Bookbox, Schritt für Schritt.
+          <strong>Film-Projekt</strong>
+          Dialog schreiben, ins Storyboard, Bibliothek füllt die Posen. Wiederverwenden = günstiger.
         </p>
-        <Link to="/story" className="btn btn-story-studio">
-          Zum Story-Studio
-        </Link>
+        <div className="header-actions">
+          <Link to={createLink} className="btn btn-story-studio">
+            Neuer Dialog
+          </Link>
+          <Link to="/library" className="btn btn-secondary">
+            Bibliothek
+          </Link>
+        </div>
       </div>
 
       <nav className="breadcrumb" aria-label="Ordnerpfad">
@@ -538,8 +543,8 @@ export function DashboardPage() {
               : 'Starte mit deinem ersten Dialog – per KI-Gespräch, Thema oder Diktat.'}
           </p>
           <div className="empty-state-actions">
-            <Link to="/story" className="btn btn-story-studio">
-              Story-Studio
+            <Link to="/library" className="btn btn-story-studio">
+              Bibliothek
             </Link>
             {canCreateFolder && (
               <button type="button" className="btn btn-secondary" onClick={createFolder}>
@@ -653,6 +658,12 @@ export function DashboardPage() {
                     <>
                       <Link to={`/dialog/${d.id}`} className="btn btn-secondary btn-sm">
                         Bearbeiten
+                      </Link>
+                      <Link
+                        to={`/dialog/${d.id}/board`}
+                        className="btn btn-story-studio btn-sm"
+                      >
+                        Storyboard
                       </Link>
                       <Link
                         to={`/dialog/${d.id}/slideshow`}

@@ -10,6 +10,8 @@ import { DialogEditorPage } from './pages/DialogEditorPage'
 import { SlideshowPage } from './pages/SlideshowPage'
 import { ShareImportPage } from './pages/ShareImportPage'
 import { StoryPlayerPage } from './story/StoryPlayerPage'
+import { FilmStoryboardPage } from './story/FilmStoryboardPage'
+import { FilmLibraryPage } from './story/FilmLibraryPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ProPage } from './pages/ProPage'
 import { SsoPage } from './pages/SsoPage'
@@ -76,6 +78,22 @@ function AppRoutes() {
           }
         />
         <Route path="/dialog/:id/slideshow" element={<SlideshowPage />} />
+        <Route
+          path="/dialog/:id/board"
+          element={
+            <Layout>
+              <FilmStoryboardPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/library"
+          element={
+            <Layout>
+              <FilmLibraryPage />
+            </Layout>
+          }
+        />
         <Route
           path="/story"
           element={

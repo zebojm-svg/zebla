@@ -1,3 +1,5 @@
+import type { FilmStoryboard } from './film-storyboard.js'
+
 export type DialogLength = 'short' | 'medium' | 'long'
 
 export type CreateMode = 'chat' | 'topic' | 'dictate'
@@ -18,6 +20,12 @@ export interface DialogLine {
   imagePrompt?: string
   /** Gespeicherte Cloud-TTS-Audiodatei (wird nur einmal generiert). */
   audioUrl?: string
+  /** Regie Bild (Pose, Ort, wo die Figur steht). */
+  cueImage?: string
+  /** Regie Ton (Geräusch, Musik, Stille). */
+  cueSound?: string
+  /** Regie Sprache (laut, flüstern, Pause). */
+  cueSpeech?: string
 }
 
 export interface LineImageBeat {
@@ -184,6 +192,12 @@ export interface Dialog {
   creationChat?: ChatMessage[]
   /** Meta-Hinweise für Bilder (Setting, Emotionen wie Lachen/Weinen, Figuren). */
   imageDirection?: string
+  /** Regie für Ton (Geräusche, Musik) — gilt fürs ganze Projekt, Zeilen können überschreiben. */
+  soundDirection?: string
+  /** Regie für Sprache (laut, Tempo, Pausen). */
+  speechDirection?: string
+  /** Billiges Film-Storyboard: Bibliothek zuerst, fehlende Posen merken. */
+  filmStoryboard?: FilmStoryboard | null
   /** Bild 0: Cast-Referenz (intern, nicht in Diashow) – Standard für alle weiteren Bilder. */
   referenceImageUrl?: string
   referenceImagePrompt?: string
