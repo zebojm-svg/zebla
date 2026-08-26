@@ -25,6 +25,7 @@ if (FILM_PLAN_TIMEOUT_MS < 100_000 || FILM_PLAN_TIMEOUT_MS > 120_000) {
 
 if (!isImageGenPath('/image')) fail('/image ist Bild')
 if (!isImageGenPath('/story-generate-character')) fail('Figur-Zeichnen ist Bild')
+if (!isImageGenPath('/film-storyboard-still')) fail('Szenen-Standbild ist Bild')
 if (isImageGenPath('/film-from-prompt')) fail('Film-Prompt ist kein Bild')
 if (isImageGenPath('/film-storyboard')) fail('Storyboard-Plan ist kein Bild')
 

@@ -16,6 +16,7 @@ const IMAGE_GEN_PATHS = new Set([
   '/story-generate-character',
   '/story-generate-environment',
   '/film-storyboard-sketch',
+  '/film-storyboard-still',
 ])
 
 export function apiPathOnly(path: string): string {

@@ -2,17 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
+import { FilmSceneGenerateBar, FilmStillStrip } from './FilmSceneGenerate'
+import { useSceneStills } from './generateSceneStills'
 import { LanguageFlag } from '../components/LanguageFlag'
 import type { Dialog } from '../types'
 import { LANGUAGES } from '../types'
-import {
-  STORY_ART_STYLES,
-  DEFAULT_STORY_ART_STYLE,
-  type StoryArtStyleId,
-} from '../../shared/story-art-styles'
+import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
 import {
   normalizeFilmStoryboard,
   type FilmPlan,
+  type FilmStoryboard,
 } from '../../shared/film-storyboard'
 
 export function FilmExportPage() {
@@ -27,6 +26,12 @@ export function FilmExportPage() {
   const [at, setAt] = useState('')
   const [note, setNote] = useState('')
   const [timeline, setTimeline] = useState<FilmPlan['timelineNotes']>([])
+
+  const applyBoard = (d: Dialog, _b: FilmStoryboard) => {
+    setDialog(d)
+  }
+
+  const stills = useSceneStills(id, applyBoard)
 
   useEffect(() => {
     if (!id) return
@@ -54,19 +59,21 @@ export function FilmExportPage() {
     [dialog],
   )
 
+  const buildPlan = (extra?: Partial<FilmPlan>): FilmPlan => ({
+    version: 1,
+    targetLanguage: lang,
+    scenes: (board?.scenes ?? []).map((s) => ({
+      sceneId: s.id,
+      styleId: styles[s.id] ?? DEFAULT_STORY_ART_STYLE,
+    })),
+    timelineNotes: extra?.timelineNotes ?? timeline,
+    updatedAt: new Date().toISOString(),
+    ...extra,
+  })
+
   const savePlan = async (extra?: Partial<FilmPlan>) => {
     if (!id || !dialog) return
-    const plan: FilmPlan = {
-      version: 1,
-      targetLanguage: lang,
-      scenes: (board?.scenes ?? []).map((s) => ({
-        sceneId: s.id,
-        styleId: styles[s.id] ?? DEFAULT_STORY_ART_STYLE,
-      })),
-      timelineNotes: extra?.timelineNotes ?? timeline,
-      updatedAt: new Date().toISOString(),
-      ...extra,
-    }
+    const plan = buildPlan(extra)
     setBusy(true)
     setError('')
     try {
@@ -76,12 +83,26 @@ export function FilmExportPage() {
         const translated = await api.dialogs.update(id, { targetLanguage: lang })
         setDialog(translated.dialog)
       }
-      setStatus('Film-Plan gespeichert. Die teure Film-KI kommt als Nächstes — erst wenn das Board stimmt.')
+      setStatus('Stil und Sprache gespeichert.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
     } finally {
       setBusy(false)
     }
+  }
+
+  const generateScene = async (sceneId: string, force: boolean) => {
+    if (!id || !board) return
+    const panels = board.panels.filter((p) => p.sceneId === sceneId)
+    const styleId = styles[sceneId] ?? DEFAULT_STORY_ART_STYLE
+    setError('')
+    setStatus('')
+    try {
+      await api.ai.filmPlanSave(id, buildPlan())
+    } catch {
+      /* Stil wird beim Bild trotzdem mitgeschickt */
+    }
+    await stills.generate(sceneId, panels, styleId, force)
   }
 
   if (loading) return <p className="muted" style={{ padding: '2rem' }}>Laden …</p>
@@ -101,16 +122,24 @@ export function FilmExportPage() {
         <div>
           <h1>Film generieren</h1>
           <p className="muted">
-            Hier erst Stil und Sprache. Fotorealistisch oder Zeichnung — pro Szene, nicht schon im Dialog.
+            Hier machst du die <strong>Standbilder Szene für Szene</strong> — damit du siehst, ob
+            es gut herauskommt. Der bewegte Film (sprechen, blinzeln) kommt später, sonst wird es
+            teuer.
           </p>
         </div>
+        {board ? (
+          <Link to={`/dialog/${dialog.id}/board`} className="btn btn-secondary">
+            Zum Storyboard
+          </Link>
+        ) : null}
       </div>
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-info">{status}</div>}
 
       {!board ? (
         <p>
-          Zuerst ein <Link to={`/dialog/${dialog.id}/board`}>Storyboard</Link> bauen.
+          Zuerst ein <Link to={`/dialog/${dialog.id}/board`}>Storyboard</Link> bauen. Danach kannst
+          du hier Szene 1, dann Szene 2 als Bilder erzeugen.
         </p>
       ) : (
         <>
@@ -128,27 +157,33 @@ export function FilmExportPage() {
             </span>
           </label>
 
-          {board.scenes.map((scene) => (
-            <section key={scene.id} className="film-scene">
-              <h2>{scene.title}</h2>
-              <p className="muted">{scene.noteDe || 'Keine Szenennotiz'}</p>
-              <label>
-                Stil dieser Szene
-                <select
-                  value={styles[scene.id] ?? DEFAULT_STORY_ART_STYLE}
-                  onChange={(e) =>
-                    setStyles((prev) => ({ ...prev, [scene.id]: e.target.value as StoryArtStyleId }))
+          {board.scenes.map((scene) => {
+            const panels = board.panels.filter((p) => p.sceneId === scene.id)
+            const sceneBusy = stills.busySceneId === scene.id
+            return (
+              <section key={scene.id} className="film-scene">
+                <h2>{scene.title}</h2>
+                <p className="muted">{scene.noteDe || 'Keine Szenennotiz'}</p>
+                <FilmStillStrip panels={panels} />
+                <FilmSceneGenerateBar
+                  dialogId={dialog.id}
+                  scene={scene}
+                  panels={panels}
+                  styleId={styles[scene.id] ?? DEFAULT_STORY_ART_STYLE}
+                  onStyleChange={(next) => setStyles((prev) => ({ ...prev, [scene.id]: next }))}
+                  busy={sceneBusy}
+                  extraDisabled={(stills.busySceneId !== null && !sceneBusy) || busy}
+                  progress={
+                    stills.progress?.sceneId === scene.id
+                      ? { current: stills.progress.current, total: stills.progress.total }
+                      : null
                   }
-                >
-                  {STORY_ART_STYLES.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </section>
-          ))}
+                  error={stills.errors[scene.id]}
+                  onGenerate={(force) => void generateScene(scene.id, force)}
+                />
+              </section>
+            )
+          })}
 
           <h2>Änderungen in der Zeit</h2>
           <p className="muted">
@@ -194,16 +229,16 @@ export function FilmExportPage() {
           <div className="button-row" style={{ marginTop: '1.25rem' }}>
             <button
               type="button"
-              className="btn btn-primary"
-              disabled={busy}
+              className="btn btn-secondary"
+              disabled={busy || stills.busySceneId !== null}
               onClick={() => void savePlan()}
             >
-              {busy ? '…' : 'Plan speichern / Film vorbereiten'}
+              {busy ? '…' : 'Stil und Sprache speichern'}
             </button>
           </div>
           <p className="muted">
-            Die eigentlichen Film-Sekunden (sprechen, blinzeln, Bewegung) kommen erst, wenn das Board und der
-            Stil stimmen — sonst wird es teuer.
+            Die eigentlichen Film-Sekunden (sprechen, blinzeln, Bewegung) kommen erst, wenn die
+            Standbilder stimmen — sonst wird es teuer.
           </p>
         </>
       )}

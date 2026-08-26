@@ -59,6 +59,10 @@ export interface FilmStoryboardPanel {
   comment?: string
   sketchUrl?: string
   sketchLibraryId?: string
+  /** Fertiges Standbild dieser Zeile (kein bewegter Film). */
+  stillUrl?: string
+  stillStyleId?: string
+  stillError?: string
 }
 
 export interface FilmScene {
@@ -399,6 +403,9 @@ export function buildBoardFromDrafts(
       directorNote: prev?.directorNote,
       sketchUrl: prev?.sketchUrl,
       sketchLibraryId: prev?.sketchLibraryId,
+      stillUrl: prev?.stillUrl,
+      stillStyleId: prev?.stillStyleId,
+      stillError: prev?.stillError,
     }
   })
 

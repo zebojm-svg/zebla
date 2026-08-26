@@ -17,6 +17,9 @@ import {
   type FilmStoryboard,
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
+import { generateFilmPanelStillImage } from './film-stills.js'
+import { applyPanelStill, applyPanelStillError, previousStillUrlInScene } from '../shared/film-stills.js'
+import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
 const PLAN_SYSTEM = `Du planst ein billiges Comic-Storyboard. Keine fertigen Film-Bilder.
 Nur JSON. Beliebig viele Figuren. Gruppiere Zeilen am gleichen Ort.
@@ -297,6 +300,67 @@ export async function sketchFilmPanel(
   }
   const updated = await saveBoard(dialogId, userId, next, profile)
   return { dialog: updated, board: next }
+}
+
+export async function stillFilmPanel(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  styleId: string | undefined,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const panel = board.panels.find((p) => p.id === panelId)
+  if (!panel) throw new Error('Bild nicht gefunden.')
+  const scene = board.scenes.find((s) => s.id === panel.sceneId)
+  const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === panel.sceneId)?.styleId
+  const resolvedStyle =
+    (styleId && isStoryArtStyleId(styleId) ? styleId : undefined) ||
+    (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
+    DEFAULT_STORY_ART_STYLE
+
+  try {
+    const url = await generateFilmPanelStillImage({
+      panel,
+      scene,
+      styleId: resolvedStyle,
+      previousStillUrl: previousStillUrlInScene(board, panel),
+    })
+    const next = applyPanelStill(board, panelId, url, resolvedStyle)
+    const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
+    const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
+    if (planIdx >= 0) {
+      planScenes[planIdx] = { ...planScenes[planIdx], styleId: resolvedStyle }
+    } else {
+      planScenes.push({ sceneId: panel.sceneId, styleId: resolvedStyle })
+    }
+    const filmPlan: FilmPlan = {
+      version: 1,
+      targetLanguage: dialog.filmPlan?.targetLanguage ?? dialog.targetLanguage,
+      scenes: planScenes,
+      timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
+      updatedAt: new Date().toISOString(),
+    }
+    const updated = await updateDialog(
+      dialogId,
+      userId,
+      { filmStoryboard: normalizeFilmStoryboard(next), filmPlan },
+      profile,
+    )
+    if (!updated) throw new Error('Standbild konnte nicht gespeichert werden.')
+    return { dialog: updated, board: next }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+    const failed = applyPanelStillError(board, panelId, message)
+    try {
+      await saveBoard(dialogId, userId, failed, profile)
+    } catch {
+      /* Speichern des Fehlers ist optional */
+    }
+    throw new Error(message)
+  }
 }
 
 export async function saveFilmPlan(
