@@ -671,6 +671,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creationChat,
           imageDirection,
           filmPrompt,
+          soundDirection,
+          speechDirection,
         } = req.body as {
           title?: string
           sourceLanguage?: string
@@ -683,6 +685,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creationChat?: Dialog['creationChat']
           imageDirection?: string
           filmPrompt?: string
+          soundDirection?: string
+          speechDirection?: string
         }
         if (!title || !targetLanguage || !length || !sections?.length) {
           res.status(400).json({ error: 'Pflichtfelder fehlen.' })
@@ -713,6 +717,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creationChat,
           imageDirection,
           filmPrompt,
+          soundDirection,
+          speechDirection,
         })
         res.status(201).json({ dialog })
         return

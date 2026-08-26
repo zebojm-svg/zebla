@@ -342,7 +342,7 @@ export function DashboardPage() {
 
   const deleteDialog = async (dialog: Dialog) => {
     if (!canEditDialog(dialog)) return
-    if (!confirm('Dialog wirklich löschen?')) return
+    if (!confirm(`„${dialog.title}“ wirklich löschen? Das kann man nicht rückgängig machen.`)) return
     setError('')
     try {
       await api.dialogs.delete(dialog.id)
@@ -648,7 +648,11 @@ export function DashboardPage() {
                 >
                   <LanguageFlag code={d.targetLanguage} size="lg" />
                 </span>
-                <h3>{d.title}</h3>
+                <h3>
+                  <Link to={`/dialog/${d.id}`} className="library-card-title-link">
+                    {d.title?.trim() ? d.title : 'Ohne Titel'}
+                  </Link>
+                </h3>
                 <p className="dialog-meta">
                   {languageName(d.targetLanguage)} · {d.sections.length} Abschnitt
                   {d.sections.length !== 1 ? 'e' : ''}
@@ -656,7 +660,11 @@ export function DashboardPage() {
                 <div className="library-card-actions">
                   {editable ? (
                     <>
-                      <Link to={`/dialog/${d.id}`} className="btn btn-secondary btn-sm">
+                      <Link
+                        to={`/dialog/${d.id}`}
+                        className="btn btn-secondary btn-sm"
+                        title="Dialog und Text öffnen"
+                      >
                         Bearbeiten
                       </Link>
                       <Link

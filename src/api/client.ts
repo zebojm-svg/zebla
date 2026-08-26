@@ -1,4 +1,12 @@
+import {
+  clientTimeoutMessage,
+  DEFAULT_API_TIMEOUT_MS,
+  FILM_PLAN_TIMEOUT_MS,
+} from '../../shared/api-timeout'
+
 const API_BASE = '/api'
+
+export { FILM_PLAN_TIMEOUT_MS }
 
 let tokenGetter: (() => Promise<string | null>) | null = null
 
@@ -9,7 +17,7 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  timeoutMs = 55_000,
+  timeoutMs = DEFAULT_API_TIMEOUT_MS,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -33,9 +41,7 @@ async function request<T>(
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(
-        'Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.',
-      )
+      throw new Error(clientTimeoutMessage(path, 'abort'))
     }
     throw err
   } finally {
@@ -47,9 +53,7 @@ async function request<T>(
     throw new Error(`Leere Antwort vom Server (${res.status}).`)
   }
   if (text.includes('FUNCTION_INVOCATION_TIMEOUT')) {
-    throw new Error(
-      'Server-Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.',
-    )
+    throw new Error(clientTimeoutMessage(path, 'server'))
   }
   let data: unknown
   try {
@@ -335,18 +339,26 @@ export const api = {
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
-      }>('/film-storyboard', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, cheapAi }),
-      }),
+      }>(
+        '/film-storyboard',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, cheapAi }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmStoryboardTweak: (dialogId: string, panelId: string, note: string) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
-      }>('/film-storyboard-tweak', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, panelId, note }),
-      }),
+      }>(
+        '/film-storyboard-tweak',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, panelId, note }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmFromPrompt: (
       prompt: string,
       targetLanguage: string,
@@ -360,18 +372,26 @@ export const api = {
         soundDirection?: string
         speechDirection?: string
         questions?: string[]
-      }>('/film-from-prompt', {
-        method: 'POST',
-        body: JSON.stringify({ prompt, targetLanguage, mode, answers }),
-      }),
+      }>(
+        '/film-from-prompt',
+        {
+          method: 'POST',
+          body: JSON.stringify({ prompt, targetLanguage, mode, answers }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmStoryboardRegenerate: (dialogId: string, sceneIds: string[]) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
-      }>('/film-storyboard-regenerate', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, sceneIds }),
-      }),
+      }>(
+        '/film-storyboard-regenerate',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, sceneIds }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmStoryboardComment: (dialogId: string, panelId: string, comment: string) =>
       request<{
         dialog: import('../types').Dialog
@@ -392,18 +412,26 @@ export const api = {
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
-      }>('/film-storyboard-insert-panel', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, afterPanelId, text }),
-      }),
+      }>(
+        '/film-storyboard-insert-panel',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, afterPanelId, text }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmInsertScene: (dialogId: string, afterSceneId: string | null, title: string) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
-      }>('/film-storyboard-insert-scene', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, afterSceneId, title }),
-      }),
+      }>(
+        '/film-storyboard-insert-scene',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, afterSceneId, title }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmSketch: (dialogId: string, panelId: string) =>
       request<{
         dialog: import('../types').Dialog
