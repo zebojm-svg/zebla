@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
-import { FilmSceneGenerateBar } from './FilmSceneGenerate'
+import { FilmPanelDialogue, FilmSceneGenerateBar, FilmStillFixBar } from './FilmSceneGenerate'
+import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { useSceneStills } from './generateSceneStills'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
@@ -26,29 +27,31 @@ function matchLabel(kind: string) {
 
 function PanelCard({
   panel,
+  dialog,
   busy,
   onTweak,
   onComment,
   onInsert,
+  onCorrect,
   onSketch,
 }: {
   panel: FilmStoryboardPanel
+  dialog: Dialog
   busy: boolean
   onTweak: (note: string) => void
   onComment: (comment: string) => void
   onInsert: (text: string) => void
+  onCorrect: (note: string) => void
   onSketch: () => void
 }) {
   const [note, setNote] = useState(panel.directorNote ?? '')
   const [comment, setComment] = useState(panel.comment ?? '')
-  const [insertText, setInsertText] = useState('')
   const bg = panel.background
 
   return (
     <article className="film-panel">
       <header className="film-panel-head">
         <strong>Bild {panel.panelIndex}</strong>
-        <p className="muted">{panel.caption}</p>
         {panel.expressionHint ? (
           <p className="film-expression">Gesicht: {panel.expressionHint}</p>
         ) : null}
@@ -57,6 +60,10 @@ function PanelCard({
         <div className="film-panel-still">
           <img src={panel.stillUrl} alt={panel.caption} />
           <p className="muted">Standbild dieser Zeile</p>
+          {panel.harvestNoteDe ? (
+            <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
+          ) : null}
+          <FilmPanelDialogue panel={panel} dialog={dialog} />
         </div>
       ) : (
         <div
@@ -84,17 +91,13 @@ function PanelCard({
           ))}
         </div>
       )}
+      {!panel.stillUrl ? <FilmPanelDialogue panel={panel} dialog={dialog} /> : null}
       {panel.sketchUrl ? (
         <div className="film-sketch-wrap">
           <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
           <p className="muted">Skizze (in der Bibliothek gespeichert)</p>
         </div>
       ) : null}
-      <ul className="film-cues">
-        {panel.imageCue ? <li><strong>Bild:</strong> {panel.imageCue}</li> : null}
-        {panel.soundCue ? <li><strong>Ton:</strong> {panel.soundCue}</li> : null}
-        {panel.speechCue ? <li><strong>Sprache:</strong> {panel.speechCue}</li> : null}
-      </ul>
       <div className="film-matches">
         {panel.placements.map((pl) => (
           <p key={`${pl.name}-m-${pl.poseId}`} className={`film-match ${matchClass(pl.match)}`}>
@@ -134,25 +137,13 @@ function PanelCard({
           }}
         />
       </label>
+      <FilmStillFixBar
+        panel={panel}
+        busy={busy}
+        onCorrect={onCorrect}
+        onInsert={onInsert}
+      />
       <div className="film-tweak">
-        <input
-          className="input"
-          value={insertText}
-          disabled={busy}
-          placeholder='Zeile danach: «Julien springt und ruft Juhe»'
-          onChange={(e) => setInsertText(e.target.value)}
-        />
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={busy || !insertText.trim()}
-          onClick={() => {
-            onInsert(insertText.trim())
-            setInsertText('')
-          }}
-        >
-          Zeile einfügen
-        </button>
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
           {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
         </button>
@@ -257,8 +248,8 @@ export function FilmStoryboardPage() {
             {dialog.title} · Zielsprache {dialog.targetLanguage.toUpperCase()} · beliebig viele Figuren
           </p>
           <p className="muted">
-            Pro Szene «Diese Szene erzeugen» — das macht die Standbilder. Den bewegten Film gibt es
-            später.
+            Pro Szene «Diese Szene erzeugen» — das macht die Standbilder. Unter jedem Bild steht
+            der Dialog. «Szene abspielen» ist Standbilder plus Stimme, noch kein Bewegungsfilm.
           </p>
         </div>
         <div className="header-actions">
@@ -357,6 +348,13 @@ export function FilmStoryboardPage() {
                     }
                   }}
                 />
+                <FilmScenePreviewPlayer
+                  dialogId={dialog.id}
+                  dialog={dialog}
+                  scene={scene}
+                  panels={panels}
+                  onDialogUpdated={setDialog}
+                />
                 <FilmSceneGenerateBar
                   dialogId={dialog.id}
                   scene={scene}
@@ -385,12 +383,43 @@ export function FilmStoryboardPage() {
                     <PanelCard
                       key={panel.id}
                       panel={panel}
+                      dialog={dialog}
                       busy={locked}
                       onTweak={(note) => void run(() => api.ai.filmStoryboardTweak(id, panel.id, note))}
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
                       }
-                      onInsert={(text) => void run(() => api.ai.filmInsertPanel(id, panel.id, text))}
+                      onCorrect={(note) =>
+                        void stills.generateOne(
+                          scene.id,
+                          panel,
+                          styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                          note,
+                        )
+                      }
+                      onInsert={(text) =>
+                        void (async () => {
+                          setBusy(true)
+                          setError('')
+                          try {
+                            const result = await api.ai.filmInsertPanel(id, panel.id, text)
+                            apply(result.dialog, result.board)
+                            const at = result.board.panels.findIndex((p) => p.id === panel.id)
+                            const created = at >= 0 ? result.board.panels[at + 1] : undefined
+                            if (created) {
+                              await stills.generateOne(
+                                scene.id,
+                                created,
+                                styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                              )
+                            }
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Fehler')
+                          } finally {
+                            setBusy(false)
+                          }
+                        })()
+                      }
                       onSketch={() => void run(() => api.ai.filmSketch(id, panel.id))}
                     />
                   ))}

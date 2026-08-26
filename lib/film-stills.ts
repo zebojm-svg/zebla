@@ -66,6 +66,7 @@ async function uploadPng(buffer: Buffer, path: string): Promise<string> {
 async function generateStillPng(
   prompt: string,
   refs: InlineImage[],
+  correctingExisting = false,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
@@ -74,9 +75,9 @@ async function generateStillPng(
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
     }
     parts.push({
-      text:
-        'Attached photos: keep these EXACT people (face, hair, clothes). ' +
-        'If a photo is a place, keep that location. Compose one finished still of the action.',
+      text: correctingExisting
+        ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
+        : 'Attached photos: keep these EXACT people (face, hair, clothes). If a photo is a place, keep that location. Compose one finished still of the action.',
     })
   }
   parts.push({ text: prompt })
@@ -123,7 +124,11 @@ export function stillPromptForPanel(
   panel: FilmStoryboardPanel,
   scene: FilmScene | undefined,
   styleId: StoryArtStyleId | string | undefined,
-  hasLibraryRefs: boolean,
+  extras: {
+    hasLibraryRefs: boolean
+    targetLanguage?: string
+    correctingExisting?: boolean
+  },
 ): string {
   return buildFilmStillPrompt({
     caption: panel.caption,
@@ -134,7 +139,11 @@ export function stillPromptForPanel(
     styleId,
     names: panel.placements.map((p) => p.name),
     poseHints: panel.placements.map((p) => `${p.name}: ${p.poseHint}`),
-    hasLibraryRefs,
+    hasLibraryRefs: extras.hasLibraryRefs,
+    targetLanguage: extras.targetLanguage,
+    directorNote: panel.directorNote,
+    stillCorrection: panel.stillCorrection,
+    correctingExisting: extras.correctingExisting,
   })
 }
 
@@ -143,10 +152,16 @@ export async function generateFilmPanelStillImage(opts: {
   scene?: FilmScene
   styleId?: string
   previousStillUrl?: string
+  correctFromUrl?: string
+  targetLanguage?: string
 }): Promise<string> {
-  const urls = referenceUrlsForPanel(opts.panel, opts.previousStillUrl)
+  const urls = referenceUrlsForPanel(opts.panel, opts.previousStillUrl, opts.correctFromUrl)
   const refs = await loadRefs(urls)
-  const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, refs.length > 0)
-  const buffer = await generateStillPng(prompt, refs)
+  const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
+    hasLibraryRefs: refs.length > 0,
+    targetLanguage: opts.targetLanguage,
+    correctingExisting: Boolean(opts.correctFromUrl),
+  })
+  const buffer = await generateStillPng(prompt, refs, Boolean(opts.correctFromUrl))
   return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
 }

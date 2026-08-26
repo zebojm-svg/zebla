@@ -308,27 +308,40 @@ export async function stillFilmPanel(
   panelId: string,
   styleId: string | undefined,
   profile?: UserProfile | null,
+  note?: string,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
-  const panel = board.panels.find((p) => p.id === panelId)
-  if (!panel) throw new Error('Bild nicht gefunden.')
-  const scene = board.scenes.find((s) => s.id === panel.sceneId)
-  const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === panel.sceneId)?.styleId
+  const found = board.panels.find((p) => p.id === panelId)
+  if (!found) throw new Error('Bild nicht gefunden.')
+  const scene = board.scenes.find((s) => s.id === found.sceneId)
+  const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === found.sceneId)?.styleId
   const resolvedStyle =
     (styleId && isStoryArtStyleId(styleId) ? styleId : undefined) ||
     (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
     DEFAULT_STORY_ART_STYLE
+  const correction = note?.trim()
+  const panel = correction ? { ...found, stillCorrection: correction } : found
+  const working: FilmStoryboard = correction
+    ? {
+        ...board,
+        panels: board.panels.map((p) => (p.id === panelId ? panel : p)),
+      }
+    : board
+  const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
+  const correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
 
   try {
     const url = await generateFilmPanelStillImage({
       panel,
       scene,
       styleId: resolvedStyle,
-      previousStillUrl: previousStillUrlInScene(board, panel),
+      previousStillUrl: previousStillUrlInScene(working, panel),
+      correctFromUrl,
+      targetLanguage,
     })
-    const next = applyPanelStill(board, panelId, url, resolvedStyle)
+    const next = applyPanelStill(working, panelId, url, resolvedStyle)
     const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
     const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
     if (planIdx >= 0) {
@@ -353,7 +366,7 @@ export async function stillFilmPanel(
     return { dialog: updated, board: next }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
-    const failed = applyPanelStillError(board, panelId, message)
+    const failed = applyPanelStillError(working, panelId, message)
     try {
       await saveBoard(dialogId, userId, failed, profile)
     } catch {
