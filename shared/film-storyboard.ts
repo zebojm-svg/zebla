@@ -66,6 +66,8 @@ export interface FilmStoryboardPanel {
   stillError?: string
   /** Was an diesem Bild korrigiert werden soll (nur dieses Bild neu). */
   stillCorrection?: string
+  /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
+  harvestNoteDe?: string
 }
 
 export interface FilmScene {
@@ -410,6 +412,7 @@ export function buildBoardFromDrafts(
       stillStyleId: prev?.stillStyleId,
       stillError: prev?.stillError,
       stillCorrection: prev?.stillCorrection,
+      harvestNoteDe: prev?.harvestNoteDe,
     }
   })
 

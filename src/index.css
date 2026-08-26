@@ -3346,3 +3346,14 @@ html[dir='rtl'] .slideshow-topbar {
   min-width: 10rem;
 }
 
+.film-harvest-note {
+  margin: 0.35rem 0 0;
+  font-weight: 600;
+}
+
+.film-still-thumb .film-harvest-note,
+.film-panel-still .film-harvest-note {
+  padding: 0.55rem 0.75rem;
+  margin: 0.4rem 0.75rem 0.2rem;
+}
+

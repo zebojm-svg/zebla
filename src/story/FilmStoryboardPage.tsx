@@ -60,6 +60,9 @@ function PanelCard({
         <div className="film-panel-still">
           <img src={panel.stillUrl} alt={panel.caption} />
           <p className="muted">Standbild dieser Zeile</p>
+          {panel.harvestNoteDe ? (
+            <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
+          ) : null}
           <FilmPanelDialogue panel={panel} dialog={dialog} />
         </div>
       ) : (

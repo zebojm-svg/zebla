@@ -145,7 +145,13 @@ export function applyPanelStill(
     ...next,
     panels: next.panels.map((p) =>
       p.id === panelId
-        ? { ...p, stillUrl, stillStyleId: styleId, stillError: undefined }
+        ? {
+            ...p,
+            stillUrl,
+            stillStyleId: styleId,
+            stillError: undefined,
+            harvestNoteDe: undefined,
+          }
         : p,
     ),
     updatedAt: new Date().toISOString(),
@@ -219,6 +225,19 @@ export function buildFilmStillPrompt(opts: {
   ]
     .filter(Boolean)
     .join(' ')
+}
+
+export function applyPanelHarvestNote(
+  board: FilmStoryboard,
+  panelId: string,
+  harvestNoteDe: string,
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  return {
+    ...next,
+    panels: next.panels.map((p) => (p.id === panelId ? { ...p, harvestNoteDe } : p)),
+    updatedAt: new Date().toISOString(),
+  }
 }
 
 export function stillTimeoutHintDe(message: string): string {

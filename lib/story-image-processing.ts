@@ -1,5 +1,10 @@
 import sharp from 'sharp'
-import { applyLuminanceMask, isSilhouetteMask, punchStudioBackdrop } from '../shared/image-person-matte.js'
+import {
+  applyLuminanceMask,
+  isSilhouetteMask,
+  opaqueBounds,
+  punchStudioBackdrop,
+} from '../shared/image-person-matte.js'
 import { splitRigFromPixels, type CharacterRig } from '../shared/character-rig.js'
 
 /** True, wenn das PNG schon wirklich freigestellt ist (wie Gemini-App-Export). */
@@ -41,6 +46,28 @@ function rgbaToPng(pixels: Uint8Array, width: number, height: number): Promise<B
   return sharp(pixels, {
     raw: { width, height, channels: 4 },
   })
+    .png()
+    .toBuffer()
+}
+
+/** Eng um die Figur schneiden — nicht ein Rechteck, in dem noch jemand anders steht. */
+export async function cropToOpaqueBounds(png: Buffer, pad = 12): Promise<Buffer> {
+  const color = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const pixels = new Uint8Array(color.data)
+  const box = opaqueBounds(pixels, color.info.width, color.info.height)
+  if (!box) return png
+  const left = Math.max(0, box.minX - pad)
+  const top = Math.max(0, box.minY - pad)
+  const right = Math.min(color.info.width - 1, box.maxX + pad)
+  const bottom = Math.min(color.info.height - 1, box.maxY + pad)
+  const width = right - left + 1
+  const height = bottom - top + 1
+  if (width < 8 || height < 8) return png
+  if (width >= color.info.width - 2 && height >= color.info.height - 2) return png
+  return sharp(pixels, {
+    raw: { width: color.info.width, height: color.info.height, channels: 4 },
+  })
+    .extract({ left, top, width, height })
     .png()
     .toBuffer()
 }

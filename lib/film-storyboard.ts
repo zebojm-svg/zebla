@@ -18,7 +18,14 @@ import {
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
-import { applyPanelStill, applyPanelStillError, previousStillUrlInScene } from '../shared/film-stills.js'
+import { harvestFilmStillToLibrary } from './film-library-harvest.js'
+import { rematchFilmBoard } from '../shared/film-library-harvest.js'
+import {
+  applyPanelHarvestNote,
+  applyPanelStill,
+  applyPanelStillError,
+  previousStillUrlInScene,
+} from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
 const PLAN_SYSTEM = `Du planst ein billiges Comic-Storyboard. Keine fertigen Film-Bilder.
@@ -332,6 +339,32 @@ export async function stillFilmPanel(
   const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
   const correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
 
+  const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
+  const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
+  if (planIdx >= 0) {
+    planScenes[planIdx] = { ...planScenes[planIdx], styleId: resolvedStyle }
+  } else {
+    planScenes.push({ sceneId: panel.sceneId, styleId: resolvedStyle })
+  }
+  const filmPlan: FilmPlan = {
+    version: 1,
+    targetLanguage: dialog.filmPlan?.targetLanguage ?? dialog.targetLanguage,
+    scenes: planScenes,
+    timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
+    updatedAt: new Date().toISOString(),
+  }
+
+  const persist = async (nextBoard: FilmStoryboard) => {
+    const updated = await updateDialog(
+      dialogId,
+      userId,
+      { filmStoryboard: normalizeFilmStoryboard(nextBoard), filmPlan },
+      profile,
+    )
+    if (!updated) throw new Error('Standbild konnte nicht gespeichert werden.')
+    return updated
+  }
+
   try {
     const url = await generateFilmPanelStillImage({
       panel,
@@ -341,29 +374,30 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
     })
-    const next = applyPanelStill(working, panelId, url, resolvedStyle)
-    const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
-    const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
-    if (planIdx >= 0) {
-      planScenes[planIdx] = { ...planScenes[planIdx], styleId: resolvedStyle }
-    } else {
-      planScenes.push({ sceneId: panel.sceneId, styleId: resolvedStyle })
+    const withStill = applyPanelStill(working, panelId, url, resolvedStyle)
+    const savedStill = await persist(withStill)
+    try {
+      const harvest = await harvestFilmStillToLibrary({
+        userId,
+        panel,
+        stillUrl: url,
+        scene,
+      })
+      const rematched = rematchFilmBoard(withStill, harvest.library)
+      const withHarvest = applyPanelHarvestNote(rematched, panelId, harvest.noteDe)
+      const updated = await persist(withHarvest)
+      return { dialog: updated, board: withHarvest }
+    } catch {
+      const failNote =
+        'Das Standbild ist da, aber Figuren und Hintergrund konnten nicht in die Bibliothek gelegt werden.'
+      const withNote = applyPanelHarvestNote(withStill, panelId, failNote)
+      try {
+        const updated = await persist(withNote)
+        return { dialog: updated, board: withNote }
+      } catch {
+        return { dialog: savedStill, board: withStill }
+      }
     }
-    const filmPlan: FilmPlan = {
-      version: 1,
-      targetLanguage: dialog.filmPlan?.targetLanguage ?? dialog.targetLanguage,
-      scenes: planScenes,
-      timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
-      updatedAt: new Date().toISOString(),
-    }
-    const updated = await updateDialog(
-      dialogId,
-      userId,
-      { filmStoryboard: normalizeFilmStoryboard(next), filmPlan },
-      profile,
-    )
-    if (!updated) throw new Error('Standbild konnte nicht gespeichert werden.')
-    return { dialog: updated, board: next }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
     const failed = applyPanelStillError(working, panelId, message)
