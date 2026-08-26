@@ -4,6 +4,7 @@ import type {
   CharacterVisual,
   Dialog,
   DialogLength,
+  FilmDraftMode,
   DialogLine,
   DialogSection,
   BirkenbihlWord,
@@ -156,14 +157,39 @@ Zwei Sprecher wechseln sich ab. Keine Markdown-Formatierung.`
 export async function generateFilmFromPrompt(
   prompt: string,
   targetLanguage: string,
-  length: DialogLength,
+  mode: FilmDraftMode,
+  answers?: string,
 ): Promise<{
-  title: string
-  sections: DialogSection[]
+  title?: string
+  sections?: DialogSection[]
   imageDirection?: string
   soundDirection?: string
   speechDirection?: string
+  questions?: string[]
 }> {
+  if (mode === 'ask' && !answers?.trim()) {
+    const asked = await chatJson<{ questions?: string[] }>(
+      `Du bereitest einen Kurzfilm vor. Stelle 4–8 kurze Rückfragen auf Deutsch, damit Handlung, Figuren, Ort, Ton und Sprache klar sind.
+Kein Dialog schreiben. JSON: { "questions": ["…"] }
+Originalfiguren, kein Petit Nicolas.`,
+      prompt.trim(),
+    )
+    const questions = (asked.questions ?? []).map((q) => q.trim()).filter(Boolean)
+    if (!questions.length) {
+      throw new Error('Keine Rückfragen bekommen. Bitte den Text etwas genauer schreiben oder «auf gut Glück» wählen.')
+    }
+    return { questions }
+  }
+
+  const modeHint =
+    mode === 'embellish'
+      ? 'Schmücke gesprochene Dialoge aus, wo es dem Film hilft. So viele Szenen und Zeilen wie der Stoff braucht (auch ein 15-Minuten-Film). Keine künstliche 20-Zeilen-Grenze.'
+      : 'Halte dich eng an den Prompt. Erfinde wenig dazu. Lücken nur so weit füllen, dass es spielbar ist. So lang wie der Text hergibt — keine künstliche Kürze, aber nicht extra aufblasen.'
+
+  const extra = answers?.trim()
+    ? `\nAntworten des Autors auf Rückfragen:\n${answers.trim()}`
+    : ''
+
   const result = await chatJson<{
     title: string
     imageDirection?: string
@@ -182,10 +208,12 @@ export async function generateFilmFromPrompt(
   }>(
     `Du planst einen Kurzfilm als Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
 Sprache der gesprochenen Zeilen: ${targetLanguage}.
+Lies den Prompt selbst: was Dialog/Diktat ist, was Bild-Regie, was Ton/Sprache.
+${modeHint}
 JSON:
 {
   "title": "Kurzer Titel",
-  "imageDirection": "Ort, Licht, wer wo steht",
+  "imageDirection": "Ort, Licht, wer wo steht (aus dem Prompt gezogen)",
   "soundDirection": "Geräusche und Musik",
   "speechDirection": "laut, flüstern, Tempo",
   "sections": [
@@ -197,8 +225,8 @@ JSON:
     }
   ]
 }
-Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge etwa ${LENGTH_HINTS[length]}.`,
-    prompt.trim(),
+Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.`,
+    `${prompt.trim()}${extra}`,
   )
 
   const sections: DialogSection[] = (result.sections ?? []).map((sec) => ({

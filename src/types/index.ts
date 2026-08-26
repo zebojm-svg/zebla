@@ -1,6 +1,7 @@
 export type {
   DialogLength,
   CreateMode,
+  FilmDraftMode,
   BirkenbihlWord,
   DialogLine,
   LineImageBeat,
