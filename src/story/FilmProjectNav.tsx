@@ -6,7 +6,7 @@ const STEPS: Array<{ id: Step; title: string; hint: string }> = [
   { id: 'dialog', title: 'Dialog', hint: 'Text und Regie' },
   { id: 'board', title: 'Storyboard', hint: 'Bilder aus der Bibliothek' },
   { id: 'library', title: 'Bibliothek', hint: 'Posen und Hintergründe' },
-  { id: 'export', title: 'Export', hint: 'Film — kommt als Nächstes' },
+  { id: 'export', title: 'Film', hint: 'Stil, Sprache, erzeugen' },
 ]
 
 type Props = {
@@ -38,7 +38,6 @@ export function FilmProjectNav({ dialogId }: Props) {
     <nav className="story-workflow film-project-nav" aria-label="Film-Projekt">
       {STEPS.map((step) => {
         const isActive = active === step.id
-        const disabled = step.id === 'export'
         const inner = (
           <>
             <span className="story-workflow-num">
@@ -50,13 +49,6 @@ export function FilmProjectNav({ dialogId }: Props) {
             </span>
           </>
         )
-        if (disabled) {
-          return (
-            <span key={step.id} className="story-workflow-step is-soon">
-              {inner}
-            </span>
-          )
-        }
         return (
           <Link
             key={step.id}

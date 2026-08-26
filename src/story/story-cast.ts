@@ -15,7 +15,7 @@ import {
 
 export type CastPose = 'standing' | 'sitting-sofa' | 'custom'
 
-export const CAST_MAX = 8
+export const CAST_MAX = 24
 
 export interface CastTransform {
   offsetX: number

@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
-import { boardNeedsDrawing } from '../../shared/film-storyboard'
+import {
+  boardNeedsDrawing,
+  normalizeFilmStoryboard,
+} from '../../shared/film-storyboard'
 
 function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
@@ -22,21 +25,30 @@ function PanelCard({
   panel,
   busy,
   onTweak,
+  onComment,
+  onInsert,
+  onSketch,
 }: {
   panel: FilmStoryboardPanel
   busy: boolean
   onTweak: (note: string) => void
+  onComment: (comment: string) => void
+  onInsert: (text: string) => void
+  onSketch: () => void
 }) {
   const [note, setNote] = useState(panel.directorNote ?? '')
+  const [comment, setComment] = useState(panel.comment ?? '')
+  const [insertText, setInsertText] = useState('')
   const bg = panel.background
 
   return (
     <article className="film-panel">
       <header className="film-panel-head">
-        <strong>
-          Szene {panel.sceneIndex + 1} · Bild {panel.panelIndex}
-        </strong>
+        <strong>Bild {panel.panelIndex}</strong>
         <p className="muted">{panel.caption}</p>
+        {panel.expressionHint ? (
+          <p className="film-expression">Gesicht: {panel.expressionHint}</p>
+        ) : null}
       </header>
       <div
         className="film-panel-stage"
@@ -47,7 +59,7 @@ function PanelCard({
         {!bg.imageUrl && <p className="film-panel-empty">Hintergrund fehlt</p>}
         {panel.placements.map((pl) => (
           <div
-            key={`${pl.name}-${pl.poseId}`}
+            key={`${pl.name}-${pl.poseId}-${pl.x}`}
             className={`film-cutout film-depth-${pl.depth}`}
             style={{
               left: `${pl.x}%`,
@@ -62,6 +74,12 @@ function PanelCard({
           </div>
         ))}
       </div>
+      {panel.sketchUrl ? (
+        <div className="film-sketch-wrap">
+          <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
+          <p className="muted">Skizze (in der Bibliothek gespeichert)</p>
+        </div>
+      ) : null}
       <ul className="film-cues">
         {panel.imageCue ? <li><strong>Bild:</strong> {panel.imageCue}</li> : null}
         {panel.soundCue ? <li><strong>Ton:</strong> {panel.soundCue}</li> : null}
@@ -69,7 +87,7 @@ function PanelCard({
       </ul>
       <div className="film-matches">
         {panel.placements.map((pl) => (
-          <p key={`${pl.name}-m`} className={`film-match ${matchClass(pl.match)}`}>
+          <p key={`${pl.name}-m-${pl.poseId}`} className={`film-match ${matchClass(pl.match)}`}>
             {pl.name} · {pl.poseHint} — {pl.matchNoteDe}
           </p>
         ))}
@@ -92,6 +110,43 @@ function PanelCard({
           Anpassen
         </button>
       </div>
+      <label className="film-comment">
+        <span className="muted">Kommentar zur Zeile</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={comment}
+          disabled={busy}
+          placeholder="Notiz nur für dich …"
+          onChange={(e) => setComment(e.target.value)}
+          onBlur={() => {
+            if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
+          }}
+        />
+      </label>
+      <div className="film-tweak">
+        <input
+          className="input"
+          value={insertText}
+          disabled={busy}
+          placeholder='Zeile danach: «Julien springt und ruft Juhe»'
+          onChange={(e) => setInsertText(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={busy || !insertText.trim()}
+          onClick={() => {
+            onInsert(insertText.trim())
+            setInsertText('')
+          }}
+        >
+          Zeile einfügen
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
+          {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
+        </button>
+      </div>
     </article>
   )
 }
@@ -103,12 +158,14 @@ export function FilmStoryboardPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [picked, setPicked] = useState<string[]>([])
+  const [sceneTitle, setSceneTitle] = useState('')
 
   const load = async () => {
     if (!id) return
     const { dialog: d } = await api.dialogs.get(id)
     setDialog(d)
-    setBoard(d.filmStoryboard ?? null)
+    setBoard(d.filmStoryboard ? normalizeFilmStoryboard(d.filmStoryboard) : null)
   }
 
   useEffect(() => {
@@ -117,35 +174,26 @@ export function FilmStoryboardPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const plan = async () => {
-    if (!id) return
+  const apply = (d: Dialog, b: FilmStoryboard) => {
+    setDialog(d)
+    setBoard(normalizeFilmStoryboard(b))
+  }
+
+  const run = async (fn: () => Promise<{ dialog: Dialog; board: FilmStoryboard }>) => {
     setBusy(true)
     setError('')
     try {
-      const result = await api.ai.filmStoryboard(id)
-      setDialog(result.dialog)
-      setBoard(result.board)
+      const result = await fn()
+      apply(result.dialog, result.board)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Storyboard fehlgeschlagen.')
+      setError(err instanceof Error ? err.message : 'Fehler')
     } finally {
       setBusy(false)
     }
   }
 
-  const tweak = async (panelId: string, note: string) => {
-    if (!id) return
-    setBusy(true)
-    setError('')
-    try {
-      const result = await api.ai.filmStoryboardTweak(id, panelId, note)
-      setDialog(result.dialog)
-      setBoard(result.board)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anpassen fehlgeschlagen.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const scenes = useMemo(() => (board ? normalizeFilmStoryboard(board).scenes : []), [board])
+  const missing = boardNeedsDrawing(board ?? undefined)
 
   if (loading) {
     return (
@@ -155,7 +203,7 @@ export function FilmStoryboardPage() {
     )
   }
 
-  if (!dialog) {
+  if (!dialog || !id) {
     return (
       <div className="page-center">
         <p>Dialog nicht gefunden.</p>
@@ -164,19 +212,29 @@ export function FilmStoryboardPage() {
     )
   }
 
-  const missing = boardNeedsDrawing(board ?? undefined)
-
   return (
     <div className="page film-board-page">
       <FilmProjectNav dialogId={dialog.id} />
       <div className="page-header">
         <div>
           <h1>Storyboard</h1>
-          <p className="muted">{dialog.title}</p>
+          <p className="muted">
+            {dialog.title} · Zielsprache {dialog.targetLanguage.toUpperCase()} · beliebig viele Figuren
+          </p>
         </div>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void plan()}>
-          {busy ? 'Plane …' : board ? 'Storyboard neu bauen' : 'Ins Storyboard'}
-        </button>
+        <div className="header-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void run(() => api.ai.filmStoryboard(id))}
+          >
+            {busy ? 'Plane …' : board ? 'Ganzes Board neu' : 'Storyboard erzeugen'}
+          </button>
+          <Link to={`/dialog/${id}/export`} className="btn btn-story-studio">
+            Film generieren
+          </Link>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -194,34 +252,104 @@ export function FilmStoryboardPage() {
             {missing > 0 ? (
               <>
                 {' '}
-                Fehlendes einmal in der <Link to={`/library?dialog=${dialog.id}`}>Bibliothek</Link> zeichnen
-                — nächster Film wird billiger.
+                Fehlendes in der <Link to={`/library?dialog=${dialog.id}`}>Bibliothek</Link> zeichnen.
               </>
             ) : null}
           </p>
-          <div className="film-panel-grid">
-            {board.panels.map((panel) => (
-              <PanelCard
-                key={panel.id}
-                panel={panel}
-                busy={busy}
-                onTweak={(note) => void tweak(panel.id, note)}
-              />
-            ))}
+
+          <div className="film-scene-toolbar">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy || picked.length === 0}
+              onClick={() => void run(() => api.ai.filmStoryboardRegenerate(id, picked))}
+            >
+              Gewählte Szene(n) anpassen
+            </button>
+            <input
+              className="input"
+              value={sceneTitle}
+              placeholder="Neue Szene (Titel)"
+              onChange={(e) => setSceneTitle(e.target.value)}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(() =>
+                  api.ai.filmInsertScene(id, scenes.at(-1)?.id ?? null, sceneTitle.trim() || 'Neue Szene'),
+                )
+              }
+            >
+              Szene einfügen
+            </button>
           </div>
-          <p className="muted">
-            Export (einzelne Szene oder ganzer Film) kommt als Nächstes. Sprechen und Blinzeln erst auf dem
-            fertigen Standbild.
-          </p>
+
+          {scenes.map((scene) => {
+            const panels = board.panels.filter((p) => p.sceneId === scene.id)
+            const checked = picked.includes(scene.id)
+            return (
+              <section key={scene.id} className="film-scene">
+                <header className="film-scene-head">
+                  <label className="film-scene-pick">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setPicked((prev) =>
+                          checked ? prev.filter((x) => x !== scene.id) : [...prev, scene.id],
+                        )
+                      }
+                    />
+                    <h2>{scene.title}</h2>
+                  </label>
+                </header>
+                <textarea
+                  className="input"
+                  rows={2}
+                  defaultValue={scene.noteDe}
+                  placeholder="Zur ganzen Szene: Ort, Stimmung, wer dabei ist …"
+                  disabled={busy}
+                  onBlur={(e) => {
+                    if (e.target.value.trim() !== (scene.noteDe ?? '')) {
+                      void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
+                    }
+                  }}
+                />
+                <div className="film-panel-grid">
+                  {panels.map((panel) => (
+                    <PanelCard
+                      key={panel.id}
+                      panel={panel}
+                      busy={busy}
+                      onTweak={(note) => void run(() => api.ai.filmStoryboardTweak(id, panel.id, note))}
+                      onComment={(comment) =>
+                        void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
+                      }
+                      onInsert={(text) => void run(() => api.ai.filmInsertPanel(id, panel.id, text))}
+                      onSketch={() => void run(() => api.ai.filmSketch(id, panel.id))}
+                    />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </>
       ) : (
         <div className="empty-state">
           <h2>Noch kein Storyboard</h2>
           <p>
-            Die KI macht grobe Kästen aus dem Dialog — wenig Token, keine teuren Bilder. Vorhandene Julien-Posen
-            und Hintergründe werden zuerst genommen.
+            Aus deinem Film-Prompt entstehen Kästen. Vorhandene Figuren werden genommen. Skizzen nur auf Knopf —
+            sonst sparst du Token.
           </p>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void plan()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void run(() => api.ai.filmStoryboard(id))}
+          >
             {busy ? 'Plane …' : 'Storyboard erzeugen'}
           </button>
         </div>

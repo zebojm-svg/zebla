@@ -12,6 +12,7 @@ import { ShareImportPage } from './pages/ShareImportPage'
 import { StoryPlayerPage } from './story/StoryPlayerPage'
 import { FilmStoryboardPage } from './story/FilmStoryboardPage'
 import { FilmLibraryPage } from './story/FilmLibraryPage'
+import { FilmExportPage } from './story/FilmExportPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ProPage } from './pages/ProPage'
 import { SsoPage } from './pages/SsoPage'
@@ -83,6 +84,14 @@ function AppRoutes() {
           element={
             <Layout>
               <FilmStoryboardPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/dialog/:id/export"
+          element={
+            <Layout>
+              <FilmExportPage />
             </Layout>
           }
         />

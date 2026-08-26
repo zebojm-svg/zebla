@@ -39,6 +39,8 @@ interface DialogDoc {
   creationPrompt?: string
   creationChat?: Dialog['creationChat']
   imageDirection?: string
+  filmPrompt?: string
+  filmPlan?: Dialog['filmPlan']
   soundDirection?: string
   speechDirection?: string
   filmStoryboard?: Dialog['filmStoryboard']
@@ -87,6 +89,8 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
     imageDirection: data.imageDirection,
+    filmPrompt: data.filmPrompt,
+    filmPlan: data.filmPlan ?? null,
     soundDirection: data.soundDirection,
     speechDirection: data.speechDirection,
     filmStoryboard: data.filmStoryboard ?? null,
@@ -334,6 +338,7 @@ export async function createDialog(
     creationPrompt?: string
     creationChat?: Dialog['creationChat']
     imageDirection?: string
+    filmPrompt?: string
     soundDirection?: string
     speechDirection?: string
     referenceImageUrl?: string
@@ -363,6 +368,7 @@ export async function createDialog(
     creationPrompt: data.creationPrompt,
     creationChat: data.creationChat,
     imageDirection: data.imageDirection,
+    filmPrompt: data.filmPrompt,
     soundDirection: data.soundDirection,
     speechDirection: data.speechDirection,
     referenceImageUrl: data.referenceImageUrl,
@@ -388,6 +394,8 @@ export async function updateDialog(
     creationPrompt: string
     creationChat: Dialog['creationChat']
     imageDirection: string
+    filmPrompt: string
+    filmPlan: Dialog['filmPlan']
     soundDirection: string
     speechDirection: string
     filmStoryboard: Dialog['filmStoryboard']
@@ -449,6 +457,8 @@ export async function updateDialog(
     creationChat: data.creationChat !== undefined ? data.creationChat : existing.creationChat,
     imageDirection:
       data.imageDirection !== undefined ? data.imageDirection : existing.imageDirection,
+    filmPrompt: data.filmPrompt !== undefined ? data.filmPrompt : existing.filmPrompt,
+    filmPlan: pick(data.filmPlan, existing.filmPlan ?? undefined),
     soundDirection:
       data.soundDirection !== undefined ? data.soundDirection : existing.soundDirection,
     speechDirection:
@@ -597,6 +607,10 @@ export async function cloneDialog(
     creationPrompt: source.creationPrompt,
     // Kein creationChat — private Prompt-Historie bleibt beim Original.
     imageDirection: source.imageDirection,
+    filmPrompt: source.filmPrompt,
+    filmPlan: source.filmPlan
+      ? JSON.parse(JSON.stringify(source.filmPlan))
+      : undefined,
     soundDirection: source.soundDirection,
     speechDirection: source.speechDirection,
     filmStoryboard: source.filmStoryboard

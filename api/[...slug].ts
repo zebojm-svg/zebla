@@ -100,7 +100,8 @@ import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../
 import { isCharacterRig } from '../shared/character-rig.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, tweakFilmPanel } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, saveFilmPlan } from '../lib/film-storyboard.js'
+import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -669,6 +670,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creationPrompt,
           creationChat,
           imageDirection,
+          filmPrompt,
         } = req.body as {
           title?: string
           sourceLanguage?: string
@@ -680,6 +682,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creationPrompt?: string
           creationChat?: Dialog['creationChat']
           imageDirection?: string
+          filmPrompt?: string
         }
         if (!title || !targetLanguage || !length || !sections?.length) {
           res.status(400).json({ error: 'Pflichtfelder fehlen.' })
@@ -709,6 +712,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           creationPrompt,
           creationChat,
           imageDirection,
+          filmPrompt,
         })
         res.status(201).json({ dialog })
         return
@@ -1016,6 +1020,160 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cheapAi: cheapAi !== false,
       })
       res.json(result)
+      return
+    }
+
+    if (route === 'film-from-prompt' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { prompt, targetLanguage, length } = req.body as {
+        prompt?: string
+        targetLanguage?: string
+        length?: 'short' | 'medium' | 'long'
+      }
+      if (!prompt?.trim() || !targetLanguage || !length) {
+        res.status(400).json({ error: 'Prompt, Sprache und Länge fehlen.' })
+        return
+      }
+      const result = await generateFilmFromPrompt(prompt.trim(), targetLanguage, length)
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-regenerate' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, sceneIds } = req.body as { dialogId?: string; sceneIds?: string[] }
+      if (!dialogId?.trim() || !sceneIds?.length) {
+        res.status(400).json({ error: 'dialogId und sceneIds fehlen.' })
+        return
+      }
+      const result = await regenerateFilmScenes(dialogId.trim(), user.uid, sceneIds, profile)
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-comment' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId, comment } = req.body as {
+        dialogId?: string
+        panelId?: string
+        comment?: string
+      }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await commentFilmPanel(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        comment ?? '',
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-scene-note' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, sceneId, noteDe } = req.body as {
+        dialogId?: string
+        sceneId?: string
+        noteDe?: string
+      }
+      if (!dialogId?.trim() || !sceneId?.trim()) {
+        res.status(400).json({ error: 'dialogId und sceneId fehlen.' })
+        return
+      }
+      const result = await noteFilmScene(
+        dialogId.trim(),
+        user.uid,
+        sceneId.trim(),
+        noteDe ?? '',
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-insert-panel' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, afterPanelId, text } = req.body as {
+        dialogId?: string
+        afterPanelId?: string
+        text?: string
+      }
+      if (!dialogId?.trim() || !afterPanelId?.trim() || !text?.trim()) {
+        res.status(400).json({ error: 'dialogId, afterPanelId und text fehlen.' })
+        return
+      }
+      const result = await insertFilmPanel(
+        dialogId.trim(),
+        user.uid,
+        afterPanelId.trim(),
+        text.trim(),
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-insert-scene' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, afterSceneId, title } = req.body as {
+        dialogId?: string
+        afterSceneId?: string | null
+        title?: string
+      }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await insertFilmScene(
+        dialogId.trim(),
+        user.uid,
+        afterSceneId ?? null,
+        title?.trim() || 'Neue Szene',
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-sketch' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, panelId } = req.body as { dialogId?: string; panelId?: string }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await sketchFilmPanel(dialogId.trim(), user.uid, panelId.trim(), profile)
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-plan' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, plan } = req.body as {
+        dialogId?: string
+        plan?: import('../shared/film-storyboard.js').FilmPlan
+      }
+      if (!dialogId?.trim() || !plan) {
+        res.status(400).json({ error: 'dialogId und plan fehlen.' })
+        return
+      }
+      const dialog = await saveFilmPlan(dialogId.trim(), user.uid, plan, profile)
+      res.json({ dialog })
       return
     }
 

@@ -45,7 +45,11 @@ export function FilmLibraryPage() {
     [assets],
   )
   const environments = useMemo(
-    () => assets.filter((a) => a.type === 'environment' || a.type === 'scene'),
+    () => assets.filter((a) => a.type === 'environment'),
+    [assets],
+  )
+  const sketches = useMemo(
+    () => assets.filter((a) => (a.tags ?? []).includes('sketch')),
     [assets],
   )
   const identities = useMemo(() => listCharacterIdentities(characters, []), [characters])
@@ -59,6 +63,11 @@ export function FilmLibraryPage() {
         [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
       )
     : environments
+  const shownSketches = needle
+    ? sketches.filter((e) =>
+        [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
+      )
+    : sketches
 
   const remove = async (id: string) => {
     if (!window.confirm('Diesen Eintrag aus der Bibliothek löschen?')) return
@@ -147,6 +156,30 @@ export function FilmLibraryPage() {
           ) : (
             <div className="story-character-grid">
               {shownEnvs.map((asset) => (
+                <article key={asset.id} className="story-character-card">
+                  <img src={asset.imageUrl} alt={asset.name} />
+                  <p>{asset.name}</p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void remove(asset.id)}
+                  >
+                    Löschen
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <h2>Storyboard-Skizzen</h2>
+          {shownSketches.length === 0 ? (
+            <p className="muted">
+              Skizzen entstehen im Storyboard per Knopf «Skizze» — nur wenn du Gesichter sehen willst (kostet
+              ein günstiges Bild).
+            </p>
+          ) : (
+            <div className="story-character-grid">
+              {shownSketches.map((asset) => (
                 <article key={asset.id} className="story-character-card">
                   <img src={asset.imageUrl} alt={asset.name} />
                   <p>{asset.name}</p>

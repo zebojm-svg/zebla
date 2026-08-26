@@ -1,4 +1,4 @@
-import type { FilmStoryboard } from './film-storyboard.js'
+import type { FilmPlan, FilmStoryboard } from './film-storyboard.js'
 
 export type DialogLength = 'short' | 'medium' | 'long'
 
@@ -190,6 +190,8 @@ export interface Dialog {
   creationPrompt?: string
   /** Vollständiger Chat-Verlauf bei KI-Gespräch. */
   creationChat?: ChatMessage[]
+  /** Ein Prompt für Handlung, Bild, Ton und Sprache — die Film-Vorstellung. */
+  filmPrompt?: string
   /** Meta-Hinweise für Bilder (Setting, Emotionen wie Lachen/Weinen, Figuren). */
   imageDirection?: string
   /** Regie für Ton (Geräusche, Musik) — gilt fürs ganze Projekt, Zeilen können überschreiben. */
@@ -198,6 +200,8 @@ export interface Dialog {
   speechDirection?: string
   /** Billiges Film-Storyboard: Bibliothek zuerst, fehlende Posen merken. */
   filmStoryboard?: FilmStoryboard | null
+  /** Film-Schritt: Stil pro Szene, Zielsprache, Timeline-Notizen. */
+  filmPlan?: FilmPlan | null
   /** Bild 0: Cast-Referenz (intern, nicht in Diashow) – Standard für alle weiteren Bilder. */
   referenceImageUrl?: string
   referenceImagePrompt?: string

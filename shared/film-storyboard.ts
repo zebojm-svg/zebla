@@ -41,6 +41,7 @@ export interface FilmBackground {
 
 export interface FilmStoryboardPanel {
   id: string
+  sceneId: string
   sceneIndex: number
   panelIndex: number
   sectionId: string
@@ -50,17 +51,37 @@ export interface FilmStoryboardPanel {
   soundCue: string
   speechCue: string
   settingHint: string
+  expressionHint?: string
   placements: FilmPlacement[]
   background: FilmBackground
   directorNote?: string
+  /** Freier Kommentar zur Zeile */
+  comment?: string
+  sketchUrl?: string
+  sketchLibraryId?: string
+}
+
+export interface FilmScene {
+  id: string
+  title: string
+  noteDe: string
 }
 
 export interface FilmStoryboard {
   version: 1
   source: FilmBoardSource
+  scenes: FilmScene[]
   panels: FilmStoryboardPanel[]
   updatedAt: string
   summaryDe?: string
+}
+
+export interface FilmPlan {
+  version: 1
+  targetLanguage: string
+  scenes: Array<{ sceneId: string; styleId: string; noteDe?: string }>
+  timelineNotes: Array<{ id: string; at: string; note: string }>
+  updatedAt: string
 }
 
 export interface FilmDraftPanel {
@@ -71,6 +92,7 @@ export interface FilmDraftPanel {
   soundCue?: string
   speechCue?: string
   settingHint?: string
+  expressionHint?: string
   characters?: Array<{
     name: string
     poseHint?: string
@@ -256,8 +278,29 @@ function lineCueText(line: DialogLine): string {
   return [line.cueImage, line.text, line.imagePrompt].filter(Boolean).join(' ')
 }
 
+export function inferExpression(text: string): string {
+  const hay = text.toLowerCase()
+  if (
+    hay.includes('juhe') ||
+    hay.includes('freut') ||
+    hay.includes('lacht') ||
+    hay.includes('winkt') ||
+    hay.includes('jubel')
+  ) {
+    return 'freut sich'
+  }
+  if (hay.includes('weint') || hay.includes('traurig') || hay.includes('schluchz')) return 'traurig'
+  if (hay.includes('schreit') || hay.includes('wütend') || hay.includes('brüllt')) return 'schreit'
+  if (hay.includes('überrascht') || hay.includes('springt') || hay.includes('erschrickt')) {
+    return 'überrascht'
+  }
+  if (hay.includes('flüstert') || hay.includes('leise')) return 'leise / flüstert'
+  return 'neutral'
+}
+
 function defaultSetting(dialog: Dialog, section: DialogSection): string {
   return (
+    dialog.filmPrompt?.trim() ||
     dialog.imageDirection?.trim() ||
     section.title.trim() ||
     'Ort der Szene'
@@ -277,6 +320,7 @@ export function draftPanelsFromDialog(dialog: Dialog): FilmDraftPanel[] {
         soundCue: line.cueSound?.trim() || dialog.soundDirection?.trim() || '',
         speechCue: line.cueSpeech?.trim() || dialog.speechDirection?.trim() || '',
         settingHint: defaultSetting(dialog, section),
+        expressionHint: inferExpression(blob),
         characters: [
           {
             name: line.speaker,
@@ -296,10 +340,13 @@ export function buildBoardFromDrafts(
   drafts: FilmDraftPanel[],
   library: StoryLibraryAsset[],
   source: FilmBoardSource,
+  previous?: FilmStoryboard,
 ): FilmStoryboard {
   const sectionIndex = new Map(dialog.sections.map((s, i) => [s.id, i]))
+  const prevById = new Map((previous?.panels ?? []).map((p) => [p.id, p]))
   const panels: FilmStoryboardPanel[] = drafts.map((draft, i) => {
     const sceneIndex = sectionIndex.get(draft.sectionId) ?? 0
+    const sceneId = draft.sectionId || `scene-${sceneIndex + 1}`
     const settingHint = draft.settingHint?.trim() || defaultSetting(
       dialog,
       dialog.sections[sceneIndex] ?? dialog.sections[0],
@@ -331,8 +378,11 @@ export function buildBoardFromDrafts(
       } satisfies FilmPlacement
     })
 
+    const keepId = `p-${i + 1}-${sceneId.slice(0, 8)}`
+    const prev = prevById.get(keepId)
     return {
-      id: `p-${i + 1}-${draft.sectionId.slice(0, 8)}`,
+      id: keepId,
+      sceneId,
       sceneIndex,
       panelIndex: i + 1,
       sectionId: draft.sectionId,
@@ -342,25 +392,29 @@ export function buildBoardFromDrafts(
       soundCue: draft.soundCue?.trim() || '',
       speechCue: draft.speechCue?.trim() || '',
       settingHint,
+      expressionHint: draft.expressionHint?.trim() || inferExpression(blob),
       placements,
       background: matchBackground(settingHint, library),
+      comment: prev?.comment,
+      directorNote: prev?.directorNote,
+      sketchUrl: prev?.sketchUrl,
+      sketchLibraryId: prev?.sketchLibraryId,
     }
   })
 
-  const missing = panels.filter(
-    (p) =>
-      p.background.match === 'missing' || p.placements.some((pl) => pl.match === 'missing'),
-  ).length
+  const scenes = scenesFromPanels(panels, dialog, previous)
+  const missing = boardNeedsDrawing({ version: 1, source, scenes, panels, updatedAt: '' })
 
   return {
     version: 1,
     source,
+    scenes,
     panels,
     updatedAt: new Date().toISOString(),
     summaryDe:
       missing === 0
-        ? `${panels.length} Bilder — alles aus der Bibliothek, ohne neue Zeichnung.`
-        : `${panels.length} Bilder, ${missing} brauchen noch eine neue Zeichnung.`,
+        ? `${panels.length} Bilder in ${scenes.length} Szene(n) — Bibliothek zuerst.`
+        : `${panels.length} Bilder, ${missing} brauchen noch eine Zeichnung.`,
   }
 }
 
@@ -411,11 +465,169 @@ export function applyDirectorNote(
   return { ...board, panels, updatedAt: new Date().toISOString() }
 }
 
+export function scenesFromPanels(
+  panels: FilmStoryboardPanel[],
+  dialog?: Dialog,
+  previous?: FilmStoryboard,
+): FilmScene[] {
+  const prev = new Map((previous?.scenes ?? []).map((s) => [s.id, s]))
+  const seen: string[] = []
+  for (const p of panels) {
+    const id = p.sceneId || `scene-${p.sceneIndex + 1}`
+    if (!seen.includes(id)) seen.push(id)
+  }
+  if (seen.length === 0) {
+    return [{ id: 'scene-1', title: 'Szene 1', noteDe: '' }]
+  }
+  return seen.map((id, i) => {
+    const old = prev.get(id)
+    const section = dialog?.sections.find((s) => s.id === id)
+    return {
+      id,
+      title: old?.title || section?.title || `Szene ${i + 1}`,
+      noteDe: old?.noteDe ?? '',
+    }
+  })
+}
+
+export function normalizeFilmStoryboard(board: FilmStoryboard): FilmStoryboard {
+  const panels = board.panels.map((p, i) => ({
+    ...p,
+    sceneId: p.sceneId || `scene-${(p.sceneIndex ?? 0) + 1}`,
+    panelIndex: p.panelIndex || i + 1,
+  }))
+  return {
+    ...board,
+    scenes: board.scenes?.length ? board.scenes : scenesFromPanels(panels),
+    panels,
+  }
+}
+
+export function panelsInScene(board: FilmStoryboard, sceneId: string): FilmStoryboardPanel[] {
+  return normalizeFilmStoryboard(board).panels.filter((p) => p.sceneId === sceneId)
+}
+
+export function applyPanelComment(
+  board: FilmStoryboard,
+  panelId: string,
+  comment: string,
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  return {
+    ...next,
+    panels: next.panels.map((p) => (p.id === panelId ? { ...p, comment: comment.trim() } : p)),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export function applySceneNote(board: FilmStoryboard, sceneId: string, noteDe: string): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  return {
+    ...next,
+    scenes: next.scenes.map((s) => (s.id === sceneId ? { ...s, noteDe: noteDe.trim() } : s)),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export function insertSceneAfter(
+  board: FilmStoryboard,
+  afterSceneId: string | null,
+  title: string,
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  const id = `scene-${Date.now().toString(36)}`
+  const scene: FilmScene = { id, title: title.trim() || `Szene ${next.scenes.length + 1}`, noteDe: '' }
+  const idx = afterSceneId ? next.scenes.findIndex((s) => s.id === afterSceneId) : next.scenes.length - 1
+  const scenes = [...next.scenes]
+  scenes.splice(idx + 1, 0, scene)
+  const placeholder: FilmStoryboardPanel = {
+    id: `p-new-${id.slice(-6)}`,
+    sceneId: id,
+    sceneIndex: idx + 1,
+    panelIndex: next.panels.length + 1,
+    sectionId: id,
+    lineIds: [],
+    caption: 'Neue Zeile — Text ergänzen',
+    imageCue: '',
+    soundCue: '',
+    speechCue: '',
+    settingHint: '',
+    expressionHint: 'neutral',
+    placements: [],
+    background: { hint: '', match: 'missing', matchNoteDe: 'Noch kein Hintergrund.' },
+  }
+  return {
+    ...next,
+    scenes,
+    panels: [...next.panels, placeholder],
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export function insertPanelAfter(
+  board: FilmStoryboard,
+  afterPanelId: string,
+  text: string,
+  library: StoryLibraryAsset[],
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  const after = next.panels.find((p) => p.id === afterPanelId) ?? next.panels[next.panels.length - 1]
+  if (!after) return insertSceneAfter(next, null, 'Szene 1')
+  const poseId = inferPoseId(text)
+  const pose = getStillPose(poseId)
+  const names = Array.from(
+    new Set(after.placements.map((p) => p.name).concat(guessNames(text))),
+  ).filter(Boolean)
+  const people = names.length ? names : ['Figur']
+  const placements: FilmPlacement[] = people.map((name, ci, all) => {
+    const matched = matchCharacterPose(name, poseId, library)
+    return {
+      name,
+      poseId,
+      poseHint: pose.label,
+      depth: inferDepth(text),
+      x: clamp(28 + (ci / Math.max(1, all.length - 1)) * 44, 8, 92),
+      scale: 0.78,
+      flip: matched.flip,
+      libraryAssetId: matched.libraryAssetId,
+      imageUrl: matched.imageUrl,
+      match: matched.match,
+      matchNoteDe: matched.matchNoteDe,
+    }
+  })
+  const panel: FilmStoryboardPanel = {
+    id: `p-ins-${Date.now().toString(36)}`,
+    sceneId: after.sceneId,
+    sceneIndex: after.sceneIndex,
+    panelIndex: after.panelIndex + 1,
+    sectionId: after.sectionId,
+    lineIds: [],
+    caption: text.trim(),
+    imageCue: text.trim(),
+    soundCue: '',
+    speechCue: '',
+    settingHint: after.settingHint,
+    expressionHint: inferExpression(text),
+    placements,
+    background: matchBackground(after.settingHint || text, library),
+  }
+  const at = next.panels.findIndex((p) => p.id === after.id)
+  const panels = [...next.panels]
+  panels.splice(at + 1, 0, panel)
+  return { ...next, panels, updatedAt: new Date().toISOString() }
+}
+
+function guessNames(text: string): string[] {
+  const matches = text.match(/\b[A-ZÄÖÜ][a-zäöüß]{2,}\b/g) ?? []
+  return [...new Set(matches)].slice(0, 8)
+}
+
 export function boardNeedsDrawing(board: FilmStoryboard | undefined): number {
   if (!board) return 0
   return board.panels.filter(
     (p) =>
-      p.background.match === 'missing' || p.placements.some((pl) => pl.match === 'missing'),
+      p.background.match === 'missing' ||
+      p.placements.some((pl) => pl.match === 'missing'),
   ).length
 }
 
@@ -423,4 +635,10 @@ export function isFilmStoryboard(value: unknown): value is FilmStoryboard {
   if (!value || typeof value !== 'object') return false
   const v = value as FilmStoryboard
   return v.version === 1 && Array.isArray(v.panels)
+}
+
+export function isFilmPlan(value: unknown): value is FilmPlan {
+  if (!value || typeof value !== 'object') return false
+  const v = value as FilmPlan
+  return v.version === 1 && Array.isArray(v.scenes) && Array.isArray(v.timelineNotes)
 }
