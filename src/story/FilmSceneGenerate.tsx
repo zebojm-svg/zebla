@@ -7,7 +7,6 @@ import {
 import type { Dialog } from '../types'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { panelDialogueLines } from '../../shared/film-storyboard'
-import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
 import { sceneStillProgress, stillLibraryHintDe } from '../../shared/film-stills'
 
 type Props = {
@@ -37,7 +36,6 @@ export function FilmSceneGenerateBar({
 }: Props) {
   const stats = sceneStillProgress(panels, styleId)
   const hint = stillLibraryHintDe(panels)
-  const harvestNotes = sceneHarvestNotesDe(panels)
   const allDone = stats.total > 0 && stats.pending === 0
   const label = busy
     ? progress
@@ -91,12 +89,6 @@ export function FilmSceneGenerateBar({
           <Link to={`/library?dialog=${dialogId}`}>Zur Bibliothek</Link>
         </p>
       ) : null}
-      {harvestNotes.map((note) => (
-        <p key={note} className="alert alert-info film-harvest-note">
-          {note}{' '}
-          <Link to={`/library?dialog=${dialogId}`}>Zur Bibliothek</Link>
-        </p>
-      ))}
     </div>
   )
 }
@@ -229,9 +221,6 @@ export function FilmStillStrip({
               {panel.stillError ? <span className="film-still-err"> · Fehler</span> : null}
               {panelBusy ? <span> · wird korrigiert …</span> : null}
             </figcaption>
-            {panel.harvestNoteDe ? (
-              <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
-            ) : null}
             <FilmPanelDialogue panel={panel} dialog={dialog} />
             <FilmStillFixBar
               panel={panel}
