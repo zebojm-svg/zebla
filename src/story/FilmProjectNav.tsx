@@ -9,7 +9,7 @@ const STEPS: Array<{ id: Step; title: string; hint: string }> = [
   { id: 'dialog', title: 'Dialog', hint: 'Text und Regie' },
   { id: 'board', title: 'Storyboard', hint: 'Bilder aus der Bibliothek' },
   { id: 'library', title: 'Bibliothek', hint: 'Posen und Hintergründe' },
-  { id: 'export', title: 'Film', hint: 'Stil, Sprache, erzeugen' },
+  { id: 'export', title: 'Film', hint: 'Standbilder, Szene für Szene' },
 ]
 
 export type FilmSaveStatus = 'idle' | 'saving' | 'saved' | 'error'

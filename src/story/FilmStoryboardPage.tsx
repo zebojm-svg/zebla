@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
+import { FilmSceneGenerateBar } from './FilmSceneGenerate'
+import { useSceneStills } from './generateSceneStills'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
   boardNeedsDrawing,
   normalizeFilmStoryboard,
 } from '../../shared/film-storyboard'
+import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
 
 function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
@@ -50,30 +53,37 @@ function PanelCard({
           <p className="film-expression">Gesicht: {panel.expressionHint}</p>
         ) : null}
       </header>
-      <div
-        className="film-panel-stage"
-        style={{
-          backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
-        }}
-      >
-        {!bg.imageUrl && <p className="film-panel-empty">Hintergrund fehlt</p>}
-        {panel.placements.map((pl) => (
-          <div
-            key={`${pl.name}-${pl.poseId}-${pl.x}`}
-            className={`film-cutout film-depth-${pl.depth}`}
-            style={{
-              left: `${pl.x}%`,
-              transform: `translateX(-50%) scale(${pl.scale})${pl.flip ? ' scaleX(-1)' : ''}`,
-            }}
-          >
-            {pl.imageUrl ? (
-              <img src={pl.imageUrl} alt={pl.name} />
-            ) : (
-              <span className="film-cutout-ph">{pl.name}</span>
-            )}
-          </div>
-        ))}
-      </div>
+      {panel.stillUrl ? (
+        <div className="film-panel-still">
+          <img src={panel.stillUrl} alt={panel.caption} />
+          <p className="muted">Standbild dieser Zeile</p>
+        </div>
+      ) : (
+        <div
+          className="film-panel-stage"
+          style={{
+            backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
+          }}
+        >
+          {!bg.imageUrl && <p className="film-panel-empty">Hintergrund fehlt</p>}
+          {panel.placements.map((pl) => (
+            <div
+              key={`${pl.name}-${pl.poseId}-${pl.x}`}
+              className={`film-cutout film-depth-${pl.depth}`}
+              style={{
+                left: `${pl.x}%`,
+                transform: `translateX(-50%) scale(${pl.scale})${pl.flip ? ' scaleX(-1)' : ''}`,
+              }}
+            >
+              {pl.imageUrl ? (
+                <img src={pl.imageUrl} alt={pl.name} />
+              ) : (
+                <span className="film-cutout-ph">{pl.name}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {panel.sketchUrl ? (
         <div className="film-sketch-wrap">
           <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
@@ -160,12 +170,23 @@ export function FilmStoryboardPage() {
   const [error, setError] = useState('')
   const [picked, setPicked] = useState<string[]>([])
   const [sceneTitle, setSceneTitle] = useState('')
+  const [styles, setStyles] = useState<Record<string, string>>({})
 
   const load = async () => {
     if (!id) return
     const { dialog: d } = await api.dialogs.get(id)
     setDialog(d)
-    setBoard(d.filmStoryboard ? normalizeFilmStoryboard(d.filmStoryboard) : null)
+    const nextBoard = d.filmStoryboard ? normalizeFilmStoryboard(d.filmStoryboard) : null
+    setBoard(nextBoard)
+    if (nextBoard) {
+      const fromPlan = d.filmPlan
+      const next: Record<string, string> = {}
+      for (const scene of nextBoard.scenes) {
+        next[scene.id] =
+          fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId ?? DEFAULT_STORY_ART_STYLE
+      }
+      setStyles(next)
+    }
   }
 
   useEffect(() => {
@@ -177,7 +198,21 @@ export function FilmStoryboardPage() {
   const apply = (d: Dialog, b: FilmStoryboard) => {
     setDialog(d)
     setBoard(normalizeFilmStoryboard(b))
+    const fromPlan = d.filmPlan
+    setStyles((prev) => {
+      const next = { ...prev }
+      for (const scene of normalizeFilmStoryboard(b).scenes) {
+        if (!next[scene.id]) {
+          next[scene.id] =
+            fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId ?? DEFAULT_STORY_ART_STYLE
+        }
+      }
+      return next
+    })
   }
+
+  const stills = useSceneStills(id, apply)
+  const locked = busy || stills.busySceneId !== null
 
   const run = async (fn: () => Promise<{ dialog: Dialog; board: FilmStoryboard }>) => {
     setBusy(true)
@@ -221,18 +256,22 @@ export function FilmStoryboardPage() {
           <p className="muted">
             {dialog.title} · Zielsprache {dialog.targetLanguage.toUpperCase()} · beliebig viele Figuren
           </p>
+          <p className="muted">
+            Pro Szene «Diese Szene erzeugen» — das macht die Standbilder. Den bewegten Film gibt es
+            später.
+          </p>
         </div>
         <div className="header-actions">
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy}
+            disabled={locked}
             onClick={() => void run(() => api.ai.filmStoryboard(id))}
           >
             {busy ? 'Plane …' : board ? 'Ganzes Board neu' : 'Storyboard erzeugen'}
           </button>
           <Link to={`/dialog/${id}/export`} className="btn btn-story-studio">
-            Film generieren
+            Zum Film — Szene erzeugen
           </Link>
         </div>
       </div>
@@ -261,7 +300,7 @@ export function FilmStoryboardPage() {
             <button
               type="button"
               className="btn btn-secondary"
-              disabled={busy || picked.length === 0}
+              disabled={busy || picked.length === 0 || locked}
               onClick={() => void run(() => api.ai.filmStoryboardRegenerate(id, picked))}
             >
               Gewählte Szene(n) anpassen
@@ -271,12 +310,12 @@ export function FilmStoryboardPage() {
               value={sceneTitle}
               placeholder="Neue Szene (Titel)"
               onChange={(e) => setSceneTitle(e.target.value)}
-              disabled={busy}
+              disabled={locked}
             />
             <button
               type="button"
               className="btn btn-secondary"
-              disabled={busy}
+              disabled={locked}
               onClick={() =>
                 void run(() =>
                   api.ai.filmInsertScene(id, scenes.at(-1)?.id ?? null, sceneTitle.trim() || 'Neue Szene'),
@@ -311,19 +350,42 @@ export function FilmStoryboardPage() {
                   rows={2}
                   defaultValue={scene.noteDe}
                   placeholder="Zur ganzen Szene: Ort, Stimmung, wer dabei ist …"
-                  disabled={busy}
+                  disabled={locked}
                   onBlur={(e) => {
                     if (e.target.value.trim() !== (scene.noteDe ?? '')) {
                       void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
                     }
                   }}
                 />
+                <FilmSceneGenerateBar
+                  dialogId={dialog.id}
+                  scene={scene}
+                  panels={panels}
+                  styleId={styles[scene.id] ?? DEFAULT_STORY_ART_STYLE}
+                  onStyleChange={(next) => setStyles((prev) => ({ ...prev, [scene.id]: next }))}
+                  busy={stills.busySceneId === scene.id}
+                  extraDisabled={locked && stills.busySceneId !== scene.id}
+                  progress={
+                    stills.progress?.sceneId === scene.id
+                      ? { current: stills.progress.current, total: stills.progress.total }
+                      : null
+                  }
+                  error={stills.errors[scene.id]}
+                  onGenerate={(force) =>
+                    void stills.generate(
+                      scene.id,
+                      panels,
+                      styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                      force,
+                    )
+                  }
+                />
                 <div className="film-panel-grid">
                   {panels.map((panel) => (
                     <PanelCard
                       key={panel.id}
                       panel={panel}
-                      busy={busy}
+                      busy={locked}
                       onTweak={(note) => void run(() => api.ai.filmStoryboardTweak(id, panel.id, note))}
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
@@ -340,14 +402,14 @@ export function FilmStoryboardPage() {
       ) : (
         <div className="empty-state">
           <h2>Noch kein Storyboard</h2>
-          <p>
-            Aus deinem Film-Prompt entstehen Kästen. Vorhandene Figuren werden genommen. Skizzen nur auf Knopf —
-            sonst sparst du Token.
+          <p className="muted">
+            Aus deinem Film-Prompt entstehen Kästen. Vorhandene Figuren werden genommen. Danach pro
+            Szene die Standbilder erzeugen.
           </p>
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy}
+            disabled={locked}
             onClick={() => void run(() => api.ai.filmStoryboard(id))}
           >
             {busy ? 'Plane …' : 'Storyboard erzeugen'}

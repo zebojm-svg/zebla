@@ -100,7 +100,7 @@ import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../
 import { isCharacterRig } from '../shared/character-rig.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, saveFilmPlan } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan } from '../lib/film-storyboard.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
@@ -1171,6 +1171,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       const result = await sketchFilmPanel(dialogId.trim(), user.uid, panelId.trim(), profile)
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-still' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, panelId, styleId } = req.body as {
+        dialogId?: string
+        panelId?: string
+        styleId?: string
+      }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await stillFilmPanel(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        styleId?.trim(),
+        profile,
+      )
       res.json(result)
       return
     }
