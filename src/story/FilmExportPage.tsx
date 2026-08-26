@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
 import { FilmSceneGenerateBar, FilmStillStrip } from './FilmSceneGenerate'
+import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { useSceneStills } from './generateSceneStills'
 import { LanguageFlag } from '../components/LanguageFlag'
 import type { Dialog } from '../types'
@@ -12,6 +13,7 @@ import {
   normalizeFilmStoryboard,
   type FilmPlan,
   type FilmStoryboard,
+  type FilmStoryboardPanel,
 } from '../../shared/film-storyboard'
 
 export function FilmExportPage() {
@@ -105,6 +107,40 @@ export function FilmExportPage() {
     await stills.generate(sceneId, panels, styleId, force)
   }
 
+  const correctStill = async (sceneId: string, panel: FilmStoryboardPanel, note: string) => {
+    if (!id || !board) return
+    const styleId = styles[sceneId] ?? DEFAULT_STORY_ART_STYLE
+    setError('')
+    setStatus('')
+    try {
+      await api.ai.filmPlanSave(id, buildPlan())
+    } catch {
+      /* Stil wird beim Bild trotzdem mitgeschickt */
+    }
+    await stills.generateOne(sceneId, panel, styleId, note)
+  }
+
+  const insertAfter = async (sceneId: string, panelId: string, text: string) => {
+    if (!id || !board) return
+    const styleId = styles[sceneId] ?? DEFAULT_STORY_ART_STYLE
+    setError('')
+    setStatus('')
+    setBusy(true)
+    try {
+      const result = await api.ai.filmInsertPanel(id, panelId, text)
+      applyBoard(result.dialog, result.board)
+      const at = result.board.panels.findIndex((p) => p.id === panelId)
+      const created = at >= 0 ? result.board.panels[at + 1] : undefined
+      if (created) {
+        await stills.generateOne(sceneId, created, styleId)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Einfügen fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <p className="muted" style={{ padding: '2rem' }}>Laden …</p>
   if (!dialog) {
     return (
@@ -123,8 +159,9 @@ export function FilmExportPage() {
           <h1>Film generieren</h1>
           <p className="muted">
             Hier machst du die <strong>Standbilder Szene für Szene</strong> — damit du siehst, ob
-            es gut herauskommt. Der bewegte Film (sprechen, blinzeln) kommt später, sonst wird es
-            teuer.
+            es gut herauskommt. Unter jedem Bild steht der Dialog. Was nicht stimmt, schreibst du
+            hin und klickst «Bild korrigieren». «Szene abspielen» zeigt die Bilder mit Stimme —
+            noch kein Bewegungsfilm.
           </p>
         </div>
         {board ? (
@@ -164,7 +201,21 @@ export function FilmExportPage() {
               <section key={scene.id} className="film-scene">
                 <h2>{scene.title}</h2>
                 <p className="muted">{scene.noteDe || 'Keine Szenennotiz'}</p>
-                <FilmStillStrip panels={panels} />
+                <FilmScenePreviewPlayer
+                  dialogId={dialog.id}
+                  dialog={dialog}
+                  scene={scene}
+                  panels={panels}
+                  onDialogUpdated={setDialog}
+                />
+                <FilmStillStrip
+                  panels={panels}
+                  dialog={dialog}
+                  busy={sceneBusy || busy}
+                  busyPanelId={stills.busyPanelId}
+                  onCorrect={(panel, note) => void correctStill(scene.id, panel, note)}
+                  onInsert={(panel, text) => void insertAfter(scene.id, panel.id, text)}
+                />
                 <FilmSceneGenerateBar
                   dialogId={dialog.id}
                   scene={scene}
@@ -238,7 +289,8 @@ export function FilmExportPage() {
           </div>
           <p className="muted">
             Die eigentlichen Film-Sekunden (sprechen, blinzeln, Bewegung) kommen erst, wenn die
-            Standbilder stimmen — sonst wird es teuer.
+            Standbilder stimmen — sonst wird es teuer. «Szene abspielen» ist Standbilder plus
+            Stimme, noch kein Bewegungsfilm.
           </p>
         </>
       )}

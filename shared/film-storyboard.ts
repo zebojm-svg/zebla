@@ -5,6 +5,7 @@
  */
 
 import { characterBaseName } from './character-parts.js'
+import { lineSpeechText } from './line-speech.js'
 import type { Dialog, DialogLine, DialogSection } from './types.js'
 import type { StoryLibraryAsset } from './story-types.js'
 import {
@@ -63,6 +64,10 @@ export interface FilmStoryboardPanel {
   stillUrl?: string
   stillStyleId?: string
   stillError?: string
+  /** Was an diesem Bild korrigiert werden soll (nur dieses Bild neu). */
+  stillCorrection?: string
+  /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
+  harvestNoteDe?: string
 }
 
 export interface FilmScene {
@@ -406,6 +411,8 @@ export function buildBoardFromDrafts(
       stillUrl: prev?.stillUrl,
       stillStyleId: prev?.stillStyleId,
       stillError: prev?.stillError,
+      stillCorrection: prev?.stillCorrection,
+      harvestNoteDe: prev?.harvestNoteDe,
     }
   })
 
@@ -627,6 +634,98 @@ export function insertPanelAfter(
 function guessNames(text: string): string[] {
   const matches = text.match(/\b[A-ZÄÖÜ][a-zäöüß]{2,}\b/g) ?? []
   return [...new Set(matches)].slice(0, 8)
+}
+
+export interface FilmPanelDialogueLine {
+  speaker: string
+  text: string
+  lineId?: string
+  audioUrl?: string
+}
+
+function allDialogLines(dialog: Pick<Dialog, 'sections'>): Map<string, DialogLine> {
+  const byId = new Map<string, DialogLine>()
+  for (const section of dialog.sections) {
+    for (const line of section.lines) byId.set(line.id, line)
+  }
+  return byId
+}
+
+/** Sprecher + Text unter dem Standbild, zum Vergleichen. */
+export function panelDialogueLines(
+  panel: FilmStoryboardPanel,
+  dialog?: Pick<Dialog, 'sections'> | null,
+): FilmPanelDialogueLine[] {
+  if (dialog) {
+    const byId = allDialogLines(dialog)
+    const fromIds = panel.lineIds
+      .map((id) => byId.get(id))
+      .filter((line): line is DialogLine => Boolean(line?.text.trim()))
+    if (fromIds.length > 0) {
+      return fromIds.map((line) => ({
+        speaker: line.speaker,
+        text: line.text.trim(),
+        lineId: line.id,
+        audioUrl: line.audioUrl,
+      }))
+    }
+  }
+  const cap = panel.caption.trim()
+  const match = cap.match(/^([^:]{1,48}):\s+(.+)$/)
+  if (match) return [{ speaker: match[1]!.trim(), text: match[2]!.trim() }]
+  if (cap) return [{ speaker: '', text: cap }]
+  return []
+}
+
+/** Zeilen für die Szenen-Vorschau (Zielsprache + gespeicherte Stimme). */
+export function panelSpeakLines(
+  panel: FilmStoryboardPanel,
+  dialog?: Pick<Dialog, 'sections'> | null,
+): Array<{ id: string; speaker: string; text: string; audioUrl?: string }> {
+  if (dialog) {
+    const byId = allDialogLines(dialog)
+    const fromIds = panel.lineIds
+      .map((id) => byId.get(id))
+      .filter((line): line is DialogLine => Boolean(line))
+    const spoken = fromIds
+      .map((line) => ({
+        id: line.id,
+        speaker: line.speaker || 'Sprecher',
+        text: lineSpeechText(line).trim(),
+        audioUrl: line.audioUrl,
+      }))
+      .filter((line) => line.text)
+    if (spoken.length > 0) return spoken
+  }
+  return panelDialogueLines(panel, dialog)
+    .map((line) => ({
+      id: line.lineId ?? panel.id,
+      speaker: line.speaker || 'Sprecher',
+      text: line.text.trim(),
+      audioUrl: line.audioUrl,
+    }))
+    .filter((line) => line.text)
+}
+
+export interface FilmScenePreviewBeat {
+  panelId: string
+  panelIndex: number
+  stillUrl?: string
+  caption: string
+  lines: Array<{ id: string; speaker: string; text: string; audioUrl?: string }>
+}
+
+export function scenePreviewBeats(
+  panels: FilmStoryboardPanel[],
+  dialog?: Pick<Dialog, 'sections'> | null,
+): FilmScenePreviewBeat[] {
+  return panels.map((panel) => ({
+    panelId: panel.id,
+    panelIndex: panel.panelIndex,
+    stillUrl: panel.stillUrl,
+    caption: panel.caption,
+    lines: panelSpeakLines(panel, dialog),
+  }))
 }
 
 export function boardNeedsDrawing(board: FilmStoryboard | undefined): number {

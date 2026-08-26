@@ -86,8 +86,9 @@ export function FilmLibraryPage() {
         <div>
           <h1>Bibliothek</h1>
           <p className="muted">
-            Posen, Hintergründe und alles Wiederverwendbare. Das Storyboard schaut zuerst hier nach — zeichnen
-            nur, wenn etwas fehlt.
+            Posen, Hintergründe und alles Wiederverwendbare. Nach dem Erzeugen einer Szene landen
+            Figuren und Hintergrund automatisch hier — auch wenn sich Leute überlappen. Das
+            Storyboard schaut zuerst hier nach — zeichnen nur, wenn etwas fehlt.
           </p>
         </div>
         <Link to="/story" className="btn btn-secondary">

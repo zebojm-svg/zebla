@@ -441,13 +441,13 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
         120_000,
       ),
-    filmStill: (dialogId: string, panelId: string, styleId?: string) =>
+    filmStill: (dialogId: string, panelId: string, styleId?: string, note?: string) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
       }>(
         '/film-storyboard-still',
-        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
         120_000,
       ),
     filmPlanSave: (

@@ -42,6 +42,7 @@ export function useSceneStills(
   apply: (dialog: Dialog, board: FilmStoryboard) => void,
 ) {
   const [busySceneId, setBusySceneId] = useState<string | null>(null)
+  const [busyPanelId, setBusyPanelId] = useState<string | null>(null)
   const [progress, setProgress] = useState<{
     sceneId: string
     current: number
@@ -58,6 +59,7 @@ export function useSceneStills(
     if (!dialogId || busySceneId) return
     const queue = panelsNeedingStills(panels, styleId, force)
     setBusySceneId(sceneId)
+    setBusyPanelId(null)
     setErrors((prev) => ({ ...prev, [sceneId]: '' }))
     setProgress({ sceneId, current: 0, total: queue.length })
     try {
@@ -76,9 +78,35 @@ export function useSceneStills(
       setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
     } finally {
       setBusySceneId(null)
+      setBusyPanelId(null)
       setProgress(null)
     }
   }
 
-  return { busySceneId, progress, errors, generate }
+  const generateOne = async (
+    sceneId: string,
+    panel: FilmStoryboardPanel,
+    styleId: string,
+    note?: string,
+  ) => {
+    if (!dialogId || busySceneId) return
+    setBusySceneId(sceneId)
+    setBusyPanelId(panel.id)
+    setErrors((prev) => ({ ...prev, [sceneId]: '' }))
+    setProgress({ sceneId, current: 0, total: 1 })
+    try {
+      const result = await api.ai.filmStill(dialogId, panel.id, styleId, note)
+      apply(result.dialog, result.board)
+      setProgress({ sceneId, current: 1, total: 1 })
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+      setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
+    } finally {
+      setBusySceneId(null)
+      setBusyPanelId(null)
+      setProgress(null)
+    }
+  }
+
+  return { busySceneId, busyPanelId, progress, errors, generate, generateOne }
 }

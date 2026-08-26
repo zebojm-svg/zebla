@@ -106,5 +106,8 @@ if (!board.scenes.length) fail('Szenen müssen existieren')
 const inserted = insertPanelAfter(board, panel.id, 'Julien springt in die Luft und ruft Juhe', [julienSit, park])
 if (inserted.panels.length !== 2) fail('Zeile einfügen')
 if (!inserted.panels[1]?.expressionHint) fail('Ausdruck an neuer Zeile')
+if (inserted.panels[1]?.imageCue !== 'Julien springt in die Luft und ruft Juhe') {
+  fail('Eingefügtes Bild trägt die Bild-Notiz')
+}
 
 console.log('OK: Storyboard nutzt Bibliothek, spiegelt, nimmt Regie an, fügt Zeilen ein')

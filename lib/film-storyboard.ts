@@ -18,7 +18,14 @@ import {
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
-import { applyPanelStill, applyPanelStillError, previousStillUrlInScene } from '../shared/film-stills.js'
+import { harvestFilmStillToLibrary } from './film-library-harvest.js'
+import { rematchFilmBoard } from '../shared/film-library-harvest.js'
+import {
+  applyPanelHarvestNote,
+  applyPanelStill,
+  applyPanelStillError,
+  previousStillUrlInScene,
+} from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
 const PLAN_SYSTEM = `Du planst ein billiges Comic-Storyboard. Keine fertigen Film-Bilder.
@@ -308,52 +315,92 @@ export async function stillFilmPanel(
   panelId: string,
   styleId: string | undefined,
   profile?: UserProfile | null,
+  note?: string,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
-  const panel = board.panels.find((p) => p.id === panelId)
-  if (!panel) throw new Error('Bild nicht gefunden.')
-  const scene = board.scenes.find((s) => s.id === panel.sceneId)
-  const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === panel.sceneId)?.styleId
+  const found = board.panels.find((p) => p.id === panelId)
+  if (!found) throw new Error('Bild nicht gefunden.')
+  const scene = board.scenes.find((s) => s.id === found.sceneId)
+  const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === found.sceneId)?.styleId
   const resolvedStyle =
     (styleId && isStoryArtStyleId(styleId) ? styleId : undefined) ||
     (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
     DEFAULT_STORY_ART_STYLE
+  const correction = note?.trim()
+  const panel = correction ? { ...found, stillCorrection: correction } : found
+  const working: FilmStoryboard = correction
+    ? {
+        ...board,
+        panels: board.panels.map((p) => (p.id === panelId ? panel : p)),
+      }
+    : board
+  const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
+  const correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
+
+  const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
+  const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
+  if (planIdx >= 0) {
+    planScenes[planIdx] = { ...planScenes[planIdx], styleId: resolvedStyle }
+  } else {
+    planScenes.push({ sceneId: panel.sceneId, styleId: resolvedStyle })
+  }
+  const filmPlan: FilmPlan = {
+    version: 1,
+    targetLanguage: dialog.filmPlan?.targetLanguage ?? dialog.targetLanguage,
+    scenes: planScenes,
+    timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
+    updatedAt: new Date().toISOString(),
+  }
+
+  const persist = async (nextBoard: FilmStoryboard) => {
+    const updated = await updateDialog(
+      dialogId,
+      userId,
+      { filmStoryboard: normalizeFilmStoryboard(nextBoard), filmPlan },
+      profile,
+    )
+    if (!updated) throw new Error('Standbild konnte nicht gespeichert werden.')
+    return updated
+  }
 
   try {
     const url = await generateFilmPanelStillImage({
       panel,
       scene,
       styleId: resolvedStyle,
-      previousStillUrl: previousStillUrlInScene(board, panel),
+      previousStillUrl: previousStillUrlInScene(working, panel),
+      correctFromUrl,
+      targetLanguage,
     })
-    const next = applyPanelStill(board, panelId, url, resolvedStyle)
-    const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
-    const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
-    if (planIdx >= 0) {
-      planScenes[planIdx] = { ...planScenes[planIdx], styleId: resolvedStyle }
-    } else {
-      planScenes.push({ sceneId: panel.sceneId, styleId: resolvedStyle })
+    const withStill = applyPanelStill(working, panelId, url, resolvedStyle)
+    const savedStill = await persist(withStill)
+    try {
+      const harvest = await harvestFilmStillToLibrary({
+        userId,
+        panel,
+        stillUrl: url,
+        scene,
+      })
+      const rematched = rematchFilmBoard(withStill, harvest.library)
+      const withHarvest = applyPanelHarvestNote(rematched, panelId, harvest.noteDe)
+      const updated = await persist(withHarvest)
+      return { dialog: updated, board: withHarvest }
+    } catch {
+      const failNote =
+        'Das Standbild ist da, aber Figuren und Hintergrund konnten nicht in die Bibliothek gelegt werden.'
+      const withNote = applyPanelHarvestNote(withStill, panelId, failNote)
+      try {
+        const updated = await persist(withNote)
+        return { dialog: updated, board: withNote }
+      } catch {
+        return { dialog: savedStill, board: withStill }
+      }
     }
-    const filmPlan: FilmPlan = {
-      version: 1,
-      targetLanguage: dialog.filmPlan?.targetLanguage ?? dialog.targetLanguage,
-      scenes: planScenes,
-      timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
-      updatedAt: new Date().toISOString(),
-    }
-    const updated = await updateDialog(
-      dialogId,
-      userId,
-      { filmStoryboard: normalizeFilmStoryboard(next), filmPlan },
-      profile,
-    )
-    if (!updated) throw new Error('Standbild konnte nicht gespeichert werden.')
-    return { dialog: updated, board: next }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
-    const failed = applyPanelStillError(board, panelId, message)
+    const failed = applyPanelStillError(working, panelId, message)
     try {
       await saveBoard(dialogId, userId, failed, profile)
     } catch {

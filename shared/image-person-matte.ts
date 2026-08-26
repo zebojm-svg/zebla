@@ -145,3 +145,63 @@ export function punchStudioBackdrop(color: RgbaPixels, width: number, height: nu
     tryN(x, y + 1)
   }
 }
+
+export function opaqueRatio(color: RgbaPixels, width: number, height: number, threshold = 24): number {
+  const count = width * height
+  if (count === 0) return 0
+  let n = 0
+  for (let i = 0; i < count; i++) {
+    if (color[i * 4 + 3]! >= threshold) n++
+  }
+  return n / count
+}
+
+export function opaqueBounds(
+  color: RgbaPixels,
+  width: number,
+  height: number,
+  threshold = 24,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (color[(y * width + x) * 4 + 3]! < threshold) continue
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return null
+  return { minX, minY, maxX, maxY }
+}
+
+export function binaryAlphaMask(
+  color: RgbaPixels,
+  width: number,
+  height: number,
+  threshold = 96,
+): Uint8Array {
+  const count = width * height
+  const out = new Uint8Array(count)
+  for (let i = 0; i < count; i++) {
+    out[i] = color[i * 4 + 3]! >= threshold ? 1 : 0
+  }
+  return out
+}
+
+export function maskIoU(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length)
+  let inter = 0
+  let union = 0
+  for (let i = 0; i < n; i++) {
+    const av = a[i]!
+    const bv = b[i]!
+    if (av || bv) union++
+    if (av && bv) inter++
+  }
+  return union === 0 ? 0 : inter / union
+}
