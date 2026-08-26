@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
@@ -22,8 +22,10 @@ import {
   lineCount,
 } from '../lib/costEstimates'
 import { VisualBriefPanel } from '../components/VisualBriefPanel'
-import { FilmProjectNav } from '../story/FilmProjectNav'
-import type { Dialog, VisualQuestion } from '../types'
+import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
+import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
+import { patchFilmDraft } from '../lib/filmDraftSave'
+import type { Dialog, FilmDraftMode, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -42,12 +44,23 @@ export function DialogEditorPage() {
   const [soundDirectionDraft, setSoundDirectionDraft] = useState('')
   const [speechDirectionDraft, setSpeechDirectionDraft] = useState('')
   const [filmPromptDraft, setFilmPromptDraft] = useState('')
+  const [titleDraft, setTitleDraft] = useState('')
+  const [saveStatus, setSaveStatus] = useState<FilmSaveStatus>('idle')
+  const [draftMode, setDraftMode] = useState<FilmDraftMode>('lucky')
   const [askVisualQuestions, setAskVisualQuestionsState] = useState(true)
   const [visualQuestions, setVisualQuestions] = useState<VisualQuestion[]>([])
   const [pendingSectionId, setPendingSectionId] = useState<string | null>(null)
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
-  const reload = async () => {
+  const skipSaveRef = useRef(true)
+  const persistChain = useRef(Promise.resolve())
+  const titleRef = useRef('')
+  const promptRef = useRef('')
+  const dirtyRef = useRef(false)
+  titleRef.current = titleDraft
+  promptRef.current = filmPromptDraft
+
+  const reload = async (opts?: { keepDrafts?: boolean }) => {
     if (!id) return
     const { dialog: d } = await api.dialogs.get(id)
     setDialog(d)
@@ -57,14 +70,70 @@ export function DialogEditorPage() {
     setImageDirectionDraft(d.imageDirection ?? '')
     setSoundDirectionDraft(d.soundDirection ?? '')
     setSpeechDirectionDraft(d.speechDirection ?? '')
-    setFilmPromptDraft(d.filmPrompt ?? d.creationPrompt ?? '')
+    if (!opts?.keepDrafts && !dirtyRef.current) {
+      skipSaveRef.current = true
+      setFilmPromptDraft(d.filmPrompt ?? d.creationPrompt ?? '')
+      setTitleDraft(d.title === EMPTY_FILM_TITLE ? '' : d.title)
+    }
     setAskVisualQuestionsState(getAskVisualQuestions())
   }
 
+  const persistMeta = () => {
+    if (!id) return persistChain.current
+    persistChain.current = persistChain.current.then(async () => {
+      setSaveStatus('saving')
+      try {
+        const d = await patchFilmDraft(id, {
+          title: titleRef.current,
+          filmPrompt: promptRef.current,
+        })
+        setDialog(d)
+        dirtyRef.current = false
+        setSaveStatus('saved')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Speichern fehlgeschlagen.'
+        if (/nicht gefunden/i.test(msg)) return
+        setSaveStatus('error')
+        setError(msg)
+      }
+    })
+    return persistChain.current
+  }
+
   useEffect(() => {
+    skipSaveRef.current = true
+    dirtyRef.current = false
+    setSaveStatus('idle')
     reload()
       .catch((err) => setError(err instanceof Error ? err.message : 'Fehler'))
       .finally(() => setLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    if (loading) return
+    if (skipSaveRef.current) {
+      skipSaveRef.current = false
+      return
+    }
+    dirtyRef.current = true
+    const timer = window.setTimeout(() => void persistMeta(), 1000)
+    return () => window.clearTimeout(timer)
+  }, [titleDraft, filmPromptDraft, loading, id])
+
+  useEffect(() => {
+    const flush = () => {
+      if (dirtyRef.current) void persistMeta()
+    }
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onHide)
+      flush()
+    }
   }, [id])
 
   const runAction = async (key: string, fn: () => Promise<void>) => {
@@ -244,16 +313,22 @@ export function DialogEditorPage() {
 
   return (
     <div className="editor-page">
-      <FilmProjectNav dialogId={dialog.id} />
+      <FilmProjectNav
+        dialogId={dialog.id}
+        title={titleDraft}
+        onTitleChange={setTitleDraft}
+        saveStatus={saveStatus}
+      />
       <div className="page-header">
         <div>
-          <h1>{dialog.title}</h1>
+          <h1>{displayFilmTitle(titleDraft)}</h1>
           <p className="muted">
             <span className="dialog-lang-flag-inline" aria-hidden>
               <LanguageFlag code={dialog.targetLanguage} size="md" />
             </span>{' '}
             {languageName(dialog.targetLanguage)} · {dialog.sections.length} Abschnitt
-            {dialog.sections.length !== 1 ? 'e' : ''}
+            {dialog.sections.length !== 1 ? 'e' : ''}{' '}
+            <FilmSaveStatusText status={saveStatus} />
           </p>
         </div>
         <div className="header-actions">
@@ -290,6 +365,15 @@ export function DialogEditorPage() {
 
       <section className="panel dialog-meta-panel">
         <h2>Vorstellung vom Film</h2>
+        <label className="dialog-meta-block">
+          <span className="dialog-meta-label">Titel</span>
+          <input
+            className="film-title-input"
+            value={titleDraft}
+            placeholder={EMPTY_FILM_TITLE}
+            onChange={(e) => setTitleDraft(e.target.value)}
+          />
+        </label>
         <label className="dialog-meta-block">
           <span className="dialog-meta-label">Prompt (Handlung, Bild, Ton, Sprache)</span>
           <textarea
@@ -333,29 +417,98 @@ export function DialogEditorPage() {
           />
         </label>
         <div className="dialog-meta-block">
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={!!busy}
-            onClick={() =>
-              void runAction('image-direction', async () => {
-                const { dialog: d } = await api.dialogs.update(dialog.id, {
-                  filmPrompt: filmPromptDraft.trim(),
-                  imageDirection: imageDirectionDraft.trim() || filmPromptDraft.trim(),
-                  soundDirection: soundDirectionDraft.trim(),
-                  speechDirection: speechDirectionDraft.trim(),
-                  visualBrief: null,
+          <fieldset className="film-draft-modes">
+            <legend>Dialog aus dem Text oben machen</legend>
+            {FILM_DRAFT_MODES.map((m) => (
+              <label key={m.id} className={`film-draft-mode${draftMode === m.id ? ' is-on' : ''}`}>
+                <input
+                  type="radio"
+                  name="editor-film-draft-mode"
+                  checked={draftMode === m.id}
+                  onChange={() => setDraftMode(m.id)}
+                />
+                <span>
+                  <strong>{m.label}</strong>
+                  <span className="muted">{m.hint}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="button-row">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!!busy || !filmPromptDraft.trim()}
+              onClick={() =>
+                void runAction('film-from-prompt', async () => {
+                  await persistMeta()
+                  const placeholder = dialog.sections.every((s) => isPlaceholderDraftSection(s))
+                  if (
+                    !placeholder &&
+                    dialog.sections.some((s) => s.lines.some((l) => l.text.trim())) &&
+                    !window.confirm('Den bisherigen Dialog ersetzen? Dein Text oben bleibt gespeichert.')
+                  ) {
+                    return
+                  }
+                  const asking = draftMode === 'ask'
+                  const result = await api.ai.filmFromPrompt(
+                    filmPromptDraft.trim(),
+                    dialog.targetLanguage,
+                    asking ? 'ask' : draftMode,
+                  )
+                  if (result.questions?.length) {
+                    setStatus(
+                      `Die KI hat Rückfragen: ${result.questions.join(' · ')} Bitte unten im Text antworten oder «Auf gut Glück» wählen.`,
+                    )
+                    return
+                  }
+                  if (!result.title || !result.sections?.length) {
+                    throw new Error('Kein Dialog gekommen.')
+                  }
+                  const { dialog: d } = await api.dialogs.update(dialog.id, {
+                    title: titleDraft.trim() || result.title,
+                    sections: result.sections,
+                    filmPrompt: filmPromptDraft,
+                    imageDirection: result.imageDirection,
+                    soundDirection: result.soundDirection,
+                    speechDirection: result.speechDirection,
+                  })
+                  setDialog(d)
+                  if (result.imageDirection) setImageDirectionDraft(result.imageDirection)
+                  if (result.soundDirection) setSoundDirectionDraft(result.soundDirection)
+                  if (result.speechDirection) setSpeechDirectionDraft(result.speechDirection)
+                  setStatus('Dialog gespeichert. Dein Text oben ist geblieben.')
                 })
-                setDialog(d)
-                setStatus('Vorstellung gespeichert. Danach «Ins Storyboard».')
-              })
-            }
-          >
-            {busy === 'image-direction' ? '…' : 'Vorstellung speichern'}
-          </button>
+              }
+            >
+              {busy === 'film-from-prompt' ? 'Denke nach …' : 'Dialog daraus machen'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={!!busy}
+              onClick={() =>
+                void runAction('image-direction', async () => {
+                  await persistMeta()
+                  const { dialog: d } = await api.dialogs.update(dialog.id, {
+                    filmPrompt: filmPromptDraft,
+                    imageDirection: imageDirectionDraft.trim() || filmPromptDraft.trim(),
+                    soundDirection: soundDirectionDraft.trim(),
+                    speechDirection: speechDirectionDraft.trim(),
+                    visualBrief: null,
+                  })
+                  setDialog(d)
+                  setStatus('Vorstellung gespeichert. Danach «Ins Storyboard».')
+                })
+              }
+            >
+              {busy === 'image-direction' ? '…' : 'Vorstellung speichern'}
+            </button>
+            <FilmSaveStatusText status={saveStatus} />
+          </div>
           <p className="muted dialog-meta-hint">
-            Pro Zeile kannst du unten noch Bild / Ton / Sprache ergänzen. Das Storyboard klebt vorhandene Posen
-            und Hintergründe, statt alles neu zu malen.
+            Titel und Text werden laufend gespeichert. Pro Zeile kannst du unten noch Bild / Ton / Sprache
+            ergänzen. Das Storyboard klebt vorhandene Posen und Hintergründe, statt alles neu zu malen.
           </p>
         </div>
 
