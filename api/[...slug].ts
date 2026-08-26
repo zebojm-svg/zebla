@@ -1027,16 +1027,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { prompt, targetLanguage, length } = req.body as {
+      const { prompt, targetLanguage, mode, answers } = req.body as {
         prompt?: string
         targetLanguage?: string
+        mode?: 'embellish' | 'ask' | 'lucky'
+        answers?: string
         length?: 'short' | 'medium' | 'long'
       }
-      if (!prompt?.trim() || !targetLanguage || !length) {
-        res.status(400).json({ error: 'Prompt, Sprache und Länge fehlen.' })
+      if (!prompt?.trim() || !targetLanguage) {
+        res.status(400).json({ error: 'Prompt und Sprache fehlen.' })
         return
       }
-      const result = await generateFilmFromPrompt(prompt.trim(), targetLanguage, length)
+      const draftMode = mode === 'embellish' || mode === 'ask' || mode === 'lucky' ? mode : 'lucky'
+      const result = await generateFilmFromPrompt(
+        prompt.trim(),
+        targetLanguage,
+        draftMode,
+        answers,
+      )
       res.json(result)
       return
     }

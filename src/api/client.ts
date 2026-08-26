@@ -350,17 +350,19 @@ export const api = {
     filmFromPrompt: (
       prompt: string,
       targetLanguage: string,
-      length: import('../types').DialogLength,
+      mode: import('../types').FilmDraftMode,
+      answers?: string,
     ) =>
       request<{
-        title: string
-        sections: import('../types').DialogSection[]
+        title?: string
+        sections?: import('../types').DialogSection[]
         imageDirection?: string
         soundDirection?: string
         speechDirection?: string
+        questions?: string[]
       }>('/film-from-prompt', {
         method: 'POST',
-        body: JSON.stringify({ prompt, targetLanguage, length }),
+        body: JSON.stringify({ prompt, targetLanguage, mode, answers }),
       }),
     filmStoryboardRegenerate: (dialogId: string, sceneIds: string[]) =>
       request<{

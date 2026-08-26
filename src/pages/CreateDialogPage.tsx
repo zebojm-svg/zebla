@@ -2,170 +2,99 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { LanguageFlag } from '../components/LanguageFlag'
-import type { ChatMessage, CreateMode, DialogLength } from '../types'
-import { LENGTH_LABELS, LANGUAGES } from '../types'
+import type { FilmDraftMode } from '../types'
+import { LANGUAGES } from '../types'
 import { useI18n } from '../i18n/I18nContext'
 import { FilmProjectNav } from '../story/FilmProjectNav'
+
+const MODES: Array<{ id: FilmDraftMode; label: string; hint: string }> = [
+  {
+    id: 'embellish',
+    label: 'Dialoge ausschmücken',
+    hint: 'Die KI macht aus Stichworten einen längeren Film-Dialog — so lang wie die Geschichte braucht.',
+  },
+  {
+    id: 'ask',
+    label: 'Zuerst Rückfragen',
+    hint: 'Die KI fragt nach, bevor sie Dialog und Storyboard plant.',
+  },
+  {
+    id: 'lucky',
+    label: 'Auf gut Glück',
+    hint: 'Kein Nachfragen. Sie nimmt den Text und legt los.',
+  },
+]
 
 export function CreateDialogPage() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const folderId = searchParams.get('folder')
-  const [mode, setMode] = useState<CreateMode>('topic')
-  const [targetLanguage, setTargetLanguage] = useState('en')
-  const [length, setLength] = useState<DialogLength>('medium')
-  const [topic, setTopic] = useState('')
-  const [sentences, setSentences] = useState('')
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput] = useState('')
-  const [imageDirection, setImageDirection] = useState('')
+  const [targetLanguage, setTargetLanguage] = useState('fr')
   const [filmPrompt, setFilmPrompt] = useState('')
+  const [draftMode, setDraftMode] = useState<FilmDraftMode>('lucky')
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [questions, setQuestions] = useState<string[]>([])
+  const [answers, setAnswers] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [isListening, setIsListening] = useState(false)
 
-  const saveDialog = async (
-    title: string,
-    sections: import('../types').DialogSection[],
-    creation: {
-      creationMode: CreateMode
-      creationPrompt?: string
-      creationChat?: ChatMessage[]
-      filmPrompt?: string
-      imageDirection?: string
-      soundDirection?: string
-      speechDirection?: string
-    },
-  ) => {
+  const saveFromResult = async (result: {
+    title?: string
+    sections?: import('../types').DialogSection[]
+    imageDirection?: string
+    soundDirection?: string
+    speechDirection?: string
+  }) => {
+    if (!result.title || !result.sections?.length) {
+      throw new Error('Kein Dialog gekommen.')
+    }
     const { dialog } = await api.dialogs.create({
-      title,
+      title: result.title,
       sourceLanguage: 'de',
       targetLanguage,
-      length,
-      sections,
+      length: 'long',
+      sections: result.sections,
       folderId: folderId ?? null,
-      creationMode: creation.creationMode,
-      creationPrompt: creation.creationPrompt,
-      creationChat: creation.creationChat,
-      imageDirection: creation.imageDirection ?? (imageDirection.trim() || undefined),
-      filmPrompt: creation.filmPrompt ?? (filmPrompt.trim() || undefined),
-      soundDirection: creation.soundDirection,
-      speechDirection: creation.speechDirection,
+      creationMode: 'topic',
+      creationPrompt: filmPrompt.trim(),
+      filmPrompt: filmPrompt.trim(),
+      imageDirection: result.imageDirection,
+      soundDirection: result.soundDirection,
+      speechDirection: result.speechDirection,
     })
     navigate(`/dialog/${dialog.id}`)
   }
 
-  const handleTopic = async () => {
-    if (!topic.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      const result = await api.ai.topic(topic.trim(), targetLanguage, length)
-      await saveDialog(result.title, result.sections, {
-        creationMode: 'topic',
-        creationPrompt: topic.trim(),
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fehler')
-      setLoading(false)
-    }
-  }
+  const answersText = questions
+    .map((q, i) => {
+      const a = answers[i]?.trim()
+      return a ? `Frage: ${q}\nAntwort: ${a}` : ''
+    })
+    .filter(Boolean)
+    .join('\n\n')
 
-  const handleSentences = async () => {
-    const list = sentences
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    if (!list.length) return
-    setLoading(true)
-    setError('')
-    try {
-      const result = await api.ai.sentences(list, targetLanguage, length)
-      await saveDialog(result.title, result.sections, {
-        creationMode: 'dictate',
-        creationPrompt: list.join('\n'),
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fehler')
-      setLoading(false)
-    }
-  }
-
-  const handleChatSend = async () => {
-    if (!chatInput.trim()) return
-    const newMessages: ChatMessage[] = [
-      ...chatMessages,
-      { role: 'user', content: chatInput.trim() },
-    ]
-    setChatMessages(newMessages)
-    setChatInput('')
-    setLoading(true)
-    setError('')
-    try {
-      const result = await api.ai.chat(newMessages, targetLanguage, length)
-      setChatMessages([...newMessages, { role: 'assistant', content: result.reply }])
-      if (result.dialog) {
-        await saveDialog(result.dialog.title, result.dialog.sections, {
-          creationMode: 'chat',
-          creationChat: newMessages,
-          creationPrompt: newMessages.map((m) => m.content).join('\n'),
-        })
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fehler')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const startDictation = () => {
-    const SpeechRecognition =
-      (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ??
-      (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition
-
-    if (!SpeechRecognition) {
-      setError('Spracherkennung wird in diesem Browser nicht unterstützt.')
-      return
-    }
-
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'de-DE'
-    recognition.continuous = false
-    recognition.interimResults = false
-
-    recognition.onstart = () => setIsListening(true)
-    recognition.onend = () => setIsListening(false)
-    recognition.onerror = () => {
-      setIsListening(false)
-      setError('Diktat fehlgeschlagen.')
-    }
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const text = event.results[0]?.[0]?.transcript
-      if (text) {
-        setSentences((prev) => (prev ? `${prev}\n${text}` : text))
-      }
-    }
-
-    recognition.start()
-  }
-
-  const handleFilmPrompt = async () => {
+  const handleGo = async () => {
     if (!filmPrompt.trim()) return
     setLoading(true)
     setError('')
     try {
-      const result = await api.ai.filmFromPrompt(filmPrompt.trim(), targetLanguage, length)
-      await saveDialog(result.title, result.sections, {
-        creationMode: 'topic',
-        creationPrompt: filmPrompt.trim(),
-        filmPrompt: filmPrompt.trim(),
-        imageDirection: result.imageDirection,
-        soundDirection: result.soundDirection,
-        speechDirection: result.speechDirection,
-      })
+      const asking = draftMode === 'ask' && questions.length === 0
+      const result = await api.ai.filmFromPrompt(
+        filmPrompt.trim(),
+        targetLanguage,
+        asking ? 'ask' : draftMode === 'ask' ? 'embellish' : draftMode,
+        asking ? undefined : answersText || undefined,
+      )
+      if (result.questions?.length) {
+        setQuestions(result.questions)
+        setAnswers(result.questions.map(() => ''))
+        return
+      }
+      await saveFromResult(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler')
+    } finally {
       setLoading(false)
     }
   }
@@ -179,188 +108,115 @@ export function CreateDialogPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <section className="panel story-sofa-cta">
-        <h2>Dein Film</h2>
-        <p className="muted">
-          Ein Fenster für alles: Handlung, Dialog, Bild, Ton, Sprache. Beliebig viele Figuren. Danach das
-          Storyboard prüfen — Stil (Foto oder Zeichnung) erst beim Film.
-        </p>
+      <label className="settings-lang-only">
+        {t('create.targetLang')}
+        <span className="lang-select-row">
+          <LanguageFlag code={targetLanguage} size="md" />
+          <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </span>
+      </label>
+
+      <section className="panel story-sofa-cta film-prompt-panel">
+        <div className="film-prompt-head">
+          <h2>Dein Film</h2>
+          <button
+            type="button"
+            className="film-info-btn"
+            aria-expanded={infoOpen}
+            aria-label="Hinweis zu diesem Feld"
+            onClick={() => setInfoOpen((v) => !v)}
+          >
+            i
+          </button>
+        </div>
+        {infoOpen && (
+          <p className="muted film-prompt-info">
+            Ein Fenster für alles: Handlung, Dialog, Bild, Ton, Sprache. Die KI trennt selbst, was gesprochen
+            wird und was Regie ist. Beliebig viele Figuren, beliebig lang — auch ein 15-Minuten-Film. Stil (Foto
+            oder Zeichnung) erst später beim Film.
+          </p>
+        )}
         <textarea
-          rows={10}
+          className="film-prompt-input"
+          rows={14}
           value={filmPrompt}
-          onChange={(e) => setFilmPrompt(e.target.value)}
+          onChange={(e) => {
+            setFilmPrompt(e.target.value)
+            if (questions.length) {
+              setQuestions([])
+              setAnswers([])
+            }
+          }}
           placeholder={
             'Julien und Tara im Herbstpark. Julien sitzt auf der Bank, Tara kommt mit Skateboard.\nJulien: Schön hier.\nTara winkt und ruft Juhe.\nVögel, dann Stille. Julien flüstert.'
           }
         />
+
+        <fieldset className="film-draft-modes">
+          <legend>Wie soll die KI damit umgehen?</legend>
+          {MODES.map((m) => (
+            <label key={m.id} className={`film-draft-mode${draftMode === m.id ? ' is-on' : ''}`}>
+              <input
+                type="radio"
+                name="film-draft-mode"
+                checked={draftMode === m.id}
+                onChange={() => {
+                  setDraftMode(m.id)
+                  setQuestions([])
+                  setAnswers([])
+                }}
+              />
+              <span>
+                <strong>{m.label}</strong>
+                <span className="muted">{m.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        {questions.length > 0 && (
+          <div className="film-questions">
+            <h3>Rückfragen</h3>
+            {questions.map((q, i) => (
+              <label key={`${q}-${i}`}>
+                {q}
+                <input
+                  type="text"
+                  value={answers[i] ?? ''}
+                  onChange={(e) => {
+                    const next = [...answers]
+                    next[i] = e.target.value
+                    setAnswers(next)
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        )}
+
         <div className="button-row">
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => void handleFilmPrompt()}
+            onClick={() => void handleGo()}
             disabled={loading || !filmPrompt.trim()}
           >
-            {loading ? 'Denke nach …' : 'Dialog daraus machen'}
+            {loading
+              ? 'Denke nach …'
+              : questions.length
+                ? 'Mit Antworten weiter'
+                : draftMode === 'ask'
+                  ? 'Rückfragen stellen'
+                  : 'Dialog daraus machen'}
           </button>
         </div>
       </section>
-
-      <div className="settings-row">
-        <label>
-          {t('create.targetLang')}
-          <span className="lang-select-row">
-            <LanguageFlag code={targetLanguage} size="md" />
-            <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </span>
-        </label>
-        <label>
-          Dialoglänge
-          <select value={length} onChange={(e) => setLength(e.target.value as DialogLength)}>
-            {(Object.keys(LENGTH_LABELS) as DialogLength[]).map((k) => (
-              <option key={k} value={k}>
-                {LENGTH_LABELS[k]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <label className="create-image-direction">
-        Bild-Regie (optional)
-        <textarea
-          rows={3}
-          value={imageDirection}
-          onChange={(e) => setImageDirection(e.target.value)}
-          placeholder="z.B. Julien sitzt im Park, Herbst, Vögel. Bei Zeile 4 winkt er."
-        />
-        <span className="muted create-image-direction-hint">
-          Ort, Pose, Ton. Danach «Ins Storyboard» — vorhandene Julien-Bilder werden zuerst genommen.
-        </span>
-      </label>
-
-      <div className="mode-tabs">
-        {(
-          [
-            ['chat', 'KI-Gespräch'],
-            ['topic', 'Thema'],
-            ['dictate', 'Diktat'],
-          ] as const
-        ).map(([m, label]) => (
-          <button
-            key={m}
-            type="button"
-            className={`mode-tab ${mode === m ? 'active' : ''}`}
-            onClick={() => setMode(m)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {mode === 'topic' && (
-        <section className="panel">
-          <h2>Dialog zu einem Thema</h2>
-          <p className="muted">Die KI erstellt einen Dialog zum gewünschten Thema.</p>
-          <label>
-            Thema
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="z.B. Im Café bestellen"
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleTopic}
-            disabled={loading || !topic.trim()}
-          >
-            {loading ? 'Erstelle …' : 'Dialog generieren'}
-          </button>
-        </section>
-      )}
-
-      {mode === 'dictate' && (
-        <section className="panel">
-          <h2>Sätze diktieren</h2>
-          <p className="muted">
-            Gib Sätze ein oder diktiere sie – die KI formt daraus einen Dialog.
-          </p>
-          <label>
-            Sätze (eine Zeile pro Satz)
-            <textarea
-              rows={8}
-              value={sentences}
-              onChange={(e) => setSentences(e.target.value)}
-              placeholder={'Guten Tag.\nIch hätte gern einen Kaffee.\nMit Milch, bitte.'}
-            />
-          </label>
-          <div className="button-row">
-            <button
-              type="button"
-              className={`btn btn-secondary ${isListening ? 'listening' : ''}`}
-              onClick={startDictation}
-              disabled={isListening}
-            >
-              {isListening ? 'Höre zu …' : 'Diktieren'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleSentences}
-              disabled={loading || !sentences.trim()}
-            >
-              {loading ? 'Erstelle …' : 'Zu Dialog formen'}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {mode === 'chat' && (
-        <section className="panel">
-          <h2>KI-Gespräch</h2>
-          <p className="muted">
-            Besprich mit der KI, welchen Dialog du brauchst – sie erstellt ihn am Ende.
-          </p>
-          <div className="chat-window">
-            {chatMessages.length === 0 && (
-              <p className="muted chat-empty">
-                Starte z.B.: „Ich brauche einen Dialog für die 7. Klasse über Einkaufen."
-              </p>
-            )}
-            {chatMessages.map((m, i) => (
-              <div key={i} className={`chat-bubble chat-${m.role}`}>
-                {m.content}
-              </div>
-            ))}
-          </div>
-          <div className="chat-input-row">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !loading && handleChatSend()}
-              placeholder="Nachricht an die KI …"
-              disabled={loading}
-            />
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleChatSend}
-              disabled={loading || !chatInput.trim()}
-            >
-              {loading ? '…' : 'Senden'}
-            </button>
-          </div>
-        </section>
-      )}
     </div>
   )
 }

@@ -4,6 +4,9 @@ export type DialogLength = 'short' | 'medium' | 'long'
 
 export type CreateMode = 'chat' | 'topic' | 'dictate'
 
+/** Wie die KI den Film-Prompt lesen soll. */
+export type FilmDraftMode = 'embellish' | 'ask' | 'lucky'
+
 export interface BirkenbihlWord {
   text: string
   translation: string
