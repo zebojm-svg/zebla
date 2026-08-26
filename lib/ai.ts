@@ -153,6 +153,80 @@ Antworte IMMER als JSON mit diesem Schema:
 }
 Zwei Sprecher wechseln sich ab. Keine Markdown-Formatierung.`
 
+export async function generateFilmFromPrompt(
+  prompt: string,
+  targetLanguage: string,
+  length: DialogLength,
+): Promise<{
+  title: string
+  sections: DialogSection[]
+  imageDirection?: string
+  soundDirection?: string
+  speechDirection?: string
+}> {
+  const result = await chatJson<{
+    title: string
+    imageDirection?: string
+    soundDirection?: string
+    speechDirection?: string
+    sections: Array<{
+      title: string
+      lines: Array<{
+        speaker: string
+        text: string
+        cueImage?: string
+        cueSound?: string
+        cueSpeech?: string
+      }>
+    }>
+  }>(
+    `Du planst einen Kurzfilm als Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
+Sprache der gesprochenen Zeilen: ${targetLanguage}.
+JSON:
+{
+  "title": "Kurzer Titel",
+  "imageDirection": "Ort, Licht, wer wo steht",
+  "soundDirection": "Geräusche und Musik",
+  "speechDirection": "laut, flüstern, Tempo",
+  "sections": [
+    {
+      "title": "Szenenname",
+      "lines": [
+        { "speaker": "Name", "text": "Satz", "cueImage": "Pose/Ort", "cueSound": "optional", "cueSpeech": "optional" }
+      ]
+    }
+  ]
+}
+Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge etwa ${LENGTH_HINTS[length]}.`,
+    prompt.trim(),
+  )
+
+  const sections: DialogSection[] = (result.sections ?? []).map((sec) => ({
+    id: randomUUID(),
+    title: sec.title?.trim() || 'Szene',
+    lines: (sec.lines ?? []).map((l) => ({
+      id: newLineId(),
+      speaker: l.speaker?.trim() || 'Sprecher',
+      text: l.text?.trim() || '',
+      cueImage: l.cueImage?.trim() || undefined,
+      cueSound: l.cueSound?.trim() || undefined,
+      cueSpeech: l.cueSpeech?.trim() || undefined,
+    })),
+  }))
+
+  if (!sections.length || sections.every((s) => s.lines.length === 0)) {
+    throw new Error('Die KI hat keinen Dialog geliefert. Bitte den Prompt etwas genauer schreiben.')
+  }
+
+  return {
+    title: result.title?.trim() || 'Film',
+    sections,
+    imageDirection: result.imageDirection?.trim(),
+    soundDirection: result.soundDirection?.trim(),
+    speechDirection: result.speechDirection?.trim(),
+  }
+}
+
 export async function generateDialogFromTopic(
   topic: string,
   targetLanguage: string,

@@ -20,6 +20,7 @@ export function CreateDialogPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [imageDirection, setImageDirection] = useState('')
+  const [filmPrompt, setFilmPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -31,6 +32,10 @@ export function CreateDialogPage() {
       creationMode: CreateMode
       creationPrompt?: string
       creationChat?: ChatMessage[]
+      filmPrompt?: string
+      imageDirection?: string
+      soundDirection?: string
+      speechDirection?: string
     },
   ) => {
     const { dialog } = await api.dialogs.create({
@@ -43,7 +48,10 @@ export function CreateDialogPage() {
       creationMode: creation.creationMode,
       creationPrompt: creation.creationPrompt,
       creationChat: creation.creationChat,
-      imageDirection: imageDirection.trim() || undefined,
+      imageDirection: creation.imageDirection ?? (imageDirection.trim() || undefined),
+      filmPrompt: creation.filmPrompt ?? (filmPrompt.trim() || undefined),
+      soundDirection: creation.soundDirection,
+      speechDirection: creation.speechDirection,
     })
     navigate(`/dialog/${dialog.id}`)
   }
@@ -142,6 +150,26 @@ export function CreateDialogPage() {
     recognition.start()
   }
 
+  const handleFilmPrompt = async () => {
+    if (!filmPrompt.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      const result = await api.ai.filmFromPrompt(filmPrompt.trim(), targetLanguage, length)
+      await saveDialog(result.title, result.sections, {
+        creationMode: 'topic',
+        creationPrompt: filmPrompt.trim(),
+        filmPrompt: filmPrompt.trim(),
+        imageDirection: result.imageDirection,
+        soundDirection: result.soundDirection,
+        speechDirection: result.speechDirection,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fehler')
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="create-page">
       <FilmProjectNav />
@@ -150,6 +178,32 @@ export function CreateDialogPage() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+
+      <section className="panel story-sofa-cta">
+        <h2>Dein Film</h2>
+        <p className="muted">
+          Ein Fenster für alles: Handlung, Dialog, Bild, Ton, Sprache. Beliebig viele Figuren. Danach das
+          Storyboard prüfen — Stil (Foto oder Zeichnung) erst beim Film.
+        </p>
+        <textarea
+          rows={10}
+          value={filmPrompt}
+          onChange={(e) => setFilmPrompt(e.target.value)}
+          placeholder={
+            'Julien und Tara im Herbstpark. Julien sitzt auf der Bank, Tara kommt mit Skateboard.\nJulien: Schön hier.\nTara winkt und ruft Juhe.\nVögel, dann Stille. Julien flüstert.'
+          }
+        />
+        <div className="button-row">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void handleFilmPrompt()}
+            disabled={loading || !filmPrompt.trim()}
+          >
+            {loading ? 'Denke nach …' : 'Dialog daraus machen'}
+          </button>
+        </div>
+      </section>
 
       <div className="settings-row">
         <label>

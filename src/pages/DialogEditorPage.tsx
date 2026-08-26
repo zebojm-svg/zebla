@@ -41,6 +41,7 @@ export function DialogEditorPage() {
   const [imageDirectionDraft, setImageDirectionDraft] = useState('')
   const [soundDirectionDraft, setSoundDirectionDraft] = useState('')
   const [speechDirectionDraft, setSpeechDirectionDraft] = useState('')
+  const [filmPromptDraft, setFilmPromptDraft] = useState('')
   const [askVisualQuestions, setAskVisualQuestionsState] = useState(true)
   const [visualQuestions, setVisualQuestions] = useState<VisualQuestion[]>([])
   const [pendingSectionId, setPendingSectionId] = useState<string | null>(null)
@@ -56,6 +57,7 @@ export function DialogEditorPage() {
     setImageDirectionDraft(d.imageDirection ?? '')
     setSoundDirectionDraft(d.soundDirection ?? '')
     setSpeechDirectionDraft(d.speechDirection ?? '')
+    setFilmPromptDraft(d.filmPrompt ?? d.creationPrompt ?? '')
     setAskVisualQuestionsState(getAskVisualQuestions())
   }
 
@@ -255,6 +257,25 @@ export function DialogEditorPage() {
           </p>
         </div>
         <div className="header-actions">
+          <select
+            value={dialog.targetLanguage}
+            disabled={!!busy}
+            aria-label="Zielsprache"
+            onChange={(e) => {
+              const lang = e.target.value
+              void runAction('lang', async () => {
+                const { dialog: d } = await api.dialogs.update(dialog.id, { targetLanguage: lang })
+                setDialog(d)
+                setTranslateLang(lang)
+              })
+            }}
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
           <Link to={`/dialog/${dialog.id}/board`} className="btn btn-story-studio">
             Ins Storyboard
           </Link>
@@ -268,7 +289,16 @@ export function DialogEditorPage() {
       {status && <div className="alert alert-warn">{status}</div>}
 
       <section className="panel dialog-meta-panel">
-        <h2>Regie für Sprache, Ton und Bild</h2>
+        <h2>Vorstellung vom Film</h2>
+        <label className="dialog-meta-block">
+          <span className="dialog-meta-label">Prompt (Handlung, Bild, Ton, Sprache)</span>
+          <textarea
+            rows={8}
+            value={filmPromptDraft}
+            onChange={(e) => setFilmPromptDraft(e.target.value)}
+            placeholder="Was soll man sehen, hören, sagen? Beliebig viele Figuren …"
+          />
+        </label>
         {formatCreationPromptForDisplay(dialog) && (
           <div className="dialog-meta-block">
             <h3 className="dialog-meta-label">Ursprüngliche Eingabe</h3>
@@ -310,17 +340,18 @@ export function DialogEditorPage() {
             onClick={() =>
               void runAction('image-direction', async () => {
                 const { dialog: d } = await api.dialogs.update(dialog.id, {
-                  imageDirection: imageDirectionDraft.trim(),
+                  filmPrompt: filmPromptDraft.trim(),
+                  imageDirection: imageDirectionDraft.trim() || filmPromptDraft.trim(),
                   soundDirection: soundDirectionDraft.trim(),
                   speechDirection: speechDirectionDraft.trim(),
                   visualBrief: null,
                 })
                 setDialog(d)
-                setStatus('Regie gespeichert. Danach «Ins Storyboard» — die KI schaut zuerst in der Bibliothek nach.')
+                setStatus('Vorstellung gespeichert. Danach «Ins Storyboard».')
               })
             }
           >
-            {busy === 'image-direction' ? '…' : 'Regie speichern'}
+            {busy === 'image-direction' ? '…' : 'Vorstellung speichern'}
           </button>
           <p className="muted dialog-meta-hint">
             Pro Zeile kannst du unten noch Bild / Ton / Sprache ergänzen. Das Storyboard klebt vorhandene Posen

@@ -4,7 +4,9 @@
  */
 import {
   applyDirectorNote,
+  inferExpression,
   inferPoseId,
+  insertPanelAfter,
   matchBackground,
   matchCharacterPose,
   planBoardWithoutAi,
@@ -99,4 +101,10 @@ const after = tweaked.panels[0]?.placements[0]
 if (after?.depth !== 'background') fail('Regie: Hintergrund')
 if (!tweaked.panels[0]?.directorNote) fail('Regie-Notiz speichern')
 
-console.log('OK: Storyboard nutzt Bibliothek, spiegelt, nimmt Regie an')
+if (inferExpression('Julien springt und ruft Juhe') !== 'freut sich') fail('Juhe → freut sich')
+if (!board.scenes.length) fail('Szenen müssen existieren')
+const inserted = insertPanelAfter(board, panel.id, 'Julien springt in die Luft und ruft Juhe', [julienSit, park])
+if (inserted.panels.length !== 2) fail('Zeile einfügen')
+if (!inserted.panels[1]?.expressionHint) fail('Ausdruck an neuer Zeile')
+
+console.log('OK: Storyboard nutzt Bibliothek, spiegelt, nimmt Regie an, fügt Zeilen ein')

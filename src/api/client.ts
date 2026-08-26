@@ -205,6 +205,9 @@ export const api = {
       creationPrompt?: string
       creationChat?: import('../types').ChatMessage[]
       imageDirection?: string
+      filmPrompt?: string
+      soundDirection?: string
+      speechDirection?: string
     }) =>
       request<{ dialog: import('../types').Dialog }>('/dialogs', {
         method: 'POST',
@@ -343,6 +346,78 @@ export const api = {
       }>('/film-storyboard-tweak', {
         method: 'POST',
         body: JSON.stringify({ dialogId, panelId, note }),
+      }),
+    filmFromPrompt: (
+      prompt: string,
+      targetLanguage: string,
+      length: import('../types').DialogLength,
+    ) =>
+      request<{
+        title: string
+        sections: import('../types').DialogSection[]
+        imageDirection?: string
+        soundDirection?: string
+        speechDirection?: string
+      }>('/film-from-prompt', {
+        method: 'POST',
+        body: JSON.stringify({ prompt, targetLanguage, length }),
+      }),
+    filmStoryboardRegenerate: (dialogId: string, sceneIds: string[]) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-regenerate', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, sceneIds }),
+      }),
+    filmStoryboardComment: (dialogId: string, panelId: string, comment: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-comment', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId, comment }),
+      }),
+    filmSceneNote: (dialogId: string, sceneId: string, noteDe: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-scene-note', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, sceneId, noteDe }),
+      }),
+    filmInsertPanel: (dialogId: string, afterPanelId: string, text: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-insert-panel', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, afterPanelId, text }),
+      }),
+    filmInsertScene: (dialogId: string, afterSceneId: string | null, title: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-insert-scene', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, afterSceneId, title }),
+      }),
+    filmSketch: (dialogId: string, panelId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>(
+        '/film-storyboard-sketch',
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
+        120_000,
+      ),
+    filmPlanSave: (
+      dialogId: string,
+      plan: import('../../shared/film-storyboard').FilmPlan,
+    ) =>
+      request<{ dialog: import('../types').Dialog }>('/film-plan', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, plan }),
       }),
     birkenbihl: (
       dialogId: string,
