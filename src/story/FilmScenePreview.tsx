@@ -110,14 +110,12 @@ export function FilmScenePreviewPlayer({
   }
 
   const onMusicToggle = () => {
-    setMusicOn((on) => {
-      const next = !on
-      if (playing || speaking) {
-        if (next) void getMusic().start()
-        else musicRef.current?.pause()
-      }
-      return next
-    })
+    const next = !musicOn
+    setMusicOn(next)
+    if (playing || speaking) {
+      if (next) void getMusic().start()
+      else musicRef.current?.pause()
+    }
   }
 
   const voiceLabel = cloudTtsReady ? 'KI-Stimme (gespeichert)' : 'Browser-Stimme'
