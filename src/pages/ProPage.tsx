@@ -116,9 +116,8 @@ export function ProPage() {
         </p>
         {statusUser?.quota && (
           <p className="muted">
-            Restkontingent diesen Monat: {statusUser.quota.aiCalls} KI ·{' '}
-            {statusUser.quota.dialogCreates} Dialoge · {statusUser.quota.slideshowPreps}{' '}
-            Diashow-Vorbereitungen
+            Restkontingent: {statusUser.quota.aiCalls} KI · {statusUser.quota.dialogCreates}{' '}
+            Dialoge · {statusUser.quota.slideshowPreps} Diashow — Details unten.
           </p>
         )}
 
@@ -156,6 +155,52 @@ export function ProPage() {
             </button>
           </p>
         )}
+      </section>
+
+      <section className="panel pro-find-block" style={{ padding: '1.25rem' }}>
+        <h2>Dein Zebla-Kontingent diesen Monat</h2>
+        {statusUser?.quota ? (
+          <ul className="pro-quota-list">
+            <li>
+              KI-Aufrufe übrig: <strong>{statusUser.quota.aiCalls}</strong>
+            </li>
+            <li>
+              Dialoge übrig: <strong>{statusUser.quota.dialogCreates}</strong>
+            </li>
+            <li>
+              Diashow-Vorbereitungen übrig: <strong>{statusUser.quota.slideshowPreps}</strong>
+            </li>
+          </ul>
+        ) : (
+          <p className="muted">Kontingent erscheint nach dem Laden.</p>
+        )}
+        <p className="muted">
+          Das zählt, was in Zebla selbst gemacht wird (Texte, Stimmen, …).
+        </p>
+
+        <h2>Standbilder (FLUX)</h2>
+        <p>
+          Die Standbilder (FLUX) laufen über Replicate — Guthaben dort anschauen.
+        </p>
+        <p className="pro-find-links">
+          <a href="https://replicate.com/account/billing" target="_blank" rel="noreferrer">
+            Replicate-Guthaben
+          </a>
+          <a href="https://replicate.com" target="_blank" rel="noreferrer">
+            Replicate-Übersicht
+          </a>
+        </p>
+
+        <h2>Neue Version live: Vercel, Projekt Zebla</h2>
+        <p>
+          Wenn etwas Neues in Zebla erscheint, steht das bei Vercel. Unter «Deployments» siehst
+          du, wann es live ging.
+        </p>
+        <p className="pro-find-links">
+          <a href="https://vercel.com/zebojm-svgs-projects/zebla" target="_blank" rel="noreferrer">
+            Vercel · Projekt Zebla
+          </a>
+        </p>
       </section>
     </div>
   )

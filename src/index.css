@@ -3297,7 +3297,7 @@ html[dir='rtl'] .slideshow-topbar {
 }
 
 .film-scene-player-note {
-  margin: 0 0 0.65rem;
+  margin: 0 0 0.2rem;
 }
 
 .film-scene-player-frame {
@@ -3318,8 +3318,46 @@ html[dir='rtl'] .slideshow-topbar {
   font-weight: 700;
 }
 
+.film-scene-player-voice {
+  margin: 0.15rem 0 0.55rem;
+  font-size: 0.95rem;
+}
+
 .film-scene-player-controls {
   margin-top: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.film-quota-hint {
+  margin: 0.4rem 0 0;
+}
+
+.pro-find-block h2 {
+  margin: 1.15rem 0 0.45rem;
+  font-size: 1.05rem;
+}
+
+.pro-find-block h2:first-child {
+  margin-top: 0;
+}
+
+.pro-quota-list {
+  margin: 0 0 0.65rem;
+  padding-left: 1.2rem;
+}
+
+.pro-quota-list li {
+  margin: 0.2rem 0;
+}
+
+.pro-find-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  margin: 0.35rem 0 0;
 }
 
 .film-panel-still {

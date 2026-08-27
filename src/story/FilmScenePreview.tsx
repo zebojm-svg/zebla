@@ -6,6 +6,7 @@ import {
   panelDialogueLines,
   scenePreviewBeats,
 } from '../../shared/film-storyboard'
+import { createSceneBedMusic } from './sceneBedMusic'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -28,20 +29,32 @@ export function FilmScenePreviewPlayer({
 }: Props) {
   const beats = scenePreviewBeats(panels, dialog)
   const hasPicture = beats.some((b) => b.stillUrl)
-  const { speakFrom, stop, speaking } = useSpeechReader(
+  const { speakFrom, stop, speaking, cloudTtsReady } = useSpeechReader(
     dialog.targetLanguage,
     dialogId,
     onDialogUpdated,
   )
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [musicOn, setMusicOn] = useState(true)
   const runId = useRef(0)
   const cancelled = useRef(false)
+  const musicOnRef = useRef(true)
+  const musicRef = useRef<ReturnType<typeof createSceneBedMusic> | null>(null)
+
+  musicOnRef.current = musicOn
+
+  const getMusic = () => {
+    if (!musicRef.current) musicRef.current = createSceneBedMusic()
+    return musicRef.current
+  }
 
   useEffect(() => {
     return () => {
       cancelled.current = true
       stop()
+      musicRef.current?.dispose()
+      musicRef.current = null
     }
   }, [stop])
 
@@ -62,6 +75,7 @@ export function FilmScenePreviewPlayer({
     cancelled.current = true
     runId.current += 1
     stop()
+    musicRef.current?.pause()
     setPlaying(false)
   }
 
@@ -69,6 +83,7 @@ export function FilmScenePreviewPlayer({
     const id = ++runId.current
     cancelled.current = false
     setPlaying(true)
+    if (musicOnRef.current) void getMusic().start()
     for (let i = from; i < beats.length; i++) {
       if (cancelled.current || id !== runId.current) break
       setIndex(i)
@@ -79,7 +94,10 @@ export function FilmScenePreviewPlayer({
       }
       await speakFrom(beat.lines, buildSpeakerIndexMap(beat.lines), 0, 0.95, false)
     }
-    if (id === runId.current) setPlaying(false)
+    if (id === runId.current) {
+      musicRef.current?.pause()
+      setPlaying(false)
+    }
   }
 
   const onToggle = () => {
@@ -91,10 +109,27 @@ export function FilmScenePreviewPlayer({
     void play(start)
   }
 
+  const onMusicToggle = () => {
+    setMusicOn((on) => {
+      const next = !on
+      if (playing || speaking) {
+        if (next) void getMusic().start()
+        else musicRef.current?.pause()
+      }
+      return next
+    })
+  }
+
+  const voiceLabel = cloudTtsReady ? 'KI-Stimme (gespeichert)' : 'Browser-Stimme'
+
   return (
     <div className="film-scene-player">
       <p className="muted film-scene-player-note">
         <strong>Szene anhören:</strong> Standbilder + Stimme, noch kein Bewegungsfilm.
+      </p>
+      <p className="muted film-scene-player-voice">
+        {voiceLabel}
+        {musicOn ? ' · leise Musik' : ''}
       </p>
       <div className="film-scene-player-frame">
         {current?.stillUrl ? (
@@ -129,6 +164,15 @@ export function FilmScenePreviewPlayer({
           onClick={onToggle}
         >
           {playing || speaking ? 'Pause' : 'Szene abspielen'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          aria-pressed={musicOn}
+          title="Leise Hintergrundmusik"
+          onClick={onMusicToggle}
+        >
+          {musicOn ? 'Musik aus' : 'Musik an'}
         </button>
       </div>
     </div>
