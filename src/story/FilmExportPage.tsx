@@ -163,6 +163,9 @@ export function FilmExportPage() {
             hin und klickst «Bild korrigieren». «Szene abspielen» zeigt die Bilder mit Stimme —
             noch kein Bewegungsfilm.
           </p>
+          <p className="muted film-quota-hint">
+            Kontingent: oben auf <Link to="/pro">Pro</Link>
+          </p>
         </div>
         {board ? (
           <Link to={`/dialog/${dialog.id}/board`} className="btn btn-secondary">
