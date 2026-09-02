@@ -229,7 +229,7 @@ export function rematchFilmBoard(
           imageUrl: matched.imageUrl,
           match: matched.match,
           matchNoteDe: matched.matchNoteDe,
-          flip: matched.flip,
+          flip: pl.layoutLocked ? pl.flip : matched.flip,
         }
       }),
       background: matchBackground(panel.background.hint || panel.settingHint, library),

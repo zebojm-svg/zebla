@@ -6,6 +6,8 @@ import {
   panelDialogueLines,
   scenePreviewBeats,
 } from '../../shared/film-storyboard'
+import { panelCanArrange } from '../../shared/film-still-arrange'
+import { FilmStillPicture } from './FilmStillArrange'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -27,7 +29,7 @@ export function FilmScenePreviewPlayer({
   onDialogUpdated,
 }: Props) {
   const beats = scenePreviewBeats(panels, dialog)
-  const hasPicture = beats.some((b) => b.stillUrl)
+  const hasPicture = beats.some((b) => b.stillUrl) || panels.some((p) => panelCanArrange(p))
   const { speakFrom, stop, speaking } = useSpeechReader(
     dialog.targetLanguage,
     dialogId,
@@ -97,11 +99,8 @@ export function FilmScenePreviewPlayer({
         <strong>Szene anhören:</strong> Standbilder + Stimme, noch kein Bewegungsfilm.
       </p>
       <div className="film-scene-player-frame">
-        {current?.stillUrl ? (
-          <img
-            src={current.stillUrl}
-            alt={current.caption || `Bild ${current.panelIndex}`}
-          />
+        {currentPanel && (panelCanArrange(currentPanel) || currentPanel.stillUrl) ? (
+          <FilmStillPicture dialogId={dialogId} panel={currentPanel} interactive={false} />
         ) : (
           <div className="film-still-placeholder">Noch kein Bild</div>
         )}

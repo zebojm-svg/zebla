@@ -23,13 +23,18 @@ export interface FilmPlacement {
   poseId: StillPoseId
   poseHint: string
   depth: FilmDepth
+  /** Mitte der Figur, 0–100 quer. */
   x: number
+  /** Fußpunkt, 0–100 von oben. */
+  y: number
   scale: number
   flip: boolean
   libraryAssetId?: string
   imageUrl?: string
   match: FilmMatchKind
   matchNoteDe: string
+  /** Manuell gestellt (ziehen/zoomen) — Rematch überschreibt Lage nicht. */
+  layoutLocked?: boolean
 }
 
 export interface FilmBackground {
@@ -134,6 +139,12 @@ export function inferPoseId(text: string): StillPoseId {
     if (row.words.some((w) => hay.includes(w))) return row.id
   }
   return 'standing-front'
+}
+
+export function defaultPlacementY(depth: FilmDepth): number {
+  if (depth === 'background') return 70
+  if (depth === 'foreground') return 90
+  return 82
 }
 
 export function inferDepth(text: string): FilmDepth {
@@ -378,6 +389,7 @@ export function buildBoardFromDrafts(
         poseHint: pose.label,
         depth: ch.depth ?? inferDepth(blob),
         x,
+        y: defaultPlacementY(ch.depth ?? inferDepth(blob)),
         scale: ch.depth === 'background' ? 0.55 : ch.depth === 'foreground' ? 1 : 0.78,
         flip: matched.flip,
         libraryAssetId: matched.libraryAssetId,
@@ -509,6 +521,10 @@ export function normalizeFilmStoryboard(board: FilmStoryboard): FilmStoryboard {
     ...p,
     sceneId: p.sceneId || `scene-${(p.sceneIndex ?? 0) + 1}`,
     panelIndex: p.panelIndex || i + 1,
+    placements: (p.placements ?? []).map((pl) => ({
+      ...pl,
+      y: typeof pl.y === 'number' ? clamp(pl.y, 8, 96) : defaultPlacementY(pl.depth),
+    })),
   }))
   return {
     ...board,
@@ -601,6 +617,7 @@ export function insertPanelAfter(
       poseHint: pose.label,
       depth: inferDepth(text),
       x: clamp(28 + (ci / Math.max(1, all.length - 1)) * 44, 8, 92),
+      y: defaultPlacementY(inferDepth(text)),
       scale: 0.78,
       flip: matched.flip,
       libraryAssetId: matched.libraryAssetId,

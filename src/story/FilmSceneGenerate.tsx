@@ -9,6 +9,7 @@ import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboar
 import { panelDialogueLines } from '../../shared/film-storyboard'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
 import { sceneStillProgress, stillLibraryHintDe } from '../../shared/film-stills'
+import { FilmStillPicture } from './FilmStillArrange'
 
 type Props = {
   dialogId: string
@@ -21,6 +22,7 @@ type Props = {
   progress?: { current: number; total: number } | null
   error?: string
   onGenerate: (force: boolean) => void
+  onRematch?: () => void
 }
 
 export function FilmSceneGenerateBar({
@@ -34,6 +36,7 @@ export function FilmSceneGenerateBar({
   progress,
   error,
   onGenerate,
+  onRematch,
 }: Props) {
   const stats = sceneStillProgress(panels, styleId)
   const hint = stillLibraryHintDe(panels)
@@ -73,6 +76,16 @@ export function FilmSceneGenerateBar({
       >
         {label}
       </button>
+      {onRematch ? (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={busy || extraDisabled}
+          onClick={onRematch}
+        >
+          Bibliothek holen
+        </button>
+      ) : null}
       <p className="muted film-scene-still-note">
         Das sind <strong>Standbilder</strong> dieser Szene — damit du siehst, ob es gut
         herauskommt. Der bewegte Film kommt später.
@@ -196,19 +209,23 @@ export function FilmStillFixBar({
 }
 
 export function FilmStillStrip({
+  dialogId,
   panels,
   dialog,
   busy,
   busyPanelId,
   onCorrect,
   onInsert,
+  onLayout,
 }: {
+  dialogId: string
   panels: FilmStoryboardPanel[]
   dialog?: Dialog | null
   busy?: boolean
   busyPanelId?: string | null
   onCorrect?: (panel: FilmStoryboardPanel, note: string) => void
   onInsert?: (panel: FilmStoryboardPanel, text: string) => void
+  onLayout?: (dialog: Dialog, board: import('../../shared/film-storyboard').FilmStoryboard) => void
 }) {
   if (panels.length === 0) return null
   return (
@@ -217,8 +234,13 @@ export function FilmStillStrip({
         const panelBusy = Boolean(busy && busyPanelId === panel.id)
         return (
           <figure key={panel.id} className="film-still-thumb">
-            {panel.stillUrl ? (
-              <img src={panel.stillUrl} alt={panel.caption} />
+            {panel.stillUrl || panel.background.imageUrl ? (
+              <FilmStillPicture
+                dialogId={dialogId}
+                panel={panel}
+                interactive
+                onUpdated={onLayout}
+              />
             ) : (
               <div className="film-still-placeholder">
                 {panelBusy ? 'Erzeuge Bild …' : 'Noch kein Bild'}

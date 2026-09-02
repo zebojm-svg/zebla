@@ -159,9 +159,8 @@ export function FilmExportPage() {
           <h1>Film generieren</h1>
           <p className="muted">
             Hier machst du die <strong>Standbilder Szene für Szene</strong> — damit du siehst, ob
-            es gut herauskommt. Unter jedem Bild steht der Dialog. Was nicht stimmt, schreibst du
-            hin und klickst «Bild korrigieren». «Szene abspielen» zeigt die Bilder mit Stimme —
-            noch kein Bewegungsfilm.
+            es gut herauskommt. Figuren kannst du danach <strong>ziehen und zoomen</strong>, ohne
+            KI — z.B. neben die Rolltreppe. Unter jedem Bild steht der Dialog.
           </p>
         </div>
         {board ? (
@@ -209,12 +208,14 @@ export function FilmExportPage() {
                   onDialogUpdated={setDialog}
                 />
                 <FilmStillStrip
+                  dialogId={dialog.id}
                   panels={panels}
                   dialog={dialog}
                   busy={sceneBusy || busy}
                   busyPanelId={stills.busyPanelId}
                   onCorrect={(panel, note) => void correctStill(scene.id, panel, note)}
                   onInsert={(panel, text) => void insertAfter(scene.id, panel.id, text)}
+                  onLayout={applyBoard}
                 />
                 <FilmSceneGenerateBar
                   dialogId={dialog.id}
@@ -231,6 +232,20 @@ export function FilmExportPage() {
                   }
                   error={stills.errors[scene.id]}
                   onGenerate={(force) => void generateScene(scene.id, force)}
+                  onRematch={() => {
+                    void (async () => {
+                      setBusy(true)
+                      setError('')
+                      try {
+                        const result = await api.ai.filmLibraryRematch(dialog.id)
+                        applyBoard(result.dialog, result.board)
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Bibliothek holen fehlgeschlagen.')
+                      } finally {
+                        setBusy(false)
+                      }
+                    })()
+                  }}
                 />
               </section>
             )
