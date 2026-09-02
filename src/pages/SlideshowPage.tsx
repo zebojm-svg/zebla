@@ -313,7 +313,7 @@ export function SlideshowPage() {
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
 
-      <details className="slideshow-tools panel" open={isPublic}>
+      <details className="slideshow-tools panel">
         <summary className="slideshow-tools-summary">{t('slideshow.tools')}</summary>
       <div className="slideshow-settings panel">
         {!isPublic && (
@@ -558,10 +558,9 @@ export function SlideshowPage() {
         />
       )}
 
-      <p className="muted slideshow-zoom-hint">{t('slideshow.zoomHint')}</p>
-
       <div className="slideshow-stage">
         <div className="slideshow-image-wrap">
+          <p className="muted slideshow-zoom-hint">{t('slideshow.zoomHint')}</p>
           <PinchZoomSurface className="slideshow-image-zoom">
             {displayImageUrl && displayLine ? (
               <SlideshowKenBurnsImage
@@ -599,6 +598,7 @@ export function SlideshowPage() {
                   showTargetText={showTargetText}
                   showRomanization={showRomanization}
                   showTranslation={showTranslation}
+                  splitRowsOnNarrow
                 />
               </div>
             ))
