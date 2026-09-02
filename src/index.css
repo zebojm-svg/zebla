@@ -3223,6 +3223,41 @@ html[dir='rtl'] .slideshow-topbar {
   object-fit: cover;
 }
 
+.film-arrange {
+  width: 100%;
+}
+
+.film-arrange-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+
+.film-arrange.is-edit .film-arrange-canvas {
+  cursor: grab;
+}
+
+.film-arrange-hint,
+.film-still-flat .film-arrange-hint {
+  margin: 0.45rem 0.6rem 0.2rem;
+  font-size: 0.88rem;
+}
+
+.film-still-flat img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.film-scene-player-frame .film-arrange-canvas,
+.film-panel-still .film-arrange-canvas {
+  width: 100%;
+}
+
 .film-still-placeholder {
   aspect-ratio: 16 / 9;
   display: flex;

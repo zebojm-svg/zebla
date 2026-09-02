@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
 import { FilmPanelDialogue, FilmSceneGenerateBar, FilmStillFixBar } from './FilmSceneGenerate'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
+import { FilmStillPicture } from './FilmStillArrange'
 import { useSceneStills } from './generateSceneStills'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
@@ -34,6 +35,7 @@ function PanelCard({
   onInsert,
   onCorrect,
   onSketch,
+  onLayout,
 }: {
   panel: FilmStoryboardPanel
   dialog: Dialog
@@ -43,6 +45,7 @@ function PanelCard({
   onInsert: (text: string) => void
   onCorrect: (note: string) => void
   onSketch: () => void
+  onLayout: (dialog: Dialog, board: FilmStoryboard) => void
 }) {
   const [note, setNote] = useState(panel.directorNote ?? '')
   const [comment, setComment] = useState(panel.comment ?? '')
@@ -56,9 +59,14 @@ function PanelCard({
           <p className="film-expression">Gesicht: {panel.expressionHint}</p>
         ) : null}
       </header>
-      {panel.stillUrl ? (
+      {panel.stillUrl || panel.background.imageUrl ? (
         <div className="film-panel-still">
-          <img src={panel.stillUrl} alt={panel.caption} />
+          <FilmStillPicture
+            dialogId={dialog.id}
+            panel={panel}
+            interactive
+            onUpdated={onLayout}
+          />
           <p className="muted">Standbild dieser Zeile</p>
           {panel.harvestNoteDe ? (
             <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
@@ -377,6 +385,7 @@ export function FilmStoryboardPage() {
                       force,
                     )
                   }
+                  onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
                 />
                 <div className="film-panel-grid">
                   {panels.map((panel) => (
@@ -385,6 +394,7 @@ export function FilmStoryboardPage() {
                       panel={panel}
                       dialog={dialog}
                       busy={locked}
+                      onLayout={apply}
                       onTweak={(note) => void run(() => api.ai.filmStoryboardTweak(id, panel.id, note))}
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))

@@ -21,6 +21,10 @@ import { generateFilmPanelStillImage } from './film-stills.js'
 import { harvestFilmStillToLibrary } from './film-library-harvest.js'
 import { rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
+  applyPanelLayout,
+  type ArrangeLayerUpdate,
+} from '../shared/film-still-arrange.js'
+import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
@@ -419,4 +423,35 @@ export async function saveFilmPlan(
   const updated = await updateDialog(dialogId, userId, { filmPlan: plan }, profile)
   if (!updated) throw new Error('Film-Plan nicht gespeichert.')
   return updated
+}
+
+export async function saveFilmPanelLayout(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  updates: ArrangeLayerUpdate[],
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) {
+    throw new Error('Kein Storyboard.')
+  }
+  const board = applyPanelLayout(normalizeFilmStoryboard(dialog.filmStoryboard), panelId, updates)
+  const updated = await saveBoard(dialogId, userId, board, profile)
+  return { dialog: updated, board }
+}
+
+export async function rematchFilmLibrary(
+  dialogId: string,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) {
+    throw new Error('Kein Storyboard.')
+  }
+  const library = await listStoryAssets(userId)
+  const board = rematchFilmBoard(normalizeFilmStoryboard(dialog.filmStoryboard), library)
+  const updated = await saveBoard(dialogId, userId, board, profile)
+  return { dialog: updated, board }
 }

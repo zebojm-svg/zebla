@@ -100,7 +100,7 @@ import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../
 import { isCharacterRig } from '../shared/character-rig.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
@@ -1197,6 +1197,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         profile,
         note?.trim(),
       )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-panel-layout' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId, placements } = req.body as {
+        dialogId?: string
+        panelId?: string
+        placements?: Array<{
+          name: string
+          poseId: string
+          x: number
+          y: number
+          scale: number
+          flip?: boolean
+        }>
+      }
+      if (!dialogId?.trim() || !panelId?.trim() || !Array.isArray(placements)) {
+        res.status(400).json({ error: 'dialogId, panelId und placements fehlen.' })
+        return
+      }
+      const result = await saveFilmPanelLayout(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        placements,
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-library-rematch' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId } = req.body as { dialogId?: string }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await rematchFilmLibrary(dialogId.trim(), user.uid, profile)
       res.json(result)
       return
     }
