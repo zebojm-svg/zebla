@@ -98,6 +98,23 @@ import {
 } from '../shared/story-art-styles.js'
 import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../shared/character-parts.js'
 import { isCharacterRig } from '../shared/character-rig.js'
+import {
+  listPublicCatalog,
+  getPublicCatalogItem,
+  createPublicFolder,
+  updatePublicFolder,
+  deletePublicFolder,
+  createPublicItem,
+  updatePublicItem,
+  deletePublicItem,
+  folderBreadcrumbs,
+} from '../lib/public-catalog.js'
+import {
+  parseBase64Upload,
+  uploadPublicCatalogMedia,
+} from '../lib/public-media-storage.js'
+import { buildDialogPdf } from '../lib/dialog-pdf.js'
+import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
 import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan } from '../lib/film-storyboard.js'
@@ -231,6 +248,484 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         .filter(Boolean)
       res.json({ items })
+      return
+    }
+
+    if (route === 'public-catalog' && req.method === 'GET') {
+      const {
+        listPublicCatalog,
+        folderBreadcrumbs,
+        getPublicCatalogItem,
+      } = await import('../lib/public-catalog.js')
+      const itemId = typeof req.query.item === 'string' ? req.query.item : undefined
+      if (itemId) {
+        const item = await getPublicCatalogItem(itemId)
+        if (!item) {
+          res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+          return
+        }
+        res.json({ item })
+        return
+      }
+      const folderId =
+        typeof req.query.folder === 'string' && req.query.folder ? req.query.folder : null
+      const { folders, items } = await listPublicCatalog(folderId)
+      const breadcrumbs = await folderBreadcrumbs(folderId)
+      res.json({ folders, items, breadcrumbs })
+      return
+    }
+
+    if (route === 'public-catalog/pdf' && req.method === 'GET') {
+      const itemId = typeof req.query.item === 'string' ? req.query.item : ''
+      if (!itemId) {
+        res.status(400).json({ error: 'item fehlt.' })
+        return
+      }
+      const { getPublicCatalogItem } = await import('../lib/public-catalog.js')
+      const item = await getPublicCatalogItem(itemId)
+      if (!item) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      if (item.pdfUrl) {
+        res.redirect(302, item.pdfUrl)
+        return
+      }
+      if (!item.shareToken) {
+        res.status(404).json({ error: 'Kein PDF für diesen Eintrag.' })
+        return
+      }
+      const dialog = await getDialogByShareToken(item.shareToken)
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      const { buildDialogPdf } = await import('../lib/dialog-pdf.js')
+      const pdf = await buildDialogPdf(dialog)
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(dialog.title || 'dialog')}.pdf"`,
+      )
+      res.send(pdf)
+      return
+    }
+
+    if (route === 'public-catalog/folder' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { name, parentId, sourceLanguage, targetLanguage } = req.body as {
+        name?: string
+        parentId?: string | null
+        sourceLanguage?: string
+        targetLanguage?: string
+      }
+      if (!name?.trim()) {
+        res.status(400).json({ error: 'Name fehlt.' })
+        return
+      }
+      const { createPublicFolder } = await import('../lib/public-catalog.js')
+      const folder = await createPublicFolder({
+        name,
+        parentId: parentId ?? null,
+        sourceLanguage,
+        targetLanguage,
+      })
+      res.json({ folder })
+      return
+    }
+
+    if (route === 'public-catalog/folder' && req.method === 'PATCH') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { id, name, sortOrder } = req.body as {
+        id?: string
+        name?: string
+        sortOrder?: number
+      }
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const { updatePublicFolder } = await import('../lib/public-catalog.js')
+      const folder = await updatePublicFolder(id, { name, sortOrder })
+      if (!folder) {
+        res.status(404).json({ error: 'Ordner nicht gefunden.' })
+        return
+      }
+      res.json({ folder })
+      return
+    }
+
+    if (route === 'public-catalog/folder' && req.method === 'DELETE') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const id = typeof req.query.id === 'string' ? req.query.id : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const { deletePublicFolder } = await import('../lib/public-catalog.js')
+      try {
+        await deletePublicFolder(id)
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : 'Löschen fehlgeschlagen.' })
+      }
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { folderId, title, description, shareToken, dialogId } = req.body as {
+        folderId?: string
+        title?: string
+        description?: string
+        shareToken?: string
+        dialogId?: string
+      }
+      if (!folderId || !title?.trim()) {
+        res.status(400).json({ error: 'Ordner und Titel fehlen.' })
+        return
+      }
+      const { createPublicItem } = await import('../lib/public-catalog.js')
+      const item = await createPublicItem({
+        folderId,
+        title,
+        description,
+        shareToken,
+        dialogId,
+      })
+      res.json({ item })
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'PATCH') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { id, ...patch } = req.body as {
+        id?: string
+        title?: string
+        description?: string
+        shareToken?: string
+        dialogId?: string
+        thumbnailUrl?: string
+        videoUrl?: string
+        pdfUrl?: string
+        folderId?: string
+      }
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const { updatePublicItem } = await import('../lib/public-catalog.js')
+      const item = await updatePublicItem(id, patch)
+      if (!item) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      res.json({ item })
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'DELETE') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const id = typeof req.query.id === 'string' ? req.query.id : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const { deletePublicItem } = await import('../lib/public-catalog.js')
+      await deletePublicItem(id)
+      res.json({ ok: true })
+      return
+    }
+
+    if (route === 'public-catalog/upload' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { itemId, kind, dataBase64 } = req.body as {
+        itemId?: string
+        kind?: 'thumbnail' | 'video' | 'pdf'
+        dataBase64?: string
+      }
+      if (!itemId || !kind || !dataBase64) {
+        res.status(400).json({ error: 'itemId, kind und dataBase64 fehlen.' })
+        return
+      }
+      if (!['thumbnail', 'video', 'pdf'].includes(kind)) {
+        res.status(400).json({ error: 'Ungültiger Medientyp.' })
+        return
+      }
+      const { parseBase64Upload, uploadPublicCatalogMedia } = await import(
+        '../lib/public-media-storage.js'
+      )
+      const { updatePublicItem, getPublicCatalogItem } = await import('../lib/public-catalog.js')
+      const existing = await getPublicCatalogItem(itemId)
+      if (!existing) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      const { buffer, contentType } = parseBase64Upload(dataBase64)
+      const maxMb = kind === 'video' ? 8 : 12
+      if (buffer.length > maxMb * 1024 * 1024) {
+        res.status(400).json({
+          error: `Datei zu gross für Direkt-Upload (max. ${maxMb} MB). Für Videos «Grosses Video» nutzen.`,
+        })
+        return
+      }
+      const url = await uploadPublicCatalogMedia(itemId, kind, buffer, contentType)
+      const patch =
+        kind === 'thumbnail'
+          ? { thumbnailUrl: url }
+          : kind === 'video'
+            ? { videoUrl: url }
+            : { pdfUrl: url }
+      const item = await updatePublicItem(itemId, patch)
+      res.json({ item, url })
+      return
+    }
+
+    if (route === 'public-catalog/upload-url' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { itemId, kind, contentType } = req.body as {
+        itemId?: string
+        kind?: 'video'
+        contentType?: string
+      }
+      if (!itemId || kind !== 'video') {
+        res.status(400).json({ error: 'itemId und kind=video erforderlich.' })
+        return
+      }
+      const { getPublicCatalogItem } = await import('../lib/public-catalog.js')
+      const existing = await getPublicCatalogItem(itemId)
+      if (!existing) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      const { createPublicCatalogUploadUrl } = await import('../lib/public-media-storage.js')
+      const signed = await createPublicCatalogUploadUrl(itemId, 'video', contentType ?? 'video/mp4')
+      res.json(signed)
+      return
+    }
+
+    if (route === 'public-catalog/upload-complete' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { itemId, path } = req.body as { itemId?: string; path?: string }
+      if (!itemId || !path?.startsWith('public-catalog/')) {
+        res.status(400).json({ error: 'itemId und path fehlen.' })
+        return
+      }
+      const { finalizePublicCatalogUpload } = await import('../lib/public-media-storage.js')
+      const { updatePublicItem } = await import('../lib/public-catalog.js')
+      const url = await finalizePublicCatalogUpload(path)
+      const item = await updatePublicItem(itemId, { videoUrl: url })
+      res.json({ item, url })
+      return
+    }
+
+    if (route === 'public-catalog' && req.method === 'GET') {
+      const folderId = typeof req.query.folder === 'string' ? req.query.folder : null
+      const { folders, items } = await listPublicCatalog(folderId)
+      const breadcrumbs = folderId ? await folderBreadcrumbs(folderId) : []
+      res.json({ folders, items, breadcrumbs })
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'GET') {
+      const id = typeof req.query.id === 'string' ? req.query.id : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const item = await getPublicCatalogItem(id)
+      if (!item) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      res.json({ item })
+      return
+    }
+
+    if (route === 'public-catalog/pdf' && req.method === 'GET') {
+      const id = typeof req.query.id === 'string' ? req.query.id : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const item = await getPublicCatalogItem(id)
+      if (!item) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      if (item.pdfUrl) {
+        res.redirect(302, item.pdfUrl)
+        return
+      }
+      if (!item.shareToken) {
+        res.status(404).json({ error: 'Kein PDF für diesen Eintrag.' })
+        return
+      }
+      const dialog = await getDialogByShareToken(item.shareToken)
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      const pdf = await buildDialogPdf(dialog)
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(item.title)}.pdf"`,
+      )
+      res.send(pdf)
+      return
+    }
+
+    if (route === 'public-catalog/folder' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { name, parentId, sourceLanguage, targetLanguage } = req.body as {
+        name?: string
+        parentId?: string | null
+        sourceLanguage?: string
+        targetLanguage?: string
+      }
+      if (!name?.trim()) {
+        res.status(400).json({ error: 'Ordnername fehlt.' })
+        return
+      }
+      const folder = await createPublicFolder({
+        name,
+        parentId: parentId ?? null,
+        sourceLanguage,
+        targetLanguage,
+      })
+      res.json({ folder })
+      return
+    }
+
+    if (route === 'public-catalog/folder' && req.method === 'PATCH') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { id, name, sortOrder } = req.body as {
+        id?: string
+        name?: string
+        sortOrder?: number
+      }
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const folder = await updatePublicFolder(id, { name, sortOrder })
+      if (!folder) {
+        res.status(404).json({ error: 'Ordner nicht gefunden.' })
+        return
+      }
+      res.json({ folder })
+      return
+    }
+
+    if (route === 'public-catalog/folder' && req.method === 'DELETE') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const id = typeof req.query.id === 'string' ? req.query.id : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      try {
+        await deletePublicFolder(id)
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : 'Löschen fehlgeschlagen.' })
+      }
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { folderId, title, description, shareToken, dialogId } = req.body as {
+        folderId?: string
+        title?: string
+        description?: string
+        shareToken?: string
+        dialogId?: string
+      }
+      if (!folderId || !title?.trim()) {
+        res.status(400).json({ error: 'Ordner und Titel fehlen.' })
+        return
+      }
+      const item = await createPublicItem({
+        folderId,
+        title,
+        description,
+        shareToken,
+        dialogId,
+      })
+      res.json({ item })
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'PATCH') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { id, ...patch } = req.body as {
+        id?: string
+        title?: string
+        description?: string
+        shareToken?: string
+        dialogId?: string
+        folderId?: string
+        thumbnailUrl?: string
+        videoUrl?: string
+        pdfUrl?: string
+      }
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const item = await updatePublicItem(id, patch)
+      if (!item) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      res.json({ item })
+      return
+    }
+
+    if (route === 'public-catalog/item' && req.method === 'DELETE') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const id = typeof req.query.id === 'string' ? req.query.id : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      await deletePublicItem(id)
+      res.json({ ok: true })
+      return
+    }
+
+    if (route === 'public-catalog/upload' && req.method === 'POST') {
+      await requireRole((await requireAuth(req)).uid, ['master'])
+      const { itemId, kind, dataBase64 } = req.body as {
+        itemId?: string
+        kind?: PublicCatalogMediaKind
+        dataBase64?: string
+      }
+      if (!itemId || !kind || !dataBase64) {
+        res.status(400).json({ error: 'itemId, kind und dataBase64 fehlen.' })
+        return
+      }
+      if (!['thumbnail', 'video', 'pdf'].includes(kind)) {
+        res.status(400).json({ error: 'Ungültiger Medientyp.' })
+        return
+      }
+      const item = await getPublicCatalogItem(itemId)
+      if (!item) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      const { buffer, contentType } = parseBase64Upload(dataBase64)
+      const url = await uploadPublicCatalogMedia(itemId, kind, buffer, contentType)
+      const patch =
+        kind === 'thumbnail'
+          ? { thumbnailUrl: url }
+          : kind === 'video'
+            ? { videoUrl: url }
+            : { pdfUrl: url }
+      const updated = await updatePublicItem(itemId, patch)
+      res.json({ item: updated, url })
       return
     }
 

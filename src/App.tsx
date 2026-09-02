@@ -16,14 +16,15 @@ import { FilmExportPage } from './story/FilmExportPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ProPage } from './pages/ProPage'
 import { SsoPage } from './pages/SsoPage'
-import { PublicHomePage } from './pages/PublicHomePage'
+import { ExplorePage } from './pages/ExplorePage'
+import { PublicWatchPage } from './pages/PublicWatchPage'
 import { useAuth } from './context/AuthContext'
 
 
 function HomeSwitch() {
   const { user, loading } = useAuth()
   if (loading) return <p className="muted" style={{ padding: '2rem' }}>Laden …</p>
-  if (!user) return <PublicHomePage />
+  if (!user) return <ExplorePage />
   return (
     <Layout>
       <DashboardPage />
@@ -41,7 +42,8 @@ function AppRoutes() {
       <Route path="/share/:token" element={<ShareImportPage />} />
 
       <Route path="/sso" element={<SsoPage />} />
-      <Route path="/explore" element={<PublicHomePage />} />
+      <Route path="/explore" element={<ExplorePage />} />
+      <Route path="/explore/watch/:itemId" element={<PublicWatchPage />} />
 
       <Route path="/" element={<HomeSwitch />} />
 

@@ -638,4 +638,63 @@ export const api = {
     listPresets: () =>
       request<{ presets: import('../../shared/scene-presets').ScenePreset[] }>('/story-presets'),
   },
+  publicCatalog: {
+    list: (folderId?: string | null) => {
+      const qs = folderId ? `?folder=${encodeURIComponent(folderId)}` : ''
+      return request<{
+        folders: import('../../shared/public-catalog').PublicCatalogFolder[]
+        items: import('../../shared/public-catalog').PublicCatalogItem[]
+        breadcrumbs: import('../../shared/public-catalog').PublicCatalogFolder[]
+      }>(`/public-catalog${qs}`)
+    },
+    getItem: (itemId: string) =>
+      request<{ item: import('../../shared/public-catalog').PublicCatalogItem }>(
+        `/public-catalog?item=${encodeURIComponent(itemId)}`,
+      ),
+    createFolder: (input: {
+      name: string
+      parentId?: string | null
+      sourceLanguage?: string
+      targetLanguage?: string
+    }) =>
+      request<{ folder: import('../../shared/public-catalog').PublicCatalogFolder }>(
+        '/public-catalog/folder',
+        { method: 'POST', body: JSON.stringify(input) },
+      ),
+    deleteFolder: (id: string) =>
+      request<{ ok: boolean }>(`/public-catalog/folder?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+    createItem: (input: {
+      folderId: string
+      title: string
+      description?: string
+      shareToken?: string
+    }) =>
+      request<{ item: import('../../shared/public-catalog').PublicCatalogItem }>(
+        '/public-catalog/item',
+        { method: 'POST', body: JSON.stringify(input) },
+      ),
+    deleteItem: (id: string) =>
+      request<{ ok: boolean }>(`/public-catalog/item?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+    uploadSmall: (itemId: string, kind: 'thumbnail' | 'pdf', dataBase64: string) =>
+      request<{ item: import('../../shared/public-catalog').PublicCatalogItem }>(
+        '/public-catalog/upload',
+        { method: 'POST', body: JSON.stringify({ itemId, kind, dataBase64 }) },
+        120_000,
+      ),
+    videoUploadUrl: (itemId: string, contentType?: string) =>
+      request<{ uploadUrl: string; publicUrl: string; path: string }>(
+        '/public-catalog/upload-url',
+        { method: 'POST', body: JSON.stringify({ itemId, kind: 'video', contentType }) },
+      ),
+    videoUploadComplete: (itemId: string, path: string) =>
+      request<{ item: import('../../shared/public-catalog').PublicCatalogItem }>(
+        '/public-catalog/upload-complete',
+        { method: 'POST', body: JSON.stringify({ itemId, path }) },
+      ),
+    pdfUrl: (itemId: string) => `/api/public-catalog/pdf?item=${encodeURIComponent(itemId)}`,
+  },
 }
