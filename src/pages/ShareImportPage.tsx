@@ -120,17 +120,23 @@ export function ShareImportPage() {
         </div>
 
         <div className="share-import-actions">
+          <Link
+            to={`/share/${encodeURIComponent(token!)}/slideshow`}
+            className="btn btn-primary"
+          >
+            Diashow starten
+          </Link>
           {user ? (
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-secondary"
               disabled={importing}
               onClick={handleImport}
             >
               {importing ? t('common.loading') : t('share.import')}
             </button>
           ) : (
-            <Link to={loginUrl} className="btn btn-primary">
+            <Link to={loginUrl} className="btn btn-secondary">
               {t('share.loginNeeded')}
             </Link>
           )}

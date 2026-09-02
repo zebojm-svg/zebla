@@ -27,7 +27,8 @@ import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line
 import { useI18n } from '../i18n/I18nContext'
 
 export function SlideshowPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id, token: shareToken } = useParams<{ id?: string; token?: string }>()
+  const isPublic = Boolean(shareToken)
   const { t } = useI18n()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [slideIndex, setSlideIndex] = useState(0)
@@ -47,15 +48,33 @@ export function SlideshowPage() {
   const { pending: costPending, confirm: confirmCost, close: closeCost } = useCostConfirm()
 
   const { speakFrom, stop, speaking, activeLineId, highlightIndex, cloudTtsReady, ttsError } =
-    useSpeechReader(dialog?.targetLanguage ?? 'en', dialog?.id, setDialog, { useCloudTts })
+    useSpeechReader(dialog?.targetLanguage ?? 'en', isPublic ? undefined : dialog?.id, isPublic ? undefined : setDialog, { useCloudTts })
 
   useEffect(() => {
+    if (shareToken) {
+      setLoading(true)
+      api.shared
+        .get(shareToken)
+        .then(({ dialog: d }) =>
+          setDialog({
+            ...d,
+            id: `share-${shareToken}`,
+            userId: '',
+            folderId: null,
+            createdAt: '',
+            updatedAt: '',
+            shareToken,
+          }),
+        )
+        .finally(() => setLoading(false))
+      return
+    }
     if (!id) return
     api.dialogs
       .get(id)
       .then(({ dialog: d }) => setDialog(d))
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, shareToken])
 
   useEffect(() => {
     return () => stop()
@@ -265,20 +284,24 @@ export function SlideshowPage() {
     return (
       <div className="slideshow-page page-center">
         <p>{t('slideshow.noDialog')}</p>
-        <Link to="/">{t('nav.back')}</Link>
+        <Link to={isPublic ? '/explore' : '/'}>{t('nav.back')}</Link>
       </div>
     )
   }
 
+  const backHref = isPublic
+    ? `/share/${encodeURIComponent(shareToken!)}`
+    : `/dialog/${dialog.id}`
+
   return (
     <div className="slideshow-page">
       <div className="slideshow-topbar">
-        <Link to={`/dialog/${dialog.id}`} className="btn btn-ghost slideshow-back">
-          {t('nav.edit')}
+        <Link to={backHref} className="btn btn-ghost slideshow-back">
+          {isPublic ? '← Zurück' : t('nav.edit')}
         </Link>
         <span className="slideshow-title">{dialog.title}</span>
         <div className="slideshow-topbar-end">
-          <LanguageSwitcher className="lang-switcher--slideshow" />
+          {!isPublic && <LanguageSwitcher className="lang-switcher--slideshow" />}
           <span className="slideshow-counter">
             {t('slideshow.section', {
               current: slideIndex + 1,
@@ -290,9 +313,10 @@ export function SlideshowPage() {
 
       {ttsHint && <div className="alert alert-warn slideshow-tts-hint">{ttsHint}</div>}
 
-      <details className="slideshow-tools panel">
+      <details className="slideshow-tools panel" open={isPublic}>
         <summary className="slideshow-tools-summary">{t('slideshow.tools')}</summary>
       <div className="slideshow-settings panel">
+        {!isPublic && (
         <label className="checkbox-label slideshow-setting">
           <input
             type="checkbox"
@@ -310,6 +334,7 @@ export function SlideshowPage() {
             </span>
           </span>
         </label>
+        )}
         <fieldset className="slideshow-script-toggles">
           <legend>{t('slideshow.displayScripts')}</legend>
           <label className="checkbox-label slideshow-setting">
@@ -362,7 +387,7 @@ export function SlideshowPage() {
         )}
       </div>
 
-      {useCloudTts && ttsError && (
+      {useCloudTts && ttsError && !isPublic && (
         <div className="alert alert-error slideshow-tts-hint">
           {ttsError}
           {(ttsError.includes('Vertex AI User') || ttsError.includes('Service-Account')) && (
@@ -393,7 +418,7 @@ export function SlideshowPage() {
             )}
         </div>
       )}
-      {useCloudTts && cloudTtsReady && !ttsError && (
+      {useCloudTts && cloudTtsReady && !ttsError && !isPublic && (
         <div className="slideshow-cloud-tts">
           {t('slideshow.cloudTts')}
           {dialog.targetLanguage.startsWith('fa') ? ' (Gemini)' : ' (Google)'}
@@ -409,9 +434,9 @@ export function SlideshowPage() {
         </div>
       )}
 
-      {audioStatus && <div className="alert alert-warn slideshow-tts-hint">{audioStatus}</div>}
+      {audioStatus && !isPublic && <div className="alert alert-warn slideshow-tts-hint">{audioStatus}</div>}
 
-      {useCloudTts && cloudTtsReady && !ttsError && (
+      {!isPublic && useCloudTts && cloudTtsReady && !ttsError && (
         <div className="slideshow-export-block">
           <div className="slideshow-export-bar">
             <button
@@ -515,7 +540,7 @@ export function SlideshowPage() {
         </div>
       )}
 
-      {useCloudTts && cloudTtsReady && !ttsError && (
+      {!isPublic && useCloudTts && cloudTtsReady && !ttsError && (
         <SlideshowVoicePanel
           dialog={dialog}
           setDialog={setDialog}
@@ -525,7 +550,7 @@ export function SlideshowPage() {
       )}
       </details>
 
-      {costPending && (
+      {costPending && !isPublic && (
         <CostConfirmDialog
           estimate={costPending.estimate}
           onConfirm={() => closeCost(true)}

@@ -452,9 +452,23 @@ export function ExplorePage() {
                         </p>
                       ) : null}
                       <div className="explore-item-card__actions">
-                        <Link className="btn btn-primary btn-sm" to={`/explore/watch/${item.id}`}>
-                          {item.videoUrl ? 'Video ansehen' : 'Öffnen'}
-                        </Link>
+                        {item.shareToken ? (
+                          <Link
+                            className="btn btn-primary btn-sm"
+                            to={`/share/${encodeURIComponent(item.shareToken)}/slideshow`}
+                          >
+                            Diashow
+                          </Link>
+                        ) : (
+                          <Link className="btn btn-primary btn-sm" to={`/explore/watch/${item.id}`}>
+                            {item.videoUrl ? 'Video ansehen' : 'Öffnen'}
+                          </Link>
+                        )}
+                        {item.videoUrl && item.shareToken && (
+                          <Link className="btn btn-secondary btn-sm" to={`/explore/watch/${item.id}`}>
+                            Video
+                          </Link>
+                        )}
                         {(item.pdfUrl || item.shareToken) && (
                           <a
                             className="btn btn-secondary btn-sm"
@@ -505,10 +519,16 @@ export function ExplorePage() {
                       </div>
                       <div className="library-card-actions">
                         <Link
+                          className="btn btn-primary btn-sm"
+                          to={`/share/${encodeURIComponent(item.shareToken)}/slideshow`}
+                        >
+                          Diashow
+                        </Link>
+                        <Link
                           className="btn btn-secondary btn-sm"
                           to={`/share/${encodeURIComponent(item.shareToken)}`}
                         >
-                          Ansehen
+                          Text
                         </Link>
                       </div>
                     </li>

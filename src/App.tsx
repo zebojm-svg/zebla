@@ -40,6 +40,7 @@ function AppRoutes() {
       </Route>
 
       <Route path="/share/:token" element={<ShareImportPage />} />
+      <Route path="/share/:token/slideshow" element={<SlideshowPage />} />
 
       <Route path="/sso" element={<SsoPage />} />
       <Route path="/explore" element={<ExplorePage />} />

@@ -89,8 +89,21 @@ export function PublicWatchPage() {
 
         <div className="explore-watch__actions">
           {item.shareToken && (
+            <Link
+              className="btn btn-primary"
+              to={`/share/${encodeURIComponent(item.shareToken)}/slideshow`}
+            >
+              Diashow starten
+            </Link>
+          )}
+          {item.videoUrl && (
+            <a className="btn btn-secondary" href={item.videoUrl} target="_blank" rel="noreferrer">
+              Video (MP4)
+            </a>
+          )}
+          {item.shareToken && (
             <Link className="btn btn-secondary" to={`/share/${encodeURIComponent(item.shareToken)}`}>
-              Dialog-Text ansehen
+              Dialog-Text
             </Link>
           )}
           {(item.pdfUrl || item.shareToken) && (
