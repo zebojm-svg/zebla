@@ -35,6 +35,8 @@ export interface FilmPlacement {
   matchNoteDe: string
   /** Manuell gestellt (ziehen/zoomen) — Rematch überschreibt die Lage nicht. */
   layoutLocked?: boolean
+  /** KI hat x/y/scale sinnvoll gelegt (sitzen im Möbel). */
+  layoutByAi?: boolean
 }
 
 export interface FilmBackground {

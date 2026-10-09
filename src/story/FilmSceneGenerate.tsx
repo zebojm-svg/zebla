@@ -83,12 +83,11 @@ export function FilmSceneGenerateBar({
           disabled={busy || extraDisabled}
           onClick={onRematch}
         >
-          Welt-Regal holen
+          Welt holen
         </button>
       ) : null}
       <p className="muted film-scene-still-note">
-        Das sind <strong>gemalte Standbilder</strong> dieser Szene — nicht die
-        ausgeschnittenen Figuren. Der bewegte Film kommt später.
+        Einzeln erzeugen, dann legen.
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {busy ? (

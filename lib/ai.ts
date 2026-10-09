@@ -119,15 +119,24 @@ function geminiErrorMessage(err: unknown): string {
 }
 
 export async function chatJson<T>(system: string, user: string): Promise<T> {
+  return chatJsonWithImages<T>(system, user)
+}
+
+export async function chatJsonWithImages<T>(
+  system: string,
+  user: string,
+  images: Array<{ mimeType: string; data: string }> = [],
+): Promise<T> {
   try {
     const model = getTextModel()
+    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
+      { text: `${system}\n\n---\n\n${user}` },
+    ]
+    for (const img of images) {
+      parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
+    }
     const result = await model.generateContent({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: `${system}\n\n---\n\n${user}` }],
-        },
-      ],
+      contents: [{ role: 'user', parts }],
     })
 
     const content = result.response.text()

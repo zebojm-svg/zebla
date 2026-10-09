@@ -44,7 +44,7 @@ export function FilmStillPicture({
           can ? (
             <div className="film-still-actions">
               <p className="muted film-arrange-hint">
-                Das gemalte Standbild. Freigestellte Figuren nur, wenn du sie verschieben willst.
+                Fertiges Bild. Figuren nur stellen, wenn etwas rutscht.
               </p>
               <button
                 type="button"

@@ -20,12 +20,6 @@ function matchClass(kind: string) {
   return 'is-missing'
 }
 
-function matchLabel(kind: string) {
-  if (kind === 'reuse') return 'Aus der Bibliothek'
-  if (kind === 'transform') return 'Spiegeln / zoomen'
-  return 'Noch zeichnen'
-}
-
 function PanelCard({
   panel,
   dialog,
@@ -67,9 +61,8 @@ function PanelCard({
             interactive
             onUpdated={onLayout}
           />
-          <p className="muted">Standbild dieser Zeile</p>
           {panel.harvestNoteDe ? (
-            <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
+            <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
           ) : null}
           <FilmPanelDialogue panel={panel} dialog={dialog} />
         </div>
@@ -108,11 +101,17 @@ function PanelCard({
       ) : null}
       <div className="film-matches">
         {panel.placements.map((pl) => (
-          <p key={`${pl.name}-m-${pl.poseId}`} className={`film-match ${matchClass(pl.match)}`}>
-            {pl.name} · {pl.poseHint} — {pl.matchNoteDe}
-          </p>
+          <span
+            key={`${pl.name}-m-${pl.poseId}`}
+            className={`film-match ${matchClass(pl.match)}`}
+            title={pl.matchNoteDe}
+          >
+            {pl.name}
+          </span>
         ))}
-        <p className={`film-match ${matchClass(bg.match)}`}>{bg.matchNoteDe}</p>
+        <span className={`film-match ${matchClass(bg.match)}`} title={bg.matchNoteDe}>
+          Raum
+        </span>
       </div>
       <div className="film-tweak">
         <input
@@ -251,14 +250,7 @@ export function FilmStoryboardPage() {
       <FilmProjectNav dialogId={dialog.id} />
       <div className="page-header">
         <div>
-          <h1>Storyboard</h1>
-          <p className="muted">
-            {dialog.title} · Zielsprache {dialog.targetLanguage.toUpperCase()} · beliebig viele Figuren
-          </p>
-          <p className="muted">
-            Pro Szene «Diese Szene erzeugen» — das macht die Standbilder. Unter jedem Bild steht
-            der Dialog. «Szene abspielen» ist Standbilder plus Stimme, noch kein Bewegungsfilm.
-          </p>
+          <h1>Bilder</h1>
         </div>
         <div className="header-actions">
           <button
@@ -266,34 +258,22 @@ export function FilmStoryboardPage() {
             className="btn btn-primary"
             disabled={locked}
             onClick={() => void run(() => api.ai.filmStoryboard(id))}
+            title={board ? 'Ganzes Board neu' : 'Storyboard erzeugen'}
           >
-            {busy ? 'Plane …' : board ? 'Ganzes Board neu' : 'Storyboard erzeugen'}
+            {busy ? '…' : board ? 'Neu planen' : 'Planen'}
           </button>
-          <Link to={`/dialog/${id}/export`} className="btn btn-story-studio">
-            Zum Film — Szene erzeugen
-          </Link>
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <p className="film-legend">
-        <span className="film-match is-reuse">{matchLabel('reuse')}</span>
-        <span className="film-match is-transform">{matchLabel('transform')}</span>
-        <span className="film-match is-missing">{matchLabel('missing')}</span>
-      </p>
-
       {board ? (
         <>
-          <p className={missing ? 'alert alert-warn' : 'alert alert-info'}>
-            {board.summaryDe}
-            {missing > 0 ? (
-              <>
-                {' '}
-                Fehlendes in der <Link to={`/library?dialog=${dialog.id}`}>Bibliothek</Link> zeichnen.
-              </>
-            ) : null}
-          </p>
+          {missing > 0 ? (
+            <p className="alert alert-warn">
+              {missing} Teil{missing === 1 ? '' : 'e'} fehlen — Welt-Regal.
+            </p>
+          ) : null}
 
           <div className="film-scene-toolbar">
             <button
@@ -440,11 +420,7 @@ export function FilmStoryboardPage() {
         </>
       ) : (
         <div className="empty-state">
-          <h2>Noch kein Storyboard</h2>
-          <p className="muted">
-            Aus deinem Film-Prompt entstehen Kästen. Vorhandene Figuren werden genommen. Danach pro
-            Szene die Standbilder erzeugen.
-          </p>
+          <h2>Noch kein Bildplan</h2>
           <button
             type="button"
             className="btn btn-primary"

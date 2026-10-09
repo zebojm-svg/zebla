@@ -22,8 +22,12 @@ import { harvestFilmStillToLibrary } from './film-library-harvest.js'
 import { rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelLayout,
+  panelCanArrange,
   type ArrangeLayerUpdate,
 } from '../shared/film-still-arrange.js'
+import { ensurePanelPieces } from './film-panel-pieces.js'
+import { applySensibleLayoutToBoard } from './film-sensible-layout.js'
+import { uploadComposedStill } from './film-panel-compose.js'
 import {
   applyPanelHarvestNote,
   applyPanelStill,
@@ -370,6 +374,37 @@ export async function stillFilmPanel(
   }
 
   try {
+    if (!correction) {
+      try {
+        const library0 = await listStoryAssets(userId)
+        const pieces = await ensurePanelPieces({
+          userId,
+          panel,
+          scene,
+          styleId: resolvedStyle,
+          library: library0,
+        })
+        let laid = rematchFilmBoard(working, pieces.library)
+        const ready = laid.panels.find((p) => p.id === panelId)
+        if (ready && panelCanArrange(ready)) {
+          laid = await applySensibleLayoutToBoard(laid, ready, scene)
+          const placed = laid.panels.find((p) => p.id === panelId)
+          if (placed) {
+            const url = await uploadComposedStill(placed)
+            const withStill = applyPanelStill(laid, panelId, url, resolvedStyle)
+            const withNote = applyPanelHarvestNote(
+              withStill,
+              panelId,
+              `${pieces.noteDe} Dann sinnvoll auf den Raum gelegt.`,
+            )
+            const updated = await persist(withNote)
+            return { dialog: updated, board: withNote }
+          }
+        }
+      } catch {
+        /* Gruppenbild als Reserve */
+      }
+    }
     const url = await generateFilmPanelStillImage({
       panel,
       scene,

@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { displayFilmTitle, EMPTY_FILM_TITLE, resolvedFilmTitle } from '../../shared/film-draft'
+import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
 
-type Step = 'dialog' | 'board' | 'library' | 'export'
+type Step = 'dialog' | 'board' | 'play'
 
-const STEPS: Array<{ id: Step; title: string; hint: string }> = [
-  { id: 'dialog', title: 'Dialog', hint: 'Text, Cast, Räume' },
-  { id: 'board', title: 'Storyboard', hint: 'Szenen aus dem Welt-Regal' },
-  { id: 'library', title: 'Welt', hint: 'Figuren, Räume, Möbel' },
-  { id: 'export', title: 'Film', hint: 'Standbilder, Szene für Szene' },
+const STEPS: Array<{ id: Step; title: string; icon: StoryPictogramName }> = [
+  { id: 'dialog', title: 'Text', icon: 'text' },
+  { id: 'board', title: 'Bilder', icon: 'pictures' },
+  { id: 'play', title: 'Abspielen', icon: 'play' },
 ]
 
 export type FilmSaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -19,20 +19,20 @@ export function FilmSaveStatusText({ status }: { status: FilmSaveStatus }) {
   if (status === 'saving') {
     return (
       <span className="film-save-status is-saving" aria-live="polite">
-        Speichert…
+        …
       </span>
     )
   }
   if (status === 'saved') {
     return (
       <span className="film-save-status" aria-live="polite">
-        Gespeichert
+        ✓
       </span>
     )
   }
   return (
     <span className="film-save-status is-error" aria-live="polite">
-      Nicht gespeichert
+      !
     </span>
   )
 }
@@ -99,24 +99,23 @@ export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus }: P
   const shownTitle = controlled ? (title ?? '') : localTitle
   const status = saveStatus ?? navSave
 
-  const active: Step =
-    path.startsWith('/library') || path.startsWith('/story')
-      ? 'library'
-      : path.endsWith('/board')
+  const worldActive = path.startsWith('/library') || path.startsWith('/story')
+  const active: Step | null = worldActive
+    ? null
+    : path.includes('/slideshow')
+      ? 'play'
+      : path.endsWith('/board') || path.endsWith('/export')
         ? 'board'
-        : path.endsWith('/export')
-          ? 'export'
-          : 'dialog'
+        : 'dialog'
 
   const href = (id: Step) => {
-    if (id === 'library') return dialogId ? `/library?dialog=${dialogId}` : '/library'
     if (!dialogId) return '/create'
     if (id === 'dialog') {
       if (path.startsWith('/create')) return `${path}${location.search}`
       return `/dialog/${dialogId}`
     }
     if (id === 'board') return `/dialog/${dialogId}/board`
-    return `/dialog/${dialogId}/export`
+    return `/dialog/${dialogId}/slideshow`
   }
 
   const onTitleInput = (value: string) => {
@@ -159,43 +158,43 @@ export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus }: P
             />
           </label>
           <FilmSaveStatusText status={status} />
-          <Link to={`/dialog/${dialogId}/slideshow`} className="btn btn-secondary btn-sm">
-            Diashow
-          </Link>
           <button
             type="button"
             className="btn btn-ghost btn-sm btn-danger"
             disabled={busyDelete}
             onClick={() => void handleDelete()}
+            title="Löschen"
+            aria-label="Geschichte löschen"
           >
-            {busyDelete ? '…' : 'Löschen'}
+            {busyDelete ? '…' : '×'}
           </button>
         </div>
       ) : null}
-      <nav className="story-workflow film-project-nav" aria-label="Film-Projekt">
+      <nav className="story-workflow film-project-nav is-pictogram" aria-label="Geschichte">
         {STEPS.map((step) => {
           const isActive = active === step.id
-          const inner = (
-            <>
-              <span className="story-workflow-num">
-                {step.id === 'dialog' ? '1' : step.id === 'board' ? '2' : step.id === 'library' ? '3' : '4'}
-              </span>
-              <span className="story-workflow-text">
-                <strong>{step.title}</strong>
-                <span className="muted">{step.hint}</span>
-              </span>
-            </>
-          )
           return (
             <Link
               key={step.id}
               to={href(step.id)}
               className={`story-workflow-step${isActive ? ' is-active' : ''}`}
+              title={step.title}
+              aria-current={isActive ? 'page' : undefined}
             >
-              {inner}
+              <StoryPictogram name={step.icon} />
+              <span className="story-workflow-caption">{step.title}</span>
             </Link>
           )
         })}
+        <Link
+          to={dialogId ? `/library?dialog=${dialogId}` : '/library'}
+          className={`story-workflow-step${worldActive ? ' is-active' : ''}`}
+          title="Welt-Regal"
+          aria-current={worldActive ? 'page' : undefined}
+        >
+          <StoryPictogram name="world" />
+          <span className="story-workflow-caption">Welt</span>
+        </Link>
       </nav>
     </div>
   )

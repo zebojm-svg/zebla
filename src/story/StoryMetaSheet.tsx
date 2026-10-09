@@ -16,10 +16,6 @@ export function StoryMetaSheet({ value, onChange, disabled }: Props) {
   return (
     <section className="panel story-meta-sheet">
       <h2>Diese Geschichte</h2>
-      <p className="muted">
-        Ein Blatt für alle Szenen: wer spielt, welche Stimmen, welche Räume. So bleiben die Bilder
-        gleich, auch wenn du später eine Szene nachdrehst.
-      </p>
       <div className="story-meta-grid">
         <label>
           Wer spielt mit

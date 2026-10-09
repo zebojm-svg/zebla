@@ -10,7 +10,6 @@ import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
 import { copyTextToClipboard } from '../utils/clipboard'
-import { useI18n } from '../i18n/I18nContext'
 import {
   estimateAllSceneImages,
   estimateAllSectionImages,
@@ -31,7 +30,6 @@ import type { Dialog, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
-  const { t } = useI18n()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -358,12 +356,6 @@ export function DialogEditorPage() {
               </option>
             ))}
           </select>
-          <Link to={`/dialog/${dialog.id}/board`} className="btn btn-story-studio">
-            Ins Storyboard
-          </Link>
-          <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
-            {t('editor.slideshow')}
-          </Link>
         </div>
       </div>
 
