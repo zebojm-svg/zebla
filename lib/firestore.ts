@@ -51,6 +51,7 @@ interface DialogDoc {
   speakerVoices?: Dialog['speakerVoices']
   visualScript?: DialogVisualScript
   visualBrief?: Dialog['visualBrief']
+  storyMeta?: Dialog['storyMeta']
   createdAt: string
   updatedAt: string
 }
@@ -101,6 +102,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     speakerVoices: data.speakerVoices,
     visualScript: data.visualScript,
     visualBrief: data.visualBrief ?? null,
+    storyMeta: data.storyMeta ?? null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -407,6 +409,7 @@ export async function updateDialog(
     speakerVoices: Dialog['speakerVoices']
     visualScript: DialogVisualScript | null
     visualBrief: Dialog['visualBrief']
+    storyMeta: Dialog['storyMeta']
   }>,
   profile?: UserProfile | null,
 ): Promise<Dialog | null> {
@@ -474,6 +477,7 @@ export async function updateDialog(
       data.speakerVoices !== undefined ? data.speakerVoices : existing.speakerVoices,
     visualScript: pick(data.visualScript, existing.visualScript),
     visualBrief: pick(data.visualBrief, existing.visualBrief ?? undefined),
+    storyMeta: pick(data.storyMeta, existing.storyMeta ?? undefined),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
@@ -623,6 +627,9 @@ export async function cloneDialog(
       : undefined,
     characterBible: source.characterBible
       ? JSON.parse(JSON.stringify(source.characterBible))
+      : undefined,
+    storyMeta: source.storyMeta
+      ? JSON.parse(JSON.stringify(source.storyMeta))
       : undefined,
     createdAt: now,
     updatedAt: now,

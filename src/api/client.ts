@@ -175,6 +175,33 @@ export const api = {
         body: JSON.stringify({ userId }),
       }),
   },
+  storyProjects: {
+    create: (data: {
+      title: string
+      filmPrompt: string
+      targetLanguage: string
+      parentId?: string | null
+    }) =>
+      request<{
+        folder: import('../types').DialogFolder
+        dialog: import('../types').Dialog
+      }>('/story-projects', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    wrap: (dialogId: string) =>
+      request<{
+        folder: import('../types').DialogFolder
+        dialog: import('../types').Dialog
+      }>('/story-project-wrap', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId }),
+      }),
+    delete: (folderId: string) =>
+      request<{ ok: boolean }>(`/story-project?id=${encodeURIComponent(folderId)}`, {
+        method: 'DELETE',
+      }),
+  },
   folders: {
     create: (name: string, parentId?: string | null) =>
       request<{ folder: import('../types').DialogFolder }>('/folders', {
@@ -450,6 +477,33 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
         120_000,
       ),
+    filmPanelLayout: (
+      dialogId: string,
+      panelId: string,
+      placements: Array<{
+        name: string
+        poseId: string
+        x: number
+        y: number
+        scale: number
+        flip?: boolean
+      }>,
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-panel-layout', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId, placements }),
+      }),
+    filmLibraryRematch: (dialogId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-library-rematch', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId }),
+      }),
     filmPlanSave: (
       dialogId: string,
       plan: import('../../shared/film-storyboard').FilmPlan,

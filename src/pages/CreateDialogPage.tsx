@@ -89,7 +89,8 @@ export function CreateDialogPage() {
           dialogIdRef.current = dialog.id
           setDialogId(dialog.id)
           const next = new URLSearchParams()
-          if (folderId) next.set('folder', folderId)
+          const nextFolder = dialog.folderId ?? folderId
+          if (nextFolder) next.set('folder', nextFolder)
           next.set('id', dialog.id)
           navigate(`/create?${next.toString()}`, { replace: true })
         } else {
@@ -225,7 +226,13 @@ export function CreateDialogPage() {
         saveStatus={saveStatus}
       />
       <div className="page-header">
-        <h1>{t('create.title')}</h1>
+        <div>
+          <h1>{t('create.title')}</h1>
+          <p className="muted">
+            Eine Geschichte liegt in ihrem Ordner: Dialog, Storyboard, Film, Diashow. Figuren und
+            Räume liegen im Welt-Regal und gelten für alle Geschichten.
+          </p>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

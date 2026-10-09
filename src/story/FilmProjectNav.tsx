@@ -6,9 +6,9 @@ import { displayFilmTitle, EMPTY_FILM_TITLE, resolvedFilmTitle } from '../../sha
 type Step = 'dialog' | 'board' | 'library' | 'export'
 
 const STEPS: Array<{ id: Step; title: string; hint: string }> = [
-  { id: 'dialog', title: 'Dialog', hint: 'Text und Regie' },
-  { id: 'board', title: 'Storyboard', hint: 'Bilder aus der Bibliothek' },
-  { id: 'library', title: 'Bibliothek', hint: 'Posen und Hintergründe' },
+  { id: 'dialog', title: 'Dialog', hint: 'Text, Cast, Räume' },
+  { id: 'board', title: 'Storyboard', hint: 'Szenen aus dem Welt-Regal' },
+  { id: 'library', title: 'Welt', hint: 'Figuren, Räume, Möbel' },
   { id: 'export', title: 'Film', hint: 'Standbilder, Szene für Szene' },
 ]
 
@@ -159,6 +159,9 @@ export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus }: P
             />
           </label>
           <FilmSaveStatusText status={status} />
+          <Link to={`/dialog/${dialogId}/slideshow`} className="btn btn-secondary btn-sm">
+            Diashow
+          </Link>
           <button
             type="button"
             className="btn btn-ghost btn-sm btn-danger"

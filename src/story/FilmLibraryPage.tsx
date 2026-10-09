@@ -6,6 +6,7 @@ import type { StoryLibraryAsset } from '../../shared/story-types'
 import { listCharacterIdentities } from './pose-variants'
 import { characterBaseName } from '../../shared/character-parts'
 import { getStillPose } from '../../shared/story-stills'
+import { isLibraryShelf, LIBRARY_SHELVES, type LibraryShelfId } from '../../shared/story-project'
 
 function poseSubtitle(asset: StoryLibraryAsset): string {
   if (asset.legPoseId || asset.headAngleId || asset.armPoseId) {
@@ -22,8 +23,10 @@ function poseSubtitle(asset: StoryLibraryAsset): string {
 }
 
 export function FilmLibraryPage() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const dialogId = params.get('dialog') ?? undefined
+  const shelfParam = params.get('shelf')
+  const shelf: LibraryShelfId = isLibraryShelf(shelfParam) ? shelfParam : 'character'
   const [assets, setAssets] = useState<StoryLibraryAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -48,6 +51,7 @@ export function FilmLibraryPage() {
     () => assets.filter((a) => a.type === 'environment'),
     [assets],
   )
+  const props = useMemo(() => assets.filter((a) => a.type === 'prop'), [assets])
   const sketches = useMemo(
     () => assets.filter((a) => (a.tags ?? []).includes('sketch')),
     [assets],
@@ -68,6 +72,17 @@ export function FilmLibraryPage() {
         [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
       )
     : sketches
+  const shownProps = needle
+    ? props.filter((e) =>
+        [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
+      )
+    : props
+
+  const openShelf = (id: LibraryShelfId) => {
+    const next = new URLSearchParams(params)
+    next.set('shelf', id)
+    setParams(next, { replace: true })
+  }
 
   const remove = async (id: string) => {
     if (!window.confirm('Diesen Eintrag aus der Bibliothek löschen?')) return
@@ -84,116 +99,175 @@ export function FilmLibraryPage() {
       <FilmProjectNav dialogId={dialogId} />
       <div className="page-header">
         <div>
-          <h1>Bibliothek</h1>
+          <h1>Welt-Regal</h1>
           <p className="muted">
-            Posen, Hintergründe und alles Wiederverwendbare. Nach dem Erzeugen einer Szene landen
-            Figuren und Hintergrund automatisch hier — auch wenn sich Leute überlappen. Das
-            Storyboard schaut zuerst hier nach — zeichnen nur, wenn etwas fehlt.
+            Figuren, Räume und Möbel gelten für alle Geschichten. Nach einer Szene landen Figur und
+            Hintergrund automatisch hier — auch wenn sich Leute überlappen. Das Storyboard schaut
+            zuerst hier nach.
           </p>
         </div>
-        <Link to="/story" className="btn btn-secondary">
-          Neu zeichnen
+        <Link to={dialogId ? `/story?dialog=${dialogId}` : '/story'} className="btn btn-ghost">
+          Nur wenn etwas fehlt: zeichnen
         </Link>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
+      <div className="library-shelf-tabs" role="tablist" aria-label="Welt-Regal">
+        {LIBRARY_SHELVES.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={shelf === item.id}
+            className={`library-shelf-tab${shelf === item.id ? ' is-active' : ''}`}
+            onClick={() => openShelf(item.id)}
+          >
+            <strong>{item.title}</strong>
+            <span className="muted">{item.hint}</span>
+          </button>
+        ))}
+      </div>
+
       <input
         className="input"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        placeholder="Suchen: Julien, Park …"
+        placeholder="Suchen: Julien, Park, Stuhl …"
       />
 
       {loading ? (
         <p className="muted">Lade Bibliothek …</p>
       ) : (
         <>
-          <h2>Figuren</h2>
-          {shownIdentities.length === 0 ? (
-            <p className="muted">
-              Noch keine Figur. Im Storyboard «Julien sitzt» schreiben — oder einmal{' '}
-              <Link to="/story">Stamm-Bild zeichnen</Link>.
-            </p>
-          ) : (
-            shownIdentities.map((identity) => {
-              const poses = characters.filter(
-                (c) =>
-                  identity.libraryIds.includes(c.id) ||
-                  characterBaseName(c.name).toLowerCase() === identity.baseName.toLowerCase(),
-              )
-              return (
-                <section key={identity.baseName} className="film-identity">
-                  <h3>
-                    {identity.baseName}{' '}
-                    <span className="muted">
-                      {identity.variantCount} Pose{identity.variantCount === 1 ? '' : 'n'}
-                    </span>
-                  </h3>
-                  <div className="story-character-grid">
-                    {poses.map((asset) => (
-                      <article key={asset.id} className="story-character-card">
-                        <img src={asset.imageUrl} alt={asset.name} />
-                        <p>{asset.name}</p>
-                        <p className="story-card-subtitle muted">{poseSubtitle(asset)}</p>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => void remove(asset.id)}
-                        >
-                          Löschen
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              )
-            })
+          {shelf === 'character' && (
+            <>
+              <h2>Figuren</h2>
+              {shownIdentities.length === 0 ? (
+                <p className="muted">
+                  Noch keine Figur. Im Storyboard «Julien sitzt» schreiben — oder einmal{' '}
+                  <Link to="/story">Stamm-Bild zeichnen</Link>.
+                </p>
+              ) : (
+                shownIdentities.map((identity) => {
+                  const poses = characters.filter(
+                    (c) =>
+                      identity.libraryIds.includes(c.id) ||
+                      characterBaseName(c.name).toLowerCase() === identity.baseName.toLowerCase(),
+                  )
+                  return (
+                    <section key={identity.baseName} className="film-identity">
+                      <h3>
+                        {identity.baseName}{' '}
+                        <span className="muted">
+                          {identity.variantCount} Pose{identity.variantCount === 1 ? '' : 'n'}
+                        </span>
+                      </h3>
+                      <div className="story-character-grid">
+                        {poses.map((asset) => (
+                          <article key={asset.id} className="story-character-card">
+                            <img src={asset.imageUrl} alt={asset.name} />
+                            <p>{asset.name}</p>
+                            <p className="story-card-subtitle muted">{poseSubtitle(asset)}</p>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => void remove(asset.id)}
+                            >
+                              Löschen
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })
+              )}
+            </>
           )}
 
-          <h2>Hintergründe</h2>
-          {shownEnvs.length === 0 ? (
-            <p className="muted">Noch kein Hintergrund. Einmal zeichnen, dann in jeder Szene gratis.</p>
-          ) : (
-            <div className="story-character-grid">
-              {shownEnvs.map((asset) => (
-                <article key={asset.id} className="story-character-card">
-                  <img src={asset.imageUrl} alt={asset.name} />
-                  <p>{asset.name}</p>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => void remove(asset.id)}
-                  >
-                    Löschen
-                  </button>
-                </article>
-              ))}
-            </div>
+          {shelf === 'environment' && (
+            <>
+              <h2>Räume</h2>
+              {shownEnvs.length === 0 ? (
+                <p className="muted">
+                  Noch kein Raum. Einmal aus einer Szene ernten oder zeichnen — dann in jeder Geschichte
+                  gratis.
+                </p>
+              ) : (
+                <div className="story-character-grid">
+                  {shownEnvs.map((asset) => (
+                    <article key={asset.id} className="story-character-card">
+                      <img src={asset.imageUrl} alt={asset.name} />
+                      <p>{asset.name}</p>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => void remove(asset.id)}
+                      >
+                        Löschen
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
-          <h2>Storyboard-Skizzen</h2>
-          {shownSketches.length === 0 ? (
-            <p className="muted">
-              Skizzen entstehen im Storyboard per Knopf «Skizze» — nur wenn du Gesichter sehen willst (kostet
-              ein günstiges Bild).
-            </p>
-          ) : (
-            <div className="story-character-grid">
-              {shownSketches.map((asset) => (
-                <article key={asset.id} className="story-character-card">
-                  <img src={asset.imageUrl} alt={asset.name} />
-                  <p>{asset.name}</p>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => void remove(asset.id)}
-                  >
-                    Löschen
-                  </button>
-                </article>
-              ))}
-            </div>
+          {shelf === 'prop' && (
+            <>
+              <h2>Möbel</h2>
+              {shownProps.length === 0 ? (
+                <p className="muted">
+                  Noch kein Möbelstück. Steht im Bild ein Stuhl, eine Bank oder eine Rolltreppe,
+                  landet das nach dem Ernten einer Szene hier — dann ohne KI wiederverwenden.
+                </p>
+              ) : (
+                <div className="story-character-grid">
+                  {shownProps.map((asset) => (
+                    <article key={asset.id} className="story-character-card">
+                      <img src={asset.imageUrl} alt={asset.name} />
+                      <p>{asset.name}</p>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => void remove(asset.id)}
+                      >
+                        Löschen
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {shelf === 'sketch' && (
+            <>
+              <h2>Storyboard-Skizzen</h2>
+              {shownSketches.length === 0 ? (
+                <p className="muted">
+                  Skizzen entstehen im Storyboard per Knopf «Skizze» — nur wenn du Gesichter sehen
+                  willst (kostet ein günstiges Bild).
+                </p>
+              ) : (
+                <div className="story-character-grid">
+                  {shownSketches.map((asset) => (
+                    <article key={asset.id} className="story-character-card">
+                      <img src={asset.imageUrl} alt={asset.name} />
+                      <p>{asset.name}</p>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => void remove(asset.id)}
+                      >
+                        Löschen
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
