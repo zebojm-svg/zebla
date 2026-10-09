@@ -15,9 +15,11 @@ Nur **Zebla** (`zebojm-svg/zebla`). Hub, PortFolio, Examinator, Zentrale bleiben
 5. **Diashow** bleibt die Lernansicht derselben Geschichte, kein zweites Produkt.
 
 6. **Figuren stellen ohne KI.** Nach dem Ernten: ziehen und zoomen auf Film/Storyboard. Die Lage bleibt gespeichert.
+7. **Freisteller sitzen im Raum.** Kontakt-Schatten unter den Figuren. In der Vorschau leichtes Atmen und Blinzeln (noch keine Lippen).
+8. **Möbel-Ernte.** Stuhl, Bank, Tisch, Rolltreppe usw. aus dem Bildtext — nach der Szene ins Welt-Regal.
 
 ## Nächste Baustellen (noch nicht hier)
 
-- Möbel wirklich aus Szenen herauslösen
-- Lippen/Blinzeln auf Standbildern
-- Schatten, damit Freisteller natürlicher sitzen
+- Lippenbewegung zur Stimme
+- Schatten weicher / lichtabhängig
+- Möbel in der Szene selbst verschieben wie Figuren

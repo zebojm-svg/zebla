@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import { CompositeCanvas, type LayerImage } from './CompositeCanvas'
+import { CompositeCanvas, type LayerAnimation, type LayerImage } from './CompositeCanvas'
 import type { Dialog } from '../types'
 import type { FilmPlacement, FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
@@ -69,6 +69,20 @@ export function FilmStillArrange({ dialogId, panel, interactive = true, onUpdate
   }, [panel])
 
   const layers = useMemo(() => toCanvasLayers(local), [local])
+  const animations = useMemo<LayerAnimation[]>(() => {
+    if (interactive) return []
+    return layers
+      .filter((l) => l.id.startsWith('fig-'))
+      .flatMap((l) => [
+        { layerId: l.id, type: 'bob' as const, amplitude: 1.4, period: 3400 },
+        {
+          layerId: l.id,
+          type: 'blink' as const,
+          blinkDuration: 130,
+          blinkInterval: [2800, 6200] as [number, number],
+        },
+      ])
+  }, [interactive, layers])
 
   const persist = (next: FilmStoryboardPanel) => {
     if (!interactive || !onUpdated) return
@@ -102,6 +116,7 @@ export function FilmStillArrange({ dialogId, panel, interactive = true, onUpdate
         height={ARRANGE_CANVAS.height}
         className="film-arrange-canvas"
         layers={layers}
+        animations={animations}
         selectedLayerId={interactive ? selected : null}
         onSelectLayer={interactive ? setSelected : undefined}
         onDragLayer={
@@ -122,7 +137,8 @@ export function FilmStillArrange({ dialogId, panel, interactive = true, onUpdate
       {interactive ? (
         <p className="muted film-arrange-hint">
           <strong>Figuren stellen:</strong> ziehen zum Verschieben, Mausrad zum
-          Verkleinern/Vergrößern — ohne KI. Z.B. neben die Rolltreppe.
+          Verkleinern/Vergrößern — ohne KI. Z.B. neben die Rolltreppe. Schatten sitzt unter den
+          Füßen.
         </p>
       ) : null}
     </div>

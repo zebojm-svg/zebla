@@ -11,6 +11,11 @@ import {
   harvestFiguresFromPanel,
   harvestNoteDe,
   harvestPlanFromPanel,
+  harvestPropsFromText,
+  harvestPropLabel,
+  namedPropExtractPrompt,
+  propHarvestTags,
+  shouldSkipProp,
   joinDe,
   locationTags,
   namedPersonExtractPrompt,
@@ -140,8 +145,37 @@ if (harvestFigureLabel(figures[0]!) !== 'Julien (Gehen)') fail('Beschriftung Jul
 
 const plan = harvestPlanFromPanel(panel, 'Szene 1')
 if (plan.backgroundName !== 'Weihnachtsmarkt') fail('Ort aus dem Panel')
+if (plan.props.length !== 0) fail('Ohne Möbel-Wort keine Möbel-Ernte')
 if (harvestBackgroundLabel(plan.backgroundName) !== 'Hintergrund Weihnachtsmarkt') {
   fail('Hintergrund-Beschriftung')
+}
+
+const mallProps = harvestPropsFromText('Julien und Tara neben der Rolltreppe, Stuhl links')
+if (!mallProps.some((p) => p.key === 'rolltreppe')) fail('Rolltreppe aus dem Text')
+if (!mallProps.some((p) => p.key === 'stuhl')) fail('Stuhl aus dem Text')
+if (harvestPropsFromText('Weihnachtsmarkt').length !== 0) fail('Markt allein ist kein Möbel')
+if (namedPropExtractPrompt(mallProps[0]!).toLowerCase().includes('people') !== true) {
+  fail('Möbel-Prompt ohne Leute')
+}
+const chair = mallProps.find((p) => p.key === 'stuhl')
+if (!chair || harvestPropLabel(chair) !== 'Stuhl') fail('Möbel heißt Stuhl')
+if (!propHarvestTags(chair).includes('prop')) fail('Möbel-Tag prop')
+if (
+  !shouldSkipProp(
+    [
+      {
+        id: 'p1',
+        type: 'prop',
+        name: 'Stuhl',
+        imageUrl: 'https://example.com/stuhl.png',
+        tags: propHarvestTags(chair),
+        createdAt: 't',
+      },
+    ],
+    chair,
+  )
+) {
+  fail('Vorhandener Stuhl nicht nochmal ernten')
 }
 
 if (!characterHarvestTags('walking').includes('walking')) fail('Tag walking für Matcher')

@@ -13,6 +13,11 @@ import {
   harvestFigureLabel,
   harvestNoteDe,
   harvestPlanFromPanel,
+  harvestPropLabel,
+  namedPropExtractPrompt,
+  propHarvestTags,
+  shouldSkipProp,
+  cutoutRatioLooksLikeProp,
   masksLookLikeSameBlob,
   namedPersonExtractPrompt,
   namedPersonMaskPrompt,
@@ -21,6 +26,7 @@ import {
   STILL_BACKGROUND_EXTRACT_PROMPT,
   type HarvestFigure,
   type HarvestPiece,
+  type HarvestProp,
 } from '../shared/film-library-harvest.js'
 import { binaryAlphaMask, maskIoU, opaqueRatio } from '../shared/image-person-matte.js'
 import type { FilmScene, FilmStoryboardPanel } from '../shared/film-storyboard.js'
@@ -220,7 +226,17 @@ export async function harvestFilmStillToLibrary(opts: {
   const skipBg = shouldSkipBackground(library, plan.backgroundHint || plan.backgroundName)
   if (skipBg) pieces.push({ label: bgLabel, kind: 'environment', status: 'skipped' })
 
-  if (needFigures.length === 0 && skipBg) {
+  const needProps: HarvestProp[] = []
+  for (const prop of plan.props) {
+    const label = harvestPropLabel(prop)
+    if (shouldSkipProp(library, prop)) {
+      pieces.push({ label, kind: 'prop', status: 'skipped' })
+    } else {
+      needProps.push(prop)
+    }
+  }
+
+  if (needFigures.length === 0 && skipBg && needProps.length === 0) {
     return { library, pieces, noteDe: harvestNoteDe(pieces) }
   }
 
@@ -242,6 +258,14 @@ export async function harvestFilmStillToLibrary(opts: {
         kind: 'environment',
         status: 'failed',
         detailDe: `${bgLabel} konnte nicht gespeichert werden.`,
+      })
+    }
+    for (const prop of needProps) {
+      pieces.push({
+        label: harvestPropLabel(prop),
+        kind: 'prop',
+        status: 'failed',
+        detailDe: `${harvestPropLabel(prop)} konnte nicht als Möbelstück geholt werden.`,
       })
     }
     return { library, pieces, noteDe: harvestNoteDe(pieces) }
@@ -366,6 +390,57 @@ export async function harvestFilmStillToLibrary(opts: {
         status: 'failed',
         detailDe: `${bgLabel} konnte nicht ohne Figuren geholt werden.`,
       })
+    }
+  }
+
+  if (needProps.length > 0) {
+    const propResults = await Promise.all(
+      needProps.map(async (prop) => {
+        const label = harvestPropLabel(prop)
+        try {
+          const extracted = await generateGeminiPng(
+            [
+              { text: namedPropExtractPrompt(prop) },
+              { inlineData: { mimeType: 'image/png', data: stillB64 } },
+            ],
+            '16:9',
+            `${label} konnte nicht freigestellt werden.`,
+          )
+          let cutout = (await pngHasUsefulAlpha(extracted)) ? extracted : await punchCutoutPng(extracted)
+          const stats = await pngAlphaStats(cutout)
+          if (!cutoutRatioLooksLikeProp(stats.ratio)) {
+            throw new Error('Ausschnitt zu groß oder zu klein')
+          }
+          cutout = await cropToOpaqueBounds(cutout)
+          const imageUrl = await uploadPng(
+            cutout,
+            `story-props/${prop.key}-${randomUUID()}.png`,
+          )
+          const saved = await saveStoryAsset(opts.userId, {
+            type: 'prop',
+            name: prop.name,
+            description: `${prop.name} (aus Standbild)`,
+            imageUrl,
+            tags: propHarvestTags(prop),
+          })
+          return { ok: true as const, prop, saved, label }
+        } catch {
+          return { ok: false as const, prop, label }
+        }
+      }),
+    )
+    for (const result of propResults) {
+      if (result.ok) {
+        library = [result.saved, ...library]
+        pieces.push({ label: result.label, kind: 'prop', status: 'saved' })
+      } else {
+        pieces.push({
+          label: result.label,
+          kind: 'prop',
+          status: 'failed',
+          detailDe: `${result.label} konnte nicht als Möbelstück geholt werden.`,
+        })
+      }
     }
   }
 

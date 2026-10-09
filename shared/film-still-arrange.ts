@@ -21,6 +21,8 @@ export type ArrangeDrawLayer = {
   zIndex: number
   draggable: boolean
   keyOutWhite?: boolean
+  castShadow?: boolean
+  eyeBlink?: boolean
 }
 
 export function panelCanArrange(panel: FilmStoryboardPanel): boolean {
@@ -71,6 +73,8 @@ export function placementToLayer(
     zIndex: pl.depth === 'foreground' ? 30 + index : pl.depth === 'background' ? 10 + index : 20 + index,
     draggable: true,
     keyOutWhite: true,
+    castShadow: true,
+    eyeBlink: true,
   }
 }
 

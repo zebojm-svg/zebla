@@ -219,8 +219,8 @@ export function FilmLibraryPage() {
               <h2>Möbel</h2>
               {shownProps.length === 0 ? (
                 <p className="muted">
-                  Noch kein Möbelstück. Stühle, Tische und Deko landen hier, sobald eine Szene sie
-                  freistellt — dann kannst du sie in andere Räume stellen, ohne neu zu malen.
+                  Noch kein Möbelstück. Steht im Bild ein Stuhl, eine Bank oder eine Rolltreppe,
+                  landet das nach dem Ernten einer Szene hier — dann ohne KI wiederverwenden.
                 </p>
               ) : (
                 <div className="story-character-grid">
