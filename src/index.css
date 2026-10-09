@@ -3464,6 +3464,23 @@ html[dir='rtl'] .slideshow-topbar {
   object-fit: cover;
 }
 
+.film-still-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.35rem 0.6rem 0.25rem;
+}
+
+.film-still-actions .film-arrange-hint {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.film-still-workshop .film-still-actions {
+  margin: 0.35rem 0 0.45rem;
+}
+
 .film-scene-player-frame .film-arrange-canvas,
 .film-panel-still .film-arrange-canvas {
   width: 100%;

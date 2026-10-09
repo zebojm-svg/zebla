@@ -3,9 +3,11 @@
  */
 import {
   applyPanelLayout,
+  ARRANGE_CANVAS,
   arrangeLayersFromPanel,
   movePlacementByPixels,
   panelCanArrange,
+  panelShowsPaintedStill,
   scalePlacement,
 } from '../shared/film-still-arrange.ts'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.ts'
@@ -66,6 +68,12 @@ const panel: FilmStoryboardPanel = {
 if (!panelCanArrange(panel)) fail('Mit Figur+Ort muss Stellen gehen')
 const noBg = { ...panel, background: { ...panel.background, imageUrl: undefined } }
 if (panelCanArrange(noBg)) fail('Ohne Hintergrund kein Stellen')
+if (panelShowsPaintedStill(panel)) fail('Ohne stillUrl kein gemaltes Bild')
+const painted = { ...panel, stillUrl: 'https://example.com/still.png' }
+if (!panelShowsPaintedStill(painted)) fail('Mit stillUrl das gemalte Bild zeigen')
+if (panelShowsPaintedStill(painted, true)) fail('In der Werkstatt die Freisteller zeigen')
+const figW = arrangeLayersFromPanel(panel).find((l) => l.id.startsWith('fig-'))?.width ?? 0
+if (figW > ARRANGE_CANVAS.width * 0.22) fail('Figuren dürfen den Raum nicht überdecken')
 
 const layers = arrangeLayersFromPanel(panel)
 if (layers[0]?.id !== 'bg') fail('Hintergrund zuerst')
