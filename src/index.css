@@ -1364,6 +1364,25 @@ html[dir='rtl'] .slideshow-topbar {
   overflow: hidden;
 }
 
+.slideshow-page .film-project-shell {
+  margin: 0;
+  padding: 0.4rem 0.75rem 0;
+}
+
+.slideshow-page .story-workflow.is-pictogram {
+  margin-bottom: 0.35rem;
+}
+
+.slideshow-page .story-workflow-step {
+  background: #1e293b;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.slideshow-page .story-workflow-caption {
+  color: inherit;
+}
+
 .slideshow-topbar {
   display: flex;
   align-items: center;

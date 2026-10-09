@@ -42,9 +42,10 @@ type Props = {
   title?: string
   onTitleChange?: (value: string) => void
   saveStatus?: FilmSaveStatus
+  compact?: boolean
 }
 
-export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus }: Props) {
+export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus, compact }: Props) {
   const location = useLocation()
   const navigate = useNavigate()
   const path = location.pathname
@@ -145,7 +146,7 @@ export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus }: P
 
   return (
     <div className="film-project-shell">
-      {dialogId ? (
+      {dialogId && !compact ? (
         <div className="film-project-bar">
           <label className="film-project-title">
             <span className="film-project-title-label">Titel</span>

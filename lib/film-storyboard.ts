@@ -390,8 +390,13 @@ export async function stillFilmPanel(
           laid = await applySensibleLayoutToBoard(laid, ready, scene)
           const placed = laid.panels.find((p) => p.id === panelId)
           if (placed) {
-            const url = await uploadComposedStill(placed)
-            const withStill = applyPanelStill(laid, panelId, url, resolvedStyle)
+            let withStill = laid
+            try {
+              const url = await uploadComposedStill(placed)
+              withStill = applyPanelStill(laid, panelId, url, resolvedStyle)
+            } catch {
+              /* Lagen sind da — die Seite zeigt sie auch ohne gerendertes Standbild. */
+            }
             const withNote = applyPanelHarvestNote(
               withStill,
               panelId,
@@ -402,7 +407,7 @@ export async function stillFilmPanel(
           }
         }
       } catch {
-        /* Gruppenbild als Reserve */
+        /* Gruppenbild als Reserve, wenn Raum oder Figuren fehlen. */
       }
     }
     const url = await generateFilmPanelStillImage({

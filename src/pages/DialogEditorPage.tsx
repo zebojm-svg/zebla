@@ -369,18 +369,9 @@ export function DialogEditorPage() {
       />
 
       <section className="panel dialog-meta-panel">
-        <h2>Vorstellung vom Film</h2>
+        <h2>Text</h2>
         <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Titel</span>
-          <input
-            className="film-title-input"
-            value={titleDraft}
-            placeholder={EMPTY_FILM_TITLE}
-            onChange={(e) => setTitleDraft(e.target.value)}
-          />
-        </label>
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Prompt (Handlung, Bild, Ton, Sprache)</span>
+          <span className="dialog-meta-label">Was geschieht</span>
           <textarea
             rows={8}
             value={filmPromptDraft}
@@ -389,38 +380,41 @@ export function DialogEditorPage() {
           />
         </label>
         {formatCreationPromptForDisplay(dialog) && (
-          <div className="dialog-meta-block">
-            <h3 className="dialog-meta-label">Ursprüngliche Eingabe</h3>
+          <details className="dialog-meta-block">
+            <summary className="dialog-meta-label">Ursprüngliche Eingabe</summary>
             <pre className="dialog-meta-pre">{formatCreationPromptForDisplay(dialog)}</pre>
-          </div>
+          </details>
         )}
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Bild-Regie</span>
-          <textarea
-            rows={3}
-            value={imageDirectionDraft}
-            onChange={(e) => setImageDirectionDraft(e.target.value)}
-            placeholder="Ort, Figuren, Posen (z.B. Julien sitzt links im Park) …"
-          />
-        </label>
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Ton-Regie</span>
-          <textarea
-            rows={2}
-            value={soundDirectionDraft}
-            onChange={(e) => setSoundDirectionDraft(e.target.value)}
-            placeholder="Vögel, Straßenlärm, Stille, Musik …"
-          />
-        </label>
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Sprach-Regie</span>
-          <textarea
-            rows={2}
-            value={speechDirectionDraft}
-            onChange={(e) => setSpeechDirectionDraft(e.target.value)}
-            placeholder="laut, flüstern, Pause, fröhlich …"
-          />
-        </label>
+        <details className="dialog-meta-block">
+          <summary className="dialog-meta-label">Bild · Ton · Sprache</summary>
+          <label className="dialog-meta-block">
+            <span className="dialog-meta-label">Bild</span>
+            <textarea
+              rows={2}
+              value={imageDirectionDraft}
+              onChange={(e) => setImageDirectionDraft(e.target.value)}
+              placeholder="Ort, Figuren, Posen …"
+            />
+          </label>
+          <label className="dialog-meta-block">
+            <span className="dialog-meta-label">Ton</span>
+            <textarea
+              rows={2}
+              value={soundDirectionDraft}
+              onChange={(e) => setSoundDirectionDraft(e.target.value)}
+              placeholder="Vögel, Straßenlärm, Stille …"
+            />
+          </label>
+          <label className="dialog-meta-block">
+            <span className="dialog-meta-label">Sprache</span>
+            <textarea
+              rows={2}
+              value={speechDirectionDraft}
+              onChange={(e) => setSpeechDirectionDraft(e.target.value)}
+              placeholder="laut, flüstern, Pause …"
+            />
+          </label>
+        </details>
         <div className="dialog-meta-block">
           <fieldset className="film-draft-modes">
             <legend>Dialog aus dem Text oben machen</legend>

@@ -69,7 +69,8 @@ const tara = laid.find((u) => u.name === 'Tara')
 if (!julien || !tara) fail('Beide Figuren brauchen eine Lage')
 if (Math.abs(julien.x - tara.x) < 8) fail('Nicht übereinander legen')
 if (julien.scale >= tara.scale) fail('Sitzende Figur kleiner als stehende vorn')
-if (julien.y > 90) fail('Sitzen: Füße nicht am unteren Bildrand wie Stehen')
+if (julien.y < 70) fail('Sitzen: Füße auf dem Boden, nicht auf der Sitzfläche')
+if (julien.y > tara.y) fail('Sitzen etwas weiter hinten als Stehen vorn')
 
 const parsed = parseSensibleLayout(
   {

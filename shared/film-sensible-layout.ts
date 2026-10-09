@@ -15,8 +15,9 @@ Du siehst ein Zimmer OHNE Leute. Figuren existieren schon als einzelne Sprites. 
 - Gleiche Körpergröße im gleichen Raum.
 - Hinten kleiner, vorne größer.
 - Niemand verdeckt ein Gesicht komplett. Keine zwei Personen auf derselben Stelle.
-- x = Mitte der Figur, 0–100 von links. y = FÜSSE, 0–100 von oben (Sofa-Sitz oft y 78–88).
-- scale 0.45–1.15 (1.0 = normale Vordergrundfigur, sitzend eher 0.62–0.82).
+- x = Mitte der Figur, 0–100 von links.
+- y = immer die FÜSSE auf der Bodenebene, 0–100 von oben. Sitz-Sprites haben schon gebeugte Knie: y NICHT auf die Sitzfläche setzen (sonst schweben die Füße auf dem Polster). Sofa im Mittelgrund: Füße oft y 80–90.
+- scale 0.45–1.15 (1.0 = normale Vordergrundfigur, sitzend eher 0.62–0.82, damit die Hüfte auf der Sitzfläche landet).
 Nur JSON:
 { "placements": [{ "name": "Julien", "poseId": "sitting", "x": 32, "y": 84, "scale": 0.72, "flip": false }] }`
 
@@ -51,8 +52,8 @@ export function heuristicSensibleLayout(panel: FilmStoryboardPanel): ArrangeLaye
       name: pl.name,
       poseId: pl.poseId,
       x: spreadX(sitters.length, i, hasSeat ? 24 : 28, hasSeat ? 58 : 70),
-      y: hasSeat ? 84 : 80,
-      scale: pl.depth === 'background' ? 0.52 : 0.7,
+      y: defaultPlacementY(pl.depth),
+      scale: pl.depth === 'background' ? 0.52 : 0.68,
       flip: pl.flip,
     })
   })
@@ -114,7 +115,9 @@ export function layoutUserPrompt(panel: FilmStoryboardPanel, sceneTitle?: string
   )
   const people = panel.placements
     .map((p) => {
-      const sit = isSittingPose(p.poseId, p.poseHint) ? 'SITTING — must sit IN furniture' : 'standing'
+      const sit = isSittingPose(p.poseId, p.poseHint)
+        ? 'SITTING sprite (knees already bent). Put FEET on the floor so hips land on the seat.'
+        : 'standing, feet on the floor'
       return `- ${p.name}: pose ${p.poseId} (${p.poseHint}), ${sit}, depth ${p.depth}`
     })
     .join('\n')

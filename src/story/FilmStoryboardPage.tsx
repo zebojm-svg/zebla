@@ -271,7 +271,7 @@ export function FilmStoryboardPage() {
         <>
           {missing > 0 ? (
             <p className="alert alert-warn">
-              {missing} Teil{missing === 1 ? '' : 'e'} fehlen — Welt-Regal.
+              {missing} Teil{missing === 1 ? '' : 'e'} fehlen.
             </p>
           ) : null}
 
