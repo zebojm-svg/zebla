@@ -175,6 +175,33 @@ export const api = {
         body: JSON.stringify({ userId }),
       }),
   },
+  storyProjects: {
+    create: (data: {
+      title: string
+      filmPrompt: string
+      targetLanguage: string
+      parentId?: string | null
+    }) =>
+      request<{
+        folder: import('../types').DialogFolder
+        dialog: import('../types').Dialog
+      }>('/story-projects', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    wrap: (dialogId: string) =>
+      request<{
+        folder: import('../types').DialogFolder
+        dialog: import('../types').Dialog
+      }>('/story-project-wrap', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId }),
+      }),
+    delete: (folderId: string) =>
+      request<{ ok: boolean }>(`/story-project?id=${encodeURIComponent(folderId)}`, {
+        method: 'DELETE',
+      }),
+  },
   folders: {
     create: (name: string, parentId?: string | null) =>
       request<{ folder: import('../types').DialogFolder }>('/folders', {

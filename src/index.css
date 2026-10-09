@@ -530,6 +530,15 @@ html[dir='rtl'] .slideshow-topbar {
   gap: 0.75rem;
 }
 
+.story-folder-card {
+  border: 2px solid #0f766e;
+  background: #f0fdfa;
+}
+
+.story-folder-card .dialog-meta {
+  margin: 0;
+}
+
 .folder-open {
   display: flex;
   align-items: center;
@@ -3545,5 +3554,60 @@ html[dir='rtl'] .slideshow-topbar {
 .film-panel-still .film-harvest-note {
   padding: 0.55rem 0.75rem;
   margin: 0.4rem 0.75rem 0.2rem;
+}
+
+.library-shelf-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+}
+
+.library-shelf-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.library-shelf-tab strong {
+  font-size: 1.02rem;
+}
+
+.library-shelf-tab.is-active {
+  border-color: #0f766e;
+  background: #ecfdf5;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.18);
+}
+
+.story-meta-sheet h2 {
+  margin-top: 0;
+}
+
+.story-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.85rem 1rem;
+}
+
+.story-meta-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.story-meta-grid textarea {
+  width: 100%;
+  min-height: 4.5rem;
 }
 

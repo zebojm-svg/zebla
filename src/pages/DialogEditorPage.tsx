@@ -23,9 +23,11 @@ import {
 } from '../lib/costEstimates'
 import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
+import { StoryMetaSheet } from '../story/StoryMetaSheet'
 import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
+import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
-import type { Dialog, FilmDraftMode, VisualQuestion } from '../types'
+import type { Dialog, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -45,6 +47,7 @@ export function DialogEditorPage() {
   const [speechDirectionDraft, setSpeechDirectionDraft] = useState('')
   const [filmPromptDraft, setFilmPromptDraft] = useState('')
   const [titleDraft, setTitleDraft] = useState('')
+  const [storyMetaDraft, setStoryMetaDraft] = useState<StoryMeta>(normalizeStoryMeta(null))
   const [saveStatus, setSaveStatus] = useState<FilmSaveStatus>('idle')
   const [draftMode, setDraftMode] = useState<FilmDraftMode>('lucky')
   const [askVisualQuestions, setAskVisualQuestionsState] = useState(true)
@@ -56,9 +59,11 @@ export function DialogEditorPage() {
   const persistChain = useRef(Promise.resolve())
   const titleRef = useRef('')
   const promptRef = useRef('')
+  const metaRef = useRef<StoryMeta>(normalizeStoryMeta(null))
   const dirtyRef = useRef(false)
   titleRef.current = titleDraft
   promptRef.current = filmPromptDraft
+  metaRef.current = storyMetaDraft
 
   const reload = async (opts?: { keepDrafts?: boolean }) => {
     if (!id) return
@@ -74,6 +79,7 @@ export function DialogEditorPage() {
       skipSaveRef.current = true
       setFilmPromptDraft(d.filmPrompt ?? d.creationPrompt ?? '')
       setTitleDraft(d.title === EMPTY_FILM_TITLE ? '' : d.title)
+      setStoryMetaDraft(normalizeStoryMeta(d.storyMeta))
     }
     setAskVisualQuestionsState(getAskVisualQuestions())
   }
@@ -86,6 +92,7 @@ export function DialogEditorPage() {
         const d = await patchFilmDraft(id, {
           title: titleRef.current,
           filmPrompt: promptRef.current,
+          storyMeta: normalizeStoryMeta(metaRef.current),
         })
         setDialog(d)
         dirtyRef.current = false
@@ -118,7 +125,7 @@ export function DialogEditorPage() {
     dirtyRef.current = true
     const timer = window.setTimeout(() => void persistMeta(), 1000)
     return () => window.clearTimeout(timer)
-  }, [titleDraft, filmPromptDraft, loading, id])
+  }, [titleDraft, filmPromptDraft, storyMetaDraft, loading, id])
 
   useEffect(() => {
     const flush = () => {
@@ -362,6 +369,12 @@ export function DialogEditorPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-warn">{status}</div>}
+
+      <StoryMetaSheet
+        value={storyMetaDraft}
+        disabled={!!busy}
+        onChange={(next) => setStoryMetaDraft(next)}
+      />
 
       <section className="panel dialog-meta-panel">
         <h2>Vorstellung vom Film</h2>

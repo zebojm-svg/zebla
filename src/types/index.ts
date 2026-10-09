@@ -9,6 +9,8 @@ export type {
   SpeakerMood,
   DialogSection,
   DialogFolder,
+  FolderKind,
+  StoryMeta,
   CharacterVisual,
   VisualArtStyle,
   VisualCameraLanguage,
