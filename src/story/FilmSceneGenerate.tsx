@@ -87,8 +87,8 @@ export function FilmSceneGenerateBar({
         </button>
       ) : null}
       <p className="muted film-scene-still-note">
-        Das sind <strong>Standbilder</strong> dieser Szene — damit du siehst, ob es gut
-        herauskommt. Der bewegte Film kommt später.
+        Das sind <strong>gemalte Standbilder</strong> dieser Szene — nicht die
+        ausgeschnittenen Figuren. Der bewegte Film kommt später.
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {busy ? (

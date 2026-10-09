@@ -73,11 +73,17 @@ if (!maskJulien.includes('BLACK')) fail('Andere Leute müssen schwarz sein')
 if (!maskJulien.toLowerCase().includes('one white blob')) {
   fail('Maske darf keine Gruppen-Silhouette sein')
 }
+if (!maskJulien.toLowerCase().includes('armchair') && !maskJulien.toLowerCase().includes('sofa')) {
+  fail('Maske darf Sessel/Sofa nicht zur Person zählen')
+}
 
 const extract = namedPersonExtractPrompt('Julien', ['Tara'])
 if (!extract.includes('ONLY Julien')) fail('Fallback holt nur Julien')
 if (!extract.toLowerCase().includes('tara')) fail('Fallback darf Tara nicht im Ausschnitt lassen')
 if (!extract.toLowerCase().includes('rectangle')) fail('Kein Rechteck mit der anderen Person')
+if (!extract.toLowerCase().includes('chair') && !extract.toLowerCase().includes('sofa')) {
+  fail('Freisteller darf den Stuhl nicht mitnehmen')
+}
 
 if (!STILL_BACKGROUND_EXTRACT_PROMPT.toLowerCase().includes('remove every person')) {
   fail('Hintergrund-Prompt muss alle Leute entfernen')

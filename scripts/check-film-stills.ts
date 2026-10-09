@@ -125,6 +125,12 @@ if (!prompt.includes('Ignore any earlier')) {
 if (!prompt.includes('Bratwurst') || !prompt.includes('Glühwein')) {
   fail('Prompt muss deutsche Stand-Schilder (Bratwurst/Glühwein) verbieten')
 }
+if (!prompt.toLowerCase().includes('collage') && !prompt.toLowerCase().includes('cut-out')) {
+  fail('Prompt muss Collage/Freisteller-Kleben verbieten')
+}
+if (!prompt.toLowerCase().includes('hips on the seat')) {
+  fail('Prompt muss Sitzen auf dem Möbel verlangen, nicht davor kleben')
+}
 
 const fixPrompt = buildFilmStillPrompt({
   caption: 'Julien und Tara schauen in den Prospekt',
@@ -142,6 +148,10 @@ if (!fixPrompt.toLowerCase().includes('current still')) {
 const refs = referenceUrlsForPanel(s1[0]!)
 if (!refs.includes('https://example.com/julien.png')) fail('Julien-Foto aus Bibliothek als Vorlage')
 if (!refs.includes('https://example.com/park.png')) fail('Park als Vorlage')
+const sceneRefs = referenceUrlsForPanel(s1[0]!, 'https://example.com/prev.png')
+if (sceneRefs[0] !== 'https://example.com/prev.png') {
+  fail('Nächstes Bild: zuerst das vorige Standbild, nicht die Freisteller')
+}
 
 const fixRefs = referenceUrlsForPanel(
   s1[0]!,

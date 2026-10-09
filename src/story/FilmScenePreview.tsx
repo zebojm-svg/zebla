@@ -96,8 +96,7 @@ export function FilmScenePreviewPlayer({
   return (
     <div className="film-scene-player">
       <p className="muted film-scene-player-note">
-        <strong>Szene anhören:</strong> Standbilder + Stimme. Die Figuren atmen und blinzeln leicht —
-        noch kein Bewegungsfilm.
+        <strong>Szene anhören:</strong> das gemalte Standbild + Stimme — noch kein Bewegungsfilm.
       </p>
       <div className="film-scene-player-frame">
         {currentPanel && (panelCanArrange(currentPanel) || currentPanel.stillUrl) ? (
@@ -107,7 +106,7 @@ export function FilmScenePreviewPlayer({
         )}
       </div>
       <p className="film-scene-player-count">
-        Bild {current?.panelIndex ?? index + 1} von {beats.length}
+        Bild {index + 1} von {beats.length}
         {scene.title ? ` · ${scene.title}` : ''}
       </p>
       {dialogue.length > 0 ? (

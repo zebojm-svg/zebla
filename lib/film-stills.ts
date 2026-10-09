@@ -77,7 +77,7 @@ async function generateStillPng(
     parts.push({
       text: correctingExisting
         ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
-        : 'Attached photos: keep these EXACT people (face, hair, clothes). If a photo is a place, keep that location. Compose one finished still of the action.',
+        : 'Attached photos: keep these EXACT people (face, hair, clothes). If a photo is a place or a previous still, keep that location and camera. Paint one coherent finished still — do not paste cut-out sprites onto the room.',
     })
   }
   parts.push({ text: prompt })

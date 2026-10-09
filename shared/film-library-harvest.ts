@@ -231,7 +231,8 @@ export function namedPersonMaskPrompt(name: string, otherNames: string[]): strin
     overlap +
     `WHITE (#FFFFFF) = the complete ${name} including hair, skin, eyes, teeth, ` +
     `ALL clothing even if it is white, cream, grey or a hoodie, ALL shoes even if white. ` +
-    `BLACK (#000000) = background AND every other person AND true holes (between arms and torso, between fingers, between legs). ` +
+    `Never include the chair, sofa, armchair, bench, cushion, table or floor ${name} sits on — those stay BLACK. ` +
+    `BLACK (#000000) = background AND furniture AND every other person AND true holes (between arms and torso, between fingers, between legs). ` +
     `Never paint a white hoodie, shirt, sneaker or face of ${name} as black. Pale clothes of ${name} stay WHITE. ` +
     `Only black and white.`
   )
@@ -250,6 +251,7 @@ export function namedPersonExtractPrompt(name: string, otherNames: string[]): st
     `Extract ONLY ${name} from this still as an isolated full-body sprite on a TRUE TRANSPARENT background (PNG alpha). ` +
     overlap +
     `Keep ${name}'s exact pose, face, hair, clothes and shoes. Do NOT draw a checkerboard, studio wall, floor or other people. ` +
+    `Do not keep the chair, sofa, armchair or bench ${name} is sitting on. ` +
     `Do not crop a rectangle that still contains another person.`
   )
 }

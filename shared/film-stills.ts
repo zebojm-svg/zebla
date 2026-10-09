@@ -117,7 +117,7 @@ export function referenceUrlsForPanel(
   const ordered = (
     correctFromUrl
       ? [correctFromUrl, ...people, bg]
-      : [...people, bg, previousStillUrl]
+      : [previousStillUrl, ...people, bg]
   ).filter((u): u is string => Boolean(u && u.startsWith('http')))
   return [...new Set(ordered)].slice(0, 3)
 }
@@ -201,6 +201,7 @@ export function buildFilmStillPrompt(opts: {
 
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
+    `Paint ONE coherent illustration. Do not collage, do not paste cut-out sprites onto a room, no dashed selection boxes, no UI overlays on people.`,
     `Art style (${styleLabel}): ${style}`,
     lock,
     opts.correctingExisting
@@ -217,7 +218,7 @@ export function buildFilmStillPrompt(opts: {
     opts.stillCorrection
       ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
       : '',
-    `Widescreen 16:9, full bodies when they are in the scene, both legs and shoes visible when standing.`,
+    `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent — never paste a standing body onto a chair. Furniture belongs to the room, not glued to the person. Same body scale for everyone in the room. No extra limbs, no duplicate chairs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,
     `Ignore any earlier "NO text" rule for shop signs, stall labels, posters, flyers and prospectus.`,
