@@ -118,6 +118,15 @@ const reusedClose = findReusableCloseup(
   'other',
 )
 if (reusedClose !== 'https://example.com/julien-cu.png') fail('Nahaufnahme wiederverwenden')
+const reusedOtherMood = findReusableCloseup(
+  { ...board, panels: board.panels.map((p, i) => (i === 1 ? { ...p, stillUrl: 'https://example.com/julien-cu.png' } : p)) },
+  'Julien',
+  'freut sich',
+  'other',
+)
+if (reusedOtherMood !== 'https://example.com/julien-cu.png') {
+  fail('Dieselbe Nahaufnahme auch bei anderer Mimik — nur Augenbrauen/Mund ändern')
+}
 
 const tweaked = applyDirectorNote(board, panel.id, 'Julien eher im Hintergrund')
 const after = tweaked.panels[0]?.placements[0]

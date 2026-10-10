@@ -232,7 +232,9 @@ export function buildFilmStillPrompt(opts: {
     `Art style (${styleLabel}): ${style}`,
     lock,
     opts.correctingExisting
-      ? 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
+      ? isCloseup
+        ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'
+        : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
       : '',
     `Scene title: ${opts.sceneTitle || 'Scene'}.`,
     `Place: ${opts.settingHint || 'as implied'}.`,

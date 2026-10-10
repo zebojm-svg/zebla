@@ -157,6 +157,18 @@ const closePrompt = buildFilmStillPrompt({
 })
 if (!closePrompt.toLowerCase().includes('close-up')) fail('Nahaufnahme muss Close-up verlangen')
 if (!closePrompt.toLowerCase().includes('eyebrows')) fail('Nahaufnahme zeigt Augenbrauen')
+const mimicPrompt = buildFilmStillPrompt({
+  caption: 'Khan lacht',
+  shot: 'closeup',
+  closeupSpeaker: 'Khan',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  correctingExisting: true,
+  stillCorrection: 'Only change facial muscles: freut sich',
+})
+if (!mimicPrompt.toLowerCase().includes('facial muscles') && !mimicPrompt.toLowerCase().includes('eyebrows')) {
+  fail('Mimik ändert nur das Gesicht, nicht die ganze Nahaufnahme')
+}
 
 const fixPrompt = buildFilmStillPrompt({
   caption: 'Julien und Tara schauen in den Prospekt',

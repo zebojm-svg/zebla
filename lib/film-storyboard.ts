@@ -9,7 +9,8 @@ import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
   ensureCoverageDrafts,
-  findReusableCloseup,
+  closeupExprKey,
+  findReusableCloseupPanel,
   insertPanelAfter,
   insertSceneAfter,
   isFilmStoryboard,
@@ -373,7 +374,7 @@ export async function stillFilmPanel(
       }
     : board
   const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
-  const correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
+  let correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
 
   const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
   const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
@@ -424,21 +425,31 @@ export async function stillFilmPanel(
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
     if (!correction && (panelForGen.shot ?? 'wide') === 'closeup') {
-      const reused = findReusableCloseup(
+      const base = findReusableCloseupPanel(
         boardForGen,
         panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || '',
-        panelForGen.expressionHint,
         panelForGen.id,
       )
-      if (reused) {
-        const withStill = applyPanelStill(boardForGen, panelId, reused, resolvedStyle)
-        const withNote = applyPanelHarvestNote(
-          withStill,
-          panelId,
-          'Nahaufnahme schon da — wiederverwendet, nicht neu gemalt.',
-        )
-        const updated = await persist(withNote)
-        return { dialog: updated, board: withNote }
+      if (base?.stillUrl) {
+        const sameFace =
+          closeupExprKey(base.expressionHint) === closeupExprKey(panelForGen.expressionHint)
+        if (sameFace) {
+          const withStill = applyPanelStill(boardForGen, panelId, base.stillUrl, resolvedStyle)
+          const withNote = applyPanelHarvestNote(
+            withStill,
+            panelId,
+            'Nahaufnahme schon da — dasselbe Gesicht wiederverwendet.',
+          )
+          const updated = await persist(withNote)
+          return { dialog: updated, board: withNote }
+        }
+        panelForGen = {
+          ...panelForGen,
+          stillCorrection:
+            panelForGen.stillCorrection ||
+            `Keep this EXACT close-up (same crop, face, hair, clothes). Only change facial muscles: ${panelForGen.expressionHint || 'talking'}. Eyebrows, eyelids, mouth, maybe wrinkle the nose. Do not redraw the person.`,
+        }
+        correctFromUrl = base.stillUrl
       }
     }
     const url = await generateFilmPanelStillImage({

@@ -430,23 +430,29 @@ export function closeupExprKey(hint?: string): string {
   return t
 }
 
-/** Schon gemalte Nahaufnahme derselben Person+Mimik — nicht nochmal erzeugen. */
+/** Schon gemalte Nahaufnahme derselben Person — dasselbe Gesicht, Mimik darf sich ändern. */
 export function findReusableCloseup(
   board: FilmStoryboard,
   speaker: string,
-  expressionHint?: string,
+  _expressionHint?: string,
   exceptPanelId?: string,
 ): string | undefined {
+  return findReusableCloseupPanel(board, speaker, exceptPanelId)?.stillUrl
+}
+
+export function findReusableCloseupPanel(
+  board: FilmStoryboard,
+  speaker: string,
+  exceptPanelId?: string,
+): FilmStoryboardPanel | undefined {
   const key = characterBaseName(speaker).toLowerCase()
-  const expr = closeupExprKey(expressionHint)
   for (const panel of board.panels) {
     if (exceptPanelId && panel.id === exceptPanelId) continue
     if ((panel.shot ?? 'wide') !== 'closeup') continue
     const who = characterBaseName(panel.closeupSpeaker || panel.placements[0]?.name || '')
     if (who.toLowerCase() !== key) continue
     if (!panel.stillUrl?.trim()) continue
-    if (closeupExprKey(panel.expressionHint) !== expr) continue
-    return panel.stillUrl
+    return panel
   }
   return undefined
 }
