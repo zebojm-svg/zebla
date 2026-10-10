@@ -17,6 +17,8 @@ import {
 export type FilmMatchKind = 'reuse' | 'transform' | 'missing'
 export type FilmDepth = 'foreground' | 'mid' | 'background'
 export type FilmBoardSource = 'rules' | 'gemini'
+/** Weit = ganzer Raum. Nahaufnahme = sprechendes Gesicht, wiederverwendbar. */
+export type FilmShot = 'wide' | 'closeup'
 
 export interface FilmPlacement {
   name: string
@@ -75,6 +77,10 @@ export interface FilmStoryboardPanel {
   stillCorrection?: string
   /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
   harvestNoteDe?: string
+  /** Weit (Raum) oder Nahaufnahme (Gesicht). */
+  shot?: FilmShot
+  /** Wer in der Nahaufnahme spricht. */
+  closeupSpeaker?: string
 }
 
 export interface FilmScene {
@@ -109,6 +115,8 @@ export interface FilmDraftPanel {
   speechCue?: string
   settingHint?: string
   expressionHint?: string
+  shot?: FilmShot
+  closeupSpeaker?: string
   characters?: Array<{
     name: string
     poseHint?: string
@@ -243,6 +251,22 @@ export function matchCharacterPose(
   }
 }
 
+const GENERIC_PLACE_TOKENS = new Set([
+  'wohnzimmer',
+  'zimmer',
+  'wohnung',
+  'haus',
+  'stube',
+  'room',
+  'indoor',
+  'interior',
+  'szene',
+  'ort',
+  'place',
+  'home',
+  'house',
+])
+
 export function matchBackground(
   hint: string,
   library: StoryLibraryAsset[],
@@ -250,36 +274,28 @@ export function matchBackground(
   const needle = hint.trim().toLowerCase()
   const envs = library.filter((a) => a.type === 'environment' || a.type === 'scene')
   if (!needle) {
-    const first = envs[0]
-    if (!first) {
-      return {
-        hint,
-        match: 'missing',
-        matchNoteDe: 'Kein Hintergrund in der Bibliothek.',
-      }
-    }
     return {
-      hint: first.name,
-      libraryAssetId: first.id,
-      imageUrl: first.imageUrl,
-      match: 'reuse',
-      matchNoteDe: `Hintergrund «${first.name}» — ohne KI.`,
+      hint,
+      match: 'missing',
+      matchNoteDe: 'Kein Hintergrund in der Bibliothek.',
     }
   }
 
   const tokens = needle.split(/[^a-zäöüß0-9]+/i).filter((t) => t.length > 2)
+  const specific = tokens.filter((t) => !GENERIC_PLACE_TOKENS.has(t))
   const scored = envs
     .map((env) => {
       const hay = [env.name, env.description ?? '', ...(env.tags ?? [])].join(' ').toLowerCase()
       let score = 0
-      if (hay.includes(needle)) score += 5
-      for (const t of tokens) if (hay.includes(t)) score += 1
+      if (hay.includes(needle) && needle.length > 12) score += 6
+      for (const t of specific) if (hay.includes(t)) score += 2
+      for (const t of tokens) if (GENERIC_PLACE_TOKENS.has(t) && hay.includes(t)) score += 0.25
       return { env, score }
     })
     .sort((a, b) => b.score - a.score)
 
   const best = scored[0]
-  if (best && best.score > 0) {
+  if (best && best.score >= 2) {
     return {
       hint,
       libraryAssetId: best.env.id,
@@ -329,32 +345,116 @@ function defaultSetting(dialog: Dialog, section: DialogSection): string {
   )
 }
 
-export function draftPanelsFromDialog(dialog: Dialog): FilmDraftPanel[] {
-  const drafts: FilmDraftPanel[] = []
+function speakersInSection(section: DialogSection): string[] {
+  return [...new Set(section.lines.map((l) => l.speaker.trim()).filter(Boolean))]
+}
+
+/**
+ * Pro Szene: 1 Weit (ganzer Raum, alle) + 1 Nahaufnahme je Sprecher.
+ * Nahaufnahmen dürfen später in anderen Szenen wiederverwendet werden.
+ */
+export function ensureCoverageDrafts(
+  dialog: Dialog,
+  drafts: FilmDraftPanel[] = [],
+): FilmDraftPanel[] {
+  const bySection = new Map<string, FilmDraftPanel[]>()
+  for (const draft of drafts) {
+    const id = draft.sectionId || dialog.sections[0]?.id || 'scene-1'
+    const list = bySection.get(id) ?? []
+    list.push({ ...draft, sectionId: id })
+    bySection.set(id, list)
+  }
+  const out: FilmDraftPanel[] = []
   for (const section of dialog.sections) {
-    for (const line of section.lines) {
-      const blob = lineCueText(line)
-      drafts.push({
+    const existing = bySection.get(section.id) ?? []
+    const speakers = speakersInSection(section)
+    const setting = existing[0]?.settingHint?.trim() || defaultSetting(dialog, section)
+    const blob = section.lines.map((l) => lineCueText(l)).join(' ')
+    const poseHint = inferPoseId(blob)
+    const widePrior = existing.find((d) => (d.shot ?? 'wide') !== 'closeup')
+    out.push({
+      sectionId: section.id,
+      shot: 'wide',
+      lineIds: section.lines.map((l) => l.id),
+      caption: widePrior?.caption?.trim() || section.title || 'Alle zusammen',
+      imageCue:
+        widePrior?.imageCue?.trim() ||
+        section.lines.find((l) => l.cueImage?.trim())?.cueImage?.trim() ||
+        `Ganzer Raum: ${setting}. Alle: ${speakers.join(', ') || 'die Figuren'}.`,
+      soundCue: widePrior?.soundCue || dialog.soundDirection?.trim() || '',
+      speechCue: widePrior?.speechCue || dialog.speechDirection?.trim() || '',
+      settingHint: setting,
+      expressionHint: widePrior?.expressionHint || inferExpression(blob),
+      characters:
+        widePrior?.characters?.length
+          ? widePrior.characters
+          : speakers.map((name) => ({
+              name,
+              poseHint,
+              depth: 'mid' as FilmDepth,
+            })),
+    })
+    for (const speaker of speakers) {
+      const lines = section.lines.filter((l) => l.speaker.trim() === speaker)
+      const prior = existing.find(
+        (d) => d.shot === 'closeup' && (d.closeupSpeaker || d.characters?.[0]?.name) === speaker,
+      )
+      const talk = lines.map((l) => l.text).join(' ')
+      out.push({
         sectionId: section.id,
-        lineIds: [line.id],
-        caption: `${line.speaker}: ${line.text}`,
-        imageCue: line.cueImage?.trim() || blob,
-        soundCue: line.cueSound?.trim() || dialog.soundDirection?.trim() || '',
-        speechCue: line.cueSpeech?.trim() || dialog.speechDirection?.trim() || '',
-        settingHint: defaultSetting(dialog, section),
-        expressionHint: inferExpression(blob),
-        characters: [
-          {
-            name: line.speaker,
-            poseHint: inferPoseId(blob),
-            depth: inferDepth(`${blob} ${line.cueImage ?? ''}`),
-            x: 42,
-          },
-        ],
+        shot: 'closeup',
+        closeupSpeaker: speaker,
+        lineIds: lines.map((l) => l.id),
+        caption: prior?.caption?.trim() || `${speaker}: ${lines[0]?.text ?? ''}`.slice(0, 140),
+        imageCue:
+          prior?.imageCue?.trim() ||
+          `Nahaufnahme ${speaker}: Gesicht, Mund und Augenbrauen, spricht.`,
+        soundCue: prior?.soundCue || '',
+        speechCue: prior?.speechCue || lines[0]?.cueSpeech || '',
+        settingHint: setting,
+        expressionHint: prior?.expressionHint || inferExpression(talk),
+        characters: [{ name: speaker, poseHint: 'standing-front', depth: 'foreground' }],
       })
     }
   }
-  return drafts
+  return out
+}
+
+export function draftPanelsFromDialog(dialog: Dialog): FilmDraftPanel[] {
+  return ensureCoverageDrafts(dialog, [])
+}
+
+export function closeupExprKey(hint?: string): string {
+  const t = (hint || 'neutral').trim().toLowerCase()
+  if (!t || t === 'neutral' || t === 'natürlich' || t === 'natuerlich') return 'neutral'
+  return t
+}
+
+/** Schon gemalte Nahaufnahme derselben Person — dasselbe Gesicht, Mimik darf sich ändern. */
+export function findReusableCloseup(
+  board: FilmStoryboard,
+  speaker: string,
+  _expressionHint?: string,
+  exceptPanelId?: string,
+): string | undefined {
+  return findReusableCloseupPanel(board, speaker, exceptPanelId)?.stillUrl
+}
+
+export function findReusableCloseupPanel(
+  board: FilmStoryboard,
+  speaker: string,
+  exceptPanelId?: string,
+): FilmStoryboardPanel | undefined {
+  const key = characterBaseName(speaker).toLowerCase()
+  for (const panel of board.panels) {
+    if (exceptPanelId && panel.id === exceptPanelId) continue
+    if ((panel.shot ?? 'wide') !== 'closeup') continue
+    const who = characterBaseName(panel.closeupSpeaker || panel.placements[0]?.name || '')
+    if (who.toLowerCase() !== key) continue
+    if (!panel.stillUrl?.trim()) continue
+    return panel
+  }
+  return undefined
 }
 
 export function buildBoardFromDrafts(
@@ -363,6 +463,7 @@ export function buildBoardFromDrafts(
   library: StoryLibraryAsset[],
   source: FilmBoardSource,
   previous?: FilmStoryboard,
+  opts?: { freshPlaces?: boolean },
 ): FilmStoryboard {
   const sectionIndex = new Map(dialog.sections.map((s, i) => [s.id, i]))
   const prevById = new Map((previous?.panels ?? []).map((p) => [p.id, p]))
@@ -416,8 +517,16 @@ export function buildBoardFromDrafts(
       speechCue: draft.speechCue?.trim() || '',
       settingHint,
       expressionHint: draft.expressionHint?.trim() || inferExpression(blob),
+      shot: draft.shot === 'closeup' ? 'closeup' : 'wide',
+      closeupSpeaker: draft.closeupSpeaker,
       placements,
-      background: matchBackground(settingHint, library),
+      background: opts?.freshPlaces
+        ? {
+            hint: settingHint,
+            match: 'missing' as const,
+            matchNoteDe: 'Neu aus dem Dialog — nicht das vorige Zimmer.',
+          }
+        : matchBackground(settingHint, library),
       comment: prev?.comment,
       directorNote: prev?.directorNote,
       sketchUrl: prev?.sketchUrl,
@@ -519,10 +628,12 @@ export function scenesFromPanels(
 }
 
 export function normalizeFilmStoryboard(board: FilmStoryboard): FilmStoryboard {
-  const panels = board.panels.map((p, i) => ({
+  const panels: FilmStoryboardPanel[] = board.panels.map((p, i) => ({
     ...p,
     sceneId: p.sceneId || `scene-${(p.sceneIndex ?? 0) + 1}`,
     panelIndex: p.panelIndex || i + 1,
+    shot: p.shot === 'closeup' ? 'closeup' : 'wide',
+    closeupSpeaker: p.closeupSpeaker,
     placements: (p.placements ?? []).map((pl) => ({
       ...pl,
       y: typeof pl.y === 'number' ? clamp(pl.y, 8, 96) : defaultPlacementY(pl.depth),

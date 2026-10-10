@@ -8,6 +8,9 @@ import {
   applySceneNote,
   buildBoardFromDrafts,
   draftPanelsFromDialog,
+  ensureCoverageDrafts,
+  closeupExprKey,
+  findReusableCloseupPanel,
   insertPanelAfter,
   insertSceneAfter,
   isFilmStoryboard,
@@ -31,20 +34,26 @@ import {
 } from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
-const PLAN_SYSTEM = `Du planst ein billiges Comic-Storyboard. Keine fertigen Film-Bilder.
-Nur JSON. Beliebig viele Figuren. Gruppiere Zeilen am gleichen Ort.
+const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
+Nur JSON.
+Pro Szene/Abschnitt PFLICHT:
+1. Genau EIN Bild shot="wide": ganzer Raum, ALLE Personen, Einrichtung GENAU wie der Dialog (Teppich, Tisch, Kissen …). Nicht ein beliebiges altes Wohnzimmer.
+2. Danach genau EIN Bild shot="closeup" je Sprecher, der in der Szene spricht: Nahaufnahme Gesicht (Mund, Augenbrauen). Nur diese eine Person.
+Nahaufnahmen derselben Person dürfen in späteren Szenen wiederverwendet werden — also nicht extra erfinden, wenn die Mimik gleich bleibt.
 Schema:
 {
   "summaryDe": "ein Satz",
   "panels": [
     {
-      "sectionId": "id oder scene-1",
+      "sectionId": "id",
+      "shot": "wide|closeup",
+      "closeupSpeaker": "Name nur bei closeup",
       "lineIds": ["id"],
       "caption": "kurz",
-      "imageCue": "was man sieht",
+      "imageCue": "was man sieht, inkl. Möbel/Ort aus dem Dialog",
       "soundCue": "Ton oder leer",
       "speechCue": "wie gesprochen",
-      "settingHint": "Ort",
+      "settingHint": "Ort wie im Dialog, konkret",
       "expressionHint": "freut sich|traurig|schreit|überrascht|neutral|leise / flüstert",
       "characters": [
         { "name": "Julien", "poseHint": "sitting|standing-front|waving|look-left|look-right|walking|standing-three-quarter", "depth": "foreground|mid|background", "x": 40 }
@@ -56,7 +65,7 @@ Regeln:
 - Namen unverändert.
 - poseHint nur aus der Liste.
 - x 15–85.
-- Mehrere Personen in einem Bild, wenn der Text das sagt.`
+- settingHint und imageCue beim Weit-Bild: konkrete Einrichtung aus dem Text, nicht nur «Wohnzimmer».`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -129,7 +138,7 @@ export async function planFilmStoryboard(
   dialogId: string,
   userId: string,
   profile?: UserProfile | null,
-  opts?: { cheapAi?: boolean; extra?: string; keepBoard?: boolean },
+  opts?: { cheapAi?: boolean; extra?: string; keepBoard?: boolean; freshPlaces?: boolean },
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
@@ -140,13 +149,16 @@ export async function planFilmStoryboard(
     : undefined
   const useAi = opts?.cheapAi !== false
   const aiDrafts = useAi ? await draftsFromGemini(dialog, opts?.extra ?? '') : null
-  const drafts = aiDrafts ?? draftPanelsFromDialog(dialog)
+  const drafts = aiDrafts
+    ? ensureCoverageDrafts(dialog, aiDrafts)
+    : draftPanelsFromDialog(dialog)
   const board = buildBoardFromDrafts(
     dialog,
     drafts,
     library,
     aiDrafts ? 'gemini' : 'rules',
     previous,
+    { freshPlaces: Boolean(opts?.freshPlaces) },
   )
 
   const updated = await saveBoard(dialogId, userId, board, profile)
@@ -168,7 +180,11 @@ export async function resetFilmStoryboardFromDialog(
     profile,
   )
   if (!wiped) throw new Error('Alter Bildplan konnte nicht gelöscht werden.')
-  return planFilmStoryboard(dialogId, userId, profile, { cheapAi: true, keepBoard: false })
+  return planFilmStoryboard(dialogId, userId, profile, {
+    cheapAi: true,
+    keepBoard: false,
+    freshPlaces: true,
+  })
 }
 
 export async function regenerateFilmScenes(
@@ -358,7 +374,7 @@ export async function stillFilmPanel(
       }
     : board
   const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
-  const correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
+  let correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
 
   const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
   const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
@@ -408,6 +424,34 @@ export async function stillFilmPanel(
       }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
+    if (!correction && (panelForGen.shot ?? 'wide') === 'closeup') {
+      const base = findReusableCloseupPanel(
+        boardForGen,
+        panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || '',
+        panelForGen.id,
+      )
+      if (base?.stillUrl) {
+        const sameFace =
+          closeupExprKey(base.expressionHint) === closeupExprKey(panelForGen.expressionHint)
+        if (sameFace) {
+          const withStill = applyPanelStill(boardForGen, panelId, base.stillUrl, resolvedStyle)
+          const withNote = applyPanelHarvestNote(
+            withStill,
+            panelId,
+            'Nahaufnahme schon da — dasselbe Gesicht wiederverwendet.',
+          )
+          const updated = await persist(withNote)
+          return { dialog: updated, board: withNote }
+        }
+        panelForGen = {
+          ...panelForGen,
+          stillCorrection:
+            panelForGen.stillCorrection ||
+            `Keep this EXACT close-up (same crop, face, hair, clothes). Only change facial muscles: ${panelForGen.expressionHint || 'talking'}. Eyebrows, eyelids, mouth, maybe wrinkle the nose. Do not redraw the person.`,
+        }
+        correctFromUrl = base.stillUrl
+      }
+    }
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,

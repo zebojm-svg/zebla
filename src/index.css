@@ -73,6 +73,9 @@ code {
 
 .layout { min-height: 100vh; display: flex; flex-direction: column; }
 .main { flex: 1; max-width: 960px; width: 100%; margin: 0 auto; padding: 2rem 1.5rem; }
+.main:has(.film-board-page) {
+  max-width: 1480px;
+}
 .main-full { flex: 1; }
 .page-center { display: grid; place-items: center; min-height: 60vh; text-align: center; }
 
@@ -3268,9 +3271,19 @@ html[dir='rtl'] .slideshow-topbar {
   padding: 0.35rem 1rem 0.15rem;
 }
 
-@media (min-width: 880px) {
+@media (min-width: 720px) {
   .film-beat {
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.95fr) minmax(12.5rem, 0.7fr);
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1100px) {
+  .film-beat {
+    grid-template-columns:
+      minmax(16rem, 1.2fr)
+      minmax(11rem, 0.85fr)
+      minmax(11rem, 0.85fr)
+      minmax(10rem, 0.7fr);
   }
 }
 
@@ -3300,6 +3313,11 @@ html[dir='rtl'] .slideshow-topbar {
   margin: 0;
   font-size: 1.05rem;
   line-height: 1.45;
+  color: var(--text-h);
+}
+
+.film-beat-native .film-beat-de {
+  margin: 0;
   color: var(--text-h);
 }
 

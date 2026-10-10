@@ -140,11 +140,34 @@ if (!prompt.toLowerCase().includes('different') && !prompt.toLowerCase().include
   fail('Jedes Bild muss ein neuer Moment sein')
 }
 if (!prompt.includes('moment 2 of 5')) fail('Prompt muss Bild 2 von 5 als eigenen Moment nennen')
-if (!prompt.toLowerCase().includes('identity plates') && !prompt.toLowerCase().includes('into that exact room')) {
+if (!prompt.toLowerCase().includes('identity plates') && !prompt.toLowerCase().includes('into that exact room') && !prompt.toLowerCase().includes('matching the dialogue')) {
   fail('Prompt muss Figuren in den Raum malen, nicht als Sticker kleben')
 }
 if (!prompt.toLowerCase().includes('hips on the seat')) {
   fail('Prompt muss Sitzen auf dem Möbel verlangen, nicht davor kleben')
+}
+const closePrompt = buildFilmStillPrompt({
+  caption: 'Khan spricht',
+  imageCue: 'Nahaufnahme Khan',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  shot: 'closeup',
+  closeupSpeaker: 'Khan',
+  names: ['Khan'],
+})
+if (!closePrompt.toLowerCase().includes('close-up')) fail('Nahaufnahme muss Close-up verlangen')
+if (!closePrompt.toLowerCase().includes('eyebrows')) fail('Nahaufnahme zeigt Augenbrauen')
+const mimicPrompt = buildFilmStillPrompt({
+  caption: 'Khan lacht',
+  shot: 'closeup',
+  closeupSpeaker: 'Khan',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  correctingExisting: true,
+  stillCorrection: 'Only change facial muscles: freut sich',
+})
+if (!mimicPrompt.toLowerCase().includes('facial muscles') && !mimicPrompt.toLowerCase().includes('eyebrows')) {
+  fail('Mimik ändert nur das Gesicht, nicht die ganze Nahaufnahme')
 }
 
 const fixPrompt = buildFilmStillPrompt({

@@ -67,6 +67,7 @@ async function generateStillPng(
   prompt: string,
   refs: InlineImage[],
   correctingExisting = false,
+  closeup = false,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
@@ -77,7 +78,9 @@ async function generateStillPng(
     parts.push({
       text: correctingExisting
         ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
-        : 'Attached photos: first the EMPTY ROOM with complete furniture (no people). Then COMPLETE people as full studio figures (identity only). Paint a new illustration of those people INSIDE the room, sitting in the real furniture, using the real floor. One coherent picture — do not cut pieces out of a group photo, do not paste transparent sprites, do not copy a previous frame.',
+        : closeup
+          ? 'Attached photos: identity of the speaker. Paint a CLOSE-UP of this exact person (mouth, eyebrows, talking). Soft background. Do not paste a sprite. Do not copy a previous wide living-room shot.'
+          : 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.',
     })
   }
   parts.push({ text: prompt })
@@ -149,6 +152,8 @@ export function stillPromptForPanel(
     spokenLine: extras.spokenLine,
     beatIndex: panel.panelIndex,
     beatTotal: extras.beatTotal,
+    shot: panel.shot,
+    closeupSpeaker: panel.closeupSpeaker,
   })
 }
 
@@ -170,6 +175,11 @@ export async function generateFilmPanelStillImage(opts: {
     spokenLine: opts.panel.caption || opts.panel.imageCue,
     beatTotal: opts.beatTotal,
   })
-  const buffer = await generateStillPng(prompt, refs, Boolean(opts.correctFromUrl))
+  const buffer = await generateStillPng(
+    prompt,
+    refs,
+    Boolean(opts.correctFromUrl),
+    opts.panel.shot === 'closeup',
+  )
   return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
 }
