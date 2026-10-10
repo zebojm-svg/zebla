@@ -129,13 +129,17 @@ import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
+  const slug = req.query.slug
+  if (Array.isArray(slug) && slug.length > 0) {
+    const joined = slug.filter((part) => part && part !== '[...slug]').join('/')
+    if (joined) return joined
+  } else if (typeof slug === 'string' && slug && slug !== '[...slug]') {
+    return slug
+  }
+
   const url = new URL(req.url ?? '/', 'http://localhost')
   const path = url.pathname.replace(/^\/api\/?/, '')
-  if (path) return path
-
-  const slug = req.query.slug
-  if (Array.isArray(slug)) return slug.join('/')
-  if (typeof slug === 'string') return slug
+  if (path && path !== '[...slug]') return path
   return ''
 }
 
@@ -2045,6 +2049,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (
+      req.method === 'DELETE' &&
+      (route === 'story-library' || route.startsWith('story-library/'))
+    ) {
+      const user = await requireAuth(req)
+      const fromPath = route.startsWith('story-library/')
+        ? route.slice('story-library/'.length)
+        : ''
+      const fromQuery = typeof req.query.id === 'string' ? req.query.id : ''
+      const fromBody = typeof (req.body as { id?: string } | undefined)?.id === 'string'
+        ? (req.body as { id: string }).id
+        : ''
+      const id = (fromQuery || fromPath || fromBody).trim()
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const ok = await deleteStoryAsset(user.uid, id)
+      if (!ok) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      res.json({ ok: true })
+      return
+    }
+
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
       const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig } = req.body as {
@@ -2082,22 +2112,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         rig: isCharacterRig(rig) ? rig : undefined,
       })
       res.json({ asset })
-      return
-    }
-
-    if (route.startsWith('story-library/') && req.method === 'DELETE') {
-      const user = await requireAuth(req)
-      const id = route.slice('story-library/'.length)
-      if (!id) {
-        res.status(400).json({ error: 'ID fehlt.' })
-        return
-      }
-      const ok = await deleteStoryAsset(user.uid, id)
-      if (!ok) {
-        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
-        return
-      }
-      res.json({ ok: true })
       return
     }
 

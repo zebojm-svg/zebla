@@ -69,7 +69,7 @@ function LibraryCard({
               disabled={pending || !asset.id}
               onClick={() => onDelete(asset.id)}
             >
-              {pending ? '…' : 'Wirklich löschen'}
+              {pending ? '…' : 'Ja, löschen'}
             </button>
             <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={onCancel}>
               Abbrechen
@@ -172,7 +172,9 @@ export function FilmLibraryPage() {
       setAssets((prev) => prev.filter((a) => a.id !== id))
       setConfirmId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
+      const msg = err instanceof Error ? err.message : 'Löschen fehlgeschlagen.'
+      setError(msg)
+      window.alert(msg)
       try {
         await load()
       } catch {
