@@ -5,6 +5,7 @@
  */
 
 import { characterBaseName } from './character-parts.js'
+import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
 import type { Dialog, DialogLine, DialogSection } from './types.js'
 import type { StoryLibraryAsset } from './story-types.js'
@@ -207,9 +208,16 @@ export function matchCharacterPose(
   library: StoryLibraryAsset[],
 ): Pick<FilmPlacement, 'libraryAssetId' | 'imageUrl' | 'match' | 'matchNoteDe' | 'flip'> {
   const wanted = getStillPose(poseId)
-  const people = library.filter(
-    (a) => a.type === 'character' && samePerson(a.name, name),
-  )
+  const fromIdentity = canonicalIdentityAssets(library, name)
+  const people =
+    fromIdentity.length > 0
+      ? fromIdentity
+      : library.filter(
+          (a) =>
+            a.type === 'character' &&
+            samePerson(a.name, name) &&
+            !isCutoutFromStill(a),
+        )
   if (people.length === 0) {
     return {
       match: 'missing',
@@ -345,8 +353,48 @@ function defaultSetting(dialog: Dialog, section: DialogSection): string {
   )
 }
 
-function speakersInSection(section: DialogSection): string[] {
-  return [...new Set(section.lines.map((l) => l.speaker.trim()).filter(Boolean))]
+function speakerFromLineText(text: string): string {
+  const match = text.trim().match(/^([A-ZÄÖÜ][\wÄÖÜäöüß.-]{1,40})\s*[:—–-]\s+\S/)
+  return match?.[1]?.trim() ?? ''
+}
+
+function speakersInSection(
+  section: DialogSection,
+  existing: FilmDraftPanel[] = [],
+): string[] {
+  const fromLines = [
+    ...new Set(section.lines.map((l) => l.speaker.trim()).filter(Boolean)),
+  ]
+  if (fromLines.length > 0) return fromLines
+  const fromText = [
+    ...new Set(section.lines.map((l) => speakerFromLineText(l.text)).filter(Boolean)),
+  ]
+  if (fromText.length > 0) return fromText
+  const fromDrafts = [
+    ...new Set(
+      existing.flatMap((d) => [
+        d.closeupSpeaker?.trim() || '',
+        ...(d.characters ?? []).map((c) => c.name.trim()),
+      ]).filter(Boolean),
+    ),
+  ]
+  return fromDrafts
+}
+
+/** Gemini schreibt oft «1» oder den Szenentitel statt der echten Abschnitts-Id. */
+export function resolveDraftSectionId(dialog: Dialog, raw?: string): string {
+  const fallback = dialog.sections[0]?.id || 'scene-1'
+  const id = (raw ?? '').trim()
+  if (!id) return fallback
+  if (dialog.sections.some((s) => s.id === id)) return id
+  const lower = id.toLowerCase()
+  const byTitle = dialog.sections.find((s) => s.title.trim().toLowerCase() === lower)
+  if (byTitle) return byTitle.id
+  const n = Number(id)
+  if (Number.isInteger(n) && n >= 1 && n <= dialog.sections.length) {
+    return dialog.sections[n - 1]!.id
+  }
+  return fallback
 }
 
 /**
@@ -359,7 +407,7 @@ export function ensureCoverageDrafts(
 ): FilmDraftPanel[] {
   const bySection = new Map<string, FilmDraftPanel[]>()
   for (const draft of drafts) {
-    const id = draft.sectionId || dialog.sections[0]?.id || 'scene-1'
+    const id = resolveDraftSectionId(dialog, draft.sectionId)
     const list = bySection.get(id) ?? []
     list.push({ ...draft, sectionId: id })
     bySection.set(id, list)
@@ -367,7 +415,7 @@ export function ensureCoverageDrafts(
   const out: FilmDraftPanel[] = []
   for (const section of dialog.sections) {
     const existing = bySection.get(section.id) ?? []
-    const speakers = speakersInSection(section)
+    const speakers = speakersInSection(section, existing)
     const setting = existing[0]?.settingHint?.trim() || defaultSetting(dialog, section)
     const blob = section.lines.map((l) => lineCueText(l)).join(' ')
     const poseHint = inferPoseId(blob)
@@ -422,6 +470,34 @@ export function ensureCoverageDrafts(
 
 export function draftPanelsFromDialog(dialog: Dialog): FilmDraftPanel[] {
   return ensureCoverageDrafts(dialog, [])
+}
+
+/** 1 Weit + 1 Nahaufnahme je Sprecher in dieser Szene. */
+export function expectedSceneShotCount(dialog: Dialog, sectionId: string): number {
+  const section = dialog.sections.find((s) => s.id === sectionId)
+  if (!section) return 1
+  return 1 + speakersInSection(section).length
+}
+
+export function sceneShotPlanDe(panels: FilmStoryboardPanel[]): string {
+  const wide = panels.filter((p) => (p.shot ?? 'wide') !== 'closeup').length
+  const close = panels.filter((p) => p.shot === 'closeup')
+  const names = [
+    ...new Set(close.map((p) => p.closeupSpeaker?.trim()).filter(Boolean) as string[]),
+  ]
+  const closeBit =
+    close.length === 0
+      ? 'noch keine Nahaufnahmen'
+      : `${close.length} Nahaufnahme${close.length === 1 ? '' : 'n'}${
+          names.length ? ` (${names.join(', ')})` : ''
+        }`
+  return `Geplant: ${wide} Übersicht, ${closeBit}.`
+}
+
+export function dialogNeedsNativeTranslation(dialog: Pick<Dialog, 'sections'>): boolean {
+  return dialog.sections.some((s) =>
+    s.lines.some((l) => l.text.trim() && !lineNativeDe(l)),
+  )
 }
 
 export function closeupExprKey(hint?: string): string {

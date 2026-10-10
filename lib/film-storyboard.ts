@@ -9,6 +9,7 @@ import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
   ensureCoverageDrafts,
+  resolveDraftSectionId,
   closeupExprKey,
   findReusableCloseupPanel,
   insertPanelAfter,
@@ -110,7 +111,7 @@ async function draftsFromGemini(dialog: Dialog, extra = ''): Promise<FilmDraftPa
     if (valid.length === 0) return null
     return valid.map((p) => ({
       ...p,
-      sectionId: p.sectionId || dialog.sections[0]?.id || 'scene-1',
+      sectionId: resolveDraftSectionId(dialog, p.sectionId),
       lineIds: p.lineIds?.length ? p.lineIds : [],
     }))
   } catch {
@@ -218,8 +219,11 @@ export async function regenerateFilmScenes(
     throw new Error('Die KI hat die Szene nicht neu planen können. Bitte Notiz kürzer fassen.')
   }
 
-  const rebuilt = buildBoardFromDrafts(dialog, aiDrafts, library, 'gemini', current)
-  const kept = current.panels.filter((p) => !wanted.has(p.sceneId))
+  const drafts = ensureCoverageDrafts(dialog, aiDrafts)
+  const rebuilt = buildBoardFromDrafts(dialog, drafts, library, 'gemini', current, {
+    freshPlaces: true,
+  })
+  const kept = current.panels.filter((p) => !wanted.has(p.sceneId) && !wanted.has(p.sectionId))
   const fresh = rebuilt.panels.filter((p) => wanted.has(p.sceneId) || wanted.has(p.sectionId))
   const panels = [...kept, ...fresh]
   const scenes = [

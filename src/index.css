@@ -3470,6 +3470,22 @@ html[dir='rtl'] .slideshow-topbar {
   margin-bottom: 1.5rem;
 }
 
+.film-identity-harvest {
+  padding: 0.75rem;
+  border: 1px dashed #d97706;
+  border-radius: var(--radius-sm);
+  background: #fffbeb;
+}
+
+.story-character-card.is-harvest {
+  border-color: #d97706;
+}
+
+.film-beat-de-hint {
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
 .film-board-page .page-header,
 .film-library-page .page-header {
   align-items: flex-start;

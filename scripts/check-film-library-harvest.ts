@@ -202,19 +202,27 @@ if (shouldSkipCharacterPose(emptyLib, 'Julien', 'walking')) fail('Leere Biblioth
 if (shouldSkipBackground(emptyLib, 'Weihnachtsmarkt')) fail('Leerer Ort: Hintergrund speichern')
 
 const withWalk = [julienWalk]
-if (!shouldSkipCharacterPose(withWalk, 'Julien', 'walking')) {
-  fail('Julien (Gehen) schon da → nicht nochmal speichern')
+if (shouldSkipCharacterPose(withWalk, 'Julien', 'walking')) {
+  fail('Freisteller aus dem Gruppenbild zählt nicht — Studio-Figur zeichnen')
 }
-if (shouldSkipCharacterPose(withWalk, 'Julien', 'waving')) {
+const studioWalk: StoryLibraryAsset = {
+  ...julienWalk,
+  id: 'studio-julien-walk',
+  tags: characterPieceTags('walking'),
+}
+if (!shouldSkipCharacterPose([studioWalk], 'Julien', 'walking')) {
+  fail('Julien (Gehen) schon als Studio da → nicht nochmal speichern')
+}
+if (shouldSkipCharacterPose([studioWalk], 'Julien', 'waving')) {
   fail('Winken ist eine andere Pose — speichern')
 }
-if (shouldSkipCharacterPose(withWalk, 'Tara', 'walking')) {
+if (shouldSkipCharacterPose([studioWalk], 'Tara', 'walking')) {
   fail('Tara ist eine andere Figur')
 }
 
 const leftOnly: StoryLibraryAsset[] = [
   {
-    ...julienWalk,
+    ...studioWalk,
     id: 'lib-left',
     tags: ['look-left'],
     headAngleId: 'side-left',
@@ -269,7 +277,7 @@ const board: FilmStoryboard = {
   updatedAt: '2026-01-01',
 }
 
-const rematched = rematchFilmBoard(board, [julienWalk, markt])
+const rematched = rematchFilmBoard(board, [studioWalk, markt])
 const after = rematched.panels[0]
 if (!after) fail('Panel nach dem Abgleich')
 if (after.placements[0]?.match !== 'reuse') fail('Julien (Gehen) muss reuse sein')
@@ -289,19 +297,22 @@ const taraWave: StoryLibraryAsset = {
   type: 'character',
   name: 'Tara',
   imageUrl: 'https://example.com/tara-winken.png',
-  tags: characterHarvestTags('waving'),
+  tags: characterPieceTags('waving'),
   legPoseId: 'standing',
   headAngleId: 'front',
   armPoseId: 'waving',
   createdAt: '2026-01-01',
 }
 
-const full = rematchFilmBoard(board, [julienWalk, taraWave, markt])
+const full = rematchFilmBoard(board, [studioWalk, taraWave, markt])
 if (stillLibraryHintDe(full.panels)) fail('Gelbe Box weg, wenn alles in der Bibliothek liegt')
 if (full.panels[0]?.placements[1]?.match !== 'reuse') fail('Tara (Winken) reuse')
 
-if (matchCharacterPose('Julien', 'walking', [julienWalk]).match !== 'reuse') {
-  fail('Matcher findet geerntetes Julien (Gehen)')
+if (matchCharacterPose('Julien', 'walking', [julienWalk]).match === 'reuse') {
+  fail('Matcher darf Freisteller aus dem Gruppenbild nicht als Stamm-Figur nehmen')
+}
+if (matchCharacterPose('Julien', 'walking', [studioWalk]).match !== 'reuse') {
+  fail('Matcher findet Studio-Julien (Gehen)')
 }
 if (matchBackground('Weihnachtsmarkt', [markt]).match !== 'reuse') {
   fail('Matcher findet geernteten Markt')

@@ -700,7 +700,7 @@ export const api = {
         body: JSON.stringify(input),
       }),
     deleteFromLibrary: (id: string) =>
-      request<{ ok: boolean }>(`/story-library/${id}`, { method: 'DELETE' }),
+      request<{ ok: boolean }>(`/story-library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     listPresets: () =>
       request<{ presets: import('../../shared/scene-presets').ScenePreset[] }>('/story-presets'),
   },
