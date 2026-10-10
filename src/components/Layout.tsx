@@ -8,6 +8,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
   const isSlideshow = location.pathname.includes('/slideshow')
+  const isWideFilmPage =
+    location.pathname.includes('/board') || location.pathname.includes('/export')
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -132,7 +134,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </header>
       )}
-      <main className={isSlideshow ? 'main-full' : 'main'}>{children}</main>
+      <main
+        className={
+          isSlideshow ? 'main-full' : isWideFilmPage ? 'main main--wide-film' : 'main'
+        }
+      >
+        {children}
+      </main>
     </div>
   )
 }

@@ -19,6 +19,8 @@ type Props = {
   onDialogUpdated: (dialog: Dialog) => void
 }
 
+type MobileStep = 'image' | 'text'
+
 export function FilmScenePreviewPlayer({
   dialogId,
   dialog,
@@ -35,6 +37,7 @@ export function FilmScenePreviewPlayer({
   )
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [mobileStep, setMobileStep] = useState<MobileStep>('image')
   const runId = useRef(0)
   const cancelled = useRef(false)
 
@@ -50,6 +53,10 @@ export function FilmScenePreviewPlayer({
     if (index >= beats.length) setIndex(0)
   }, [beats.length, index])
 
+  useEffect(() => {
+    setMobileStep('image')
+  }, [index, scene.id])
+
   if (!hasPicture) return null
 
   const current = beats[index] ?? beats[0]
@@ -57,6 +64,7 @@ export function FilmScenePreviewPlayer({
     ? panels.find((p) => p.id === current.panelId)
     : undefined
   const dialogue = currentPanel ? panelDialogueLines(currentPanel, dialog) : []
+  const hasText = dialogue.length > 0 || Boolean(current?.caption)
 
   const pause = () => {
     cancelled.current = true
@@ -93,41 +101,71 @@ export function FilmScenePreviewPlayer({
 
   return (
     <div className="film-scene-player">
-      <p className="muted film-scene-player-note">
-        <strong>Szene anhören:</strong> Standbilder + Stimme, noch kein Bewegungsfilm.
-      </p>
-      <div className="film-scene-player-frame">
-        {current?.stillUrl ? (
-          <img
-            src={current.stillUrl}
-            alt={current.caption || `Bild ${current.panelIndex}`}
-          />
-        ) : (
-          <div className="film-still-placeholder">Noch kein Bild</div>
-        )}
+      <div className="film-scene-player-top">
+        <p className="muted film-scene-player-note">
+          <strong>Szene anhören:</strong> Standbilder + Stimme. Die Figuren atmen und blinzeln
+          leicht — noch kein Bewegungsfilm.
+        </p>
+        {hasText ? (
+          <div className="film-scene-player-steps" role="tablist" aria-label="Ansicht">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileStep === 'image'}
+              className={`film-scene-step-btn ${mobileStep === 'image' ? 'is-active' : ''}`}
+              onClick={() => setMobileStep('image')}
+            >
+              1 · Bild
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobileStep === 'text'}
+              className={`film-scene-step-btn ${mobileStep === 'text' ? 'is-active' : ''}`}
+              onClick={() => setMobileStep('text')}
+            >
+              2 · Text
+            </button>
+          </div>
+        ) : null}
       </div>
-      <p className="film-scene-player-count">
-        Bild {current?.panelIndex ?? index + 1} von {beats.length}
-        {scene.title ? ` · ${scene.title}` : ''}
-      </p>
-      {dialogue.length > 0 ? (
-        <div className="film-still-dialog">
-          {dialogue.map((line, i) => (
-            <p key={`${line.lineId ?? i}`}>
-              {line.speaker ? <strong>{line.speaker}: </strong> : null}
-              {line.text}
-            </p>
-          ))}
+
+      <div className={`film-scene-player-stage film-scene-player-stage--${mobileStep}`}>
+        <div className="film-scene-player-visual">
+          <div className="film-scene-player-frame">
+            {current?.stillUrl ? (
+              <img
+                src={current.stillUrl}
+                alt={current.caption || `Bild ${current.panelIndex}`}
+              />
+            ) : (
+              <div className="film-still-placeholder">Noch kein Bild</div>
+            )}
+          </div>
+          <p className="film-scene-player-count">
+            Bild {current?.panelIndex ?? index + 1} von {beats.length}
+            {scene.title ? ` · ${scene.title}` : ''}
+          </p>
         </div>
-      ) : current?.caption ? (
-        <p className="film-still-dialog">{current.caption}</p>
-      ) : null}
+
+        <div className="film-scene-player-copy">
+          {dialogue.length > 0 ? (
+            <div className="film-still-dialog film-still-dialog--player">
+              {dialogue.map((line, i) => (
+                <p key={`${line.lineId ?? i}`}>
+                  {line.speaker ? <strong>{line.speaker}: </strong> : null}
+                  {line.text}
+                </p>
+              ))}
+            </div>
+          ) : current?.caption ? (
+            <p className="film-still-dialog film-still-dialog--player">{current.caption}</p>
+          ) : null}
+        </div>
+      </div>
+
       <div className="film-scene-player-controls">
-        <button
-          type="button"
-          className="btn btn-story-studio"
-          onClick={onToggle}
-        >
+        <button type="button" className="btn btn-story-studio" onClick={onToggle}>
           {playing || speaking ? 'Pause' : 'Szene abspielen'}
         </button>
       </div>

@@ -336,18 +336,6 @@ export function FilmStoryboardPage() {
                     <h2>{scene.title}</h2>
                   </label>
                 </header>
-                <textarea
-                  className="input"
-                  rows={2}
-                  defaultValue={scene.noteDe}
-                  placeholder="Zur ganzen Szene: Ort, Stimmung, wer dabei ist …"
-                  disabled={locked}
-                  onBlur={(e) => {
-                    if (e.target.value.trim() !== (scene.noteDe ?? '')) {
-                      void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
-                    }
-                  }}
-                />
                 <FilmScenePreviewPlayer
                   dialogId={dialog.id}
                   dialog={dialog}
@@ -355,6 +343,21 @@ export function FilmStoryboardPage() {
                   panels={panels}
                   onDialogUpdated={setDialog}
                 />
+                <details className="film-scene-note-details">
+                  <summary>Szene-Notiz (Ort, Stimmung …)</summary>
+                  <textarea
+                    className="input film-scene-note"
+                    rows={2}
+                    defaultValue={scene.noteDe}
+                    placeholder="Zur ganzen Szene: Ort, Stimmung, wer dabei ist …"
+                    disabled={locked}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== (scene.noteDe ?? '')) {
+                        void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
+                      }
+                    }}
+                  />
+                </details>
                 <FilmSceneGenerateBar
                   dialogId={dialog.id}
                   scene={scene}
