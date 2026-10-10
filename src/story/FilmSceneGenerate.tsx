@@ -91,8 +91,8 @@ export function FilmSceneGenerateBar({
         </button>
       ) : null}
       <p className="muted film-scene-still-note">
-        Gemini malt vollständige Figuren in den vollständigen Raum — nicht ausgeschnitten.
-        Jedes Bild ein neuer Moment.
+        Zuerst der Raum wie im Dialog, dann Nahaufnahmen der Sprecher (Mund, Augenbrauen) —
+        die Gesichter werden in späteren Szenen wiederverwendet.
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {busy ? (
@@ -123,34 +123,49 @@ export function FilmBeatText({
   fallback,
   targetLanguage,
   sourceLanguage,
+  which = 'both',
 }: {
   lines: FilmPanelDialogueLine[]
   fallback?: string
   targetLanguage?: string
   sourceLanguage?: string
+  which?: 'target' | 'native' | 'both'
 }) {
   const nativeName =
     !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
   if (lines.length === 0) {
+    if (which === 'native') return <p className="muted">Keine Übersetzung</p>
     return fallback ? <p className="film-beat-target">{fallback}</p> : <p className="muted">Kein Text</p>
   }
   return (
     <div className="film-beat-lines">
       {lines.map((line, i) => (
         <div key={line.lineId ?? i} className="film-beat-line">
-          <p
-            className="film-beat-target"
-            dir={isRtlLanguage(targetLanguage ?? '') ? 'rtl' : undefined}
-            lang={targetLanguage}
-          >
-            {line.speaker ? <strong>{line.speaker}: </strong> : null}
-            {line.text}
-          </p>
-          {line.nativeDe ? (
-            <p className="film-beat-de" lang={sourceLanguage || 'de'}>
-              <span className="film-beat-de-label">{nativeName}</span>
-              {line.nativeDe}
+          {which !== 'native' ? (
+            <p
+              className="film-beat-target"
+              dir={isRtlLanguage(targetLanguage ?? '') ? 'rtl' : undefined}
+              lang={targetLanguage}
+            >
+              {line.speaker ? <strong>{line.speaker}: </strong> : null}
+              {line.text}
             </p>
+          ) : null}
+          {which !== 'target' ? (
+            line.nativeDe ? (
+              <p className="film-beat-de" lang={sourceLanguage || 'de'}>
+                {which === 'native' && line.speaker ? <strong>{line.speaker}: </strong> : null}
+                {which !== 'native' ? (
+                  <span className="film-beat-de-label">{nativeName}</span>
+                ) : null}
+                {line.nativeDe}
+              </p>
+            ) : which === 'native' ? (
+              <p className="muted film-beat-de">
+                {line.speaker ? <strong>{line.speaker}: </strong> : null}
+                —
+              </p>
+            ) : null
           ) : null}
         </div>
       ))}
@@ -169,11 +184,16 @@ export function FilmBeatNotes({
   const look = dialog?.storyMeta?.lookNote?.trim()
   return (
     <div className="film-beat-notes-list">
-      {panel.imageCue ? (
+      {panel.shot === 'closeup' ? (
         <p>
-          <strong>Ablauf</strong> {panel.imageCue}
+          <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''}
         </p>
-      ) : null}
+      ) : (
+        <p>
+          <strong>Kamera</strong> Weit — ganzer Raum
+        </p>
+      )}
+      {panel.imageCue ? <p>{panel.imageCue}</p> : null}
       {voices ? (
         <p>
           <strong>Stimmen</strong> {voices}
@@ -228,14 +248,23 @@ export function FilmBeatColumns({
         {picture}
       </div>
       <div className="film-beat-text">
-        <p className="film-beat-col-label">
-          {targetLanguage ? `${targetName} · ${nativeName}` : 'Text'}
-        </p>
+        <p className="film-beat-col-label">{targetLanguage ? targetName : 'Text'}</p>
         <FilmBeatText
           lines={lines}
           fallback={fallback}
           targetLanguage={targetLanguage}
           sourceLanguage={sourceLanguage}
+          which="target"
+        />
+      </div>
+      <div className="film-beat-native">
+        <p className="film-beat-col-label">{nativeName}</p>
+        <FilmBeatText
+          lines={lines}
+          fallback={fallback}
+          targetLanguage={targetLanguage}
+          sourceLanguage={sourceLanguage}
+          which="native"
         />
       </div>
       <aside className="film-beat-notes">

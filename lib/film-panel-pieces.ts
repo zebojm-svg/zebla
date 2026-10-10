@@ -47,11 +47,12 @@ export async function ensurePanelPieces(opts: {
 
   const jobs: Array<Promise<void>> = []
 
-  if (!shouldSkipBackground(compose, roomHint)) {
+  const isCloseup = (opts.panel.shot ?? 'wide') === 'closeup'
+  if (!isCloseup && !shouldSkipBackground(compose, roomHint)) {
     jobs.push(
       (async () => {
         const env = await generateStoryEnvironment(
-          `${roomHint}. Complete empty interior with complete furniture in place, no people, no cropped walls.`,
+          `${roomHint}. ${opts.panel.imageCue || ''}. Complete empty interior matching THIS description (furniture, carpets, table, cushions as written). No people, no leftover generic living room from another story.`,
           roomName,
           styleId as StoryArtStyleId,
         )

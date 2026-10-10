@@ -4,6 +4,7 @@
  */
 import {
   applyDirectorNote,
+  findReusableCloseup,
   inferExpression,
   inferPoseId,
   insertPanelAfter,
@@ -63,6 +64,18 @@ if (flipMatch.match !== 'transform' || !flipMatch.flip) fail('links → rechts s
 
 const bg = matchBackground('Park Bank Herbst', [park])
 if (bg.match !== 'reuse') fail('Park muss gefunden werden')
+const sofa: StoryLibraryAsset = {
+  ...park,
+  id: 'lib-sofa',
+  type: 'environment',
+  name: 'Wohnzimmer',
+  description: 'Wohnzimmer',
+  tags: ['wohnzimmer'],
+  imageUrl: 'https://example.com/sofa.png',
+}
+if (matchBackground('Kissen um einen niedrigen Holztisch, persische Teppiche', [sofa]).match === 'reuse') {
+  fail('Altes Wohnzimmer nicht für einen anderen Dialog-Ort nehmen')
+}
 
 const dialog: Dialog = {
   id: 'd1',
@@ -91,10 +104,20 @@ const dialog: Dialog = {
 }
 
 const board = planBoardWithoutAi(dialog, [julienSit, park])
-if (board.panels.length !== 1) fail('eine Zeile = ein Bild')
+if (board.panels.length !== 2) fail('Szene = Weit + Nahaufnahme je Sprecher')
 const panel = board.panels[0]
+if (panel.shot !== 'wide') fail('erstes Bild ist Weit')
+if (board.panels[1]?.shot !== 'closeup') fail('zweites Bild ist Nahaufnahme')
+if (board.panels[1]?.closeupSpeaker !== 'Julien') fail('Nahaufnahme Julien')
 if (panel.placements[0]?.match !== 'reuse') fail('sitzender Julien aus Bibliothek')
 if (panel.background.match !== 'reuse') fail('Park aus Bibliothek')
+const reusedClose = findReusableCloseup(
+  { ...board, panels: board.panels.map((p, i) => (i === 1 ? { ...p, stillUrl: 'https://example.com/julien-cu.png' } : p)) },
+  'Julien',
+  board.panels[1]?.expressionHint,
+  'other',
+)
+if (reusedClose !== 'https://example.com/julien-cu.png') fail('Nahaufnahme wiederverwenden')
 
 const tweaked = applyDirectorNote(board, panel.id, 'Julien eher im Hintergrund')
 const after = tweaked.panels[0]?.placements[0]
@@ -104,7 +127,7 @@ if (!tweaked.panels[0]?.directorNote) fail('Regie-Notiz speichern')
 if (inferExpression('Julien springt und ruft Juhe') !== 'freut sich') fail('Juhe → freut sich')
 if (!board.scenes.length) fail('Szenen müssen existieren')
 const inserted = insertPanelAfter(board, panel.id, 'Julien springt in die Luft und ruft Juhe', [julienSit, park])
-if (inserted.panels.length !== 2) fail('Zeile einfügen')
+if (inserted.panels.length !== 3) fail('Zeile einfügen')
 if (!inserted.panels[1]?.expressionHint) fail('Ausdruck an neuer Zeile')
 if (inserted.panels[1]?.imageCue !== 'Julien springt in die Luft und ruft Juhe') {
   fail('Eingefügtes Bild trägt die Bild-Notiz')
