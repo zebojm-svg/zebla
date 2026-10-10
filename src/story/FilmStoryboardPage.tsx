@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
-import { FilmPanelDialogue, FilmSceneGenerateBar, FilmStillFixBar } from './FilmSceneGenerate'
+import {
+  FilmBeatColumns,
+  FilmBeatNotes,
+  FilmSceneGenerateBar,
+  FilmStillFixBar,
+} from './FilmSceneGenerate'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { FilmStillPicture } from './FilmStillArrange'
 import { useSceneStills } from './generateSceneStills'
@@ -11,6 +16,7 @@ import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-stor
 import {
   boardNeedsDrawing,
   normalizeFilmStoryboard,
+  panelDialogueLines,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
 
@@ -53,66 +59,50 @@ function PanelCard({
           <p className="film-expression">Gesicht: {panel.expressionHint}</p>
         ) : null}
       </header>
-      {panel.stillUrl || panel.background.imageUrl ? (
-        <div className="film-panel-still">
-          <FilmStillPicture
-            dialogId={dialog.id}
-            panel={panel}
-            interactive
-            onUpdated={onLayout}
-          />
-          {panel.harvestNoteDe ? (
-            <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
-          ) : null}
-          <FilmPanelDialogue panel={panel} dialog={dialog} />
-        </div>
-      ) : (
-        <div
-          className="film-panel-stage"
-          style={{
-            backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
-          }}
-        >
-          {!bg.imageUrl && <p className="film-panel-empty">Hintergrund fehlt</p>}
-          {panel.placements.map((pl) => (
+      <FilmBeatColumns
+        picture={
+          panel.stillUrl || panel.background.imageUrl ? (
+            <FilmStillPicture
+              dialogId={dialog.id}
+              panel={panel}
+              interactive={false}
+              onUpdated={onLayout}
+            />
+          ) : (
             <div
-              key={`${pl.name}-${pl.poseId}-${pl.x}`}
-              className={`film-cutout film-depth-${pl.depth}`}
+              className="film-panel-stage"
               style={{
-                left: `${pl.x}%`,
-                transform: `translateX(-50%) scale(${pl.scale})${pl.flip ? ' scaleX(-1)' : ''}`,
+                backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
               }}
             >
-              {pl.imageUrl ? (
-                <img src={pl.imageUrl} alt={pl.name} />
-              ) : (
-                <span className="film-cutout-ph">{pl.name}</span>
-              )}
+              {!bg.imageUrl && <p className="film-panel-empty">Noch kein Bild</p>}
             </div>
-          ))}
-        </div>
-      )}
-      {!panel.stillUrl ? <FilmPanelDialogue panel={panel} dialog={dialog} /> : null}
-      {panel.sketchUrl ? (
-        <div className="film-sketch-wrap">
-          <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
-          <p className="muted">Skizze (in der Bibliothek gespeichert)</p>
-        </div>
-      ) : null}
-      <div className="film-matches">
-        {panel.placements.map((pl) => (
-          <span
-            key={`${pl.name}-m-${pl.poseId}`}
-            className={`film-match ${matchClass(pl.match)}`}
-            title={pl.matchNoteDe}
-          >
-            {pl.name}
-          </span>
-        ))}
-        <span className={`film-match ${matchClass(bg.match)}`} title={bg.matchNoteDe}>
-          Raum
-        </span>
-      </div>
+          )
+        }
+        lines={panelDialogueLines(panel, dialog)}
+        fallback={panel.caption}
+        targetLanguage={dialog.targetLanguage}
+        sourceLanguage={dialog.sourceLanguage}
+        notes={
+          <>
+            <FilmBeatNotes panel={panel} dialog={dialog} />
+            <div className="film-matches">
+              {panel.placements.map((pl) => (
+                <span
+                  key={`${pl.name}-m-${pl.poseId}`}
+                  className={`film-match ${matchClass(pl.match)}`}
+                  title={pl.matchNoteDe}
+                >
+                  {pl.name}
+                </span>
+              ))}
+              <span className={`film-match ${matchClass(bg.match)}`} title={bg.matchNoteDe}>
+                Raum
+              </span>
+            </div>
+          </>
+        }
+      />
       <div className="film-tweak">
         <input
           className="input"

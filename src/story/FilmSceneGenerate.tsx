@@ -1,12 +1,16 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   STORY_ART_STYLES,
   type StoryArtStyleId,
 } from '../../shared/story-art-styles'
 import type { Dialog } from '../types'
+import { isRtlLanguage, languageName } from '../types'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
-import { panelDialogueLines } from '../../shared/film-storyboard'
+import {
+  panelDialogueLines,
+  type FilmPanelDialogueLine,
+} from '../../shared/film-storyboard'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
 import { sceneStillProgress, stillLibraryHintDe } from '../../shared/film-stills'
 import { FilmStillPicture } from './FilmStillArrange'
@@ -87,7 +91,7 @@ export function FilmSceneGenerateBar({
         </button>
       ) : null}
       <p className="muted film-scene-still-note">
-        Einzeln erzeugen, dann legen.
+        Vollständiger Raum, vollständige Figuren — die KI malt jeden Moment neu.
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {busy ? (
@@ -113,6 +117,122 @@ export function FilmSceneGenerateBar({
   )
 }
 
+export function FilmBeatText({
+  lines,
+  fallback,
+  targetLanguage,
+  sourceLanguage,
+}: {
+  lines: FilmPanelDialogueLine[]
+  fallback?: string
+  targetLanguage?: string
+  sourceLanguage?: string
+}) {
+  const nativeName =
+    !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
+  if (lines.length === 0) {
+    return fallback ? <p className="film-beat-target">{fallback}</p> : <p className="muted">Kein Text</p>
+  }
+  return (
+    <div className="film-beat-lines">
+      {lines.map((line, i) => (
+        <div key={line.lineId ?? i} className="film-beat-line">
+          <p
+            className="film-beat-target"
+            dir={isRtlLanguage(targetLanguage ?? '') ? 'rtl' : undefined}
+            lang={targetLanguage}
+          >
+            {line.speaker ? <strong>{line.speaker}: </strong> : null}
+            {line.text}
+          </p>
+          {line.nativeDe ? (
+            <p className="film-beat-de" lang={sourceLanguage || 'de'}>
+              <span className="film-beat-de-label">{nativeName}</span>
+              {line.nativeDe}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function FilmBeatNotes({
+  panel,
+  dialog,
+}: {
+  panel: FilmStoryboardPanel
+  dialog?: Dialog | null
+}) {
+  const voices = dialog?.storyMeta?.voicesNote?.trim()
+  const look = dialog?.storyMeta?.lookNote?.trim()
+  return (
+    <div className="film-beat-notes-list">
+      {panel.imageCue ? (
+        <p>
+          <strong>Ablauf</strong> {panel.imageCue}
+        </p>
+      ) : null}
+      {voices ? (
+        <p>
+          <strong>Stimmen</strong> {voices}
+        </p>
+      ) : null}
+      {panel.speechCue ? (
+        <p>
+          <strong>Sprache</strong> {panel.speechCue}
+        </p>
+      ) : null}
+      {panel.soundCue ? (
+        <p>
+          <strong>Ton</strong> {panel.soundCue}
+        </p>
+      ) : null}
+      {look ? (
+        <p>
+          <strong>Blick</strong> {look}
+        </p>
+      ) : null}
+      {panel.expressionHint ? (
+        <p>
+          <strong>Gesicht</strong> {panel.expressionHint}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+export function FilmBeatColumns({
+  picture,
+  lines,
+  fallback,
+  notes,
+  targetLanguage,
+  sourceLanguage,
+}: {
+  picture: ReactNode
+  lines: FilmPanelDialogueLine[]
+  fallback?: string
+  notes: ReactNode
+  targetLanguage?: string
+  sourceLanguage?: string
+}) {
+  return (
+    <div className="film-beat">
+      <div className="film-beat-pic">{picture}</div>
+      <div className="film-beat-text">
+        <FilmBeatText
+          lines={lines}
+          fallback={fallback}
+          targetLanguage={targetLanguage}
+          sourceLanguage={sourceLanguage}
+        />
+      </div>
+      <aside className="film-beat-notes">{notes}</aside>
+    </div>
+  )
+}
+
 export function FilmPanelDialogue({
   panel,
   dialog,
@@ -122,27 +242,12 @@ export function FilmPanelDialogue({
 }) {
   const lines = panelDialogueLines(panel, dialog)
   return (
-    <div className="film-still-under">
-      {lines.length > 0 ? (
-        <div className="film-still-dialog">
-          {lines.map((line, i) => (
-            <p key={line.lineId ?? `${panel.id}-${i}`}>
-              {line.speaker ? <strong>{line.speaker}: </strong> : null}
-              {line.text}
-            </p>
-          ))}
-        </div>
-      ) : panel.caption ? (
-        <p className="film-still-dialog">{panel.caption}</p>
-      ) : null}
-      {panel.imageCue || panel.soundCue || panel.speechCue ? (
-        <ul className="film-cues film-cues-muted">
-          {panel.imageCue ? <li>Bild: {panel.imageCue}</li> : null}
-          {panel.soundCue ? <li>Ton: {panel.soundCue}</li> : null}
-          {panel.speechCue ? <li>Sprache: {panel.speechCue}</li> : null}
-        </ul>
-      ) : null}
-    </div>
+    <FilmBeatText
+      lines={lines}
+      fallback={panel.caption}
+      targetLanguage={dialog?.targetLanguage}
+      sourceLanguage={dialog?.sourceLanguage}
+    />
   )
 }
 

@@ -18,21 +18,16 @@ import {
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
-import { harvestFilmStillToLibrary } from './film-library-harvest.js'
 import { rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelLayout,
-  panelCanArrange,
   type ArrangeLayerUpdate,
 } from '../shared/film-still-arrange.js'
 import { ensurePanelPieces } from './film-panel-pieces.js'
-import { applySensibleLayoutToBoard } from './film-sensible-layout.js'
-import { uploadComposedStill } from './film-panel-compose.js'
 import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
-  previousStillUrlInScene,
 } from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
@@ -374,6 +369,9 @@ export async function stillFilmPanel(
   }
 
   try {
+    let boardForGen = working
+    let panelForGen = panel
+    let pieceNote = ''
     if (!correction) {
       try {
         const library0 = await listStoryAssets(userId)
@@ -384,64 +382,31 @@ export async function stillFilmPanel(
           styleId: resolvedStyle,
           library: library0,
         })
-        let laid = rematchFilmBoard(working, pieces.library)
-        const ready = laid.panels.find((p) => p.id === panelId)
-        if (ready && panelCanArrange(ready)) {
-          laid = await applySensibleLayoutToBoard(laid, ready, scene)
-          const placed = laid.panels.find((p) => p.id === panelId)
-          if (placed) {
-            let withStill = laid
-            try {
-              const url = await uploadComposedStill(placed)
-              withStill = applyPanelStill(laid, panelId, url, resolvedStyle)
-            } catch {
-              /* Lagen sind da — die Seite zeigt sie auch ohne gerendertes Standbild. */
-            }
-            const withNote = applyPanelHarvestNote(
-              withStill,
-              panelId,
-              `${pieces.noteDe} Dann sinnvoll auf den Raum gelegt.`,
-            )
-            const updated = await persist(withNote)
-            return { dialog: updated, board: withNote }
-          }
-        }
+        pieceNote = pieces.noteDe
+        boardForGen = rematchFilmBoard(working, pieces.library)
+        panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
       } catch {
-        /* Gruppenbild als Reserve, wenn Raum oder Figuren fehlen. */
+        /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
     }
     const url = await generateFilmPanelStillImage({
-      panel,
+      panel: panelForGen,
       scene,
       styleId: resolvedStyle,
-      previousStillUrl: previousStillUrlInScene(working, panel),
+      previousStillUrl: undefined,
       correctFromUrl,
       targetLanguage,
     })
-    const withStill = applyPanelStill(working, panelId, url, resolvedStyle)
-    const savedStill = await persist(withStill)
-    try {
-      const harvest = await harvestFilmStillToLibrary({
-        userId,
-        panel,
-        stillUrl: url,
-        scene,
-      })
-      const rematched = rematchFilmBoard(withStill, harvest.library)
-      const withHarvest = applyPanelHarvestNote(rematched, panelId, harvest.noteDe)
-      const updated = await persist(withHarvest)
-      return { dialog: updated, board: withHarvest }
-    } catch {
-      const failNote =
-        'Das Standbild ist da, aber Figuren und Hintergrund konnten nicht in die Bibliothek gelegt werden.'
-      const withNote = applyPanelHarvestNote(withStill, panelId, failNote)
-      try {
-        const updated = await persist(withNote)
-        return { dialog: updated, board: withNote }
-      } catch {
-        return { dialog: savedStill, board: withStill }
-      }
-    }
+    const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+    const withNote = applyPanelHarvestNote(
+      withStill,
+      panelId,
+      pieceNote
+        ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+        : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+    )
+    const updated = await persist(withNote)
+    return { dialog: updated, board: withNote }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
     const failed = applyPanelStillError(working, panelId, message)

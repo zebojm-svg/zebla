@@ -8,6 +8,7 @@ import {
 } from '../../shared/film-storyboard'
 import { panelCanArrange } from '../../shared/film-still-arrange'
 import { FilmStillPicture } from './FilmStillArrange'
+import { FilmBeatColumns, FilmBeatNotes } from './FilmSceneGenerate'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -95,32 +96,30 @@ export function FilmScenePreviewPlayer({
 
   return (
     <div className="film-scene-player">
-      <p className="muted film-scene-player-note">
-        <strong>Szene anhören:</strong> das gemalte Standbild + Stimme — noch kein Bewegungsfilm.
-      </p>
-      <div className="film-scene-player-frame">
-        {currentPanel && (panelCanArrange(currentPanel) || currentPanel.stillUrl) ? (
-          <FilmStillPicture dialogId={dialogId} panel={currentPanel} interactive={false} />
-        ) : (
-          <div className="film-still-placeholder">Noch kein Bild</div>
-        )}
-      </div>
-      <p className="film-scene-player-count">
-        Bild {index + 1} von {beats.length}
-        {scene.title ? ` · ${scene.title}` : ''}
-      </p>
-      {dialogue.length > 0 ? (
-        <div className="film-still-dialog">
-          {dialogue.map((line, i) => (
-            <p key={`${line.lineId ?? i}`}>
-              {line.speaker ? <strong>{line.speaker}: </strong> : null}
-              {line.text}
-            </p>
-          ))}
-        </div>
-      ) : current?.caption ? (
-        <p className="film-still-dialog">{current.caption}</p>
-      ) : null}
+      <FilmBeatColumns
+        picture={
+          currentPanel && (panelCanArrange(currentPanel) || currentPanel.stillUrl) ? (
+            <FilmStillPicture dialogId={dialogId} panel={currentPanel} interactive={false} />
+          ) : (
+            <div className="film-still-placeholder">Noch kein Bild</div>
+          )
+        }
+        lines={dialogue}
+        fallback={current?.caption}
+        targetLanguage={dialog.targetLanguage}
+        sourceLanguage={dialog.sourceLanguage}
+        notes={
+          currentPanel ? (
+            <>
+              <p className="film-beat-count">
+                Bild {index + 1} von {beats.length}
+                {scene.title ? ` · ${scene.title}` : ''}
+              </p>
+              <FilmBeatNotes panel={currentPanel} dialog={dialog} />
+            </>
+          ) : null
+        }
+      />
       <div className="film-scene-player-controls">
         <button
           type="button"

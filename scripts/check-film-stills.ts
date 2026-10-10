@@ -71,7 +71,13 @@ const dialog: Dialog = {
       id: 's1',
       title: 'La Chasse aux Cadeaux',
       lines: [
-        { id: 'l1', speaker: 'Julien', text: 'Ein Geschenk!', cueImage: 'Julien steht im Park' },
+        {
+          id: 'l1',
+          speaker: 'Julien',
+          text: 'Ein Geschenk!',
+          cueImage: 'Julien steht im Park',
+          birkenbihl: [{ text: 'Ein Geschenk!', translation: 'Un cadeau !' }],
+        },
         { id: 'l2', speaker: 'Julien', text: 'Ich winke.', cueImage: 'Julien winkt' },
       ],
     },
@@ -125,8 +131,11 @@ if (!prompt.includes('Ignore any earlier')) {
 if (!prompt.includes('Bratwurst') || !prompt.includes('Glühwein')) {
   fail('Prompt muss deutsche Stand-Schilder (Bratwurst/Glühwein) verbieten')
 }
-if (!prompt.toLowerCase().includes('collage') && !prompt.toLowerCase().includes('cut-out')) {
+if (!prompt.toLowerCase().includes('collage') && !prompt.toLowerCase().includes('cut-out') && !prompt.toLowerCase().includes('into that exact room')) {
   fail('Prompt muss Collage/Freisteller-Kleben verbieten')
+}
+if (!prompt.toLowerCase().includes('different') && !prompt.toLowerCase().includes('must look different')) {
+  fail('Jedes Bild muss ein neuer Moment sein')
 }
 if (!prompt.toLowerCase().includes('hips on the seat')) {
   fail('Prompt muss Sitzen auf dem Möbel verlangen, nicht davor kleben')
@@ -149,8 +158,11 @@ const refs = referenceUrlsForPanel(s1[0]!)
 if (!refs.includes('https://example.com/julien.png')) fail('Julien-Foto aus Bibliothek als Vorlage')
 if (!refs.includes('https://example.com/park.png')) fail('Park als Vorlage')
 const sceneRefs = referenceUrlsForPanel(s1[0]!, 'https://example.com/prev.png')
-if (sceneRefs[0] !== 'https://example.com/prev.png') {
-  fail('Nächstes Bild: zuerst das vorige Standbild, nicht die Freisteller')
+if (sceneRefs[0] === 'https://example.com/prev.png') {
+  fail('Nicht das vorige Standbild als Vorlage — sonst werden alle Bilder gleich')
+}
+if (sceneRefs[0] !== 'https://example.com/park.png') {
+  fail('Zuerst der vollständige Raum, dann die Figuren')
 }
 
 const fixRefs = referenceUrlsForPanel(
@@ -211,6 +223,9 @@ if (!timeoutDe.includes('Diese Szene erzeugen')) fail('Timeout-Text nennt den Kn
 const talk = panelDialogueLines(s1[0]!, dialog)
 if (!talk.some((l) => l.speaker === 'Julien' && l.text.includes('Geschenk'))) {
   fail('Unter dem Bild muss der Dialog stehen (Sprecher + Text)')
+}
+if (!talk.some((l) => l.nativeDe?.includes('cadeau'))) {
+  fail('Unter der Zielsprache die Übersetzung zeigen')
 }
 const spoken = panelSpeakLines(s1[0]!, dialog)
 if (!spoken[0]?.text) fail('Szene abspielen braucht den gesprochenen Text')

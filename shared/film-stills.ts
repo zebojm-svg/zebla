@@ -100,10 +100,13 @@ export function filmStillLanguageEn(code?: string): string {
   return FILM_STILL_LANGUAGE_EN[code.trim().slice(0, 2).toLowerCase()] ?? code.trim()
 }
 
-/** Fotos aus der Bibliothek (Figuren zuerst), plus letztes Standbild derselben Szene. */
+/**
+ * Vollständiger Raum + vollständige Figuren. Kein voriges Standbild —
+ * sonst kopiert die KI dasselbe Wohnzimmer zehnmal.
+ */
 export function referenceUrlsForPanel(
   panel: FilmStoryboardPanel,
-  previousStillUrl?: string,
+  _previousStillUrl?: string,
   correctFromUrl?: string,
 ): string[] {
   const people: string[] = []
@@ -117,9 +120,9 @@ export function referenceUrlsForPanel(
   const ordered = (
     correctFromUrl
       ? [correctFromUrl, ...people, bg]
-      : [previousStillUrl, ...people, bg]
+      : [bg, ...people]
   ).filter((u): u is string => Boolean(u && u.startsWith('http')))
-  return [...new Set(ordered)].slice(0, 3)
+  return [...new Set(ordered)].slice(0, 4)
 }
 
 export function previousStillUrlInScene(
@@ -185,6 +188,8 @@ export function buildFilmStillPrompt(opts: {
   directorNote?: string
   stillCorrection?: string
   correctingExisting?: boolean
+  spokenLine?: string
+  beatIndex?: number
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -192,8 +197,8 @@ export function buildFilmStillPrompt(opts: {
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const lock = opts.hasLibraryRefs
-    ? `${STORY_STILLS_LOCK_PROMPT} Use the attached photos as these exact people and (if present) the place. Compose ONE finished still. Pose and expression may change to match the action.`
-    : 'Draw the people as described. Keep them consistent if names are given.'
+    ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are COMPLETE assets: an EMPTY ROOM with complete furniture, and COMPLETE people (full body, not cropped from a group shot). PAINT those exact people INTO that exact room. Sit them IN the furniture. Same camera as the room photo. Do not cut anyone out of a scene. Do not collage or paste sprites.`
+    : 'Draw a complete room with complete furniture and complete people, then place the people into the room.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
       ? `Never write German on signs, stalls, posters or paper (no Bratwurst, Glühwein, German menus). Use ${langEn} instead (e.g. French: saucisse, vin chaud).`
@@ -201,7 +206,10 @@ export function buildFilmStillPrompt(opts: {
 
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
-    `Paint ONE coherent illustration. Do not collage, do not paste cut-out sprites onto a room, no dashed selection boxes, no UI overlays on people.`,
+    `Paint ONE coherent illustration. Fill the complete room with complete furniture and complete figures. Do not collage, do not paste cut-out sprites, no dashed boxes, no ghost people, no extra limbs.`,
+    opts.correctingExisting
+      ? ''
+      : `This is moment ${opts.beatIndex ?? ''} of a sequence. It MUST look different from other frames: who speaks, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     lock,
     opts.correctingExisting
@@ -210,7 +218,8 @@ export function buildFilmStillPrompt(opts: {
     `Scene title: ${opts.sceneTitle || 'Scene'}.`,
     `Place: ${opts.settingHint || 'as implied'}.`,
     `Action / caption: ${opts.caption}.`,
-    opts.imageCue ? `What we see: ${opts.imageCue}.` : '',
+    opts.spokenLine ? `Spoken in this moment: ${opts.spokenLine}.` : '',
+    opts.imageCue ? `What we see in THIS frame only: ${opts.imageCue}.` : '',
     `Faces: ${opts.expressionHint || 'natural'}.`,
     people ? `People in frame: ${people}.` : '',
     poses ? `Poses: ${poses}.` : '',
