@@ -5,26 +5,30 @@
 import {
   applyPanelStill,
   buildFilmStillPrompt,
+  closeupGenderLine,
   filmStillLanguageEn,
   panelsForScene,
   panelsNeedingStills,
   previousStillUrlInScene,
   referenceUrlsForPanel,
   sceneStillProgress,
+  sceneWideStillUrl,
   stillLibraryHintDe,
   stillTimeoutHintDe,
 } from '../shared/film-stills.ts'
-import {
-  panelDialogueLines,
-  panelSpeakLines,
-  scenePreviewBeats,
-} from '../shared/film-storyboard.ts'
-import { isImageGenPath } from '../shared/api-timeout.ts'
+import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
 import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
+  panelDialogueLines,
+  panelSpeakLines,
   planBoardWithoutAi,
+  scenePlayBeats,
+  scenePreviewBeats,
 } from '../shared/film-storyboard.ts'
+import { closeupCropBox, seatSideFromX } from '../shared/film-closeup-space.ts'
+import { lookForCharacterName } from '../shared/story-character-looks.ts'
+import { isImageGenPath } from '../shared/api-timeout.ts'
 import type { Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
@@ -154,9 +158,55 @@ const closePrompt = buildFilmStillPrompt({
   shot: 'closeup',
   closeupSpeaker: 'Khan',
   names: ['Khan'],
+  speakerGender: 'male',
 })
 if (!closePrompt.toLowerCase().includes('close-up')) fail('Nahaufnahme muss Close-up verlangen')
 if (!closePrompt.toLowerCase().includes('eyebrows')) fail('Nahaufnahme zeigt Augenbrauen')
+if (!closePrompt.toLowerCase().includes('head and shoulders')) fail('Nahaufnahme ist Kopf und Schultern')
+if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase().includes('floating')) {
+  fail('Nahaufnahme darf kein Freisteller-Torso sein')
+}
+if (!closePrompt.toLowerCase().includes('zoom') && !closePrompt.toLowerCase().includes('push-in')) {
+  fail('Nahaufnahme zoomt in die Übersicht')
+}
+if (!closePrompt.toLowerCase().includes('same table') && !closePrompt.toLowerCase().includes('same seat')) {
+  fail('Nahaufnahme bleibt am selben Tisch')
+}
+if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
+  fail('Nahaufnahme verlangt undurchsichtige Augen')
+}
+if (closePrompt.toLowerCase().includes('bokeh') || closePrompt.toLowerCase().includes('out-of-focus')) {
+  fail('Nahaufnahme darf keinen unscharfen Studio-Hintergrund verlangen')
+}
+if (!closePrompt.toLowerCase().includes('this speaker is male')) fail('Khan bleibt männlich')
+const schoemePrompt = buildFilmStillPrompt({
+  caption: 'Schöme spricht',
+  imageCue: 'Nahaufnahme Schöme',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  shot: 'closeup',
+  closeupSpeaker: 'Schöme',
+  names: ['Schöme'],
+})
+if (!schoemePrompt.toLowerCase().includes('boy into a girl')) {
+  fail('Ohne Geschlechtsangabe: nicht aus dem Namen ein Mädchen machen')
+}
+if (!closePrompt.toLowerCase().includes('3d room') && !closePrompt.toLowerCase().includes('behind this person')) {
+  fail('Nahaufnahme kennt den Platz im Raum')
+}
+const schoemeBoy = buildFilmStillPrompt({
+  caption: 'Schöme spricht',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  shot: 'closeup',
+  closeupSpeaker: 'Schöme',
+  names: ['Schöme'],
+  speakerGender: 'male',
+  speakerX: 22,
+  settingHint: 'Küche, Tisch',
+})
+if (!schoemeBoy.toLowerCase().includes('this speaker is male')) fail('Schöme-Prompt: Junge')
+if (!schoemeBoy.toLowerCase().includes('left')) fail('Schöme sitzt links im Raum')
 const mimicPrompt = buildFilmStillPrompt({
   caption: 'Khan lacht',
   shot: 'closeup',
@@ -201,6 +251,29 @@ const fixRefs = referenceUrlsForPanel(
 )
 if (fixRefs[0] !== 'https://example.com/this-still.png') {
   fail('Beim Korrigieren zuerst das aktuelle Standbild')
+}
+
+const closePanel = s1.find((p) => p.shot === 'closeup')
+if (!closePanel) fail('Szene braucht eine Nahaufnahme')
+const cuWithBg = {
+  ...closePanel,
+  placements: [{ ...closePanel.placements[0]!, imageUrl: 'https://example.com/julien.png' }],
+  background: { ...closePanel.background, imageUrl: 'https://example.com/park.png', match: 'reuse' as const },
+}
+const cuRefs = referenceUrlsForPanel(
+  cuWithBg,
+  undefined,
+  undefined,
+  'https://example.com/wide.png',
+)
+if (cuRefs[0] !== 'https://example.com/wide.png') fail('Nahaufnahme zoomt zuerst in die Übersicht')
+if (cuRefs.includes('https://example.com/park.png')) {
+  fail('Nahaufnahme hängt nicht den ganzen Raum als Vorlage an')
+}
+if (!cuRefs.includes('https://example.com/julien.png')) fail('Nahaufnahme braucht das Stamm-Gesicht')
+const withWide = applyPanelStill(board, s1[0]!.id, 'https://example.com/wide.png', 'illustration-lebendig')
+if (sceneWideStillUrl(withWide, closePanel) !== 'https://example.com/wide.png') {
+  fail('Weit-Bild der Szene für die Nahaufnahme finden')
 }
 
 if (scene2Id) {
@@ -288,5 +361,34 @@ const replayedPanel = replayed.panels.find((p) => p.id === s1[0]!.id)
 if (replayedPanel?.stillCorrection !== 'Stand auf Französisch') {
   fail('Korrektur-Notiz muss beim Neu-Planen bleiben')
 }
+
+if (guessSpeakerGenderFromName('Schöme', 2) !== 'male') fail('Schöme ist ein Junge, kein Mädchen')
+if (guessSpeakerGenderFromName('Shome', 0) !== 'male') fail('Shome = Schöme, männlich')
+if (guessSpeakerGenderFromName('Khan', 0) !== 'male') fail('Khan ist männlich')
+if (genderFromKnownName('Schöme') !== 'male') fail('Schöme ohne Index ist männlich')
+if (genderFromKnownName('Xyzzy') !== undefined) fail('Unbekannter Name: Geschlecht nicht raten')
+if (!lookForCharacterName('Schöme')?.identityLock.toLowerCase().includes('boy')) {
+  fail('Schöme-Look sperrt den Jungen')
+}
+if (!lookForCharacterName('Shome')?.identityLock.toLowerCase().includes('boy')) {
+  fail('Shome findet denselben Schöme-Look')
+}
+if (seatSideFromX(20) !== 'left' || seatSideFromX(80) !== 'right') fail('Platz links/rechts')
+const leftBox = closeupCropBox(1920, 1080, 18, true)
+const rightBox = closeupCropBox(1920, 1080, 82, true)
+if (leftBox.left >= rightBox.left) fail('Zoom-Fenster folgt der Person')
+if (Math.abs(leftBox.width / leftBox.height - 16 / 9) > 0.08) fail('Zoom bleibt 16:9')
+if (!closeupGenderLine().toLowerCase().includes('boy into a girl')) {
+  fail('Ohne Angabe nicht das Geschlecht aus dem Namen raten')
+}
+
+const playQuiet = scenePlayBeats(s1, dialog)
+if (playQuiet.some((b) => b.establishing)) fail('Ohne Weit-Bild keine stille Raumaufnahme')
+if (playQuiet.filter((b) => !b.establishing).length !== 2) {
+  fail('Abspielen: eine Takt pro Dialogzeile, nicht den ganzen Block')
+}
+const playWithRoom = scenePlayBeats(panelsForScene(withStill, scene1.id), dialog)
+if (!playWithRoom[0]?.establishing) fail('Zuerst den Raum anschauen')
+if (playWithRoom.filter((b) => !b.establishing).length !== 2) fail('dann die Zeilen nacheinander')
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Sprache, Vorschau')

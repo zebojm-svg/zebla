@@ -23,23 +23,28 @@ import {
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
+import { identityReferenceUrl } from '../shared/library-identities.js'
+import {
+  applyPanelHarvestNote,
+  applyPanelStill,
+  applyPanelStillError,
+  sceneWidePanel,
+  sceneWideStillUrl,
+} from '../shared/film-stills.js'
 import {
   applyPanelLayout,
   type ArrangeLayerUpdate,
 } from '../shared/film-still-arrange.js'
 import { ensurePanelPieces } from './film-panel-pieces.js'
-import {
-  applyPanelHarvestNote,
-  applyPanelStill,
-  applyPanelStillError,
-} from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
+import { speakerGender } from '../shared/speakers.js'
+import { genderFromKnownName } from './speaker-gender.js'
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
 Nur JSON.
 Pro Szene/Abschnitt PFLICHT:
 1. Genau EIN Bild shot="wide": ganzer Raum, ALLE Personen, Einrichtung GENAU wie der Dialog (Teppich, Tisch, Kissen …). Nicht ein beliebiges altes Wohnzimmer.
-2. Danach genau EIN Bild shot="closeup" je Sprecher, der in der Szene spricht: Nahaufnahme Gesicht (Mund, Augenbrauen). Nur diese eine Person.
+2. Danach genau EIN Bild shot="closeup" je Sprecher: Kamera näher an DIESELBE Person im Weit-Bild (gleicher Tisch, gleiches Geschlecht, scharfe Augen). Kein neues Studio-Porträt.
 Nahaufnahmen derselben Person dürfen in späteren Szenen wiederverwendet werden — also nicht extra erfinden, wenn die Mimik gleich bleibt.
 Schema:
 {
@@ -423,6 +428,20 @@ export async function stillFilmPanel(
         pieceNote = pieces.noteDe
         boardForGen = rematchFilmBoard(working, libraryForCompose(pieces.library))
         panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
+        if ((panelForGen.shot ?? 'wide') === 'closeup') {
+          const who = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
+          const face = identityReferenceUrl(pieces.library, who)
+          if (face) {
+            panelForGen = {
+              ...panelForGen,
+              placements: panelForGen.placements.map((pl, i) =>
+                i === 0 || pl.name.trim().toLowerCase() === who.trim().toLowerCase()
+                  ? { ...pl, imageUrl: face }
+                  : pl,
+              ),
+            }
+          }
+        }
       } catch {
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
@@ -456,6 +475,11 @@ export async function stillFilmPanel(
         correctFromUrl = base.stillUrl
       }
     }
+    const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
+    const wide = (panelForGen.shot ?? 'wide') === 'closeup' ? sceneWidePanel(boardForGen, panelForGen) : undefined
+    const whoOnWide = wide?.placements.find(
+      (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
+    )
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -464,14 +488,25 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
       beatTotal,
+      sceneWideStillUrl: wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen),
+      speakerGender:
+        (panelForGen.shot ?? 'wide') === 'closeup'
+          ? speakerGender(dialog, speaker) ?? genderFromKnownName(speaker)
+          : undefined,
+      speakerX: whoOnWide?.x,
+      speakerSitting: whoOnWide
+        ? whoOnWide.poseId === 'sitting' || /sit/i.test(whoOnWide.poseHint || '')
+        : true,
     })
     const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
-      pieceNote
-        ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
-        : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+      (panelForGen.shot ?? 'wide') === 'closeup'
+        ? `Nahaufnahme ${speaker}: Kamera näher an dieselbe Person in der Übersicht — gleicher Platz, scharfe Augen.`
+        : pieceNote
+          ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+          : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
     )
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }

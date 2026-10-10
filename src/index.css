@@ -3770,7 +3770,58 @@ html[dir='rtl'] .slideshow-topbar {
 }
 
 .film-scene-player-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.7rem;
+}
+
+.film-scene-player-voice {
+  margin: 0 0 0.55rem;
+}
+
+.film-play-now {
+  margin: 0.55rem 0 0.2rem;
+}
+
+.film-play-now-speaker {
+  margin: 0;
+  font-weight: 800;
+  color: #0f766e;
+}
+
+.film-play-now-target {
+  margin: 0.2rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.film-play-now-de {
+  margin: 0.25rem 0 0;
+  font-size: 1.12rem;
+  line-height: 1.4;
+}
+
+.film-play-list {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  max-height: 11rem;
+  overflow: auto;
+}
+
+.film-play-list li {
+  padding: 0.28rem 0.45rem;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.film-play-list li.is-now {
+  background: #ccfbf1;
+  color: #134e4a;
+  font-weight: 700;
 }
 
 .film-panel-still {
