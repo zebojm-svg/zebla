@@ -16,18 +16,19 @@ import {
   stillLibraryHintDe,
   stillTimeoutHintDe,
 } from '../shared/film-stills.ts'
-import { guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
-import {
-  panelDialogueLines,
-  panelSpeakLines,
-  scenePreviewBeats,
-} from '../shared/film-storyboard.ts'
-import { isImageGenPath } from '../shared/api-timeout.ts'
+import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
 import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
+  panelDialogueLines,
+  panelSpeakLines,
   planBoardWithoutAi,
+  scenePlayBeats,
+  scenePreviewBeats,
 } from '../shared/film-storyboard.ts'
+import { closeupCropBox, seatSideFromX } from '../shared/film-closeup-space.ts'
+import { lookForCharacterName } from '../shared/story-character-looks.ts'
+import { isImageGenPath } from '../shared/api-timeout.ts'
 import type { Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
@@ -190,6 +191,22 @@ const schoemePrompt = buildFilmStillPrompt({
 if (!schoemePrompt.toLowerCase().includes('boy into a girl')) {
   fail('Ohne Geschlechtsangabe: nicht aus dem Namen ein Mädchen machen')
 }
+if (!closePrompt.toLowerCase().includes('3d room') && !closePrompt.toLowerCase().includes('behind this person')) {
+  fail('Nahaufnahme kennt den Platz im Raum')
+}
+const schoemeBoy = buildFilmStillPrompt({
+  caption: 'Schöme spricht',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  shot: 'closeup',
+  closeupSpeaker: 'Schöme',
+  names: ['Schöme'],
+  speakerGender: 'male',
+  speakerX: 22,
+  settingHint: 'Küche, Tisch',
+})
+if (!schoemeBoy.toLowerCase().includes('this speaker is male')) fail('Schöme-Prompt: Junge')
+if (!schoemeBoy.toLowerCase().includes('left')) fail('Schöme sitzt links im Raum')
 const mimicPrompt = buildFilmStillPrompt({
   caption: 'Khan lacht',
   shot: 'closeup',
@@ -348,8 +365,30 @@ if (replayedPanel?.stillCorrection !== 'Stand auf Französisch') {
 if (guessSpeakerGenderFromName('Schöme', 2) !== 'male') fail('Schöme ist ein Junge, kein Mädchen')
 if (guessSpeakerGenderFromName('Shome', 0) !== 'male') fail('Shome = Schöme, männlich')
 if (guessSpeakerGenderFromName('Khan', 0) !== 'male') fail('Khan ist männlich')
+if (genderFromKnownName('Schöme') !== 'male') fail('Schöme ohne Index ist männlich')
+if (genderFromKnownName('Xyzzy') !== undefined) fail('Unbekannter Name: Geschlecht nicht raten')
+if (!lookForCharacterName('Schöme')?.identityLock.toLowerCase().includes('boy')) {
+  fail('Schöme-Look sperrt den Jungen')
+}
+if (!lookForCharacterName('Shome')?.identityLock.toLowerCase().includes('boy')) {
+  fail('Shome findet denselben Schöme-Look')
+}
+if (seatSideFromX(20) !== 'left' || seatSideFromX(80) !== 'right') fail('Platz links/rechts')
+const leftBox = closeupCropBox(1920, 1080, 18, true)
+const rightBox = closeupCropBox(1920, 1080, 82, true)
+if (leftBox.left >= rightBox.left) fail('Zoom-Fenster folgt der Person')
+if (Math.abs(leftBox.width / leftBox.height - 16 / 9) > 0.08) fail('Zoom bleibt 16:9')
 if (!closeupGenderLine().toLowerCase().includes('boy into a girl')) {
   fail('Ohne Angabe nicht das Geschlecht aus dem Namen raten')
 }
+
+const playQuiet = scenePlayBeats(s1, dialog)
+if (playQuiet.some((b) => b.establishing)) fail('Ohne Weit-Bild keine stille Raumaufnahme')
+if (playQuiet.filter((b) => !b.establishing).length !== 2) {
+  fail('Abspielen: eine Takt pro Dialogzeile, nicht den ganzen Block')
+}
+const playWithRoom = scenePlayBeats(panelsForScene(withStill, scene1.id), dialog)
+if (!playWithRoom[0]?.establishing) fail('Zuerst den Raum anschauen')
+if (playWithRoom.filter((b) => !b.establishing).length !== 2) fail('dann die Zeilen nacheinander')
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Sprache, Vorschau')

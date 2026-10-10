@@ -3,6 +3,7 @@
  * Bibliothek zuerst (Gesichter festhalten), Stil aus dem Film-Schritt.
  */
 
+import { closeupSpaceLine } from './film-closeup-space.js'
 import { getStoryArtStyle, getStoryStylePrompt } from './story-art-styles.js'
 import { STORY_STILLS_LOCK_PROMPT } from './story-stills.js'
 import {
@@ -104,17 +105,24 @@ export function filmStillLanguageEn(code?: string): string {
  * Vollständiger Raum + vollständige Figuren. Kein voriges Standbild —
  * sonst kopiert die KI dasselbe Wohnzimmer zehnmal.
  */
-export function sceneWideStillUrl(
+export function sceneWidePanel(
   board: FilmStoryboard,
   panel: FilmStoryboardPanel,
-): string | undefined {
+): FilmStoryboardPanel | undefined {
   return board.panels.find(
     (p) =>
       p.sceneId === panel.sceneId &&
       p.id !== panel.id &&
       (p.shot ?? 'wide') !== 'closeup' &&
       Boolean(p.stillUrl?.startsWith('http')),
-  )?.stillUrl
+  )
+}
+
+export function sceneWideStillUrl(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+): string | undefined {
+  return sceneWidePanel(board, panel)?.stillUrl
 }
 
 export function referenceUrlsForPanel(
@@ -227,6 +235,7 @@ export function buildFilmStillPrompt(opts: {
   shot?: 'wide' | 'closeup'
   closeupSpeaker?: string
   speakerGender?: 'male' | 'female'
+  speakerX?: number
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -264,6 +273,14 @@ export function buildFilmStillPrompt(opts: {
       : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     lock,
+    isCloseup
+      ? closeupSpaceLine({
+          speaker: opts.closeupSpeaker || '',
+          settingHint: opts.settingHint,
+          speakerX: opts.speakerX,
+          poseHint: poses,
+        })
+      : '',
     opts.correctingExisting
       ? isCloseup
         ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'

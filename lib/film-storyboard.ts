@@ -28,6 +28,7 @@ import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
+  sceneWidePanel,
   sceneWideStillUrl,
 } from '../shared/film-stills.js'
 import {
@@ -37,6 +38,7 @@ import {
 import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 import { speakerGender } from '../shared/speakers.js'
+import { genderFromKnownName } from './speaker-gender.js'
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
 Nur JSON.
@@ -474,6 +476,10 @@ export async function stillFilmPanel(
       }
     }
     const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
+    const wide = (panelForGen.shot ?? 'wide') === 'closeup' ? sceneWidePanel(boardForGen, panelForGen) : undefined
+    const whoOnWide = wide?.placements.find(
+      (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
+    )
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -482,12 +488,15 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
       beatTotal,
-      sceneWideStillUrl:
-        (panelForGen.shot ?? 'wide') === 'closeup'
-          ? sceneWideStillUrl(boardForGen, panelForGen)
-          : undefined,
+      sceneWideStillUrl: wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen),
       speakerGender:
-        (panelForGen.shot ?? 'wide') === 'closeup' ? speakerGender(dialog, speaker) : undefined,
+        (panelForGen.shot ?? 'wide') === 'closeup'
+          ? speakerGender(dialog, speaker) ?? genderFromKnownName(speaker)
+          : undefined,
+      speakerX: whoOnWide?.x,
+      speakerSitting: whoOnWide
+        ? whoOnWide.poseId === 'sitting' || /sit/i.test(whoOnWide.poseHint || '')
+        : true,
     })
     const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     const withNote = applyPanelHarvestNote(

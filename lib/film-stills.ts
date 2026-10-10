@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'crypto'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
+import { cropWideStillToSpeaker } from './film-closeup-crop.js'
 import {
   buildFilmStillPrompt,
   referenceUrlsForPanel,
@@ -52,6 +53,28 @@ async function loadRefs(urls: string[]): Promise<InlineImage[]> {
   return out
 }
 
+async function loadCloseupAwareRefs(
+  urls: string[],
+  cropFirst: boolean,
+  speakerX?: number,
+  speakerSitting?: boolean,
+): Promise<InlineImage[]> {
+  const refs = await loadRefs(urls)
+  if (!cropFirst || refs.length === 0) return refs
+  try {
+    const first = refs[0]!
+    const cropped = await cropWideStillToSpeaker(
+      Buffer.from(first.data, 'base64'),
+      speakerX ?? 50,
+      speakerSitting !== false,
+    )
+    refs[0] = { mimeType: 'image/png', data: cropped.toString('base64') }
+  } catch {
+    /* Übersicht unverändert anhängen */
+  }
+  return refs
+}
+
 async function uploadPng(buffer: Buffer, path: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
   const bucket = adminStorage().bucket()
@@ -79,7 +102,7 @@ async function generateStillPng(
       text: correctingExisting
         ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
         : closeup
-          ? 'Attached photos: first the WIDE still of this gathering if present, then the identity plate of the speaker. Zoom the camera onto THAT person in the wide photo. Same face, hair, clothes, sex. They stay seated at the same table. Fully drawn opaque eyes (iris and pupil, not glass or empty-white). Keep the same room readable behind them — not a new studio, not heavy blur, not a cut-out bust.'
+          ? 'Attached photos: first a CAMERA ZOOM crop of the wide gathering (same table and furniture behind this person), then the identity plate. Keep that exact room behind them. Same face, hair, clothes, sex. Fully drawn opaque eyes (iris and pupil, not glass). Not a new studio, not heavy blur, not a cut-out bust.'
           : 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.',
     })
   }
@@ -134,6 +157,7 @@ export function stillPromptForPanel(
     spokenLine?: string
     beatTotal?: number
     speakerGender?: 'male' | 'female'
+    speakerX?: number
   },
 ): string {
   return buildFilmStillPrompt({
@@ -156,6 +180,7 @@ export function stillPromptForPanel(
     shot: panel.shot,
     closeupSpeaker: panel.closeupSpeaker,
     speakerGender: extras.speakerGender,
+    speakerX: extras.speakerX,
   })
 }
 
@@ -169,6 +194,8 @@ export async function generateFilmPanelStillImage(opts: {
   beatTotal?: number
   sceneWideStillUrl?: string
   speakerGender?: 'male' | 'female'
+  speakerX?: number
+  speakerSitting?: boolean
 }): Promise<string> {
   const urls = referenceUrlsForPanel(
     opts.panel,
@@ -176,7 +203,12 @@ export async function generateFilmPanelStillImage(opts: {
     opts.correctFromUrl,
     opts.sceneWideStillUrl,
   )
-  const refs = await loadRefs(urls)
+  const refs = await loadCloseupAwareRefs(
+    urls,
+    opts.panel.shot === 'closeup' && !opts.correctFromUrl,
+    opts.speakerX,
+    opts.speakerSitting,
+  )
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
     hasLibraryRefs: refs.length > 0,
     targetLanguage: opts.targetLanguage,
@@ -184,6 +216,7 @@ export async function generateFilmPanelStillImage(opts: {
     spokenLine: opts.panel.caption || opts.panel.imageCue,
     beatTotal: opts.beatTotal,
     speakerGender: opts.speakerGender,
+    speakerX: opts.speakerX,
   })
   const buffer = await generateStillPng(
     prompt,

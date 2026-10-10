@@ -946,6 +946,90 @@ export function scenePreviewBeats(
   }))
 }
 
+/** Eine Zeile nach der anderen — Bild wechselt zum Sprecher, Dialog wird nicht wiederholt. */
+export interface FilmPlayBeat {
+  panelId: string
+  stillUrl?: string
+  caption: string
+  establishing?: boolean
+  line?: FilmPanelDialogueLine
+  lineIndex: number
+  lineTotal: number
+}
+
+function dialogLinesForPanels(
+  panels: FilmStoryboardPanel[],
+  dialog?: Pick<Dialog, 'sections'> | null,
+): DialogLine[] {
+  if (!dialog) return []
+  const sectionIds = [...new Set(panels.map((p) => p.sectionId))]
+  const out: DialogLine[] = []
+  const seen = new Set<string>()
+  for (const sid of sectionIds) {
+    const section = dialog.sections.find((s) => s.id === sid)
+    if (!section) continue
+    for (const line of section.lines) {
+      if (seen.has(line.id) || !line.text.trim()) continue
+      seen.add(line.id)
+      out.push(line)
+    }
+  }
+  return out
+}
+
+function panelForSpeaker(
+  panels: FilmStoryboardPanel[],
+  speaker: string,
+): FilmStoryboardPanel | undefined {
+  const close = panels.find(
+    (p) =>
+      p.shot === 'closeup' &&
+      (p.closeupSpeaker || p.placements[0]?.name || '').trim() === speaker.trim() &&
+      Boolean(p.stillUrl),
+  )
+  if (close) return close
+  return panels.find((p) => (p.shot ?? 'wide') !== 'closeup') ?? panels[0]
+}
+
+export function scenePlayBeats(
+  panels: FilmStoryboardPanel[],
+  dialog?: Pick<Dialog, 'sections'> | null,
+): FilmPlayBeat[] {
+  const wide = panels.find((p) => (p.shot ?? 'wide') !== 'closeup')
+  const lines = dialogLinesForPanels(panels, dialog)
+  const spoken: FilmPlayBeat[] = lines.map((line, i) => {
+    const panel = panelForSpeaker(panels, line.speaker)
+    return {
+      panelId: panel?.id || '',
+      stillUrl: panel?.stillUrl,
+      caption: `${line.speaker}: ${line.text}`.slice(0, 140),
+      line: {
+        speaker: line.speaker,
+        text: line.text.trim(),
+        nativeDe: lineNativeDe(line),
+        lineId: line.id,
+        audioUrl: line.audioUrl,
+      },
+      lineIndex: i,
+      lineTotal: lines.length,
+    }
+  })
+  const intro: FilmPlayBeat[] =
+    wide?.stillUrl
+      ? [
+          {
+            panelId: wide.id,
+            stillUrl: wide.stillUrl,
+            caption: wide.caption,
+            establishing: true,
+            lineIndex: -1,
+            lineTotal: lines.length,
+          },
+        ]
+      : []
+  return [...intro, ...spoken]
+}
+
 export function boardNeedsDrawing(board: FilmStoryboard | undefined): number {
   if (!board) return 0
   return board.panels.filter(
