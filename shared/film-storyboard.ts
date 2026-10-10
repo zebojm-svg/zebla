@@ -461,7 +461,7 @@ export function ensureCoverageDrafts(
         speechCue: prior?.speechCue || lines[0]?.cueSpeech || '',
         settingHint: setting,
         expressionHint: prior?.expressionHint || inferExpression(talk),
-        characters: [{ name: speaker, poseHint: 'standing-front', depth: 'foreground' }],
+        characters: [{ name: speaker, poseHint, depth: 'foreground' }],
       })
     }
   }

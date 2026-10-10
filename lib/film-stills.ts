@@ -79,7 +79,7 @@ async function generateStillPng(
       text: correctingExisting
         ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
         : closeup
-          ? 'Attached photos: identity of the speaker. Paint a CLOSE-UP of this exact person (mouth, eyebrows, talking). Soft background. Do not paste a sprite. Do not copy a previous wide living-room shot.'
+          ? 'Attached photos: first the WIDE group shot of this scene if present, then the identity plate of the speaker. Paint a TIGHT cinematic close-up of THAT person from the gathering. Same face, hair, clothes. Head and shoulders filling the frame, hair fully visible. Soft blur behind. Do not paste a cut-out, full-body studio figure, or floating bust into a sofa.'
           : 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.',
     })
   }
@@ -165,8 +165,14 @@ export async function generateFilmPanelStillImage(opts: {
   correctFromUrl?: string
   targetLanguage?: string
   beatTotal?: number
+  sceneWideStillUrl?: string
 }): Promise<string> {
-  const urls = referenceUrlsForPanel(opts.panel, opts.previousStillUrl, opts.correctFromUrl)
+  const urls = referenceUrlsForPanel(
+    opts.panel,
+    opts.previousStillUrl,
+    opts.correctFromUrl,
+    opts.sceneWideStillUrl,
+  )
   const refs = await loadRefs(urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
     hasLibraryRefs: refs.length > 0,

@@ -104,11 +104,29 @@ export function filmStillLanguageEn(code?: string): string {
  * Vollständiger Raum + vollständige Figuren. Kein voriges Standbild —
  * sonst kopiert die KI dasselbe Wohnzimmer zehnmal.
  */
+export function sceneWideStillUrl(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+): string | undefined {
+  return board.panels.find(
+    (p) =>
+      p.sceneId === panel.sceneId &&
+      p.id !== panel.id &&
+      (p.shot ?? 'wide') !== 'closeup' &&
+      Boolean(p.stillUrl?.startsWith('http')),
+  )?.stillUrl
+}
+
 export function referenceUrlsForPanel(
   panel: FilmStoryboardPanel,
   _previousStillUrl?: string,
   correctFromUrl?: string,
+  sceneWideStillUrl?: string,
 ): string[] {
+  const speakerName = (panel.closeupSpeaker || panel.placements[0]?.name || '').trim().toLowerCase()
+  const speakerUrl =
+    panel.placements.find((pl) => pl.name.trim().toLowerCase() === speakerName && pl.imageUrl)
+      ?.imageUrl ?? panel.placements[0]?.imageUrl
   const people: string[] = []
   for (const pl of panel.placements) {
     if (pl.imageUrl) people.push(pl.imageUrl)
@@ -118,14 +136,15 @@ export function referenceUrlsForPanel(
       ? panel.background.imageUrl
       : undefined
   const closeup = panel.shot === 'closeup'
+  const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
   const ordered = (
     correctFromUrl
-      ? [correctFromUrl, ...people, bg]
+      ? [correctFromUrl, speakerUrl]
       : closeup
-        ? [...people, bg]
+        ? [sceneWideStillUrl, speakerUrl]
         : [bg, ...people]
-  ).filter((u): u is string => Boolean(u && u.startsWith('http')))
-  return [...new Set(ordered)].slice(0, 4)
+  ).filter(http)
+  return [...new Set(ordered)].slice(0, closeup ? 2 : 4)
 }
 
 export function previousStillUrlInScene(
@@ -205,10 +224,10 @@ export function buildFilmStillPrompt(opts: {
   const isCloseup = opts.shot === 'closeup'
   const lock = opts.hasLibraryRefs
     ? isCloseup
-      ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates of ONE person. Paint a CLOSE-UP of that exact person: head and shoulders, mouth and eyebrows clearly readable (about to speak or speaking). Soft background, not a full room tour. Do not collage. Same face, hair, clothes.`
+      ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, zoom into THAT person from the gathering (same face, hair, clothes, light). If only an identity plate is attached, paint a TIGHT film close-up of that exact face. Head and shoulders filling the frame, hair fully visible (not cropped). Eyes in the upper third. Soft blurred room behind — not a furnished wide interior, not a cut-out sprite, not a floating bust, not a full-body studio figure pasted into a sofa.`
       : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
-      ? 'Paint a close-up of the speaker: face, mouth, eyebrows, shoulders. Soft background.'
+      ? 'Paint a tight film close-up: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. Soft blur behind. No cut-out, no full body.'
       : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
@@ -224,7 +243,7 @@ export function buildFilmStillPrompt(opts: {
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
-      ? `CLOSE-UP of ${opts.closeupSpeaker || 'the speaker'}: face fills the frame, mouth and eyebrows visible, natural talking expression. Head and shoulders. Soft out-of-focus place behind. One person only.`
+      ? `TIGHT cinematic CLOSE-UP of ${opts.closeupSpeaker || 'the speaker'} as in a language-learning still: camera at eye level, face large (about 60–80% of the frame), head and shoulders only, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. Soft bokeh of the room, not a wide living-room tour.`
       : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
     opts.correctingExisting
       ? ''
@@ -249,7 +268,7 @@ export function buildFilmStillPrompt(opts: {
       ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
       : '',
     isCloseup
-      ? `Widescreen 16:9 close-up. Face large in frame. Mouth, teeth if speaking, eyebrows, eyes. No extra limbs, no second person.`
+      ? `Widescreen 16:9. Tight close-up crop like a film still. Face large. Hair not cut off at the top. No legs, no floating torso, no studio cut-out, no second person.`
       : `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent. Furniture belongs to the room. Same body scale. No extra limbs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,

@@ -114,6 +114,9 @@ const panel = board.panels[0]
 if (panel.shot !== 'wide') fail('erstes Bild ist Weit')
 if (board.panels[1]?.shot !== 'closeup') fail('zweites Bild ist Nahaufnahme')
 if (board.panels[1]?.closeupSpeaker !== 'Julien') fail('Nahaufnahme Julien')
+if (board.panels[1]?.placements[0]?.poseId !== 'sitting') {
+  fail('Nahaufnahme nimmt die Sitz-Pose der Szene, kein extra Stehen')
+}
 if (panel.placements[0]?.match !== 'reuse') fail('sitzender Julien aus Bibliothek')
 if (panel.background.match !== 'reuse') fail('Park aus Bibliothek')
 const reusedClose = findReusableCloseup(

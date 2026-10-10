@@ -11,6 +11,7 @@ import {
   previousStillUrlInScene,
   referenceUrlsForPanel,
   sceneStillProgress,
+  sceneWideStillUrl,
   stillLibraryHintDe,
   stillTimeoutHintDe,
 } from '../shared/film-stills.ts'
@@ -157,6 +158,10 @@ const closePrompt = buildFilmStillPrompt({
 })
 if (!closePrompt.toLowerCase().includes('close-up')) fail('Nahaufnahme muss Close-up verlangen')
 if (!closePrompt.toLowerCase().includes('eyebrows')) fail('Nahaufnahme zeigt Augenbrauen')
+if (!closePrompt.toLowerCase().includes('head and shoulders')) fail('Nahaufnahme ist Kopf und Schultern')
+if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase().includes('floating')) {
+  fail('Nahaufnahme darf kein Freisteller-Torso sein')
+}
 const mimicPrompt = buildFilmStillPrompt({
   caption: 'Khan lacht',
   shot: 'closeup',
@@ -201,6 +206,29 @@ const fixRefs = referenceUrlsForPanel(
 )
 if (fixRefs[0] !== 'https://example.com/this-still.png') {
   fail('Beim Korrigieren zuerst das aktuelle Standbild')
+}
+
+const closePanel = s1.find((p) => p.shot === 'closeup')
+if (!closePanel) fail('Szene braucht eine Nahaufnahme')
+const cuWithBg = {
+  ...closePanel,
+  placements: [{ ...closePanel.placements[0]!, imageUrl: 'https://example.com/julien.png' }],
+  background: { ...closePanel.background, imageUrl: 'https://example.com/park.png', match: 'reuse' as const },
+}
+const cuRefs = referenceUrlsForPanel(
+  cuWithBg,
+  undefined,
+  undefined,
+  'https://example.com/wide.png',
+)
+if (cuRefs[0] !== 'https://example.com/wide.png') fail('Nahaufnahme zoomt zuerst in die Übersicht')
+if (cuRefs.includes('https://example.com/park.png')) {
+  fail('Nahaufnahme hängt nicht den ganzen Raum als Vorlage an')
+}
+if (!cuRefs.includes('https://example.com/julien.png')) fail('Nahaufnahme braucht das Stamm-Gesicht')
+const withWide = applyPanelStill(board, s1[0]!.id, 'https://example.com/wide.png', 'illustration-lebendig')
+if (sceneWideStillUrl(withWide, closePanel) !== 'https://example.com/wide.png') {
+  fail('Weit-Bild der Szene für die Nahaufnahme finden')
 }
 
 if (scene2Id) {

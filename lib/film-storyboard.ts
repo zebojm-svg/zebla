@@ -23,16 +23,18 @@ import {
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
+import { identityReferenceUrl } from '../shared/library-identities.js'
+import {
+  applyPanelHarvestNote,
+  applyPanelStill,
+  applyPanelStillError,
+  sceneWideStillUrl,
+} from '../shared/film-stills.js'
 import {
   applyPanelLayout,
   type ArrangeLayerUpdate,
 } from '../shared/film-still-arrange.js'
 import { ensurePanelPieces } from './film-panel-pieces.js'
-import {
-  applyPanelHarvestNote,
-  applyPanelStill,
-  applyPanelStillError,
-} from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
@@ -423,6 +425,20 @@ export async function stillFilmPanel(
         pieceNote = pieces.noteDe
         boardForGen = rematchFilmBoard(working, libraryForCompose(pieces.library))
         panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
+        if ((panelForGen.shot ?? 'wide') === 'closeup') {
+          const who = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
+          const face = identityReferenceUrl(pieces.library, who)
+          if (face) {
+            panelForGen = {
+              ...panelForGen,
+              placements: panelForGen.placements.map((pl, i) =>
+                i === 0 || pl.name.trim().toLowerCase() === who.trim().toLowerCase()
+                  ? { ...pl, imageUrl: face }
+                  : pl,
+              ),
+            }
+          }
+        }
       } catch {
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
@@ -464,14 +480,21 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
       beatTotal,
+      sceneWideStillUrl:
+        (panelForGen.shot ?? 'wide') === 'closeup'
+          ? sceneWideStillUrl(boardForGen, panelForGen)
+          : undefined,
     })
     const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+    const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
-      pieceNote
-        ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
-        : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+      (panelForGen.shot ?? 'wide') === 'closeup'
+        ? `Nahaufnahme ${speaker}: Gesicht groß im Bild, aus der Übersicht derselben Szene.`
+        : pieceNote
+          ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+          : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
     )
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }
