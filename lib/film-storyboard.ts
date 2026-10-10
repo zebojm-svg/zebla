@@ -36,12 +36,13 @@ import {
 } from '../shared/film-still-arrange.js'
 import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
+import { speakerGender } from '../shared/speakers.js'
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
 Nur JSON.
 Pro Szene/Abschnitt PFLICHT:
 1. Genau EIN Bild shot="wide": ganzer Raum, ALLE Personen, Einrichtung GENAU wie der Dialog (Teppich, Tisch, Kissen …). Nicht ein beliebiges altes Wohnzimmer.
-2. Danach genau EIN Bild shot="closeup" je Sprecher, der in der Szene spricht: Nahaufnahme Gesicht (Mund, Augenbrauen). Nur diese eine Person.
+2. Danach genau EIN Bild shot="closeup" je Sprecher: Kamera näher an DIESELBE Person im Weit-Bild (gleicher Tisch, gleiches Geschlecht, scharfe Augen). Kein neues Studio-Porträt.
 Nahaufnahmen derselben Person dürfen in späteren Szenen wiederverwendet werden — also nicht extra erfinden, wenn die Mimik gleich bleibt.
 Schema:
 {
@@ -472,6 +473,7 @@ export async function stillFilmPanel(
         correctFromUrl = base.stillUrl
       }
     }
+    const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -484,14 +486,15 @@ export async function stillFilmPanel(
         (panelForGen.shot ?? 'wide') === 'closeup'
           ? sceneWideStillUrl(boardForGen, panelForGen)
           : undefined,
+      speakerGender:
+        (panelForGen.shot ?? 'wide') === 'closeup' ? speakerGender(dialog, speaker) : undefined,
     })
     const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
-    const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
       (panelForGen.shot ?? 'wide') === 'closeup'
-        ? `Nahaufnahme ${speaker}: Gesicht groß im Bild, aus der Übersicht derselben Szene.`
+        ? `Nahaufnahme ${speaker}: Kamera näher an dieselbe Person in der Übersicht — gleicher Platz, scharfe Augen.`
         : pieceNote
           ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
           : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',

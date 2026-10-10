@@ -5,6 +5,7 @@
 import {
   applyPanelStill,
   buildFilmStillPrompt,
+  closeupGenderLine,
   filmStillLanguageEn,
   panelsForScene,
   panelsNeedingStills,
@@ -15,6 +16,7 @@ import {
   stillLibraryHintDe,
   stillTimeoutHintDe,
 } from '../shared/film-stills.ts'
+import { guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
 import {
   panelDialogueLines,
   panelSpeakLines,
@@ -155,12 +157,38 @@ const closePrompt = buildFilmStillPrompt({
   shot: 'closeup',
   closeupSpeaker: 'Khan',
   names: ['Khan'],
+  speakerGender: 'male',
 })
 if (!closePrompt.toLowerCase().includes('close-up')) fail('Nahaufnahme muss Close-up verlangen')
 if (!closePrompt.toLowerCase().includes('eyebrows')) fail('Nahaufnahme zeigt Augenbrauen')
 if (!closePrompt.toLowerCase().includes('head and shoulders')) fail('Nahaufnahme ist Kopf und Schultern')
 if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase().includes('floating')) {
   fail('Nahaufnahme darf kein Freisteller-Torso sein')
+}
+if (!closePrompt.toLowerCase().includes('zoom') && !closePrompt.toLowerCase().includes('push-in')) {
+  fail('Nahaufnahme zoomt in die Übersicht')
+}
+if (!closePrompt.toLowerCase().includes('same table') && !closePrompt.toLowerCase().includes('same seat')) {
+  fail('Nahaufnahme bleibt am selben Tisch')
+}
+if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
+  fail('Nahaufnahme verlangt undurchsichtige Augen')
+}
+if (closePrompt.toLowerCase().includes('bokeh') || closePrompt.toLowerCase().includes('out-of-focus')) {
+  fail('Nahaufnahme darf keinen unscharfen Studio-Hintergrund verlangen')
+}
+if (!closePrompt.toLowerCase().includes('this speaker is male')) fail('Khan bleibt männlich')
+const schoemePrompt = buildFilmStillPrompt({
+  caption: 'Schöme spricht',
+  imageCue: 'Nahaufnahme Schöme',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  shot: 'closeup',
+  closeupSpeaker: 'Schöme',
+  names: ['Schöme'],
+})
+if (!schoemePrompt.toLowerCase().includes('boy into a girl')) {
+  fail('Ohne Geschlechtsangabe: nicht aus dem Namen ein Mädchen machen')
 }
 const mimicPrompt = buildFilmStillPrompt({
   caption: 'Khan lacht',
@@ -315,6 +343,13 @@ const replayed = buildBoardFromDrafts(
 const replayedPanel = replayed.panels.find((p) => p.id === s1[0]!.id)
 if (replayedPanel?.stillCorrection !== 'Stand auf Französisch') {
   fail('Korrektur-Notiz muss beim Neu-Planen bleiben')
+}
+
+if (guessSpeakerGenderFromName('Schöme', 2) !== 'male') fail('Schöme ist ein Junge, kein Mädchen')
+if (guessSpeakerGenderFromName('Shome', 0) !== 'male') fail('Shome = Schöme, männlich')
+if (guessSpeakerGenderFromName('Khan', 0) !== 'male') fail('Khan ist männlich')
+if (!closeupGenderLine().toLowerCase().includes('boy into a girl')) {
+  fail('Ohne Angabe nicht das Geschlecht aus dem Namen raten')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Sprache, Vorschau')

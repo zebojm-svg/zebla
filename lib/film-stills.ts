@@ -79,7 +79,7 @@ async function generateStillPng(
       text: correctingExisting
         ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
         : closeup
-          ? 'Attached photos: first the WIDE group shot of this scene if present, then the identity plate of the speaker. Paint a TIGHT cinematic close-up of THAT person from the gathering. Same face, hair, clothes. Head and shoulders filling the frame, hair fully visible. Soft blur behind. Do not paste a cut-out, full-body studio figure, or floating bust into a sofa.'
+          ? 'Attached photos: first the WIDE still of this gathering if present, then the identity plate of the speaker. Zoom the camera onto THAT person in the wide photo. Same face, hair, clothes, sex. They stay seated at the same table. Fully drawn opaque eyes (iris and pupil, not glass or empty-white). Keep the same room readable behind them — not a new studio, not heavy blur, not a cut-out bust.'
           : 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.',
     })
   }
@@ -133,6 +133,7 @@ export function stillPromptForPanel(
     correctingExisting?: boolean
     spokenLine?: string
     beatTotal?: number
+    speakerGender?: 'male' | 'female'
   },
 ): string {
   return buildFilmStillPrompt({
@@ -154,6 +155,7 @@ export function stillPromptForPanel(
     beatTotal: extras.beatTotal,
     shot: panel.shot,
     closeupSpeaker: panel.closeupSpeaker,
+    speakerGender: extras.speakerGender,
   })
 }
 
@@ -166,6 +168,7 @@ export async function generateFilmPanelStillImage(opts: {
   targetLanguage?: string
   beatTotal?: number
   sceneWideStillUrl?: string
+  speakerGender?: 'male' | 'female'
 }): Promise<string> {
   const urls = referenceUrlsForPanel(
     opts.panel,
@@ -180,6 +183,7 @@ export async function generateFilmPanelStillImage(opts: {
     correctingExisting: Boolean(opts.correctFromUrl),
     spokenLine: opts.panel.caption || opts.panel.imageCue,
     beatTotal: opts.beatTotal,
+    speakerGender: opts.speakerGender,
   })
   const buffer = await generateStillPng(
     prompt,

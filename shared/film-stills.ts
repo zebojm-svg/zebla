@@ -196,6 +196,17 @@ export function applyPanelStillError(
   }
 }
 
+/** Nahaufnahme: gleiches Geschlecht wie Übersicht/Stammbild — nicht aus dem Namen raten. */
+export function closeupGenderLine(gender?: 'male' | 'female'): string {
+  if (gender === 'male') {
+    return 'This speaker is male. Keep a male face — do not redraw as a girl.'
+  }
+  if (gender === 'female') {
+    return 'This speaker is female. Keep a female face — do not redraw as a boy.'
+  }
+  return 'Keep the same sex as in the wide still and identity plate. Do not guess a different gender from the name. Do not change a boy into a girl or a girl into a boy.'
+}
+
 export function buildFilmStillPrompt(opts: {
   caption: string
   imageCue?: string
@@ -215,6 +226,7 @@ export function buildFilmStillPrompt(opts: {
   beatTotal?: number
   shot?: 'wide' | 'closeup'
   closeupSpeaker?: string
+  speakerGender?: 'male' | 'female'
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -222,12 +234,14 @@ export function buildFilmStillPrompt(opts: {
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const isCloseup = opts.shot === 'closeup'
+  const closeEyes =
+    'Eyes fully drawn and opaque: white sclera, colored iris, dark pupil — never translucent, glassy, hollow, see-through, or empty-white.'
   const lock = opts.hasLibraryRefs
     ? isCloseup
-      ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, zoom into THAT person from the gathering (same face, hair, clothes, light). If only an identity plate is attached, paint a TIGHT film close-up of that exact face. Head and shoulders filling the frame, hair fully visible (not cropped). Eyes in the upper third. Soft blurred room behind — not a furnished wide interior, not a cut-out sprite, not a floating bust, not a full-body studio figure pasted into a sofa.`
+      ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: zoom into THAT person in the gathering. They stay in the SAME seat at the SAME table in the SAME room (table edge still visible and fairly sharp). Same face, hair, clothes, light, sex. If only an identity plate is attached, paint a close-up of that exact person still in that place. Head and shoulders filling the frame, hair fully visible (not cropped). ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust, not a full-body studio figure pasted into a sofa, not a blurry studio wash.`
       : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
-      ? 'Paint a tight film close-up: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. Soft blur behind. No cut-out, no full body.'
+      ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
       : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
@@ -243,7 +257,7 @@ export function buildFilmStillPrompt(opts: {
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
-      ? `TIGHT cinematic CLOSE-UP of ${opts.closeupSpeaker || 'the speaker'} as in a language-learning still: camera at eye level, face large (about 60–80% of the frame), head and shoulders only, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. Soft bokeh of the room, not a wide living-room tour.`
+      ? `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached WIDE still. They stay in the SAME seat at the SAME table. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. The same room stays recognizable behind them (table, kitchen), fairly sharp — not a studio, not heavy blur.`
       : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
     opts.correctingExisting
       ? ''
@@ -268,7 +282,7 @@ export function buildFilmStillPrompt(opts: {
       ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
       : '',
     isCloseup
-      ? `Widescreen 16:9. Tight close-up crop like a film still. Face large. Hair not cut off at the top. No legs, no floating torso, no studio cut-out, no second person.`
+      ? `Widescreen 16:9. Close-up crop of the same gathering. Face large. Hair not cut off at the top. Opaque eyes with iris and pupil. No legs, no floating torso, no studio cut-out, no second person, no glassy see-through eyes.`
       : `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent. Furniture belongs to the room. Same body scale. No extra limbs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,

@@ -456,7 +456,7 @@ export function ensureCoverageDrafts(
         caption: prior?.caption?.trim() || `${speaker}: ${lines[0]?.text ?? ''}`.slice(0, 140),
         imageCue:
           prior?.imageCue?.trim() ||
-          `Nahaufnahme ${speaker}: Gesicht, Mund und Augenbrauen, spricht.`,
+          `Nahaufnahme ${speaker}: Kamera näher an dasselbe Gesicht in diesem Raum — ${speaker} bleibt am Platz. Scharfe Augen.`,
         soundCue: prior?.soundCue || '',
         speechCue: prior?.speechCue || lines[0]?.cueSpeech || '',
         settingHint: setting,
