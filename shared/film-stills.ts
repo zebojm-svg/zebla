@@ -190,6 +190,7 @@ export function buildFilmStillPrompt(opts: {
   correctingExisting?: boolean
   spokenLine?: string
   beatIndex?: number
+  beatTotal?: number
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -197,19 +198,25 @@ export function buildFilmStillPrompt(opts: {
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const lock = opts.hasLibraryRefs
-    ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are COMPLETE assets: an EMPTY ROOM with complete furniture, and COMPLETE people (full body, not cropped from a group shot). PAINT those exact people INTO that exact room. Sit them IN the furniture. Same camera as the room photo. Do not cut anyone out of a scene. Do not collage or paste sprites.`
-    : 'Draw a complete room with complete furniture and complete people, then place the people into the room.'
+    ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture and no people; then COMPLETE people (full body in a studio, not cropped from a group shot, not transparent sprites). Paint a NEW coherent illustration: those exact people living INSIDE that exact room, occupying the real furniture, feet on the real floor. Same camera as the room photo. Do not cut anyone out of a photo. Do not collage or paste sprites on top of the background.`
+    : 'Draw a complete room with complete furniture and complete people, then place the people into the room so they occupy the furniture.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
       ? `Never write German on signs, stalls, posters or paper (no Bratwurst, Glühwein, German menus). Use ${langEn} instead (e.g. French: saucisse, vin chaud).`
       : ''
+  const moment =
+    opts.beatIndex && opts.beatTotal
+      ? `This is moment ${opts.beatIndex} of ${opts.beatTotal}.`
+      : opts.beatIndex
+        ? `This is moment ${opts.beatIndex} of a sequence.`
+        : 'This is one moment in a sequence.'
 
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
-    `Paint ONE coherent illustration. Fill the complete room with complete furniture and complete figures. Do not collage, do not paste cut-out sprites, no dashed boxes, no ghost people, no extra limbs.`,
+    `Paint ONE coherent illustration of a complete room filled with complete furniture and complete figures. The people belong in the room: sitting IN chairs, standing ON the floor, using the furniture that is already there. Do not collage, do not paste cut-out sprites, no dashed boxes, no ghost people, no extra limbs.`,
     opts.correctingExisting
       ? ''
-      : `This is moment ${opts.beatIndex ?? ''} of a sequence. It MUST look different from other frames: who speaks, gaze, pose or camera. Never copy the previous frame.`,
+      : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     lock,
     opts.correctingExisting

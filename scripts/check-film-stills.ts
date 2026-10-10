@@ -112,6 +112,8 @@ const prompt = buildFilmStillPrompt({
   poseHints: ['Julien: Stehen'],
   hasLibraryRefs: true,
   targetLanguage: 'fr',
+  beatIndex: 2,
+  beatTotal: 5,
 })
 if (!prompt.toLowerCase().includes('still')) fail('Prompt muss Standbild sagen')
 if (!prompt.includes('graphic novel') && !prompt.includes('watercolor')) {
@@ -136,6 +138,10 @@ if (!prompt.toLowerCase().includes('collage') && !prompt.toLowerCase().includes(
 }
 if (!prompt.toLowerCase().includes('different') && !prompt.toLowerCase().includes('must look different')) {
   fail('Jedes Bild muss ein neuer Moment sein')
+}
+if (!prompt.includes('moment 2 of 5')) fail('Prompt muss Bild 2 von 5 als eigenen Moment nennen')
+if (!prompt.toLowerCase().includes('identity plates') && !prompt.toLowerCase().includes('into that exact room')) {
+  fail('Prompt muss Figuren in den Raum malen, nicht als Sticker kleben')
 }
 if (!prompt.toLowerCase().includes('hips on the seat')) {
   fail('Prompt muss Sitzen auf dem Möbel verlangen, nicht davor kleben')

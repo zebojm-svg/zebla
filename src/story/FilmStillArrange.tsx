@@ -65,10 +65,10 @@ export function FilmStillPicture({
       </div>
     )
   }
-  if (can) {
+  if (can && interactive) {
     return (
       <div className="film-still-workshop">
-        {interactive && panel.stillUrl ? (
+        {panel.stillUrl ? (
           <div className="film-still-actions">
             <button
               type="button"
@@ -85,6 +85,16 @@ export function FilmStillPicture({
           interactive={interactive}
           onUpdated={onUpdated}
         />
+      </div>
+    )
+  }
+  if (panel.background.imageUrl && !interactive) {
+    return (
+      <div className="film-still-flat">
+        <img src={panel.background.imageUrl} alt={panel.caption || 'Raum'} />
+        <p className="muted film-arrange-hint">
+          Noch kein gemaltes Bild — «Diese Szene erzeugen». Die KI füllt Figuren in diesen Raum.
+        </p>
       </div>
     )
   }

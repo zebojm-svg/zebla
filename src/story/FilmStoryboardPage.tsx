@@ -53,12 +53,6 @@ function PanelCard({
 
   return (
     <article className="film-panel">
-      <header className="film-panel-head">
-        <strong>Bild {panel.panelIndex}</strong>
-        {panel.expressionHint ? (
-          <p className="film-expression">Gesicht: {panel.expressionHint}</p>
-        ) : null}
-      </header>
       <FilmBeatColumns
         picture={
           panel.stillUrl || panel.background.imageUrl ? (
@@ -85,6 +79,7 @@ function PanelCard({
         sourceLanguage={dialog.sourceLanguage}
         notes={
           <>
+            <p className="film-beat-count">Bild {panel.panelIndex}</p>
             <FilmBeatNotes panel={panel} dialog={dialog} />
             <div className="film-matches">
               {panel.placements.map((pl) => (
@@ -103,48 +98,51 @@ function PanelCard({
           </>
         }
       />
-      <div className="film-tweak">
-        <input
-          className="input"
-          value={note}
-          disabled={busy}
-          placeholder="z.B. Julien eher im Hintergrund"
-          onChange={(e) => setNote(e.target.value)}
+      <details className="film-panel-more">
+        <summary>Bild ändern</summary>
+        <div className="film-tweak">
+          <input
+            className="input"
+            value={note}
+            disabled={busy}
+            placeholder="z.B. Julien eher im Hintergrund"
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy || !note.trim()}
+            onClick={() => onTweak(note.trim())}
+          >
+            Anpassen
+          </button>
+        </div>
+        <label className="film-comment">
+          <span className="muted">Kommentar zur Zeile</span>
+          <textarea
+            className="input"
+            rows={2}
+            value={comment}
+            disabled={busy}
+            placeholder="Notiz nur für dich …"
+            onChange={(e) => setComment(e.target.value)}
+            onBlur={() => {
+              if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
+            }}
+          />
+        </label>
+        <FilmStillFixBar
+          panel={panel}
+          busy={busy}
+          onCorrect={onCorrect}
+          onInsert={onInsert}
         />
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={busy || !note.trim()}
-          onClick={() => onTweak(note.trim())}
-        >
-          Anpassen
-        </button>
-      </div>
-      <label className="film-comment">
-        <span className="muted">Kommentar zur Zeile</span>
-        <textarea
-          className="input"
-          rows={2}
-          value={comment}
-          disabled={busy}
-          placeholder="Notiz nur für dich …"
-          onChange={(e) => setComment(e.target.value)}
-          onBlur={() => {
-            if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
-          }}
-        />
-      </label>
-      <FilmStillFixBar
-        panel={panel}
-        busy={busy}
-        onCorrect={onCorrect}
-        onInsert={onInsert}
-      />
-      <div className="film-tweak">
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
-          {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
-        </button>
-      </div>
+        <div className="film-tweak">
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
+            {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
+          </button>
+        </div>
+      </details>
     </article>
   )
 }

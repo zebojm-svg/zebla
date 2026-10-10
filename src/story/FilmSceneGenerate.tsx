@@ -91,7 +91,8 @@ export function FilmSceneGenerateBar({
         </button>
       ) : null}
       <p className="muted film-scene-still-note">
-        Vollständiger Raum, vollständige Figuren — die KI malt jeden Moment neu.
+        Gemini malt vollständige Figuren in den vollständigen Raum — nicht ausgeschnitten.
+        Jedes Bild ein neuer Moment.
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {busy ? (
@@ -217,10 +218,19 @@ export function FilmBeatColumns({
   targetLanguage?: string
   sourceLanguage?: string
 }) {
+  const targetName = languageName(targetLanguage || '')
+  const nativeName =
+    !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
   return (
     <div className="film-beat">
-      <div className="film-beat-pic">{picture}</div>
+      <div className="film-beat-pic">
+        <p className="film-beat-col-label">Bild</p>
+        {picture}
+      </div>
       <div className="film-beat-text">
+        <p className="film-beat-col-label">
+          {targetLanguage ? `${targetName} · ${nativeName}` : 'Text'}
+        </p>
         <FilmBeatText
           lines={lines}
           fallback={fallback}
@@ -228,7 +238,10 @@ export function FilmBeatColumns({
           sourceLanguage={sourceLanguage}
         />
       </div>
-      <aside className="film-beat-notes">{notes}</aside>
+      <aside className="film-beat-notes">
+        <p className="film-beat-col-label">Ablauf</p>
+        {notes}
+      </aside>
     </div>
   )
 }
@@ -336,36 +349,44 @@ export function FilmStillStrip({
     <div className="film-still-strip">
       {panels.map((panel) => {
         const panelBusy = Boolean(busy && busyPanelId === panel.id)
+        const lines = panelDialogueLines(panel, dialog)
         return (
-          <figure key={panel.id} className="film-still-thumb">
-            {panel.stillUrl || panel.background.imageUrl ? (
-              <FilmStillPicture
-                dialogId={dialogId}
-                panel={panel}
-                interactive
-                onUpdated={onLayout}
-              />
-            ) : (
-              <div className="film-still-placeholder">
-                {panelBusy ? 'Erzeuge Bild …' : 'Noch kein Bild'}
-              </div>
-            )}
-            <figcaption>
-              Bild {panel.panelIndex}
-              {panel.stillError ? <span className="film-still-err"> · Fehler</span> : null}
-              {panelBusy ? <span> · wird korrigiert …</span> : null}
-            </figcaption>
-            {panel.harvestNoteDe ? (
-              <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
-            ) : null}
-            <FilmPanelDialogue panel={panel} dialog={dialog} />
+          <article key={panel.id} className="film-panel">
+            <FilmBeatColumns
+              picture={
+                panel.stillUrl || panel.background.imageUrl ? (
+                  <FilmStillPicture dialogId={dialogId} panel={panel} onUpdated={onLayout} />
+                ) : (
+                  <div className="film-still-placeholder">
+                    {panelBusy ? 'Erzeuge Bild …' : 'Noch kein Bild'}
+                  </div>
+                )
+              }
+              lines={lines}
+              fallback={panel.caption}
+              targetLanguage={dialog?.targetLanguage}
+              sourceLanguage={dialog?.sourceLanguage}
+              notes={
+                <>
+                  <p className="film-beat-count">
+                    Bild {panel.panelIndex}
+                    {panel.stillError ? <span className="film-still-err"> · Fehler</span> : null}
+                    {panelBusy ? <span> · wird korrigiert …</span> : null}
+                  </p>
+                  <FilmBeatNotes panel={panel} dialog={dialog} />
+                  {panel.harvestNoteDe ? (
+                    <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
+                  ) : null}
+                </>
+              }
+            />
             <FilmStillFixBar
               panel={panel}
               busy={Boolean(busy)}
               onCorrect={onCorrect ? (note) => onCorrect(panel, note) : undefined}
               onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
             />
-          </figure>
+          </article>
         )
       })}
     </div>

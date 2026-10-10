@@ -389,6 +389,7 @@ export async function stillFilmPanel(
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
     }
+    const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -396,6 +397,7 @@ export async function stillFilmPanel(
       previousStillUrl: undefined,
       correctFromUrl,
       targetLanguage,
+      beatTotal,
     })
     const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     const withNote = applyPanelHarvestNote(

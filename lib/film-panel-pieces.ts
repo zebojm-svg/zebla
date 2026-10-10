@@ -47,7 +47,7 @@ export async function ensurePanelPieces(opts: {
     jobs.push(
       (async () => {
         const env = await generateStoryEnvironment(
-          `${roomHint}. Empty interior, furniture in place, no people.`,
+          `${roomHint}. Complete empty interior with complete furniture in place, no people, no cropped walls.`,
           roomName,
           styleId as StoryArtStyleId,
         )
@@ -60,7 +60,7 @@ export async function ensurePanelPieces(opts: {
           styleId: env.styleId,
         })
         added.push(saved)
-        bits.push(`${roomName} als Raum`)
+        bits.push(`vollständiger Raum «${roomName}»`)
       })(),
     )
   }
@@ -82,6 +82,7 @@ export async function ensurePanelPieces(opts: {
           undefined,
           pl.poseId,
           false,
+          false,
         )
         const saved = await saveStoryAsset(opts.userId, {
           type: 'character',
@@ -95,7 +96,7 @@ export async function ensurePanelPieces(opts: {
           armPoseId: pose.armPoseId,
         })
         added.push(saved)
-        bits.push(`${pl.name} (${pose.label})`)
+        bits.push(`vollständige Figur ${pl.name} (${pose.label})`)
       })(),
     )
   }
@@ -112,6 +113,6 @@ export async function ensurePanelPieces(opts: {
   const noteDe =
     bits.length === 0
       ? 'Raum und Figuren waren schon im Welt-Regal.'
-      : `Einzeln: ${bits.slice(0, 6).join(', ')}.`
+      : `Vollständig einzeln: ${bits.slice(0, 6).join(', ')}.`
   return { library, noteDe }
 }
