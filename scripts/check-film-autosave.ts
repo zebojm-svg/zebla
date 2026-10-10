@@ -28,6 +28,7 @@ if (!isImageGenPath('/story-generate-character')) fail('Figur-Zeichnen ist Bild'
 if (!isImageGenPath('/film-storyboard-still')) fail('Szenen-Standbild ist Bild')
 if (isImageGenPath('/film-from-prompt')) fail('Film-Prompt ist kein Bild')
 if (isImageGenPath('/film-storyboard')) fail('Storyboard-Plan ist kein Bild')
+if (isImageGenPath('/film-storyboard-reset')) fail('Vom-Text-neu ist kein Bild')
 
 const imgAbort = clientTimeoutMessage('/image', 'abort')
 if (!imgAbort.includes('Bild')) fail('Bild-Timeout muss Bild erwähnen')

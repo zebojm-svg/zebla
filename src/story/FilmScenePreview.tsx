@@ -6,7 +6,6 @@ import {
   panelDialogueLines,
   scenePreviewBeats,
 } from '../../shared/film-storyboard'
-import { panelCanArrange } from '../../shared/film-still-arrange'
 import { FilmStillPicture } from './FilmStillArrange'
 import { FilmBeatColumns, FilmBeatNotes } from './FilmSceneGenerate'
 
@@ -30,7 +29,7 @@ export function FilmScenePreviewPlayer({
   onDialogUpdated,
 }: Props) {
   const beats = scenePreviewBeats(panels, dialog)
-  const hasPicture = beats.some((b) => b.stillUrl) || panels.some((p) => panelCanArrange(p))
+  const hasPicture = beats.some((b) => Boolean(b.stillUrl))
   const { speakFrom, stop, speaking } = useSpeechReader(
     dialog.targetLanguage,
     dialogId,
@@ -98,10 +97,10 @@ export function FilmScenePreviewPlayer({
     <div className="film-scene-player">
       <FilmBeatColumns
         picture={
-          currentPanel && (panelCanArrange(currentPanel) || currentPanel.stillUrl) ? (
+          currentPanel?.stillUrl ? (
             <FilmStillPicture dialogId={dialogId} panel={currentPanel} interactive={false} />
           ) : (
-            <div className="film-still-placeholder">Noch kein Bild</div>
+            <div className="film-still-placeholder">Noch kein gemaltes Bild</div>
           )
         }
         lines={dialogue}

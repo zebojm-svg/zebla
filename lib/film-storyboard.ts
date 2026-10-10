@@ -18,7 +18,7 @@ import {
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
-import { rematchFilmBoard } from '../shared/film-library-harvest.js'
+import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelLayout,
   type ArrangeLayerUpdate,
@@ -134,7 +134,7 @@ export async function planFilmStoryboard(
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
 
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const previous = opts?.keepBoard && isFilmStoryboard(dialog.filmStoryboard)
     ? normalizeFilmStoryboard(dialog.filmStoryboard)
     : undefined
@@ -151,6 +151,24 @@ export async function planFilmStoryboard(
 
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
+}
+
+/** Alte Standbilder und den Bildplan löschen, dann nur aus dem Dialog neu planen. */
+export async function resetFilmStoryboardFromDialog(
+  dialogId: string,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog) throw new Error('Dialog nicht gefunden.')
+  const wiped = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: null, filmPlan: null },
+    profile,
+  )
+  if (!wiped) throw new Error('Alter Bildplan konnte nicht gelöscht werden.')
+  return planFilmStoryboard(dialogId, userId, profile, { cheapAi: true, keepBoard: false })
 }
 
 export async function regenerateFilmScenes(
@@ -178,7 +196,7 @@ export async function regenerateFilmScenes(
 
   const extra =
     `Bitte NUR diese Szenen neu planen, Rest unverändert lassen: ${[...wanted].join(', ')}\n${notes}`
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const aiDrafts = await draftsFromGemini(dialog, extra)
   if (!aiDrafts) {
     throw new Error('Die KI hat die Szene nicht neu planen können. Bitte Notiz kürzer fassen.')
@@ -257,7 +275,7 @@ export async function insertFilmPanel(
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const board = insertPanelAfter(dialog.filmStoryboard, afterPanelId, text, library)
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board }
@@ -374,7 +392,7 @@ export async function stillFilmPanel(
     let pieceNote = ''
     if (!correction) {
       try {
-        const library0 = await listStoryAssets(userId)
+        const library0 = libraryForCompose(await listStoryAssets(userId))
         const pieces = await ensurePanelPieces({
           userId,
           panel,
@@ -383,7 +401,7 @@ export async function stillFilmPanel(
           library: library0,
         })
         pieceNote = pieces.noteDe
-        boardForGen = rematchFilmBoard(working, pieces.library)
+        boardForGen = rematchFilmBoard(working, libraryForCompose(pieces.library))
         panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
       } catch {
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
@@ -457,7 +475,7 @@ export async function rematchFilmLibrary(
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) {
     throw new Error('Kein Storyboard.')
   }
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const board = rematchFilmBoard(normalizeFilmStoryboard(dialog.filmStoryboard), library)
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board }

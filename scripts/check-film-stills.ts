@@ -222,6 +222,15 @@ if (keptPanel?.stillUrl !== 'https://example.com/still1.png') {
   fail('Standbild muss beim Neu-Planen bleiben')
 }
 
+const fresh = buildBoardFromDrafts(
+  dialog,
+  draftPanelsFromDialog(dialog),
+  [julien, park],
+  'rules',
+)
+const freshPanel = fresh.panels.find((p) => p.id === s1[0]!.id)
+if (freshPanel?.stillUrl) fail('Vom Text neu darf keine alten Standbilder behalten')
+
 const timeoutDe = stillTimeoutHintDe('Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.')
 if (!timeoutDe.includes('fertigen Bilder bleiben')) fail('Timeout-Text: fertige Bilder bleiben')
 if (!timeoutDe.includes('Diese Szene erzeugen')) fail('Timeout-Text nennt den Knopf')

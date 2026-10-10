@@ -4,8 +4,10 @@
 
 import { characterBaseName } from '../shared/character-parts.js'
 import {
-  characterHarvestTags,
-  environmentHarvestTags,
+  characterPieceTags,
+  environmentPieceTags,
+  isHarvestedFromStill,
+  libraryForCompose,
   shouldSkipBackground,
   shouldSkipCharacterPose,
 } from '../shared/film-library-harvest.js'
@@ -18,13 +20,14 @@ import { saveStoryAsset } from './story-library.js'
 
 function identityUrl(library: StoryLibraryAsset[], name: string): string | undefined {
   const base = characterBaseName(name).trim().toLowerCase()
-  const hit = library.find(
+  const people = library.filter(
     (a) =>
       a.type === 'character' &&
       a.imageUrl &&
       characterBaseName(a.name).trim().toLowerCase() === base,
   )
-  return hit?.imageUrl
+  const studio = people.find((a) => !isHarvestedFromStill(a))
+  return (studio ?? people[0])?.imageUrl
 }
 
 export async function ensurePanelPieces(opts: {
@@ -40,10 +43,11 @@ export async function ensurePanelPieces(opts: {
   const roomHint = opts.panel.background.hint || opts.panel.settingHint || opts.scene?.title || 'Raum'
   const roomName = roomHint.trim().slice(0, 48) || 'Raum'
   const start = opts.library
+  const compose = libraryForCompose(start)
 
   const jobs: Array<Promise<void>> = []
 
-  if (!shouldSkipBackground(start, roomHint)) {
+  if (!shouldSkipBackground(compose, roomHint)) {
     jobs.push(
       (async () => {
         const env = await generateStoryEnvironment(
@@ -56,7 +60,7 @@ export async function ensurePanelPieces(opts: {
           name: roomName,
           description: roomHint,
           imageUrl: env.imageUrl,
-          tags: environmentHarvestTags(roomHint),
+          tags: environmentPieceTags(roomHint),
           styleId: env.styleId,
         })
         added.push(saved)
@@ -66,9 +70,9 @@ export async function ensurePanelPieces(opts: {
   }
 
   for (const pl of opts.panel.placements) {
-    if (shouldSkipCharacterPose(start, pl.name, pl.poseId)) continue
+    if (shouldSkipCharacterPose(compose, pl.name, pl.poseId)) continue
     const pose = getStillPose(pl.poseId)
-    const ref = identityUrl(start, pl.name)
+    const ref = identityUrl(compose, pl.name)
     jobs.push(
       (async () => {
         const made = await generateStoryCharacter(
@@ -89,7 +93,7 @@ export async function ensurePanelPieces(opts: {
           name: pl.name,
           description: `${pl.name} · ${pose.label}`,
           imageUrl: made.imageUrl,
-          tags: characterHarvestTags(pl.poseId),
+          tags: characterPieceTags(pl.poseId),
           styleId: made.styleId,
           legPoseId: pose.legPoseId,
           headAngleId: pose.headAngleId,

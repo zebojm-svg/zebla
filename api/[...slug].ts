@@ -124,7 +124,7 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
@@ -1643,6 +1643,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const result = await planFilmStoryboard(dialogId.trim(), user.uid, profile, {
         cheapAi: cheapAi !== false,
       })
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-reset' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId } = req.body as { dialogId?: string }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await resetFilmStoryboardFromDialog(dialogId.trim(), user.uid, profile)
       res.json(result)
       return
     }

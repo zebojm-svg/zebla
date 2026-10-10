@@ -245,10 +245,20 @@ export function FilmStoryboardPage() {
             type="button"
             className="btn btn-primary"
             disabled={locked}
-            onClick={() => void run(() => api.ai.filmStoryboard(id))}
-            title={board ? 'Ganzes Board neu' : 'Storyboard erzeugen'}
+            onClick={() => {
+              if (board) {
+                const ok = window.confirm(
+                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen?',
+                )
+                if (!ok) return
+                void run(() => api.ai.filmStoryboardReset(id))
+                return
+              }
+              void run(() => api.ai.filmStoryboard(id))
+            }}
+            title={board ? 'Alte Bilder löschen, vom Dialog neu' : 'Storyboard aus dem Dialog'}
           >
-            {busy ? '…' : board ? 'Neu planen' : 'Planen'}
+            {busy ? '…' : board ? 'Vom Text neu' : 'Planen'}
           </button>
         </div>
       </div>
