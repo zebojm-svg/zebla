@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
-import { FilmPanelDialogue, FilmSceneGenerateBar, FilmStillFixBar } from './FilmSceneGenerate'
+import {
+  FilmBeatColumns,
+  FilmBeatNotes,
+  FilmSceneGenerateBar,
+  FilmStillFixBar,
+} from './FilmSceneGenerate'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { FilmStillPicture } from './FilmStillArrange'
 import { useSceneStills } from './generateSceneStills'
@@ -11,6 +16,7 @@ import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-stor
 import {
   boardNeedsDrawing,
   normalizeFilmStoryboard,
+  panelDialogueLines,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
 
@@ -18,12 +24,6 @@ function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
   if (kind === 'transform') return 'is-transform'
   return 'is-missing'
-}
-
-function matchLabel(kind: string) {
-  if (kind === 'reuse') return 'Aus der Bibliothek'
-  if (kind === 'transform') return 'Spiegeln / zoomen'
-  return 'Noch zeichnen'
 }
 
 function PanelCard({
@@ -53,109 +53,96 @@ function PanelCard({
 
   return (
     <article className="film-panel">
-      <header className="film-panel-head">
-        <strong>Bild {panel.panelIndex}</strong>
-        {panel.expressionHint ? (
-          <p className="film-expression">Gesicht: {panel.expressionHint}</p>
-        ) : null}
-      </header>
-      {panel.stillUrl || panel.background.imageUrl ? (
-        <div className="film-panel-still">
-          <FilmStillPicture
-            dialogId={dialog.id}
-            panel={panel}
-            interactive
-            onUpdated={onLayout}
-          />
-          <p className="muted">Standbild dieser Zeile</p>
-          {panel.harvestNoteDe ? (
-            <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
-          ) : null}
-          <FilmPanelDialogue panel={panel} dialog={dialog} />
-        </div>
-      ) : (
-        <div
-          className="film-panel-stage"
-          style={{
-            backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
-          }}
-        >
-          {!bg.imageUrl && <p className="film-panel-empty">Hintergrund fehlt</p>}
-          {panel.placements.map((pl) => (
+      <FilmBeatColumns
+        picture={
+          panel.stillUrl || panel.background.imageUrl ? (
+            <FilmStillPicture
+              dialogId={dialog.id}
+              panel={panel}
+              interactive={false}
+              onUpdated={onLayout}
+            />
+          ) : (
             <div
-              key={`${pl.name}-${pl.poseId}-${pl.x}`}
-              className={`film-cutout film-depth-${pl.depth}`}
+              className="film-panel-stage"
               style={{
-                left: `${pl.x}%`,
-                transform: `translateX(-50%) scale(${pl.scale})${pl.flip ? ' scaleX(-1)' : ''}`,
+                backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
               }}
             >
-              {pl.imageUrl ? (
-                <img src={pl.imageUrl} alt={pl.name} />
-              ) : (
-                <span className="film-cutout-ph">{pl.name}</span>
-              )}
+              {!bg.imageUrl && <p className="film-panel-empty">Noch kein Bild</p>}
             </div>
-          ))}
-        </div>
-      )}
-      {!panel.stillUrl ? <FilmPanelDialogue panel={panel} dialog={dialog} /> : null}
-      {panel.sketchUrl ? (
-        <div className="film-sketch-wrap">
-          <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
-          <p className="muted">Skizze (in der Bibliothek gespeichert)</p>
-        </div>
-      ) : null}
-      <div className="film-matches">
-        {panel.placements.map((pl) => (
-          <p key={`${pl.name}-m-${pl.poseId}`} className={`film-match ${matchClass(pl.match)}`}>
-            {pl.name} · {pl.poseHint} — {pl.matchNoteDe}
-          </p>
-        ))}
-        <p className={`film-match ${matchClass(bg.match)}`}>{bg.matchNoteDe}</p>
-      </div>
-      <div className="film-tweak">
-        <input
-          className="input"
-          value={note}
-          disabled={busy}
-          placeholder="z.B. Julien eher im Hintergrund"
-          onChange={(e) => setNote(e.target.value)}
-        />
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={busy || !note.trim()}
-          onClick={() => onTweak(note.trim())}
-        >
-          Anpassen
-        </button>
-      </div>
-      <label className="film-comment">
-        <span className="muted">Kommentar zur Zeile</span>
-        <textarea
-          className="input"
-          rows={2}
-          value={comment}
-          disabled={busy}
-          placeholder="Notiz nur für dich …"
-          onChange={(e) => setComment(e.target.value)}
-          onBlur={() => {
-            if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
-          }}
-        />
-      </label>
-      <FilmStillFixBar
-        panel={panel}
-        busy={busy}
-        onCorrect={onCorrect}
-        onInsert={onInsert}
+          )
+        }
+        lines={panelDialogueLines(panel, dialog)}
+        fallback={panel.caption}
+        targetLanguage={dialog.targetLanguage}
+        sourceLanguage={dialog.sourceLanguage}
+        notes={
+          <>
+            <p className="film-beat-count">Bild {panel.panelIndex}</p>
+            <FilmBeatNotes panel={panel} dialog={dialog} />
+            <div className="film-matches">
+              {panel.placements.map((pl) => (
+                <span
+                  key={`${pl.name}-m-${pl.poseId}`}
+                  className={`film-match ${matchClass(pl.match)}`}
+                  title={pl.matchNoteDe}
+                >
+                  {pl.name}
+                </span>
+              ))}
+              <span className={`film-match ${matchClass(bg.match)}`} title={bg.matchNoteDe}>
+                Raum
+              </span>
+            </div>
+          </>
+        }
       />
-      <div className="film-tweak">
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
-          {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
-        </button>
-      </div>
+      <details className="film-panel-more">
+        <summary>Bild ändern</summary>
+        <div className="film-tweak">
+          <input
+            className="input"
+            value={note}
+            disabled={busy}
+            placeholder="z.B. Julien eher im Hintergrund"
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy || !note.trim()}
+            onClick={() => onTweak(note.trim())}
+          >
+            Anpassen
+          </button>
+        </div>
+        <label className="film-comment">
+          <span className="muted">Kommentar zur Zeile</span>
+          <textarea
+            className="input"
+            rows={2}
+            value={comment}
+            disabled={busy}
+            placeholder="Notiz nur für dich …"
+            onChange={(e) => setComment(e.target.value)}
+            onBlur={() => {
+              if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
+            }}
+          />
+        </label>
+        <FilmStillFixBar
+          panel={panel}
+          busy={busy}
+          onCorrect={onCorrect}
+          onInsert={onInsert}
+        />
+        <div className="film-tweak">
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
+            {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
+          </button>
+        </div>
+      </details>
     </article>
   )
 }
@@ -251,49 +238,40 @@ export function FilmStoryboardPage() {
       <FilmProjectNav dialogId={dialog.id} />
       <div className="page-header">
         <div>
-          <h1>Storyboard</h1>
-          <p className="muted">
-            {dialog.title} · Zielsprache {dialog.targetLanguage.toUpperCase()} · beliebig viele Figuren
-          </p>
-          <p className="muted">
-            Pro Szene «Diese Szene erzeugen» — das macht die Standbilder. Unter jedem Bild steht
-            der Dialog. «Szene abspielen» ist Standbilder plus Stimme, noch kein Bewegungsfilm.
-          </p>
+          <h1>Bilder</h1>
         </div>
         <div className="header-actions">
           <button
             type="button"
             className="btn btn-primary"
             disabled={locked}
-            onClick={() => void run(() => api.ai.filmStoryboard(id))}
+            onClick={() => {
+              if (board) {
+                const ok = window.confirm(
+                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen?',
+                )
+                if (!ok) return
+                void run(() => api.ai.filmStoryboardReset(id))
+                return
+              }
+              void run(() => api.ai.filmStoryboard(id))
+            }}
+            title={board ? 'Alte Bilder löschen, vom Dialog neu' : 'Storyboard aus dem Dialog'}
           >
-            {busy ? 'Plane …' : board ? 'Ganzes Board neu' : 'Storyboard erzeugen'}
+            {busy ? '…' : board ? 'Vom Text neu' : 'Planen'}
           </button>
-          <Link to={`/dialog/${id}/export`} className="btn btn-story-studio">
-            Zum Film — Szene erzeugen
-          </Link>
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <p className="film-legend">
-        <span className="film-match is-reuse">{matchLabel('reuse')}</span>
-        <span className="film-match is-transform">{matchLabel('transform')}</span>
-        <span className="film-match is-missing">{matchLabel('missing')}</span>
-      </p>
-
       {board ? (
         <>
-          <p className={missing ? 'alert alert-warn' : 'alert alert-info'}>
-            {board.summaryDe}
-            {missing > 0 ? (
-              <>
-                {' '}
-                Fehlendes in der <Link to={`/library?dialog=${dialog.id}`}>Bibliothek</Link> zeichnen.
-              </>
-            ) : null}
-          </p>
+          {missing > 0 ? (
+            <p className="alert alert-warn">
+              {missing} Teil{missing === 1 ? '' : 'e'} fehlen.
+            </p>
+          ) : null}
 
           <div className="film-scene-toolbar">
             <button
@@ -440,11 +418,7 @@ export function FilmStoryboardPage() {
         </>
       ) : (
         <div className="empty-state">
-          <h2>Noch kein Storyboard</h2>
-          <p className="muted">
-            Aus deinem Film-Prompt entstehen Kästen. Vorhandene Figuren werden genommen. Danach pro
-            Szene die Standbilder erzeugen.
-          </p>
+          <h2>Noch kein Bildplan</h2>
           <button
             type="button"
             className="btn btn-primary"

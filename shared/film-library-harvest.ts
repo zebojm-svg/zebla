@@ -151,8 +151,27 @@ export function characterHarvestTags(poseId: StillPoseId): string[] {
   return [pose.id, pose.label.toLowerCase(), HARVEST_TAG, HARVEST_FROM_STILL_TAG]
 }
 
+/** Neu gezeichnete Studio-Figur — nicht aus einem Gruppenbild geschnitten. */
+export function characterPieceTags(poseId: StillPoseId): string[] {
+  const pose = getStillPose(poseId)
+  return [pose.id, pose.label.toLowerCase(), 'studio']
+}
+
 export function environmentHarvestTags(hint: string): string[] {
   return [...locationTags(hint), HARVEST_TAG, HARVEST_FROM_STILL_TAG, 'environment']
+}
+
+export function environmentPieceTags(hint: string): string[] {
+  return [...locationTags(hint), 'environment', 'studio']
+}
+
+export function isHarvestedFromStill(asset: Pick<StoryLibraryAsset, 'tags'>): boolean {
+  return (asset.tags ?? []).includes(HARVEST_FROM_STILL_TAG)
+}
+
+/** Freisteller aus alten Gruppenbildern nicht als Vorlage für neue Standbilder. */
+export function libraryForCompose(library: StoryLibraryAsset[]): StoryLibraryAsset[] {
+  return library.filter((a) => !isHarvestedFromStill(a))
 }
 
 export function propHarvestTags(prop: HarvestProp): string[] {
@@ -231,7 +250,8 @@ export function namedPersonMaskPrompt(name: string, otherNames: string[]): strin
     overlap +
     `WHITE (#FFFFFF) = the complete ${name} including hair, skin, eyes, teeth, ` +
     `ALL clothing even if it is white, cream, grey or a hoodie, ALL shoes even if white. ` +
-    `BLACK (#000000) = background AND every other person AND true holes (between arms and torso, between fingers, between legs). ` +
+    `Never include the chair, sofa, armchair, bench, cushion, table or floor ${name} sits on — those stay BLACK. ` +
+    `BLACK (#000000) = background AND furniture AND every other person AND true holes (between arms and torso, between fingers, between legs). ` +
     `Never paint a white hoodie, shirt, sneaker or face of ${name} as black. Pale clothes of ${name} stay WHITE. ` +
     `Only black and white.`
   )
@@ -250,6 +270,7 @@ export function namedPersonExtractPrompt(name: string, otherNames: string[]): st
     `Extract ONLY ${name} from this still as an isolated full-body sprite on a TRUE TRANSPARENT background (PNG alpha). ` +
     overlap +
     `Keep ${name}'s exact pose, face, hair, clothes and shoes. Do NOT draw a checkerboard, studio wall, floor or other people. ` +
+    `Do not keep the chair, sofa, armchair or bench ${name} is sitting on. ` +
     `Do not crop a rectangle that still contains another person.`
   )
 }
@@ -312,7 +333,7 @@ export function rematchFilmBoard(
           imageUrl: matched.imageUrl,
           match: matched.match,
           matchNoteDe: matched.matchNoteDe,
-          flip: pl.layoutLocked ? pl.flip : matched.flip,
+          flip: pl.layoutLocked || pl.layoutByAi ? pl.flip : matched.flip,
         }
       }),
       background: matchBackground(panel.background.hint || panel.settingHint, library),

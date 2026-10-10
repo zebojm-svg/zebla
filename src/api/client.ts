@@ -374,6 +374,18 @@ export const api = {
         },
         FILM_PLAN_TIMEOUT_MS,
       ),
+    filmStoryboardReset: (dialogId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>(
+        '/film-storyboard-reset',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     filmStoryboardTweak: (dialogId: string, panelId: string, note: string) =>
       request<{
         dialog: import('../types').Dialog

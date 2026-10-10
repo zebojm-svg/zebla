@@ -228,10 +228,6 @@ export function CreateDialogPage() {
       <div className="page-header">
         <div>
           <h1>{t('create.title')}</h1>
-          <p className="muted">
-            Eine Geschichte liegt in ihrem Ordner: Dialog, Storyboard, Film, Diashow. Figuren und
-            Räume liegen im Welt-Regal und gelten für alle Geschichten.
-          </p>
         </div>
       </div>
 

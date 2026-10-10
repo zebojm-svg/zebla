@@ -10,6 +10,7 @@ import {
   layerIdToPlacement,
   movePlacementByPixels,
   panelCanArrange,
+  panelShowsPaintedStill,
   placementsToUpdates,
   scalePlacement,
 } from '../../shared/film-still-arrange'
@@ -31,28 +32,69 @@ export function FilmStillPicture({
   interactive = false,
   onUpdated,
 }: Props) {
+  const [arranging, setArranging] = useState(false)
   const can = panelCanArrange(panel)
-  if (can) {
-    return (
-      <FilmStillArrange
-        dialogId={dialogId}
-        panel={panel}
-        interactive={interactive}
-        onUpdated={onUpdated}
-      />
-    )
-  }
-  if (panel.stillUrl) {
+  const showStill = panelShowsPaintedStill(panel, interactive && arranging)
+
+  if (showStill) {
     return (
       <div className="film-still-flat">
-        <img src={panel.stillUrl} alt={panel.caption} />
+        <img src={panel.stillUrl ?? ''} alt={panel.caption} />
         {interactive ? (
-          <p className="muted film-arrange-hint">
-            Figuren und Ort getrennt im{' '}
-            <Link to={`/library?dialog=${dialogId}`}>Welt-Regal</Link> — dann hier ziehen und zoomen,
-            ohne KI.
-          </p>
+          can ? (
+            <div className="film-still-actions">
+              <p className="muted film-arrange-hint">
+                Fertiges Bild. Figuren nur stellen, wenn etwas rutscht.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setArranging(true)}
+              >
+                Figuren stellen
+              </button>
+            </div>
+          ) : (
+            <p className="muted film-arrange-hint">
+              Figuren und Ort getrennt im{' '}
+              <Link to={`/library?dialog=${dialogId}`}>Welt-Regal</Link> — dann hier ziehen und
+              zoomen, ohne KI.
+            </p>
+          )
         ) : null}
+      </div>
+    )
+  }
+  if (can && interactive) {
+    return (
+      <div className="film-still-workshop">
+        {panel.stillUrl ? (
+          <div className="film-still-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setArranging(false)}
+            >
+              Fertiges Bild zeigen
+            </button>
+          </div>
+        ) : null}
+        <FilmStillArrange
+          dialogId={dialogId}
+          panel={panel}
+          interactive={interactive}
+          onUpdated={onUpdated}
+        />
+      </div>
+    )
+  }
+  if (panel.background.imageUrl && !interactive) {
+    return (
+      <div className="film-still-flat">
+        <img src={panel.background.imageUrl} alt={panel.caption || 'Raum'} />
+        <p className="muted film-arrange-hint">
+          Noch kein gemaltes Bild — «Diese Szene erzeugen». Die KI füllt Figuren in diesen Raum.
+        </p>
       </div>
     )
   }

@@ -156,26 +156,15 @@ export function FilmExportPage() {
       <FilmProjectNav dialogId={dialog.id} />
       <div className="page-header">
         <div>
-          <h1>Film generieren</h1>
-          <p className="muted">
-            Hier machst du die <strong>Standbilder Szene für Szene</strong> — damit du siehst, ob
-            es gut herauskommt. Figuren kannst du danach <strong>ziehen und zoomen</strong>, ohne
-            KI — z.B. neben die Rolltreppe. Unter jedem Bild steht der Dialog.
-          </p>
+          <h1>Bilder</h1>
         </div>
-        {board ? (
-          <Link to={`/dialog/${dialog.id}/board`} className="btn btn-secondary">
-            Zum Storyboard
-          </Link>
-        ) : null}
       </div>
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-info">{status}</div>}
 
       {!board ? (
         <p>
-          Zuerst ein <Link to={`/dialog/${dialog.id}/board`}>Storyboard</Link> bauen. Danach kannst
-          du hier Szene 1, dann Szene 2 als Bilder erzeugen.
+          Zuerst <Link to={`/dialog/${dialog.id}/board`}>planen</Link>.
         </p>
       ) : (
         <>
@@ -251,10 +240,7 @@ export function FilmExportPage() {
             )
           })}
 
-          <h2>Änderungen in der Zeit</h2>
-          <p className="muted">
-            Später mit Abspiel-Leiste. Jetzt schon notieren: z.B. bei 12:23 Tara etwas lauter schreien.
-          </p>
+          <h2>Notizen</h2>
           <ul className="film-timeline">
             {timeline.map((t) => (
               <li key={t.id}>

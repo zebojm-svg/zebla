@@ -27,6 +27,8 @@ import {
   STILL_BACKGROUND_EXTRACT_PROMPT,
   HARVEST_FROM_STILL_TAG,
   HARVEST_TAG,
+  libraryForCompose,
+  characterPieceTags,
 } from '../shared/film-library-harvest.ts'
 import {
   binaryAlphaMask,
@@ -73,11 +75,17 @@ if (!maskJulien.includes('BLACK')) fail('Andere Leute müssen schwarz sein')
 if (!maskJulien.toLowerCase().includes('one white blob')) {
   fail('Maske darf keine Gruppen-Silhouette sein')
 }
+if (!maskJulien.toLowerCase().includes('armchair') && !maskJulien.toLowerCase().includes('sofa')) {
+  fail('Maske darf Sessel/Sofa nicht zur Person zählen')
+}
 
 const extract = namedPersonExtractPrompt('Julien', ['Tara'])
 if (!extract.includes('ONLY Julien')) fail('Fallback holt nur Julien')
 if (!extract.toLowerCase().includes('tara')) fail('Fallback darf Tara nicht im Ausschnitt lassen')
 if (!extract.toLowerCase().includes('rectangle')) fail('Kein Rechteck mit der anderen Person')
+if (!extract.toLowerCase().includes('chair') && !extract.toLowerCase().includes('sofa')) {
+  fail('Freisteller darf den Stuhl nicht mitnehmen')
+}
 
 if (!STILL_BACKGROUND_EXTRACT_PROMPT.toLowerCase().includes('remove every person')) {
   fail('Hintergrund-Prompt muss alle Leute entfernen')
@@ -343,5 +351,28 @@ if (!box || box.minX > 2 || box.maxX < 14) fail('Zuschnitt um die Figur, nicht u
 if (box.maxX >= 24) fail('Zuschnitt darf Tara nicht mitnehmen')
 
 if (!HARVEST_FROM_STILL_TAG) fail('from-still Tag')
+
+const cutoutJulien: StoryLibraryAsset = {
+  id: 'cut-julien',
+  type: 'character',
+  name: 'Julien',
+  imageUrl: 'https://example.com/julien-cutout.png',
+  tags: characterHarvestTags('sitting'),
+  createdAt: '2026-01-01',
+}
+const studioJulien: StoryLibraryAsset = {
+  id: 'studio-julien',
+  type: 'character',
+  name: 'Julien',
+  imageUrl: 'https://example.com/julien-studio.png',
+  tags: characterPieceTags('sitting'),
+  createdAt: '2026-01-01',
+}
+const composeLib = libraryForCompose([cutoutJulien, studioJulien])
+if (composeLib.some((a) => a.id === 'cut-julien')) fail('Freisteller aus Gruppenbild nicht als Vorlage')
+if (!composeLib.some((a) => a.id === 'studio-julien')) fail('Studio-Figur bleibt als Vorlage')
+if (characterPieceTags('sitting').includes(HARVEST_FROM_STILL_TAG)) {
+  fail('Neu gezeichnete Figur ist kein Freisteller aus dem Standbild')
+}
 
 console.log('OK: Standbild → Bibliothek, einzelne Figuren, Hintergrund, Wiederverwenden')

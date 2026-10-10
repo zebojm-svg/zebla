@@ -25,6 +25,7 @@ import { estimateMissingTts, estimateRegenerateTts } from '../lib/costEstimates'
 import { exportDialogJson, exportDialogText } from '../utils/exportDialog'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../../shared/line-speech'
 import { useI18n } from '../i18n/I18nContext'
+import { FilmProjectNav } from '../story/FilmProjectNav'
 
 export function SlideshowPage() {
   const { id, token: shareToken } = useParams<{ id?: string; token?: string }>()
@@ -295,6 +296,7 @@ export function SlideshowPage() {
 
   return (
     <div className="slideshow-page">
+      {!isPublic ? <FilmProjectNav dialogId={dialog.id} compact /> : null}
       <div className="slideshow-topbar">
         <Link to={backHref} className="btn btn-ghost slideshow-back">
           {isPublic ? '← Zurück' : t('nav.edit')}

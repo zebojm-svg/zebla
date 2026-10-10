@@ -71,7 +71,13 @@ const dialog: Dialog = {
       id: 's1',
       title: 'La Chasse aux Cadeaux',
       lines: [
-        { id: 'l1', speaker: 'Julien', text: 'Ein Geschenk!', cueImage: 'Julien steht im Park' },
+        {
+          id: 'l1',
+          speaker: 'Julien',
+          text: 'Ein Geschenk!',
+          cueImage: 'Julien steht im Park',
+          birkenbihl: [{ text: 'Ein Geschenk!', translation: 'Un cadeau !' }],
+        },
         { id: 'l2', speaker: 'Julien', text: 'Ich winke.', cueImage: 'Julien winkt' },
       ],
     },
@@ -106,6 +112,8 @@ const prompt = buildFilmStillPrompt({
   poseHints: ['Julien: Stehen'],
   hasLibraryRefs: true,
   targetLanguage: 'fr',
+  beatIndex: 2,
+  beatTotal: 5,
 })
 if (!prompt.toLowerCase().includes('still')) fail('Prompt muss Standbild sagen')
 if (!prompt.includes('graphic novel') && !prompt.includes('watercolor')) {
@@ -125,6 +133,19 @@ if (!prompt.includes('Ignore any earlier')) {
 if (!prompt.includes('Bratwurst') || !prompt.includes('Glühwein')) {
   fail('Prompt muss deutsche Stand-Schilder (Bratwurst/Glühwein) verbieten')
 }
+if (!prompt.toLowerCase().includes('collage') && !prompt.toLowerCase().includes('cut-out') && !prompt.toLowerCase().includes('into that exact room')) {
+  fail('Prompt muss Collage/Freisteller-Kleben verbieten')
+}
+if (!prompt.toLowerCase().includes('different') && !prompt.toLowerCase().includes('must look different')) {
+  fail('Jedes Bild muss ein neuer Moment sein')
+}
+if (!prompt.includes('moment 2 of 5')) fail('Prompt muss Bild 2 von 5 als eigenen Moment nennen')
+if (!prompt.toLowerCase().includes('identity plates') && !prompt.toLowerCase().includes('into that exact room')) {
+  fail('Prompt muss Figuren in den Raum malen, nicht als Sticker kleben')
+}
+if (!prompt.toLowerCase().includes('hips on the seat')) {
+  fail('Prompt muss Sitzen auf dem Möbel verlangen, nicht davor kleben')
+}
 
 const fixPrompt = buildFilmStillPrompt({
   caption: 'Julien und Tara schauen in den Prospekt',
@@ -142,6 +163,13 @@ if (!fixPrompt.toLowerCase().includes('current still')) {
 const refs = referenceUrlsForPanel(s1[0]!)
 if (!refs.includes('https://example.com/julien.png')) fail('Julien-Foto aus Bibliothek als Vorlage')
 if (!refs.includes('https://example.com/park.png')) fail('Park als Vorlage')
+const sceneRefs = referenceUrlsForPanel(s1[0]!, 'https://example.com/prev.png')
+if (sceneRefs[0] === 'https://example.com/prev.png') {
+  fail('Nicht das vorige Standbild als Vorlage — sonst werden alle Bilder gleich')
+}
+if (sceneRefs[0] !== 'https://example.com/park.png') {
+  fail('Zuerst der vollständige Raum, dann die Figuren')
+}
 
 const fixRefs = referenceUrlsForPanel(
   s1[0]!,
@@ -194,6 +222,15 @@ if (keptPanel?.stillUrl !== 'https://example.com/still1.png') {
   fail('Standbild muss beim Neu-Planen bleiben')
 }
 
+const fresh = buildBoardFromDrafts(
+  dialog,
+  draftPanelsFromDialog(dialog),
+  [julien, park],
+  'rules',
+)
+const freshPanel = fresh.panels.find((p) => p.id === s1[0]!.id)
+if (freshPanel?.stillUrl) fail('Vom Text neu darf keine alten Standbilder behalten')
+
 const timeoutDe = stillTimeoutHintDe('Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.')
 if (!timeoutDe.includes('fertigen Bilder bleiben')) fail('Timeout-Text: fertige Bilder bleiben')
 if (!timeoutDe.includes('Diese Szene erzeugen')) fail('Timeout-Text nennt den Knopf')
@@ -201,6 +238,9 @@ if (!timeoutDe.includes('Diese Szene erzeugen')) fail('Timeout-Text nennt den Kn
 const talk = panelDialogueLines(s1[0]!, dialog)
 if (!talk.some((l) => l.speaker === 'Julien' && l.text.includes('Geschenk'))) {
   fail('Unter dem Bild muss der Dialog stehen (Sprecher + Text)')
+}
+if (!talk.some((l) => l.nativeDe?.includes('cadeau'))) {
+  fail('Unter der Zielsprache die Übersetzung zeigen')
 }
 const spoken = panelSpeakLines(s1[0]!, dialog)
 if (!spoken[0]?.text) fail('Szene abspielen braucht den gesprochenen Text')

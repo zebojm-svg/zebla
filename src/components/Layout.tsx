@@ -55,19 +55,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <>
               {(user.role === 'teacher' || user.role === 'master') && (
                 <nav className="zebo-shell-header__nav zebo-tabs" aria-label="Hauptnavigation">
-                  <Link to="/" className={tabClass('/', true)}>
+                  <Link to="/" className={tabClass('/', true)} title="Geschichten">
                     Geschichten
                   </Link>
-                  <Link to="/library" className={tabClass('/library')}>
+                  <Link to="/library" className={tabClass('/library')} title="Welt">
                     Welt
                   </Link>
-                  <Link to="/explore" className={tabClass('/explore')}>
+                  <Link to="/explore" className={tabClass('/explore')} title="Öffentlich">
                     Öffentlich
                   </Link>
-                  <Link to="/classes" className={tabClass('/classes')}>
+                  <Link to="/classes" className={tabClass('/classes')} title="Klassen">
                     Klassen
                   </Link>
-                  <Link to="/pro" className={tabClass('/pro')}>
+                  <Link to="/pro" className={tabClass('/pro')} title="Pro">
                     Pro
                   </Link>
                 </nav>

@@ -7,6 +7,14 @@ import { listCharacterIdentities } from './pose-variants'
 import { characterBaseName } from '../../shared/character-parts'
 import { getStillPose } from '../../shared/story-stills'
 import { isLibraryShelf, LIBRARY_SHELVES, type LibraryShelfId } from '../../shared/story-project'
+import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
+
+const SHELF_ICON: Record<LibraryShelfId, StoryPictogramName> = {
+  character: 'person',
+  environment: 'room',
+  prop: 'chair',
+  sketch: 'sketch',
+}
 
 function poseSubtitle(asset: StoryLibraryAsset): string {
   if (asset.legPoseId || asset.headAngleId || asset.armPoseId) {
@@ -99,12 +107,7 @@ export function FilmLibraryPage() {
       <FilmProjectNav dialogId={dialogId} />
       <div className="page-header">
         <div>
-          <h1>Welt-Regal</h1>
-          <p className="muted">
-            Figuren, Räume und Möbel gelten für alle Geschichten. Nach einer Szene landen Figur und
-            Hintergrund automatisch hier — auch wenn sich Leute überlappen. Das Storyboard schaut
-            zuerst hier nach.
-          </p>
+          <h1>Welt</h1>
         </div>
         <Link to={dialogId ? `/story?dialog=${dialogId}` : '/story'} className="btn btn-ghost">
           Nur wenn etwas fehlt: zeichnen
@@ -123,8 +126,8 @@ export function FilmLibraryPage() {
             className={`library-shelf-tab${shelf === item.id ? ' is-active' : ''}`}
             onClick={() => openShelf(item.id)}
           >
+            <StoryPictogram name={SHELF_ICON[item.id]} />
             <strong>{item.title}</strong>
-            <span className="muted">{item.hint}</span>
           </button>
         ))}
       </div>
@@ -145,8 +148,8 @@ export function FilmLibraryPage() {
               <h2>Figuren</h2>
               {shownIdentities.length === 0 ? (
                 <p className="muted">
-                  Noch keine Figur. Im Storyboard «Julien sitzt» schreiben — oder einmal{' '}
-                  <Link to="/story">Stamm-Bild zeichnen</Link>.
+                  Noch keine Figur.{' '}
+                  <Link to="/story">Zeichnen</Link>
                 </p>
               ) : (
                 shownIdentities.map((identity) => {

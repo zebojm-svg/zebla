@@ -77,7 +77,7 @@ async function generateStillPng(
     parts.push({
       text: correctingExisting
         ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
-        : 'Attached photos: keep these EXACT people (face, hair, clothes). If a photo is a place, keep that location. Compose one finished still of the action.',
+        : 'Attached photos: first the EMPTY ROOM with complete furniture (no people). Then COMPLETE people as full studio figures (identity only). Paint a new illustration of those people INSIDE the room, sitting in the real furniture, using the real floor. One coherent picture — do not cut pieces out of a group photo, do not paste transparent sprites, do not copy a previous frame.',
     })
   }
   parts.push({ text: prompt })
@@ -128,6 +128,8 @@ export function stillPromptForPanel(
     hasLibraryRefs: boolean
     targetLanguage?: string
     correctingExisting?: boolean
+    spokenLine?: string
+    beatTotal?: number
   },
 ): string {
   return buildFilmStillPrompt({
@@ -144,6 +146,9 @@ export function stillPromptForPanel(
     directorNote: panel.directorNote,
     stillCorrection: panel.stillCorrection,
     correctingExisting: extras.correctingExisting,
+    spokenLine: extras.spokenLine,
+    beatIndex: panel.panelIndex,
+    beatTotal: extras.beatTotal,
   })
 }
 
@@ -154,6 +159,7 @@ export async function generateFilmPanelStillImage(opts: {
   previousStillUrl?: string
   correctFromUrl?: string
   targetLanguage?: string
+  beatTotal?: number
 }): Promise<string> {
   const urls = referenceUrlsForPanel(opts.panel, opts.previousStillUrl, opts.correctFromUrl)
   const refs = await loadRefs(urls)
@@ -161,6 +167,8 @@ export async function generateFilmPanelStillImage(opts: {
     hasLibraryRefs: refs.length > 0,
     targetLanguage: opts.targetLanguage,
     correctingExisting: Boolean(opts.correctFromUrl),
+    spokenLine: opts.panel.caption || opts.panel.imageCue,
+    beatTotal: opts.beatTotal,
   })
   const buffer = await generateStillPng(prompt, refs, Boolean(opts.correctFromUrl))
   return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)

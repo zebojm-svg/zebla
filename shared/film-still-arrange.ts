@@ -7,7 +7,7 @@ import {
 
 export const ARRANGE_CANVAS = { width: 960, height: 540 } as const
 
-const BASE_WIDTH_RATIO = 0.3
+const BASE_WIDTH_RATIO = 0.18
 const FIGURE_ASPECT = 1.55
 
 export type ArrangeDrawLayer = {
@@ -29,6 +29,15 @@ export function panelCanArrange(panel: FilmStoryboardPanel): boolean {
   const bg = panel.background.imageUrl?.trim()
   if (!bg) return false
   return panel.placements.some((pl) => Boolean(pl.imageUrl?.trim()))
+}
+
+/** Das gemalte Standbild ist das Bild zum Anschauen — Freisteller nur in der Werkstatt. */
+export function panelShowsPaintedStill(
+  panel: Pick<FilmStoryboardPanel, 'stillUrl'>,
+  arranging = false,
+): boolean {
+  if (arranging) return false
+  return Boolean(panel.stillUrl?.trim())
 }
 
 export type ArrangeLayerUpdate = {

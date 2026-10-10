@@ -100,10 +100,13 @@ export function filmStillLanguageEn(code?: string): string {
   return FILM_STILL_LANGUAGE_EN[code.trim().slice(0, 2).toLowerCase()] ?? code.trim()
 }
 
-/** Fotos aus der Bibliothek (Figuren zuerst), plus letztes Standbild derselben Szene. */
+/**
+ * Vollständiger Raum + vollständige Figuren. Kein voriges Standbild —
+ * sonst kopiert die KI dasselbe Wohnzimmer zehnmal.
+ */
 export function referenceUrlsForPanel(
   panel: FilmStoryboardPanel,
-  previousStillUrl?: string,
+  _previousStillUrl?: string,
   correctFromUrl?: string,
 ): string[] {
   const people: string[] = []
@@ -117,9 +120,9 @@ export function referenceUrlsForPanel(
   const ordered = (
     correctFromUrl
       ? [correctFromUrl, ...people, bg]
-      : [...people, bg, previousStillUrl]
+      : [bg, ...people]
   ).filter((u): u is string => Boolean(u && u.startsWith('http')))
-  return [...new Set(ordered)].slice(0, 3)
+  return [...new Set(ordered)].slice(0, 4)
 }
 
 export function previousStillUrlInScene(
@@ -185,6 +188,9 @@ export function buildFilmStillPrompt(opts: {
   directorNote?: string
   stillCorrection?: string
   correctingExisting?: boolean
+  spokenLine?: string
+  beatIndex?: number
+  beatTotal?: number
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -192,15 +198,25 @@ export function buildFilmStillPrompt(opts: {
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const lock = opts.hasLibraryRefs
-    ? `${STORY_STILLS_LOCK_PROMPT} Use the attached photos as these exact people and (if present) the place. Compose ONE finished still. Pose and expression may change to match the action.`
-    : 'Draw the people as described. Keep them consistent if names are given.'
+    ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture and no people; then COMPLETE people (full body in a studio, not cropped from a group shot, not transparent sprites). Paint a NEW coherent illustration: those exact people living INSIDE that exact room, occupying the real furniture, feet on the real floor. Same camera as the room photo. Do not cut anyone out of a photo. Do not collage or paste sprites on top of the background.`
+    : 'Draw a complete room with complete furniture and complete people, then place the people into the room so they occupy the furniture.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
       ? `Never write German on signs, stalls, posters or paper (no Bratwurst, Glühwein, German menus). Use ${langEn} instead (e.g. French: saucisse, vin chaud).`
       : ''
+  const moment =
+    opts.beatIndex && opts.beatTotal
+      ? `This is moment ${opts.beatIndex} of ${opts.beatTotal}.`
+      : opts.beatIndex
+        ? `This is moment ${opts.beatIndex} of a sequence.`
+        : 'This is one moment in a sequence.'
 
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
+    `Paint ONE coherent illustration of a complete room filled with complete furniture and complete figures. The people belong in the room: sitting IN chairs, standing ON the floor, using the furniture that is already there. Do not collage, do not paste cut-out sprites, no dashed boxes, no ghost people, no extra limbs.`,
+    opts.correctingExisting
+      ? ''
+      : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     lock,
     opts.correctingExisting
@@ -209,7 +225,8 @@ export function buildFilmStillPrompt(opts: {
     `Scene title: ${opts.sceneTitle || 'Scene'}.`,
     `Place: ${opts.settingHint || 'as implied'}.`,
     `Action / caption: ${opts.caption}.`,
-    opts.imageCue ? `What we see: ${opts.imageCue}.` : '',
+    opts.spokenLine ? `Spoken in this moment: ${opts.spokenLine}.` : '',
+    opts.imageCue ? `What we see in THIS frame only: ${opts.imageCue}.` : '',
     `Faces: ${opts.expressionHint || 'natural'}.`,
     people ? `People in frame: ${people}.` : '',
     poses ? `Poses: ${poses}.` : '',
@@ -217,7 +234,7 @@ export function buildFilmStillPrompt(opts: {
     opts.stillCorrection
       ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
       : '',
-    `Widescreen 16:9, full bodies when they are in the scene, both legs and shoes visible when standing.`,
+    `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent — never paste a standing body onto a chair. Furniture belongs to the room, not glued to the person. Same body scale for everyone in the room. No extra limbs, no duplicate chairs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,
     `Ignore any earlier "NO text" rule for shop signs, stall labels, posters, flyers and prospectus.`,

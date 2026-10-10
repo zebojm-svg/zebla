@@ -8,6 +8,7 @@ import type { ClassRoom, Dialog, DialogFolder } from '../types'
 import { languageName } from '../types'
 import { useI18n } from '../i18n/I18nContext'
 import { isStoryFolder } from '../../shared/story-project'
+import { StoryPictogram } from '../story/StoryPictogram'
 
 function folderPath(
   folderId: string | null,
@@ -487,15 +488,11 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1>{t('dashboard.title')}</h1>
-          <p className="muted">
-            Jede Geschichte ist ein Ordner: Dialog, Storyboard, Film, Diashow. Figuren und Räume
-            liegen im Welt-Regal — für alle Geschichten. «Teilen» erscheint unter{' '}
-            <Link to="/explore">Öffentlich</Link>.
-          </p>
+          <p className="muted">Text, Bilder, Abspielen. Figuren und Räume in der Welt.</p>
         </div>
         <div className="header-actions">
-          <Link to="/library" className="btn btn-secondary">
-            Welt-Regal
+          <Link to="/library" className="btn btn-secondary" title="Welt">
+            Welt
           </Link>
           {canCreateFolder && (
             <button type="button" className="btn btn-ghost" onClick={createFolder}>
@@ -560,14 +557,14 @@ export function DashboardPage() {
           </h2>
           <p>
             {inStoryFolder
-              ? 'Schreib den Film hier hinein. Dialog, Storyboard und Bilder bleiben in diesem Ordner.'
+              ? 'Text, Bilder und Abspielen liegen in diesem Ordner.'
               : currentFolderId
                 ? inClassFolder
                   ? canManageClassFolders
-                    ? 'Lege hier Ordner an oder starte eine Geschichte in diesem Klassenordner.'
-                    : 'Starte hier eine Geschichte – Unterordner legt die Lehrkraft an.'
-                  : 'Lege hier Ordner an oder starte eine Geschichte in diesem Ordner.'
-                : 'Eine neue Geschichte legt automatisch einen Ordner an. Figuren und Räume kommen ins Welt-Regal.'}
+                    ? 'Ordner oder Geschichte hier anlegen.'
+                    : 'Geschichte starten – Ordner legt die Lehrkraft an.'
+                  : 'Ordner oder Geschichte hier anlegen.'
+                : 'Neue Geschichte = neuer Ordner. Figuren in der Welt.'}
           </p>
           <div className="empty-state-actions">
             <Link to="/library" className="btn btn-secondary">
@@ -612,31 +609,34 @@ export function DashboardPage() {
                 </button>
                 {story && (
                   <p className="dialog-meta">
-                    Geschichte · Dialog, Storyboard, Film, Diashow
+                    Geschichte
                   </p>
                 )}
                 {story && storyDialog && (
                   <div className="library-card-actions">
-                    <Link to={`/dialog/${storyDialog.id}`} className="btn btn-secondary btn-sm">
-                      Dialog
+                    <Link
+                      to={`/dialog/${storyDialog.id}`}
+                      className="story-icon-link"
+                      title="Text"
+                      aria-label="Text"
+                    >
+                      <StoryPictogram name="text" />
                     </Link>
                     <Link
                       to={`/dialog/${storyDialog.id}/board`}
-                      className="btn btn-story-studio btn-sm"
+                      className="story-icon-link"
+                      title="Bilder"
+                      aria-label="Bilder"
                     >
-                      Storyboard
-                    </Link>
-                    <Link
-                      to={`/dialog/${storyDialog.id}/export`}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      Film
+                      <StoryPictogram name="pictures" />
                     </Link>
                     <Link
                       to={`/dialog/${storyDialog.id}/slideshow`}
-                      className="btn btn-secondary btn-sm"
+                      className="story-icon-link"
+                      title="Abspielen"
+                      aria-label="Abspielen"
                     >
-                      Diashow
+                      <StoryPictogram name="play" />
                     </Link>
                   </div>
                 )}
@@ -735,28 +735,27 @@ export function DashboardPage() {
                     <>
                       <Link
                         to={`/dialog/${d.id}`}
-                        className="btn btn-secondary btn-sm"
-                        title="Dialog und Text öffnen"
+                        className="story-icon-link"
+                        title="Text"
+                        aria-label="Text"
                       >
-                        Dialog
+                        <StoryPictogram name="text" />
                       </Link>
                       <Link
                         to={`/dialog/${d.id}/board`}
-                        className="btn btn-story-studio btn-sm"
+                        className="story-icon-link"
+                        title="Bilder"
+                        aria-label="Bilder"
                       >
-                        Storyboard
-                      </Link>
-                      <Link
-                        to={`/dialog/${d.id}/export`}
-                        className="btn btn-secondary btn-sm"
-                      >
-                        Film
+                        <StoryPictogram name="pictures" />
                       </Link>
                       <Link
                         to={`/dialog/${d.id}/slideshow`}
-                        className="btn btn-secondary btn-sm"
+                        className="story-icon-link"
+                        title="Abspielen"
+                        aria-label="Abspielen"
                       >
-                        Diashow
+                        <StoryPictogram name="play" />
                       </Link>
                       {!inStoryFolder && (
                         <button
