@@ -7,6 +7,8 @@ import { LanguageFlag } from '../components/LanguageFlag'
 import type { ClassRoom, Dialog, DialogFolder } from '../types'
 import { languageName } from '../types'
 import { useI18n } from '../i18n/I18nContext'
+import { isStoryFolder } from '../../shared/story-project'
+import { StoryPictogram } from '../story/StoryPictogram'
 
 function folderPath(
   folderId: string | null,
@@ -106,6 +108,7 @@ export function DashboardPage() {
   const [copyBusy, setCopyBusy] = useState(false)
   const [shareBusyId, setShareBusyId] = useState<string | null>(null)
   const [shareCopiedId, setShareCopiedId] = useState<string | null>(null)
+  const [wrapBusyId, setWrapBusyId] = useState<string | null>(null)
 
   const loadLibrary = useCallback(async () => {
     const [libRes, statusRes] = await Promise.all([
@@ -135,10 +138,11 @@ export function DashboardPage() {
   )
 
   const inClassFolder = currentFolder?.scope === 'class'
+  const inStoryFolder = isStoryFolder(currentFolder)
 
   const isTeacherOrMaster = user?.role === 'teacher' || user?.role === 'master'
   const canManageClassFolders = isTeacherOrMaster && inClassFolder
-  const canCreateFolder = !inClassFolder || canManageClassFolders
+  const canCreateFolder = !inStoryFolder && (!inClassFolder || canManageClassFolders)
 
   const classRootFolderIds = useMemo(
     () => new Set(classes.map((c) => c.rootFolderId)),
@@ -318,18 +322,42 @@ export function DashboardPage() {
     }
   }
 
+  const wrapDialog = async (dialog: Dialog) => {
+    if (!canEditDialog(dialog)) return
+    setError('')
+    setWrapBusyId(dialog.id)
+    try {
+      const { folder, dialog: updated } = await api.storyProjects.wrap(dialog.id)
+      setFolders((prev) => {
+        if (prev.some((f) => f.id === folder.id)) {
+          return prev.map((f) => (f.id === folder.id ? folder : f))
+        }
+        return [...prev, folder].sort((a, b) => a.name.localeCompare(b.name, 'de'))
+      })
+      setDialogs((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Konnte die Geschichte nicht in einen Ordner legen.')
+    } finally {
+      setWrapBusyId(null)
+    }
+  }
+
   const deleteFolder = async (folder: DialogFolder) => {
     if (!canManageFolder(folder)) return
+    const story = isStoryFolder(folder)
     if (
       !confirm(
-        `Ordner „${folder.name}" löschen? Unterordner und Dialoge werden eine Ebene nach oben verschoben.`,
+        story
+          ? `Geschichte „${folder.name}" wirklich löschen? Dialog, Storyboard und Film sind dann weg.`
+          : `Ordner „${folder.name}" löschen? Unterordner und Dialoge werden eine Ebene nach oben verschoben.`,
       )
     ) {
       return
     }
     setError('')
     try {
-      await api.folders.delete(folder.id)
+      if (story) await api.storyProjects.delete(folder.id)
+      else await api.folders.delete(folder.id)
       await loadLibrary()
       if (currentFolderId === folder.id) {
         if (folder.parentId) setSearchParams({ folder: folder.parentId })
@@ -428,7 +456,13 @@ export function DashboardPage() {
     }
   }
 
-  const createLink = currentFolderId ? `/create?folder=${currentFolderId}` : '/create'
+  const storyDialog = inStoryFolder ? childDialogs[0] ?? null : null
+  const createLink = storyDialog
+    ? `/dialog/${storyDialog.id}`
+    : currentFolderId
+      ? `/create?folder=${currentFolderId}`
+      : '/create'
+  const showNewStory = !inStoryFolder || !storyDialog
   const isEmpty = childFolders.length === 0 && childDialogs.length === 0
   const showProBanner = user?.role === 'teacher' && !user.proActive
 
@@ -454,37 +488,19 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1>{t('dashboard.title')}</h1>
-          <p className="muted">
-            Ordne Dialoge in Ordnern. «Teilen» / Ordner «Öffentlich» stellt sie unter{' '}
-            <Link to="/explore">Öffentliche Dialoge</Link> bereit.
-          </p>
+          <p className="muted">Text, Bilder, Abspielen. Figuren und Räume in der Welt.</p>
         </div>
         <div className="header-actions">
-          <Link to="/library" className="btn btn-story-studio">
-            Bibliothek
+          <Link to="/library" className="btn btn-secondary" title="Welt">
+            Welt
           </Link>
           {canCreateFolder && (
-            <button type="button" className="btn btn-secondary" onClick={createFolder}>
+            <button type="button" className="btn btn-ghost" onClick={createFolder}>
               + {t('dashboard.newFolder')}
             </button>
           )}
           <Link to={createLink} className="btn btn-primary">
-            + {t('dashboard.newDialog')}
-          </Link>
-        </div>
-      </div>
-
-      <div className="dashboard-story-cta">
-        <p>
-          <strong>Film-Projekt</strong>
-          Dialog schreiben, ins Storyboard, Bibliothek füllt die Posen. Wiederverwenden = günstiger.
-        </p>
-        <div className="header-actions">
-          <Link to={createLink} className="btn btn-story-studio">
-            Neuer Dialog
-          </Link>
-          <Link to="/library" className="btn btn-secondary">
-            Bibliothek
+            {inStoryFolder && storyDialog ? 'Öffnen' : `+ ${t('dashboard.newDialog')}`}
           </Link>
         </div>
       </div>
@@ -532,28 +548,38 @@ export function DashboardPage() {
 
       {isEmpty ? (
         <div className="empty-state">
-          <h2>{currentFolderId ? 'Ordner ist leer' : 'Noch keine Dialoge'}</h2>
+          <h2>
+            {inStoryFolder
+              ? 'Diese Geschichte ist noch leer'
+              : currentFolderId
+                ? 'Ordner ist leer'
+                : 'Noch keine Geschichte'}
+          </h2>
           <p>
-            {currentFolderId
-              ? inClassFolder
-                ? canManageClassFolders
-                  ? 'Lege hier Ordner an oder erstelle einen Dialog in diesem Klassenordner.'
-                  : 'Erstelle hier einen Dialog – Unterordner legt die Lehrkraft an.'
-                : 'Lege hier Ordner an oder erstelle einen Dialog in diesem Ordner.'
-              : 'Starte mit deinem ersten Dialog – per KI-Gespräch, Thema oder Diktat.'}
+            {inStoryFolder
+              ? 'Text, Bilder und Abspielen liegen in diesem Ordner.'
+              : currentFolderId
+                ? inClassFolder
+                  ? canManageClassFolders
+                    ? 'Ordner oder Geschichte hier anlegen.'
+                    : 'Geschichte starten – Ordner legt die Lehrkraft an.'
+                  : 'Ordner oder Geschichte hier anlegen.'
+                : 'Neue Geschichte = neuer Ordner. Figuren in der Welt.'}
           </p>
           <div className="empty-state-actions">
-            <Link to="/library" className="btn btn-story-studio">
-              Bibliothek
+            <Link to="/library" className="btn btn-secondary">
+              Welt-Regal
             </Link>
             {canCreateFolder && (
-              <button type="button" className="btn btn-secondary" onClick={createFolder}>
+              <button type="button" className="btn btn-ghost" onClick={createFolder}>
                 Ordner anlegen
               </button>
             )}
-            <Link to={createLink} className="btn btn-primary">
-              Dialog erstellen
-            </Link>
+            {showNewStory && (
+              <Link to={createLink} className="btn btn-primary">
+                Geschichte starten
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -563,10 +589,13 @@ export function DashboardPage() {
               folder.scope === 'class' &&
               (folder.parentId === null || classRootFolderIds.has(folder.id))
             const showFolderActions = canManageFolder(folder)
+            const story = isStoryFolder(folder)
+            const storyDialog =
+              dialogs.find((d) => d.folderId === folder.id) ?? null
             return (
               <article
                 key={folder.id}
-                className={`library-card folder-card${isClassRoot ? ' class-folder-card' : ''}`}
+                className={`library-card folder-card${isClassRoot ? ' class-folder-card' : ''}${story ? ' story-folder-card' : ''}`}
               >
                 <button
                   type="button"
@@ -574,10 +603,53 @@ export function DashboardPage() {
                   onClick={() => openFolder(folder.id)}
                 >
                   <span className="folder-icon" aria-hidden>
-                    {isClassRoot ? '🏫' : '📁'}
+                    {isClassRoot ? '🏫' : story ? '🎬' : '📁'}
                   </span>
                   <h3>{folder.name}</h3>
                 </button>
+                {story && (
+                  <p className="dialog-meta">
+                    Geschichte
+                  </p>
+                )}
+                {story && storyDialog && (
+                  <div className="library-card-actions">
+                    <Link
+                      to={`/dialog/${storyDialog.id}`}
+                      className="story-icon-link"
+                      title="Text"
+                      aria-label="Text"
+                    >
+                      <StoryPictogram name="text" />
+                    </Link>
+                    <Link
+                      to={`/dialog/${storyDialog.id}/board`}
+                      className="story-icon-link"
+                      title="Bilder"
+                      aria-label="Bilder"
+                    >
+                      <StoryPictogram name="pictures" />
+                    </Link>
+                    <Link
+                      to={`/dialog/${storyDialog.id}/slideshow`}
+                      className="story-icon-link"
+                      title="Abspielen"
+                      aria-label="Abspielen"
+                    >
+                      <StoryPictogram name="play" />
+                    </Link>
+                  </div>
+                )}
+                {story && !storyDialog && (
+                  <div className="library-card-actions">
+                    <Link
+                      to={`/create?folder=${folder.id}`}
+                      className="btn btn-primary btn-sm"
+                    >
+                      Fortsetzen
+                    </Link>
+                  </div>
+                )}
                 {showFolderActions && (
                   <div className="library-card-actions">
                     <button
@@ -656,29 +728,46 @@ export function DashboardPage() {
                 <p className="dialog-meta">
                   {languageName(d.targetLanguage)} · {d.sections.length} Abschnitt
                   {d.sections.length !== 1 ? 'e' : ''}
+                  {inStoryFolder ? ' · in diesem Geschichten-Ordner' : ''}
                 </p>
                 <div className="library-card-actions">
                   {editable ? (
                     <>
                       <Link
                         to={`/dialog/${d.id}`}
-                        className="btn btn-secondary btn-sm"
-                        title="Dialog und Text öffnen"
+                        className="story-icon-link"
+                        title="Text"
+                        aria-label="Text"
                       >
-                        Bearbeiten
+                        <StoryPictogram name="text" />
                       </Link>
                       <Link
                         to={`/dialog/${d.id}/board`}
-                        className="btn btn-story-studio btn-sm"
+                        className="story-icon-link"
+                        title="Bilder"
+                        aria-label="Bilder"
                       >
-                        Storyboard
+                        <StoryPictogram name="pictures" />
                       </Link>
                       <Link
                         to={`/dialog/${d.id}/slideshow`}
-                        className="btn btn-secondary btn-sm"
+                        className="story-icon-link"
+                        title="Abspielen"
+                        aria-label="Abspielen"
                       >
-                        Diashow
+                        <StoryPictogram name="play" />
                       </Link>
+                      {!inStoryFolder && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={wrapBusyId === d.id}
+                          onClick={() => void wrapDialog(d)}
+                          title="Legt Dialog, Storyboard und Film in einen Geschichten-Ordner"
+                        >
+                          {wrapBusyId === d.id ? '…' : 'Als Geschichte'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"

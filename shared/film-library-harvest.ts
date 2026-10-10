@@ -38,7 +38,7 @@ export type HarvestPieceStatus = 'saved' | 'skipped' | 'failed'
 
 export type HarvestPiece = {
   label: string
-  kind: 'character' | 'environment'
+  kind: 'character' | 'environment' | 'prop'
   status: HarvestPieceStatus
   detailDe?: string
 }
@@ -47,6 +47,52 @@ export type HarvestPlan = {
   figures: HarvestFigure[]
   backgroundName: string
   backgroundHint: string
+  props: HarvestProp[]
+}
+
+export type HarvestProp = {
+  key: string
+  name: string
+  en: string
+  category: 'moebel' | 'deko' | 'sonstiges'
+}
+
+export const HARVEST_PROP_MAX = 3
+
+/** Wörter im Bildtext → Möbel, das man einzeln wiederverwenden kann. */
+export const FURNITURE_CATALOG: Array<{
+  key: string
+  words: string[]
+  de: string
+  en: string
+  category: HarvestProp['category']
+}> = [
+  { key: 'stuhl', words: ['stuhl', 'stühle', 'chair', 'chaise'], de: 'Stuhl', en: 'chair', category: 'moebel' },
+  { key: 'sessel', words: ['sessel', 'armchair', 'fauteuil'], de: 'Sessel', en: 'armchair', category: 'moebel' },
+  { key: 'bank', words: ['parkbank', 'sitzbank', 'bench', 'banc'], de: 'Bank', en: 'bench', category: 'moebel' },
+  { key: 'tisch', words: ['tisch', 'table', 'tablette'], de: 'Tisch', en: 'table', category: 'moebel' },
+  { key: 'sofa', words: ['sofa', 'couch', 'canapé'], de: 'Sofa', en: 'sofa', category: 'moebel' },
+  { key: 'theke', words: ['theke', 'tresen', 'counter', 'comptoir'], de: 'Theke', en: 'counter', category: 'moebel' },
+  { key: 'regal', words: ['regal', 'bookshelf', 'étagère', 'etagere'], de: 'Regal', en: 'shelf', category: 'moebel' },
+  { key: 'lampe', words: ['lampe', 'laterne', 'lamp', 'lanterne'], de: 'Lampe', en: 'lamp', category: 'deko' },
+  { key: 'hocker', words: ['hocker', 'stool', 'tabouret'], de: 'Hocker', en: 'stool', category: 'moebel' },
+  { key: 'rolltreppe', words: ['rolltreppe', 'escalator'], de: 'Rolltreppe', en: 'escalator', category: 'sonstiges' },
+  { key: 'kasse', words: ['kasse', 'kassentisch', 'checkout'], de: 'Kasse', en: 'checkout counter', category: 'moebel' },
+  { key: 'stand', words: ['marktstand', 'verkaufsstand', 'infostand', 'stall'], de: 'Stand', en: 'stall', category: 'moebel' },
+]
+
+export function harvestPropsFromText(text: string): HarvestProp[] {
+  const hay = text.toLowerCase()
+  const out: HarvestProp[] = []
+  const seen = new Set<string>()
+  for (const row of FURNITURE_CATALOG) {
+    if (seen.size >= HARVEST_PROP_MAX) break
+    if (!row.words.some((w) => hay.includes(w))) continue
+    if (seen.has(row.key)) continue
+    seen.add(row.key)
+    out.push({ key: row.key, name: row.de, en: row.en, category: row.category })
+  }
+  return out
 }
 
 export function harvestFigureLabel(figure: HarvestFigure): string {
@@ -79,10 +125,16 @@ export function harvestBackgroundName(panel: FilmStoryboardPanel, sceneTitle?: s
 }
 
 export function harvestPlanFromPanel(panel: FilmStoryboardPanel, sceneTitle?: string): HarvestPlan {
+  const backgroundHint =
+    panel.background.hint.trim() || panel.settingHint.trim() || sceneTitle?.trim() || ''
+  const propText = [backgroundHint, panel.settingHint, panel.imageCue, panel.caption]
+    .filter(Boolean)
+    .join(' ')
   return {
     figures: harvestFiguresFromPanel(panel),
     backgroundName: harvestBackgroundName(panel, sceneTitle),
-    backgroundHint: panel.background.hint.trim() || panel.settingHint.trim() || sceneTitle?.trim() || '',
+    backgroundHint,
+    props: harvestPropsFromText(propText),
   }
 }
 
@@ -99,8 +151,58 @@ export function characterHarvestTags(poseId: StillPoseId): string[] {
   return [pose.id, pose.label.toLowerCase(), HARVEST_TAG, HARVEST_FROM_STILL_TAG]
 }
 
+/** Neu gezeichnete Studio-Figur — nicht aus einem Gruppenbild geschnitten. */
+export function characterPieceTags(poseId: StillPoseId): string[] {
+  const pose = getStillPose(poseId)
+  return [pose.id, pose.label.toLowerCase(), 'studio']
+}
+
 export function environmentHarvestTags(hint: string): string[] {
   return [...locationTags(hint), HARVEST_TAG, HARVEST_FROM_STILL_TAG, 'environment']
+}
+
+export function environmentPieceTags(hint: string): string[] {
+  return [...locationTags(hint), 'environment', 'studio']
+}
+
+export function isHarvestedFromStill(asset: Pick<StoryLibraryAsset, 'tags'>): boolean {
+  return (asset.tags ?? []).includes(HARVEST_FROM_STILL_TAG)
+}
+
+/** Freisteller aus alten Gruppenbildern nicht als Vorlage für neue Standbilder. */
+export function libraryForCompose(library: StoryLibraryAsset[]): StoryLibraryAsset[] {
+  return library.filter((a) => !isHarvestedFromStill(a))
+}
+
+export function propHarvestTags(prop: HarvestProp): string[] {
+  return [prop.key, prop.name.toLowerCase(), prop.category, HARVEST_TAG, HARVEST_FROM_STILL_TAG, 'prop']
+}
+
+export function harvestPropLabel(prop: HarvestProp): string {
+  return prop.name
+}
+
+export function shouldSkipProp(library: StoryLibraryAsset[], prop: HarvestProp): boolean {
+  const needle = prop.key.toLowerCase()
+  const name = prop.name.toLowerCase()
+  return library.some(
+    (a) =>
+      a.type === 'prop' &&
+      (a.tags.includes(needle) || a.name.trim().toLowerCase() === name),
+  )
+}
+
+export function namedPropExtractPrompt(prop: HarvestProp): string {
+  return (
+    `Extract ONLY the ${prop.en} (${prop.name}) from this still as an isolated object ` +
+    `on a TRUE TRANSPARENT background (PNG alpha). Keep exact shape, color and perspective. ` +
+    `No people, no floor, no walls, no checkerboard, no extra furniture. ` +
+    `If several similar objects exist, extract the most prominent one.`
+  )
+}
+
+export function cutoutRatioLooksLikeProp(ratio: number): boolean {
+  return ratio >= 0.002 && ratio <= 0.62
 }
 
 /**
@@ -148,7 +250,8 @@ export function namedPersonMaskPrompt(name: string, otherNames: string[]): strin
     overlap +
     `WHITE (#FFFFFF) = the complete ${name} including hair, skin, eyes, teeth, ` +
     `ALL clothing even if it is white, cream, grey or a hoodie, ALL shoes even if white. ` +
-    `BLACK (#000000) = background AND every other person AND true holes (between arms and torso, between fingers, between legs). ` +
+    `Never include the chair, sofa, armchair, bench, cushion, table or floor ${name} sits on — those stay BLACK. ` +
+    `BLACK (#000000) = background AND furniture AND every other person AND true holes (between arms and torso, between fingers, between legs). ` +
     `Never paint a white hoodie, shirt, sneaker or face of ${name} as black. Pale clothes of ${name} stay WHITE. ` +
     `Only black and white.`
   )
@@ -167,6 +270,7 @@ export function namedPersonExtractPrompt(name: string, otherNames: string[]): st
     `Extract ONLY ${name} from this still as an isolated full-body sprite on a TRUE TRANSPARENT background (PNG alpha). ` +
     overlap +
     `Keep ${name}'s exact pose, face, hair, clothes and shoes. Do NOT draw a checkerboard, studio wall, floor or other people. ` +
+    `Do not keep the chair, sofa, armchair or bench ${name} is sitting on. ` +
     `Do not crop a rectangle that still contains another person.`
   )
 }
@@ -229,7 +333,7 @@ export function rematchFilmBoard(
           imageUrl: matched.imageUrl,
           match: matched.match,
           matchNoteDe: matched.matchNoteDe,
-          flip: matched.flip,
+          flip: pl.layoutLocked || pl.layoutByAi ? pl.flip : matched.flip,
         }
       }),
       background: matchBackground(panel.background.hint || panel.settingHint, library),

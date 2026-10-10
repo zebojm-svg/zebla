@@ -178,6 +178,9 @@ export type StoryCharacterResult = {
   rig?: CharacterRig
 }
 
+export const STORY_CHARACTER_STUDIO_PROMPT =
+  'COMPLETE person from hair to shoes in an empty photographer studio. Plain light gray seamless backdrop and floor. NO furniture, NO other people, NO transparency checkerboard, NO room. This photo is the whole person only — later they will be painted into a furnished room.'
+
 function geminiLockPrompt(opts: {
   name: string
   appearance: string
@@ -188,9 +191,10 @@ function geminiLockPrompt(opts: {
   faceExpressionId?: FaceExpressionId
   stillPoseId?: StillPoseId
   hasReference: boolean
+  studioComplete?: boolean
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
-  if (opts.hasReference && opts.stillPoseId) {
+  if (opts.hasReference && opts.stillPoseId && !opts.studioComplete) {
     return buildModularStillPrompt({
       poseId: opts.stillPoseId,
       styleId: opts.styleId,
@@ -216,11 +220,12 @@ function geminiLockPrompt(opts: {
     ? 'The FIRST attached image is the identity photo of THIS EXACT PERSON. Copy face, haircut, hair color, glasses, clothes, shoe model and shoe colors 1:1. Do not restyle. Do not invent a sibling. Only pose, camera angle and facial expression change.\n'
     : ''
   const poseBits = [legHint, headHint, armHint].filter(Boolean).join('. ')
+  const isolation = opts.studioComplete ? STORY_CHARACTER_STUDIO_PROMPT : STORY_CHARACTER_CUTOUT_PROMPT
   return (
     `${STORY_CHARACTER_FRAMING_PROMPT}\n` +
     `${style}\n\n` +
     `${identityRule}` +
-    `${STORY_CHARACTER_CUTOUT_PROMPT} ` +
+    `${isolation} ` +
     `${poseBits}. Facial expression: ${faceHint}.\n${opts.appearance}\nCharacter name: ${opts.name}\n` +
     `${STORY_CHARACTER_ANATOMY_PROMPT}\n` +
     `IMPORTANT: Only this ONE complete person from hair to shoes. No crop. No other people. Same identity as the reference if attached.`
@@ -238,6 +243,7 @@ export async function generateStoryCharacter(
   faceExpressionId?: FaceExpressionId,
   stillPoseId?: StillPoseId,
   buildRig = false,
+  punchCutout = true,
 ): Promise<StoryCharacterResult> {
   const appearance = resolveStoryCharacterAppearance(name, description)
   const still = stillPoseId ? getStillPose(stillPoseId) : undefined
@@ -290,6 +296,7 @@ export async function generateStoryCharacter(
           faceExpressionId,
           stillPoseId,
           hasReference: true,
+          studioComplete: !punchCutout,
         })
         colorPng = await generateGeminiPng(
           requireGeminiKey(),
@@ -314,6 +321,7 @@ export async function generateStoryCharacter(
         faceExpressionId,
         stillPoseId,
         hasReference: true,
+        studioComplete: !punchCutout,
       })
       colorPng = await generateGeminiPng(
         requireGeminiKey(),
@@ -338,6 +346,7 @@ export async function generateStoryCharacter(
       faceExpressionId,
       stillPoseId,
       hasReference: false,
+      studioComplete: !punchCutout,
     })
     colorPng = await generateGeminiPng(
       requireGeminiKey(),
@@ -349,15 +358,21 @@ export async function generateStoryCharacter(
     engine = 'gemini-t2i'
   }
 
-  const apiKey = requireGeminiKey()
-  const cutout = await cutOutWithPersonMask(apiKey, colorPng)
   const slug = name.toLowerCase().replace(/\s+/g, '-')
   const unique2 = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  const punched = (await pngHasUsefulAlpha(cutout)) ? cutout : await punchCutoutPng(cutout)
-  const imageUrl2 = await uploadStoryAsset(punched, `story-characters/${slug}-${unique2}.png`)
-  const built = buildRig
-    ? await buildCharacterRig(punched, slug, unique2).catch(() => undefined)
-    : undefined
+  let imageUrl2: string
+  let built: { rig: CharacterRig } | undefined
+  if (punchCutout) {
+    const apiKey = requireGeminiKey()
+    const cutout = await cutOutWithPersonMask(apiKey, colorPng)
+    const punched = (await pngHasUsefulAlpha(cutout)) ? cutout : await punchCutoutPng(cutout)
+    imageUrl2 = await uploadStoryAsset(punched, `story-characters/${slug}-${unique2}.png`)
+    built = buildRig
+      ? await buildCharacterRig(punched, slug, unique2).catch(() => undefined)
+      : undefined
+  } else {
+    imageUrl2 = await uploadStoryAsset(colorPng, `story-characters/${slug}-${unique2}-studio.png`)
+  }
 
   return {
     imageUrl: imageUrl2,

@@ -26,6 +26,10 @@ export interface LayerImage {
   /** Zusätzliche Drehung um ein Gelenk (Kopf am Hals), nach der Layer-Drehung */
   localRotation?: number
   localRotationAnchor?: { x: number; y: number }
+  /** Weicher Kontakt-Schatten unter der Figur */
+  castShadow?: boolean
+  /** Blinzeln nur über den Augen, nicht die ganze Figur ausblenden */
+  eyeBlink?: boolean
 }
 
 export interface LayerAnimation {
@@ -64,7 +68,10 @@ type Props = {
 }
 
 interface AnimState {
-  offsets: Map<string, { dx: number; dy: number; rotation: number; opacity: number }>
+  offsets: Map<
+    string,
+    { dx: number; dy: number; rotation: number; opacity: number; blink?: boolean }
+  >
   blinkTimers: Map<string, { nextBlink: number; isBlinking: boolean; blinkEnd: number }>
 }
 
@@ -101,6 +108,41 @@ function drawLayerImage(
   )
 
   ctx.drawImage(img, sx, sy, sw, sh, destX, destY, layer.width, layer.height)
+}
+
+function drawContactShadow(
+  ctx: CanvasRenderingContext2D,
+  layer: LayerImage,
+  x: number,
+  y: number,
+) {
+  const cx = x + layer.width / 2
+  const cy = y + layer.height * 0.93
+  const rx = Math.max(10, layer.width * 0.28)
+  const ry = Math.max(5, layer.height * 0.042)
+  ctx.save()
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.32)'
+  ctx.beginPath()
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawClosedEyes(
+  ctx: CanvasRenderingContext2D,
+  layer: LayerImage,
+  destX: number,
+  destY: number,
+) {
+  const y = destY + layer.height * 0.26
+  const r = Math.max(2.2, layer.width * 0.026)
+  ctx.save()
+  ctx.fillStyle = 'rgba(28, 22, 18, 0.8)'
+  ctx.beginPath()
+  ctx.ellipse(destX + layer.width * 0.38, y, r * 2.15, r * 0.5, 0, 0, Math.PI * 2)
+  ctx.ellipse(destX + layer.width * 0.62, y, r * 2.15, r * 0.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 }
 
 export function CompositeCanvas({
@@ -217,7 +259,7 @@ export function CompositeCanvas({
     for (const anim of animations) {
       let offset = state.offsets.get(anim.layerId)
       if (!offset) {
-        offset = { dx: 0, dy: 0, rotation: 0, opacity: 1 }
+        offset = { dx: 0, dy: 0, rotation: 0, opacity: 1, blink: false }
         state.offsets.set(anim.layerId, offset)
       }
 
@@ -262,7 +304,14 @@ export function CompositeCanvas({
             const interval = anim.blinkInterval ?? [2500, 5000]
             timer.nextBlink = timestamp + interval[0] + Math.random() * (interval[1] - interval[0])
           }
-          offset.opacity = timer.isBlinking ? 0.05 : 1
+          const layer = layers.find((l) => l.id === anim.layerId)
+          if (layer?.eyeBlink) {
+            offset.opacity = 1
+            offset.blink = timer.isBlinking
+          } else {
+            offset.opacity = timer.isBlinking ? 0.05 : 1
+            offset.blink = false
+          }
         }
       }
     }
@@ -311,12 +360,18 @@ export function CompositeCanvas({
         ctx.translate(-lx, -ly)
       }
 
+      if (layer.castShadow) {
+        drawContactShadow(ctx, layer, finalX, finalY)
+      }
+
       if (layer.flip) {
         ctx.translate(finalX + layer.width, finalY)
         ctx.scale(-1, 1)
         drawLayerImage(ctx, img, layer, 0, 0)
+        if (layer.eyeBlink && offset?.blink) drawClosedEyes(ctx, layer, 0, 0)
       } else {
         drawLayerImage(ctx, img, layer, finalX, finalY)
+        if (layer.eyeBlink && offset?.blink) drawClosedEyes(ctx, layer, finalX, finalY)
       }
 
       ctx.restore()

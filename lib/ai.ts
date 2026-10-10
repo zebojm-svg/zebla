@@ -79,13 +79,13 @@ function requireGeminiKey(): string {
   return key
 }
 
-function getTextModel() {
+function getTextModel(temperature = 0.7) {
   const genAI = new GoogleGenerativeAI(requireGeminiKey())
   return genAI.getGenerativeModel({
     model: TEXT_MODEL,
     generationConfig: {
       responseMimeType: 'application/json',
-      temperature: 0.7,
+      temperature,
     },
   })
 }
@@ -118,17 +118,53 @@ function geminiErrorMessage(err: unknown): string {
   return 'KI-Anfrage fehlgeschlagen.'
 }
 
-export async function chatJson<T>(system: string, user: string): Promise<T> {
+const TEXT_GEN_TIMEOUT_MS = 95_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
+export async function chatJson<T>(
+  system: string,
+  user: string,
+  opts?: { temperature?: number },
+): Promise<T> {
+  return chatJsonWithImages<T>(system, user, [], opts)
+}
+
+export async function chatJsonWithImages<T>(
+  system: string,
+  user: string,
+  images: Array<{ mimeType: string; data: string }> = [],
+  opts?: { temperature?: number },
+): Promise<T> {
   try {
-    const model = getTextModel()
-    const result = await model.generateContent({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: `${system}\n\n---\n\n${user}` }],
-        },
-      ],
-    })
+    const model = getTextModel(opts?.temperature ?? 0.7)
+    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
+      { text: `${system}\n\n---\n\n${user}` },
+    ]
+    for (const img of images) {
+      parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
+    }
+    const result = await withTimeout(
+      model.generateContent({
+        contents: [{ role: 'user', parts }],
+      }),
+      TEXT_GEN_TIMEOUT_MS,
+      'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen.',
+    )
 
     const content = result.response.text()
     if (!content) throw new Error('Keine Antwort von der KI erhalten.')
@@ -371,11 +407,13 @@ export async function translateDialog(
 Antworte als JSON: { "lines": [{ "speaker": "...", "text": "..." }] }
 Behalte Sprecher-Namen bei. Gleiche Anzahl Zeilen.`,
     JSON.stringify(lines.map((l) => ({ speaker: l.speaker, text: l.text }))),
+    { temperature: 0.2 },
   )
 
   return result.lines.map((l, i) => ({
+    ...(lines[i] ?? { id: newLineId(), speaker: '', text: '' }),
     id: lines[i]?.id ?? newLineId(),
-    speaker: l.speaker,
+    speaker: l.speaker || lines[i]?.speaker || '',
     text: l.text,
   }))
 }
@@ -419,6 +457,7 @@ Antworte als JSON:
   ]
 }`,
     JSON.stringify(lines.map((l) => l.text)),
+    { temperature: 0.2 },
   )
 
   return lines.map((line, i) => {
@@ -434,6 +473,43 @@ Antworte als JSON:
       return { ...updated, audioUrl: undefined }
     }
     return updated
+  })
+}
+
+const BIRKENBIHL_CHUNK = 10
+
+/** Alle Zeilen auf einmal, bei langen Dialogen in kleinen Paketen. */
+export async function applyBirkenbihlDialog(
+  lines: DialogLine[],
+  nativeLanguage: string,
+  targetLanguage?: string,
+  includeRomanization = true,
+): Promise<DialogLine[]> {
+  if (lines.length <= BIRKENBIHL_CHUNK) {
+    return applyBirkenbihl(lines, nativeLanguage, targetLanguage, includeRomanization)
+  }
+  const out: DialogLine[] = []
+  for (let i = 0; i < lines.length; i += BIRKENBIHL_CHUNK) {
+    const chunk = await applyBirkenbihl(
+      lines.slice(i, i + BIRKENBIHL_CHUNK),
+      nativeLanguage,
+      targetLanguage,
+      includeRomanization,
+    )
+    out.push(...chunk)
+  }
+  return out
+}
+
+export function remapLinesToSections<S extends { lines: DialogLine[] }>(
+  sections: S[],
+  lines: DialogLine[],
+): S[] {
+  let offset = 0
+  return sections.map((sec) => {
+    const next = lines.slice(offset, offset + sec.lines.length)
+    offset += sec.lines.length
+    return { ...sec, lines: next }
   })
 }
 

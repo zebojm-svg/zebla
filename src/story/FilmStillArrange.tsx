@@ -1,0 +1,188 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { api } from '../api/client'
+import { CompositeCanvas, type LayerAnimation, type LayerImage } from './CompositeCanvas'
+import type { Dialog } from '../types'
+import type { FilmPlacement, FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
+import {
+  ARRANGE_CANVAS,
+  arrangeLayersFromPanel,
+  layerIdToPlacement,
+  movePlacementByPixels,
+  panelCanArrange,
+  panelShowsPaintedStill,
+  placementsToUpdates,
+  scalePlacement,
+} from '../../shared/film-still-arrange'
+
+type Props = {
+  dialogId: string
+  panel: FilmStoryboardPanel
+  interactive?: boolean
+  onUpdated?: (dialog: Dialog, board: FilmStoryboard) => void
+}
+
+function toCanvasLayers(panel: FilmStoryboardPanel): LayerImage[] {
+  return arrangeLayersFromPanel(panel).map((l) => ({ ...l }))
+}
+
+export function FilmStillPicture({
+  dialogId,
+  panel,
+  interactive = false,
+  onUpdated,
+}: Props) {
+  const [arranging, setArranging] = useState(false)
+  const can = panelCanArrange(panel)
+  const showStill = panelShowsPaintedStill(panel, interactive && arranging)
+
+  if (showStill) {
+    return (
+      <div className="film-still-flat">
+        <img src={panel.stillUrl ?? ''} alt={panel.caption} />
+        {interactive ? (
+          can ? (
+            <div className="film-still-actions">
+              <p className="muted film-arrange-hint">
+                Fertiges Bild. Figuren nur stellen, wenn etwas rutscht.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setArranging(true)}
+              >
+                Figuren stellen
+              </button>
+            </div>
+          ) : (
+            <p className="muted film-arrange-hint">
+              Figuren und Ort getrennt im{' '}
+              <Link to={`/library?dialog=${dialogId}`}>Welt-Regal</Link> — dann hier ziehen und
+              zoomen, ohne KI.
+            </p>
+          )
+        ) : null}
+      </div>
+    )
+  }
+  if (can && interactive) {
+    return (
+      <div className="film-still-workshop">
+        {panel.stillUrl ? (
+          <div className="film-still-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setArranging(false)}
+            >
+              Fertiges Bild zeigen
+            </button>
+          </div>
+        ) : null}
+        <FilmStillArrange
+          dialogId={dialogId}
+          panel={panel}
+          interactive={interactive}
+          onUpdated={onUpdated}
+        />
+      </div>
+    )
+  }
+  if (panel.background.imageUrl && !interactive) {
+    return (
+      <div className="film-still-flat">
+        <img src={panel.background.imageUrl} alt={panel.caption || 'Raum'} />
+        <p className="muted film-arrange-hint">
+          Noch kein gemaltes Bild — «Diese Szene erzeugen». Die KI füllt Figuren in diesen Raum.
+        </p>
+      </div>
+    )
+  }
+  return <div className="film-still-placeholder">Noch kein Bild</div>
+}
+
+export function FilmStillArrange({ dialogId, panel, interactive = true, onUpdated }: Props) {
+  const [selected, setSelected] = useState<string | null>(null)
+  const [local, setLocal] = useState(panel)
+  const saveTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    setLocal(panel)
+  }, [panel])
+
+  const layers = useMemo(() => toCanvasLayers(local), [local])
+  const animations = useMemo<LayerAnimation[]>(() => {
+    if (interactive) return []
+    return layers
+      .filter((l) => l.id.startsWith('fig-'))
+      .flatMap((l) => [
+        { layerId: l.id, type: 'bob' as const, amplitude: 1.4, period: 3400 },
+        {
+          layerId: l.id,
+          type: 'blink' as const,
+          blinkDuration: 130,
+          blinkInterval: [2800, 6200] as [number, number],
+        },
+      ])
+  }, [interactive, layers])
+
+  const persist = (next: FilmStoryboardPanel) => {
+    if (!interactive || !onUpdated) return
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => {
+      void api.ai
+        .filmPanelLayout(dialogId, next.id, placementsToUpdates(next))
+        .then(({ dialog, board }) => onUpdated(dialog, board))
+        .catch(() => {
+          /* Lage bleibt lokal */
+        })
+    }, 700)
+  }
+
+  const patchPlacement = (layerId: string, fn: (pl: FilmPlacement) => FilmPlacement) => {
+    const pl = layerIdToPlacement(local, layerId)
+    if (!pl) return
+    const nextPl = fn(pl)
+    const next: FilmStoryboardPanel = {
+      ...local,
+      placements: local.placements.map((p) => (p === pl ? nextPl : p)),
+    }
+    setLocal(next)
+    persist(next)
+  }
+
+  return (
+    <div className={`film-arrange${interactive ? ' is-edit' : ''}`}>
+      <CompositeCanvas
+        width={ARRANGE_CANVAS.width}
+        height={ARRANGE_CANVAS.height}
+        className="film-arrange-canvas"
+        layers={layers}
+        animations={animations}
+        selectedLayerId={interactive ? selected : null}
+        onSelectLayer={interactive ? setSelected : undefined}
+        onDragLayer={
+          interactive
+            ? (layerId, dx, dy) => {
+                patchPlacement(layerId, (pl) => movePlacementByPixels(pl, dx, dy))
+              }
+            : undefined
+        }
+        onWheelLayer={
+          interactive
+            ? (layerId, deltaScale) => {
+                patchPlacement(layerId, (pl) => scalePlacement(pl, 1 + deltaScale))
+              }
+            : undefined
+        }
+      />
+      {interactive ? (
+        <p className="muted film-arrange-hint">
+          <strong>Figuren stellen:</strong> ziehen zum Verschieben, Mausrad zum
+          Verkleinern/Vergrößern — ohne KI. Z.B. neben die Rolltreppe. Schatten sitzt unter den
+          Füßen.
+        </p>
+      ) : null}
+    </div>
+  )
+}

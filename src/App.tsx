@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { I18nProvider } from './i18n/I18nContext'
 import { Layout } from './components/Layout'
@@ -12,7 +12,6 @@ import { ShareImportPage } from './pages/ShareImportPage'
 import { StoryPlayerPage } from './story/StoryPlayerPage'
 import { FilmStoryboardPage } from './story/FilmStoryboardPage'
 import { FilmLibraryPage } from './story/FilmLibraryPage'
-import { FilmExportPage } from './story/FilmExportPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ProPage } from './pages/ProPage'
 import { SsoPage } from './pages/SsoPage'
@@ -20,6 +19,10 @@ import { ExplorePage } from './pages/ExplorePage'
 import { PublicWatchPage } from './pages/PublicWatchPage'
 import { useAuth } from './context/AuthContext'
 
+function FilmExportRedirect() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={id ? `/dialog/${id}/board` : '/'} replace />
+}
 
 function HomeSwitch() {
   const { user, loading } = useAuth()
@@ -90,14 +93,7 @@ function AppRoutes() {
             </Layout>
           }
         />
-        <Route
-          path="/dialog/:id/export"
-          element={
-            <Layout>
-              <FilmExportPage />
-            </Layout>
-          }
-        />
+        <Route path="/dialog/:id/export" element={<FilmExportRedirect />} />
         <Route
           path="/library"
           element={

@@ -5,7 +5,9 @@
 import {
   clientTimeoutMessage,
   FILM_PLAN_TIMEOUT_MS,
+  TEXT_AI_TIMEOUT_MS,
   isImageGenPath,
+  isTextAiPath,
 } from '../shared/api-timeout.ts'
 import {
   displayFilmTitle,
@@ -22,12 +24,21 @@ function fail(msg: string): never {
 if (FILM_PLAN_TIMEOUT_MS < 100_000 || FILM_PLAN_TIMEOUT_MS > 120_000) {
   fail('Film-Wartezeit muss knapp unter 120 s liegen')
 }
+if (TEXT_AI_TIMEOUT_MS !== FILM_PLAN_TIMEOUT_MS) fail('Übersetzen wartet genauso lange wie der Filmplan')
+if (!isTextAiPath('/translate')) fail('/translate ist Text-KI')
+if (!isTextAiPath('/birkenbihl')) fail('/birkenbihl ist Text-KI')
+if (isTextAiPath('/image')) fail('/image ist keine Text-KI')
+const trAbort = clientTimeoutMessage('/birkenbihl', 'abort')
+if (!trAbort.toLowerCase().includes('zwei minuten') && !trAbort.toLowerCase().includes('deutsch')) {
+  fail('Birkenbihl-Timeout erklärt das Warten')
+}
 
 if (!isImageGenPath('/image')) fail('/image ist Bild')
 if (!isImageGenPath('/story-generate-character')) fail('Figur-Zeichnen ist Bild')
 if (!isImageGenPath('/film-storyboard-still')) fail('Szenen-Standbild ist Bild')
 if (isImageGenPath('/film-from-prompt')) fail('Film-Prompt ist kein Bild')
 if (isImageGenPath('/film-storyboard')) fail('Storyboard-Plan ist kein Bild')
+if (isImageGenPath('/film-storyboard-reset')) fail('Vom-Text-neu ist kein Bild')
 
 const imgAbort = clientTimeoutMessage('/image', 'abort')
 if (!imgAbort.includes('Bild')) fail('Bild-Timeout muss Bild erwähnen')

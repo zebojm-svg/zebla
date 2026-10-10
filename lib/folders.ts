@@ -1,5 +1,5 @@
 import { adminDb } from './firebase-admin.js'
-import type { DialogFolder } from '../shared/types.js'
+import type { DialogFolder, FolderKind } from '../shared/types.js'
 
 interface FolderDoc {
   userId: string
@@ -7,8 +7,13 @@ interface FolderDoc {
   parentId: string | null
   scope?: 'personal' | 'class'
   classId?: string | null
+  kind?: FolderKind
   createdAt: string
   updatedAt: string
+}
+
+function folderKind(value: unknown): FolderKind {
+  return value === 'story' ? 'story' : 'folder'
 }
 
 function docToFolder(id: string, data: FolderDoc): DialogFolder {
@@ -19,6 +24,7 @@ function docToFolder(id: string, data: FolderDoc): DialogFolder {
     parentId: data.parentId ?? null,
     scope: data.scope === 'class' ? 'class' : 'personal',
     classId: data.classId ?? null,
+    kind: folderKind(data.kind),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -70,7 +76,7 @@ export async function createFolder(
   userId: string,
   name: string,
   parentId?: string | null,
-  options?: { scope?: 'personal' | 'class'; classId?: string | null },
+  options?: { scope?: 'personal' | 'class'; classId?: string | null; kind?: FolderKind },
 ): Promise<DialogFolder> {
   const trimmed = name.trim()
   if (!trimmed) throw new Error('Ordnername fehlt.')
@@ -91,12 +97,14 @@ export async function createFolder(
   }
 
   const now = new Date().toISOString()
+  const kind: FolderKind = options?.kind === 'story' ? 'story' : 'folder'
   const doc: FolderDoc = {
     userId,
     name: trimmed,
     parentId: parentId ?? null,
     scope,
     classId,
+    kind,
     createdAt: now,
     updatedAt: now,
   }
@@ -158,6 +166,7 @@ export async function updateFolder(
     parentId,
     scope: existing.scope,
     classId: existing.classId ?? null,
+    kind: existing.kind === 'story' ? 'story' : 'folder',
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }

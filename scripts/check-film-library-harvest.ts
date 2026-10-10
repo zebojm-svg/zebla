@@ -11,6 +11,11 @@ import {
   harvestFiguresFromPanel,
   harvestNoteDe,
   harvestPlanFromPanel,
+  harvestPropsFromText,
+  harvestPropLabel,
+  namedPropExtractPrompt,
+  propHarvestTags,
+  shouldSkipProp,
   joinDe,
   locationTags,
   namedPersonExtractPrompt,
@@ -22,6 +27,8 @@ import {
   STILL_BACKGROUND_EXTRACT_PROMPT,
   HARVEST_FROM_STILL_TAG,
   HARVEST_TAG,
+  libraryForCompose,
+  characterPieceTags,
 } from '../shared/film-library-harvest.ts'
 import {
   binaryAlphaMask,
@@ -68,11 +75,17 @@ if (!maskJulien.includes('BLACK')) fail('Andere Leute müssen schwarz sein')
 if (!maskJulien.toLowerCase().includes('one white blob')) {
   fail('Maske darf keine Gruppen-Silhouette sein')
 }
+if (!maskJulien.toLowerCase().includes('armchair') && !maskJulien.toLowerCase().includes('sofa')) {
+  fail('Maske darf Sessel/Sofa nicht zur Person zählen')
+}
 
 const extract = namedPersonExtractPrompt('Julien', ['Tara'])
 if (!extract.includes('ONLY Julien')) fail('Fallback holt nur Julien')
 if (!extract.toLowerCase().includes('tara')) fail('Fallback darf Tara nicht im Ausschnitt lassen')
 if (!extract.toLowerCase().includes('rectangle')) fail('Kein Rechteck mit der anderen Person')
+if (!extract.toLowerCase().includes('chair') && !extract.toLowerCase().includes('sofa')) {
+  fail('Freisteller darf den Stuhl nicht mitnehmen')
+}
 
 if (!STILL_BACKGROUND_EXTRACT_PROMPT.toLowerCase().includes('remove every person')) {
   fail('Hintergrund-Prompt muss alle Leute entfernen')
@@ -140,8 +153,37 @@ if (harvestFigureLabel(figures[0]!) !== 'Julien (Gehen)') fail('Beschriftung Jul
 
 const plan = harvestPlanFromPanel(panel, 'Szene 1')
 if (plan.backgroundName !== 'Weihnachtsmarkt') fail('Ort aus dem Panel')
+if (plan.props.length !== 0) fail('Ohne Möbel-Wort keine Möbel-Ernte')
 if (harvestBackgroundLabel(plan.backgroundName) !== 'Hintergrund Weihnachtsmarkt') {
   fail('Hintergrund-Beschriftung')
+}
+
+const mallProps = harvestPropsFromText('Julien und Tara neben der Rolltreppe, Stuhl links')
+if (!mallProps.some((p) => p.key === 'rolltreppe')) fail('Rolltreppe aus dem Text')
+if (!mallProps.some((p) => p.key === 'stuhl')) fail('Stuhl aus dem Text')
+if (harvestPropsFromText('Weihnachtsmarkt').length !== 0) fail('Markt allein ist kein Möbel')
+if (namedPropExtractPrompt(mallProps[0]!).toLowerCase().includes('people') !== true) {
+  fail('Möbel-Prompt ohne Leute')
+}
+const chair = mallProps.find((p) => p.key === 'stuhl')
+if (!chair || harvestPropLabel(chair) !== 'Stuhl') fail('Möbel heißt Stuhl')
+if (!propHarvestTags(chair).includes('prop')) fail('Möbel-Tag prop')
+if (
+  !shouldSkipProp(
+    [
+      {
+        id: 'p1',
+        type: 'prop',
+        name: 'Stuhl',
+        imageUrl: 'https://example.com/stuhl.png',
+        tags: propHarvestTags(chair),
+        createdAt: 't',
+      },
+    ],
+    chair,
+  )
+) {
+  fail('Vorhandener Stuhl nicht nochmal ernten')
 }
 
 if (!characterHarvestTags('walking').includes('walking')) fail('Tag walking für Matcher')
@@ -160,19 +202,27 @@ if (shouldSkipCharacterPose(emptyLib, 'Julien', 'walking')) fail('Leere Biblioth
 if (shouldSkipBackground(emptyLib, 'Weihnachtsmarkt')) fail('Leerer Ort: Hintergrund speichern')
 
 const withWalk = [julienWalk]
-if (!shouldSkipCharacterPose(withWalk, 'Julien', 'walking')) {
-  fail('Julien (Gehen) schon da → nicht nochmal speichern')
+if (shouldSkipCharacterPose(withWalk, 'Julien', 'walking')) {
+  fail('Freisteller aus dem Gruppenbild zählt nicht — Studio-Figur zeichnen')
 }
-if (shouldSkipCharacterPose(withWalk, 'Julien', 'waving')) {
+const studioWalk: StoryLibraryAsset = {
+  ...julienWalk,
+  id: 'studio-julien-walk',
+  tags: characterPieceTags('walking'),
+}
+if (!shouldSkipCharacterPose([studioWalk], 'Julien', 'walking')) {
+  fail('Julien (Gehen) schon als Studio da → nicht nochmal speichern')
+}
+if (shouldSkipCharacterPose([studioWalk], 'Julien', 'waving')) {
   fail('Winken ist eine andere Pose — speichern')
 }
-if (shouldSkipCharacterPose(withWalk, 'Tara', 'walking')) {
+if (shouldSkipCharacterPose([studioWalk], 'Tara', 'walking')) {
   fail('Tara ist eine andere Figur')
 }
 
 const leftOnly: StoryLibraryAsset[] = [
   {
-    ...julienWalk,
+    ...studioWalk,
     id: 'lib-left',
     tags: ['look-left'],
     headAngleId: 'side-left',
@@ -227,7 +277,7 @@ const board: FilmStoryboard = {
   updatedAt: '2026-01-01',
 }
 
-const rematched = rematchFilmBoard(board, [julienWalk, markt])
+const rematched = rematchFilmBoard(board, [studioWalk, markt])
 const after = rematched.panels[0]
 if (!after) fail('Panel nach dem Abgleich')
 if (after.placements[0]?.match !== 'reuse') fail('Julien (Gehen) muss reuse sein')
@@ -247,19 +297,22 @@ const taraWave: StoryLibraryAsset = {
   type: 'character',
   name: 'Tara',
   imageUrl: 'https://example.com/tara-winken.png',
-  tags: characterHarvestTags('waving'),
+  tags: characterPieceTags('waving'),
   legPoseId: 'standing',
   headAngleId: 'front',
   armPoseId: 'waving',
   createdAt: '2026-01-01',
 }
 
-const full = rematchFilmBoard(board, [julienWalk, taraWave, markt])
+const full = rematchFilmBoard(board, [studioWalk, taraWave, markt])
 if (stillLibraryHintDe(full.panels)) fail('Gelbe Box weg, wenn alles in der Bibliothek liegt')
 if (full.panels[0]?.placements[1]?.match !== 'reuse') fail('Tara (Winken) reuse')
 
-if (matchCharacterPose('Julien', 'walking', [julienWalk]).match !== 'reuse') {
-  fail('Matcher findet geerntetes Julien (Gehen)')
+if (matchCharacterPose('Julien', 'walking', [julienWalk]).match === 'reuse') {
+  fail('Matcher darf Freisteller aus dem Gruppenbild nicht als Stamm-Figur nehmen')
+}
+if (matchCharacterPose('Julien', 'walking', [studioWalk]).match !== 'reuse') {
+  fail('Matcher findet Studio-Julien (Gehen)')
 }
 if (matchBackground('Weihnachtsmarkt', [markt]).match !== 'reuse') {
   fail('Matcher findet geernteten Markt')
@@ -309,5 +362,28 @@ if (!box || box.minX > 2 || box.maxX < 14) fail('Zuschnitt um die Figur, nicht u
 if (box.maxX >= 24) fail('Zuschnitt darf Tara nicht mitnehmen')
 
 if (!HARVEST_FROM_STILL_TAG) fail('from-still Tag')
+
+const cutoutJulien: StoryLibraryAsset = {
+  id: 'cut-julien',
+  type: 'character',
+  name: 'Julien',
+  imageUrl: 'https://example.com/julien-cutout.png',
+  tags: characterHarvestTags('sitting'),
+  createdAt: '2026-01-01',
+}
+const studioJulien: StoryLibraryAsset = {
+  id: 'studio-julien',
+  type: 'character',
+  name: 'Julien',
+  imageUrl: 'https://example.com/julien-studio.png',
+  tags: characterPieceTags('sitting'),
+  createdAt: '2026-01-01',
+}
+const composeLib = libraryForCompose([cutoutJulien, studioJulien])
+if (composeLib.some((a) => a.id === 'cut-julien')) fail('Freisteller aus Gruppenbild nicht als Vorlage')
+if (!composeLib.some((a) => a.id === 'studio-julien')) fail('Studio-Figur bleibt als Vorlage')
+if (characterPieceTags('sitting').includes(HARVEST_FROM_STILL_TAG)) {
+  fail('Neu gezeichnete Figur ist kein Freisteller aus dem Standbild')
+}
 
 console.log('OK: Standbild → Bibliothek, einzelne Figuren, Hintergrund, Wiederverwenden')

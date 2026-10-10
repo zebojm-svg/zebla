@@ -10,7 +10,6 @@ import { useCostConfirm } from '../hooks/useCostConfirm'
 import { formatCreationPromptForDisplay } from '../../shared/dialog-image-context'
 import { uniqueSpeakersInDialog, speakerGender } from '../../shared/speakers'
 import { copyTextToClipboard } from '../utils/clipboard'
-import { useI18n } from '../i18n/I18nContext'
 import {
   estimateAllSceneImages,
   estimateAllSectionImages,
@@ -23,13 +22,14 @@ import {
 } from '../lib/costEstimates'
 import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
+import { StoryMetaSheet } from '../story/StoryMetaSheet'
 import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
+import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
-import type { Dialog, FilmDraftMode, VisualQuestion } from '../types'
+import type { Dialog, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
-  const { t } = useI18n()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -45,6 +45,7 @@ export function DialogEditorPage() {
   const [speechDirectionDraft, setSpeechDirectionDraft] = useState('')
   const [filmPromptDraft, setFilmPromptDraft] = useState('')
   const [titleDraft, setTitleDraft] = useState('')
+  const [storyMetaDraft, setStoryMetaDraft] = useState<StoryMeta>(normalizeStoryMeta(null))
   const [saveStatus, setSaveStatus] = useState<FilmSaveStatus>('idle')
   const [draftMode, setDraftMode] = useState<FilmDraftMode>('lucky')
   const [askVisualQuestions, setAskVisualQuestionsState] = useState(true)
@@ -56,9 +57,11 @@ export function DialogEditorPage() {
   const persistChain = useRef(Promise.resolve())
   const titleRef = useRef('')
   const promptRef = useRef('')
+  const metaRef = useRef<StoryMeta>(normalizeStoryMeta(null))
   const dirtyRef = useRef(false)
   titleRef.current = titleDraft
   promptRef.current = filmPromptDraft
+  metaRef.current = storyMetaDraft
 
   const reload = async (opts?: { keepDrafts?: boolean }) => {
     if (!id) return
@@ -74,6 +77,7 @@ export function DialogEditorPage() {
       skipSaveRef.current = true
       setFilmPromptDraft(d.filmPrompt ?? d.creationPrompt ?? '')
       setTitleDraft(d.title === EMPTY_FILM_TITLE ? '' : d.title)
+      setStoryMetaDraft(normalizeStoryMeta(d.storyMeta))
     }
     setAskVisualQuestionsState(getAskVisualQuestions())
   }
@@ -86,6 +90,7 @@ export function DialogEditorPage() {
         const d = await patchFilmDraft(id, {
           title: titleRef.current,
           filmPrompt: promptRef.current,
+          storyMeta: normalizeStoryMeta(metaRef.current),
         })
         setDialog(d)
         dirtyRef.current = false
@@ -110,6 +115,12 @@ export function DialogEditorPage() {
   }, [id])
 
   useEffect(() => {
+    if (loading || !dialog) return
+    if (window.location.hash !== '#ki-werkzeuge') return
+    document.getElementById('ki-werkzeuge')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [loading, dialog])
+
+  useEffect(() => {
     if (loading) return
     if (skipSaveRef.current) {
       skipSaveRef.current = false
@@ -118,7 +129,7 @@ export function DialogEditorPage() {
     dirtyRef.current = true
     const timer = window.setTimeout(() => void persistMeta(), 1000)
     return () => window.clearTimeout(timer)
-  }, [titleDraft, filmPromptDraft, loading, id])
+  }, [titleDraft, filmPromptDraft, storyMetaDraft, loading, id])
 
   useEffect(() => {
     const flush = () => {
@@ -351,31 +362,22 @@ export function DialogEditorPage() {
               </option>
             ))}
           </select>
-          <Link to={`/dialog/${dialog.id}/board`} className="btn btn-story-studio">
-            Ins Storyboard
-          </Link>
-          <Link to={`/dialog/${dialog.id}/slideshow`} className="btn btn-primary">
-            {t('editor.slideshow')}
-          </Link>
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-warn">{status}</div>}
 
+      <StoryMetaSheet
+        value={storyMetaDraft}
+        disabled={!!busy}
+        onChange={(next) => setStoryMetaDraft(next)}
+      />
+
       <section className="panel dialog-meta-panel">
-        <h2>Vorstellung vom Film</h2>
+        <h2>Text</h2>
         <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Titel</span>
-          <input
-            className="film-title-input"
-            value={titleDraft}
-            placeholder={EMPTY_FILM_TITLE}
-            onChange={(e) => setTitleDraft(e.target.value)}
-          />
-        </label>
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Prompt (Handlung, Bild, Ton, Sprache)</span>
+          <span className="dialog-meta-label">Was geschieht</span>
           <textarea
             rows={8}
             value={filmPromptDraft}
@@ -384,38 +386,41 @@ export function DialogEditorPage() {
           />
         </label>
         {formatCreationPromptForDisplay(dialog) && (
-          <div className="dialog-meta-block">
-            <h3 className="dialog-meta-label">Ursprüngliche Eingabe</h3>
+          <details className="dialog-meta-block">
+            <summary className="dialog-meta-label">Ursprüngliche Eingabe</summary>
             <pre className="dialog-meta-pre">{formatCreationPromptForDisplay(dialog)}</pre>
-          </div>
+          </details>
         )}
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Bild-Regie</span>
-          <textarea
-            rows={3}
-            value={imageDirectionDraft}
-            onChange={(e) => setImageDirectionDraft(e.target.value)}
-            placeholder="Ort, Figuren, Posen (z.B. Julien sitzt links im Park) …"
-          />
-        </label>
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Ton-Regie</span>
-          <textarea
-            rows={2}
-            value={soundDirectionDraft}
-            onChange={(e) => setSoundDirectionDraft(e.target.value)}
-            placeholder="Vögel, Straßenlärm, Stille, Musik …"
-          />
-        </label>
-        <label className="dialog-meta-block">
-          <span className="dialog-meta-label">Sprach-Regie</span>
-          <textarea
-            rows={2}
-            value={speechDirectionDraft}
-            onChange={(e) => setSpeechDirectionDraft(e.target.value)}
-            placeholder="laut, flüstern, Pause, fröhlich …"
-          />
-        </label>
+        <details className="dialog-meta-block">
+          <summary className="dialog-meta-label">Bild · Ton · Sprache</summary>
+          <label className="dialog-meta-block">
+            <span className="dialog-meta-label">Bild</span>
+            <textarea
+              rows={2}
+              value={imageDirectionDraft}
+              onChange={(e) => setImageDirectionDraft(e.target.value)}
+              placeholder="Ort, Figuren, Posen …"
+            />
+          </label>
+          <label className="dialog-meta-block">
+            <span className="dialog-meta-label">Ton</span>
+            <textarea
+              rows={2}
+              value={soundDirectionDraft}
+              onChange={(e) => setSoundDirectionDraft(e.target.value)}
+              placeholder="Vögel, Straßenlärm, Stille …"
+            />
+          </label>
+          <label className="dialog-meta-block">
+            <span className="dialog-meta-label">Sprache</span>
+            <textarea
+              rows={2}
+              value={speechDirectionDraft}
+              onChange={(e) => setSpeechDirectionDraft(e.target.value)}
+              placeholder="laut, flüstern, Pause …"
+            />
+          </label>
+        </details>
         <div className="dialog-meta-block">
           <fieldset className="film-draft-modes">
             <legend>Dialog aus dem Text oben machen</legend>
@@ -596,11 +601,14 @@ export function DialogEditorPage() {
         )}
       </section>
 
-      <section className="panel toolbar-panel">
+      <section className="panel toolbar-panel" id="ki-werkzeuge">
         <h2>KI-Werkzeuge</h2>
         <div className="toolbar-grid">
           <div className="tool-group">
-            <span className="tool-label">Übersetzen in</span>
+            <span className="tool-label">Dialog umschreiben</span>
+            <p className="tool-hint muted">
+              Nur wenn der Text noch nicht {languageName(translateLang)} ist. Ersetzt den Dialog.
+            </p>
             <div className="tool-controls">
               <span className="lang-select-row">
                 <LanguageFlag code={translateLang} size="sm" />
@@ -619,18 +627,30 @@ export function DialogEditorPage() {
                 onClick={async () => {
                   if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
                   await runAction('translate', async () => {
-                    const { dialog: d } = await api.ai.translate(dialog.id, translateLang)
+                    const { dialog: d, unchanged, message } = await api.ai.translate(
+                      dialog.id,
+                      translateLang,
+                    )
                     setDialog(d)
+                    setStatus(
+                      unchanged && message
+                        ? message
+                        : `Dialog steht jetzt auf ${languageName(translateLang)}.`,
+                    )
                   })
                 }}
               >
-                {busy === 'translate' ? '…' : 'Übersetzen'}
+                {busy === 'translate' ? 'Bitte warten …' : 'Umschreiben'}
               </button>
             </div>
           </div>
 
           <div className="tool-group tool-group--stack">
-            <span className="tool-label">Birkenbihl (Muttersprache)</span>
+            <span className="tool-label">Deutsch unter die Zeilen</span>
+            <p className="tool-hint muted">
+              Lässt den Dialog. Schreibt {languageName(birkenbihlLang)} darunter — das brauchst du
+              auf der Bilder-Seite. Kann bis zu zwei Minuten dauern.
+            </p>
             <div className="tool-controls">
               <span className="lang-select-row">
                 <LanguageFlag code={birkenbihlLang} size="sm" />
@@ -644,7 +664,7 @@ export function DialogEditorPage() {
               </span>
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-primary"
                 disabled={!!busy}
                 onClick={async () => {
                   if (!(await confirmCost(estimateBirkenbihl(lineCount(dialog))))) return
@@ -656,10 +676,13 @@ export function DialogEditorPage() {
                       includeRomanization,
                     )
                     setDialog(d)
+                    setStatus(
+                      'Deutsch steht unter den Zeilen. Oben auf Bilder, dann die Spalte Deutsch prüfen.',
+                    )
                   })
                 }}
               >
-                {busy === 'birkenbihl' ? '…' : 'Anwenden'}
+                {busy === 'birkenbihl' ? 'Bitte warten …' : 'Deutsch schreiben'}
               </button>
             </div>
             {needsRomanization(dialog.targetLanguage) && (

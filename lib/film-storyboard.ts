@@ -8,6 +8,10 @@ import {
   applySceneNote,
   buildBoardFromDrafts,
   draftPanelsFromDialog,
+  ensureCoverageDrafts,
+  resolveDraftSectionId,
+  closeupExprKey,
+  findReusableCloseupPanel,
   insertPanelAfter,
   insertSceneAfter,
   isFilmStoryboard,
@@ -18,30 +22,39 @@ import {
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
-import { harvestFilmStillToLibrary } from './film-library-harvest.js'
-import { rematchFilmBoard } from '../shared/film-library-harvest.js'
+import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
+import {
+  applyPanelLayout,
+  type ArrangeLayerUpdate,
+} from '../shared/film-still-arrange.js'
+import { ensurePanelPieces } from './film-panel-pieces.js'
 import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
-  previousStillUrlInScene,
 } from '../shared/film-stills.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
-const PLAN_SYSTEM = `Du planst ein billiges Comic-Storyboard. Keine fertigen Film-Bilder.
-Nur JSON. Beliebig viele Figuren. Gruppiere Zeilen am gleichen Ort.
+const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
+Nur JSON.
+Pro Szene/Abschnitt PFLICHT:
+1. Genau EIN Bild shot="wide": ganzer Raum, ALLE Personen, Einrichtung GENAU wie der Dialog (Teppich, Tisch, Kissen …). Nicht ein beliebiges altes Wohnzimmer.
+2. Danach genau EIN Bild shot="closeup" je Sprecher, der in der Szene spricht: Nahaufnahme Gesicht (Mund, Augenbrauen). Nur diese eine Person.
+Nahaufnahmen derselben Person dürfen in späteren Szenen wiederverwendet werden — also nicht extra erfinden, wenn die Mimik gleich bleibt.
 Schema:
 {
   "summaryDe": "ein Satz",
   "panels": [
     {
-      "sectionId": "id oder scene-1",
+      "sectionId": "id",
+      "shot": "wide|closeup",
+      "closeupSpeaker": "Name nur bei closeup",
       "lineIds": ["id"],
       "caption": "kurz",
-      "imageCue": "was man sieht",
+      "imageCue": "was man sieht, inkl. Möbel/Ort aus dem Dialog",
       "soundCue": "Ton oder leer",
       "speechCue": "wie gesprochen",
-      "settingHint": "Ort",
+      "settingHint": "Ort wie im Dialog, konkret",
       "expressionHint": "freut sich|traurig|schreit|überrascht|neutral|leise / flüstert",
       "characters": [
         { "name": "Julien", "poseHint": "sitting|standing-front|waving|look-left|look-right|walking|standing-three-quarter", "depth": "foreground|mid|background", "x": 40 }
@@ -53,7 +66,7 @@ Regeln:
 - Namen unverändert.
 - poseHint nur aus der Liste.
 - x 15–85.
-- Mehrere Personen in einem Bild, wenn der Text das sagt.`
+- settingHint und imageCue beim Weit-Bild: konkrete Einrichtung aus dem Text, nicht nur «Wohnzimmer».`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -98,7 +111,7 @@ async function draftsFromGemini(dialog: Dialog, extra = ''): Promise<FilmDraftPa
     if (valid.length === 0) return null
     return valid.map((p) => ({
       ...p,
-      sectionId: p.sectionId || dialog.sections[0]?.id || 'scene-1',
+      sectionId: resolveDraftSectionId(dialog, p.sectionId),
       lineIds: p.lineIds?.length ? p.lineIds : [],
     }))
   } catch {
@@ -126,28 +139,53 @@ export async function planFilmStoryboard(
   dialogId: string,
   userId: string,
   profile?: UserProfile | null,
-  opts?: { cheapAi?: boolean; extra?: string; keepBoard?: boolean },
+  opts?: { cheapAi?: boolean; extra?: string; keepBoard?: boolean; freshPlaces?: boolean },
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
 
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const previous = opts?.keepBoard && isFilmStoryboard(dialog.filmStoryboard)
     ? normalizeFilmStoryboard(dialog.filmStoryboard)
     : undefined
   const useAi = opts?.cheapAi !== false
   const aiDrafts = useAi ? await draftsFromGemini(dialog, opts?.extra ?? '') : null
-  const drafts = aiDrafts ?? draftPanelsFromDialog(dialog)
+  const drafts = aiDrafts
+    ? ensureCoverageDrafts(dialog, aiDrafts)
+    : draftPanelsFromDialog(dialog)
   const board = buildBoardFromDrafts(
     dialog,
     drafts,
     library,
     aiDrafts ? 'gemini' : 'rules',
     previous,
+    { freshPlaces: Boolean(opts?.freshPlaces) },
   )
 
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
+}
+
+/** Alte Standbilder und den Bildplan löschen, dann nur aus dem Dialog neu planen. */
+export async function resetFilmStoryboardFromDialog(
+  dialogId: string,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog) throw new Error('Dialog nicht gefunden.')
+  const wiped = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: null, filmPlan: null },
+    profile,
+  )
+  if (!wiped) throw new Error('Alter Bildplan konnte nicht gelöscht werden.')
+  return planFilmStoryboard(dialogId, userId, profile, {
+    cheapAi: true,
+    keepBoard: false,
+    freshPlaces: true,
+  })
 }
 
 export async function regenerateFilmScenes(
@@ -175,14 +213,17 @@ export async function regenerateFilmScenes(
 
   const extra =
     `Bitte NUR diese Szenen neu planen, Rest unverändert lassen: ${[...wanted].join(', ')}\n${notes}`
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const aiDrafts = await draftsFromGemini(dialog, extra)
   if (!aiDrafts) {
     throw new Error('Die KI hat die Szene nicht neu planen können. Bitte Notiz kürzer fassen.')
   }
 
-  const rebuilt = buildBoardFromDrafts(dialog, aiDrafts, library, 'gemini', current)
-  const kept = current.panels.filter((p) => !wanted.has(p.sceneId))
+  const drafts = ensureCoverageDrafts(dialog, aiDrafts)
+  const rebuilt = buildBoardFromDrafts(dialog, drafts, library, 'gemini', current, {
+    freshPlaces: true,
+  })
+  const kept = current.panels.filter((p) => !wanted.has(p.sceneId) && !wanted.has(p.sectionId))
   const fresh = rebuilt.panels.filter((p) => wanted.has(p.sceneId) || wanted.has(p.sectionId))
   const panels = [...kept, ...fresh]
   const scenes = [
@@ -254,7 +295,7 @@ export async function insertFilmPanel(
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
-  const library = await listStoryAssets(userId)
+  const library = libraryForCompose(await listStoryAssets(userId))
   const board = insertPanelAfter(dialog.filmStoryboard, afterPanelId, text, library)
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board }
@@ -337,7 +378,7 @@ export async function stillFilmPanel(
       }
     : board
   const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
-  const correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
+  let correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
 
   const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
   const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
@@ -366,38 +407,74 @@ export async function stillFilmPanel(
   }
 
   try {
-    const url = await generateFilmPanelStillImage({
-      panel,
-      scene,
-      styleId: resolvedStyle,
-      previousStillUrl: previousStillUrlInScene(working, panel),
-      correctFromUrl,
-      targetLanguage,
-    })
-    const withStill = applyPanelStill(working, panelId, url, resolvedStyle)
-    const savedStill = await persist(withStill)
-    try {
-      const harvest = await harvestFilmStillToLibrary({
-        userId,
-        panel,
-        stillUrl: url,
-        scene,
-      })
-      const rematched = rematchFilmBoard(withStill, harvest.library)
-      const withHarvest = applyPanelHarvestNote(rematched, panelId, harvest.noteDe)
-      const updated = await persist(withHarvest)
-      return { dialog: updated, board: withHarvest }
-    } catch {
-      const failNote =
-        'Das Standbild ist da, aber Figuren und Hintergrund konnten nicht in die Bibliothek gelegt werden.'
-      const withNote = applyPanelHarvestNote(withStill, panelId, failNote)
+    let boardForGen = working
+    let panelForGen = panel
+    let pieceNote = ''
+    if (!correction) {
       try {
-        const updated = await persist(withNote)
-        return { dialog: updated, board: withNote }
+        const library0 = libraryForCompose(await listStoryAssets(userId))
+        const pieces = await ensurePanelPieces({
+          userId,
+          panel,
+          scene,
+          styleId: resolvedStyle,
+          library: library0,
+        })
+        pieceNote = pieces.noteDe
+        boardForGen = rematchFilmBoard(working, libraryForCompose(pieces.library))
+        panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
       } catch {
-        return { dialog: savedStill, board: withStill }
+        /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
     }
+    const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
+    if (!correction && (panelForGen.shot ?? 'wide') === 'closeup') {
+      const base = findReusableCloseupPanel(
+        boardForGen,
+        panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || '',
+        panelForGen.id,
+      )
+      if (base?.stillUrl) {
+        const sameFace =
+          closeupExprKey(base.expressionHint) === closeupExprKey(panelForGen.expressionHint)
+        if (sameFace) {
+          const withStill = applyPanelStill(boardForGen, panelId, base.stillUrl, resolvedStyle)
+          const withNote = applyPanelHarvestNote(
+            withStill,
+            panelId,
+            'Nahaufnahme schon da — dasselbe Gesicht wiederverwendet.',
+          )
+          const updated = await persist(withNote)
+          return { dialog: updated, board: withNote }
+        }
+        panelForGen = {
+          ...panelForGen,
+          stillCorrection:
+            panelForGen.stillCorrection ||
+            `Keep this EXACT close-up (same crop, face, hair, clothes). Only change facial muscles: ${panelForGen.expressionHint || 'talking'}. Eyebrows, eyelids, mouth, maybe wrinkle the nose. Do not redraw the person.`,
+        }
+        correctFromUrl = base.stillUrl
+      }
+    }
+    const url = await generateFilmPanelStillImage({
+      panel: panelForGen,
+      scene,
+      styleId: resolvedStyle,
+      previousStillUrl: undefined,
+      correctFromUrl,
+      targetLanguage,
+      beatTotal,
+    })
+    const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+    const withNote = applyPanelHarvestNote(
+      withStill,
+      panelId,
+      pieceNote
+        ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+        : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+    )
+    const updated = await persist(withNote)
+    return { dialog: updated, board: withNote }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
     const failed = applyPanelStillError(working, panelId, message)
@@ -419,4 +496,35 @@ export async function saveFilmPlan(
   const updated = await updateDialog(dialogId, userId, { filmPlan: plan }, profile)
   if (!updated) throw new Error('Film-Plan nicht gespeichert.')
   return updated
+}
+
+export async function saveFilmPanelLayout(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  updates: ArrangeLayerUpdate[],
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) {
+    throw new Error('Kein Storyboard.')
+  }
+  const board = applyPanelLayout(normalizeFilmStoryboard(dialog.filmStoryboard), panelId, updates)
+  const updated = await saveBoard(dialogId, userId, board, profile)
+  return { dialog: updated, board }
+}
+
+export async function rematchFilmLibrary(
+  dialogId: string,
+  userId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) {
+    throw new Error('Kein Storyboard.')
+  }
+  const library = libraryForCompose(await listStoryAssets(userId))
+  const board = rematchFilmBoard(normalizeFilmStoryboard(dialog.filmStoryboard), library)
+  const updated = await saveBoard(dialogId, userId, board, profile)
+  return { dialog: updated, board }
 }

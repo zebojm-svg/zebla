@@ -36,8 +36,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [menuOpen])
 
-  const tabClass = (path: string) =>
-    location.pathname.startsWith(path) ? 'zebo-tab is-active' : 'zebo-tab'
+  const tabClass = (path: string, exact = false) => {
+    const on = exact ? location.pathname === path : location.pathname.startsWith(path)
+    return on ? 'zebo-tab is-active' : 'zebo-tab'
+  }
 
   return (
     <div className="layout">
@@ -53,26 +55,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <>
               {(user.role === 'teacher' || user.role === 'master') && (
                 <nav className="zebo-shell-header__nav zebo-tabs" aria-label="Hauptnavigation">
-                  <Link to="/library" className={tabClass('/library')}>
-                    Bibliothek
+                  <Link to="/" className={tabClass('/', true)} title="Geschichten">
+                    Geschichten
                   </Link>
-                  <Link to="/story" className={tabClass('/story')}>
-                    Zeichnen
+                  <Link to="/library" className={tabClass('/library')} title="Welt">
+                    Welt
                   </Link>
-                  <Link to="/explore" className={tabClass('/explore')}>
+                  <Link to="/explore" className={tabClass('/explore')} title="Öffentlich">
                     Öffentlich
                   </Link>
-                  <Link to="/classes" className={tabClass('/classes')}>
+                  <Link to="/classes" className={tabClass('/classes')} title="Klassen">
                     Klassen
                   </Link>
-                  <Link to="/pro" className={tabClass('/pro')}>
+                  <Link to="/pro" className={tabClass('/pro')} title="Pro">
                     Pro
                   </Link>
                 </nav>
               )}
               <div className="zebo-shell-header__right">
                 <Link to="/library" className="btn btn-story-studio btn-sm">
-                  Bibliothek
+                  Welt
                 </Link>
                 <LanguageSwitcher className="lang-switcher--topbar" />
                 <a className="zebo-hub-link" href="https://zebotools.ch">

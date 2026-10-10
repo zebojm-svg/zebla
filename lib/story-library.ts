@@ -2,7 +2,7 @@ import { isCharacterRig, type CharacterRig } from '../shared/character-rig.js'
 import { randomUUID } from 'crypto'
 import { adminDb } from './firebase-admin.js'
 
-export type StoryAssetType = 'character' | 'environment' | 'scene'
+export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop'
 
 export interface StoryLibraryDoc {
   userId: string

@@ -2,6 +2,7 @@ import {
   clientTimeoutMessage,
   DEFAULT_API_TIMEOUT_MS,
   FILM_PLAN_TIMEOUT_MS,
+  TEXT_AI_TIMEOUT_MS,
 } from '../../shared/api-timeout'
 
 const API_BASE = '/api'
@@ -175,6 +176,33 @@ export const api = {
         body: JSON.stringify({ userId }),
       }),
   },
+  storyProjects: {
+    create: (data: {
+      title: string
+      filmPrompt: string
+      targetLanguage: string
+      parentId?: string | null
+    }) =>
+      request<{
+        folder: import('../types').DialogFolder
+        dialog: import('../types').Dialog
+      }>('/story-projects', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    wrap: (dialogId: string) =>
+      request<{
+        folder: import('../types').DialogFolder
+        dialog: import('../types').Dialog
+      }>('/story-project-wrap', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId }),
+      }),
+    delete: (folderId: string) =>
+      request<{ ok: boolean }>(`/story-project?id=${encodeURIComponent(folderId)}`, {
+        method: 'DELETE',
+      }),
+  },
   folders: {
     create: (name: string, parentId?: string | null) =>
       request<{ folder: import('../types').DialogFolder }>('/folders', {
@@ -331,10 +359,18 @@ export const api = {
         body: JSON.stringify({ messages, targetLanguage, length }),
       }),
     translate: (dialogId: string, targetLanguage: string) =>
-      request<{ dialog: import('../types').Dialog }>('/translate', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, targetLanguage }),
-      }),
+      request<{
+        dialog: import('../types').Dialog
+        unchanged?: boolean
+        message?: string
+      }>(
+        '/translate',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, targetLanguage }),
+        },
+        TEXT_AI_TIMEOUT_MS,
+      ),
     filmStoryboard: (dialogId: string, cheapAi = true) =>
       request<{
         dialog: import('../types').Dialog
@@ -344,6 +380,18 @@ export const api = {
         {
           method: 'POST',
           body: JSON.stringify({ dialogId, cheapAi }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
+    filmStoryboardReset: (dialogId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>(
+        '/film-storyboard-reset',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId }),
         },
         FILM_PLAN_TIMEOUT_MS,
       ),
@@ -450,6 +498,33 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
         120_000,
       ),
+    filmPanelLayout: (
+      dialogId: string,
+      panelId: string,
+      placements: Array<{
+        name: string
+        poseId: string
+        x: number
+        y: number
+        scale: number
+        flip?: boolean
+      }>,
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-panel-layout', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId, placements }),
+      }),
+    filmLibraryRematch: (dialogId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-library-rematch', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId }),
+      }),
     filmPlanSave: (
       dialogId: string,
       plan: import('../../shared/film-storyboard').FilmPlan,
@@ -463,10 +538,14 @@ export const api = {
       nativeLanguage: string,
       includeRomanization?: boolean,
     ) =>
-      request<{ dialog: import('../types').Dialog }>('/birkenbihl', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, nativeLanguage, includeRomanization }),
-      }),
+      request<{ dialog: import('../types').Dialog }>(
+        '/birkenbihl',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, nativeLanguage, includeRomanization }),
+        },
+        TEXT_AI_TIMEOUT_MS,
+      ),
     split: (dialogId: string) =>
       request<{ dialog: import('../types').Dialog }>('/split', {
         method: 'POST',
@@ -634,7 +713,7 @@ export const api = {
         body: JSON.stringify(input),
       }),
     deleteFromLibrary: (id: string) =>
-      request<{ ok: boolean }>(`/story-library/${id}`, { method: 'DELETE' }),
+      request<{ ok: boolean }>(`/story-library?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
     listPresets: () =>
       request<{ presets: import('../../shared/scene-presets').ScenePreset[] }>('/story-presets'),
   },

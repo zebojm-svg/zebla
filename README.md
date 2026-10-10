@@ -1,6 +1,6 @@
 # Zebla
 
-Sprachlern-App zum Erstellen, Übersetzen und Üben von Dialogen – mit KI.
+Sprachlern-App zum Erstellen von **Geschichten** (Dialog, Storyboard, Film, Diashow) – mit KI.
 
 **Film-Grobplan (lebend):** [docs/ZEBLA_PLAN.md](docs/ZEBLA_PLAN.md) — Stadtplan für Cursor und Jean-Marie. Nicht den Chat als Gedächtnis nutzen.
 
@@ -9,8 +9,9 @@ Sprachlern-App zum Erstellen, Übersetzen und Üben von Dialogen – mit KI.
 ## Funktionen
 
 - Anmeldung mit **Google** oder **Schülercode** (ohne Passwort)
-- Dialoge per KI-Gespräch, Thema oder Diktat erstellen
-- Übersetzen, Birkenbihl-Methode, Abschnitte, KI-Bilder (**16:9 Breitbild**)
+- Jede Geschichte liegt in einem **Projektordner**: Dialog, Storyboard, Film, Diashow
+- **Welt-Regal**: Figuren, Räume, Möbel gelten für alle Geschichten
+- Dialoge per Film-Prompt erstellen, übersetzen, Birkenbihl, KI-Bilder (**16:9**)
 - Diashow mit Vorlesen, Wort-Markierung und wählbaren Schriften (Zielschrift / Romanisierung / Übersetzung)
 - Oberfläche auf **Deutsch, English, Français, فارسی**
 - **Cloud-Sprachausgabe**: Gemini-TTS für Persisch/Dari, Koreanisch, Japanisch, Chinesisch, Arabisch; sonst Google Neural2

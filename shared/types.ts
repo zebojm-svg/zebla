@@ -224,13 +224,26 @@ export interface Dialog {
   visualScript?: DialogVisualScript
   /** Bild-Regie aus Nutzer-Hinweis + Rückfragen (unsichtbarer Zwischen-Prompt). */
   visualBrief?: VisualBrief | null
+  /** Ein Blatt für die ganze Geschichte: Cast, Räume, Stimmen, Blick. */
+  storyMeta?: StoryMeta | null
   createdAt: string
   updatedAt: string
+}
+
+/** Wer, wo, wie — damit Szenen nicht auseinanderlaufen. */
+export interface StoryMeta {
+  castNote?: string
+  roomsNote?: string
+  voicesNote?: string
+  lookNote?: string
 }
 
 export type UserRole = 'master' | 'teacher' | 'student'
 
 export type SubscriptionStatus = 'none' | 'active' | 'past_due' | 'canceled'
+
+/** Gewöhnlicher Ordner oder eine Geschichte (Dialog + Storyboard + Film). */
+export type FolderKind = 'folder' | 'story'
 
 export interface DialogFolder {
   id: string
@@ -240,6 +253,8 @@ export interface DialogFolder {
   /** Persönlicher Ordner oder gemeinsamer Klassenordner. */
   scope: 'personal' | 'class'
   classId?: string | null
+  /** Geschichte = ein Projektordner, kein Sammelordner. */
+  kind: FolderKind
   createdAt: string
   updatedAt: string
 }

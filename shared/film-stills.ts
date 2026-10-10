@@ -100,10 +100,13 @@ export function filmStillLanguageEn(code?: string): string {
   return FILM_STILL_LANGUAGE_EN[code.trim().slice(0, 2).toLowerCase()] ?? code.trim()
 }
 
-/** Fotos aus der Bibliothek (Figuren zuerst), plus letztes Standbild derselben Szene. */
+/**
+ * Vollständiger Raum + vollständige Figuren. Kein voriges Standbild —
+ * sonst kopiert die KI dasselbe Wohnzimmer zehnmal.
+ */
 export function referenceUrlsForPanel(
   panel: FilmStoryboardPanel,
-  previousStillUrl?: string,
+  _previousStillUrl?: string,
   correctFromUrl?: string,
 ): string[] {
   const people: string[] = []
@@ -114,12 +117,15 @@ export function referenceUrlsForPanel(
     panel.background.imageUrl && panel.background.match !== 'missing'
       ? panel.background.imageUrl
       : undefined
+  const closeup = panel.shot === 'closeup'
   const ordered = (
     correctFromUrl
       ? [correctFromUrl, ...people, bg]
-      : [...people, bg, previousStillUrl]
+      : closeup
+        ? [...people, bg]
+        : [bg, ...people]
   ).filter((u): u is string => Boolean(u && u.startsWith('http')))
-  return [...new Set(ordered)].slice(0, 3)
+  return [...new Set(ordered)].slice(0, 4)
 }
 
 export function previousStillUrlInScene(
@@ -185,31 +191,56 @@ export function buildFilmStillPrompt(opts: {
   directorNote?: string
   stillCorrection?: string
   correctingExisting?: boolean
+  spokenLine?: string
+  beatIndex?: number
+  beatTotal?: number
+  shot?: 'wide' | 'closeup'
+  closeupSpeaker?: string
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
   const people = (opts.names ?? []).filter(Boolean).join(', ')
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
+  const isCloseup = opts.shot === 'closeup'
   const lock = opts.hasLibraryRefs
-    ? `${STORY_STILLS_LOCK_PROMPT} Use the attached photos as these exact people and (if present) the place. Compose ONE finished still. Pose and expression may change to match the action.`
-    : 'Draw the people as described. Keep them consistent if names are given.'
+    ? isCloseup
+      ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates of ONE person. Paint a CLOSE-UP of that exact person: head and shoulders, mouth and eyebrows clearly readable (about to speak or speaking). Soft background, not a full room tour. Do not collage. Same face, hair, clothes.`
+      : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
+    : isCloseup
+      ? 'Paint a close-up of the speaker: face, mouth, eyebrows, shoulders. Soft background.'
+      : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
       ? `Never write German on signs, stalls, posters or paper (no Bratwurst, Glühwein, German menus). Use ${langEn} instead (e.g. French: saucisse, vin chaud).`
       : ''
+  const moment =
+    opts.beatIndex && opts.beatTotal
+      ? `This is moment ${opts.beatIndex} of ${opts.beatTotal}.`
+      : opts.beatIndex
+        ? `This is moment ${opts.beatIndex} of a sequence.`
+        : 'This is one moment in a sequence.'
 
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
+    isCloseup
+      ? `CLOSE-UP of ${opts.closeupSpeaker || 'the speaker'}: face fills the frame, mouth and eyebrows visible, natural talking expression. Head and shoulders. Soft out-of-focus place behind. One person only.`
+      : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
+    opts.correctingExisting
+      ? ''
+      : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     lock,
     opts.correctingExisting
-      ? 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
+      ? isCloseup
+        ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'
+        : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
       : '',
     `Scene title: ${opts.sceneTitle || 'Scene'}.`,
     `Place: ${opts.settingHint || 'as implied'}.`,
     `Action / caption: ${opts.caption}.`,
-    opts.imageCue ? `What we see: ${opts.imageCue}.` : '',
+    opts.spokenLine ? `Spoken in this moment: ${opts.spokenLine}.` : '',
+    opts.imageCue ? `What we see in THIS frame only: ${opts.imageCue}.` : '',
     `Faces: ${opts.expressionHint || 'natural'}.`,
     people ? `People in frame: ${people}.` : '',
     poses ? `Poses: ${poses}.` : '',
@@ -217,7 +248,9 @@ export function buildFilmStillPrompt(opts: {
     opts.stillCorrection
       ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
       : '',
-    `Widescreen 16:9, full bodies when they are in the scene, both legs and shoes visible when standing.`,
+    isCloseup
+      ? `Widescreen 16:9 close-up. Face large in frame. Mouth, teeth if speaking, eyebrows, eyes. No extra limbs, no second person.`
+      : `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent. Furniture belongs to the room. Same body scale. No extra limbs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,
     `Ignore any earlier "NO text" rule for shop signs, stall labels, posters, flyers and prospectus.`,

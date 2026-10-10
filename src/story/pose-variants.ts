@@ -15,6 +15,7 @@ import {
 } from '../../shared/character-parts'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import { isCharacterRig, type CharacterRig } from '../../shared/character-rig'
+import { identityReferenceUrl } from '../../shared/library-identities'
 
 export type PoseVariantSource = {
   imageUrl: string
@@ -322,6 +323,8 @@ export function pickIdentityReference(
   libraryCharacters: StoryLibraryAsset[],
   sessionCharacters: PoseVariantSource[],
 ): string | undefined {
+  const fromLibrary = identityReferenceUrl(libraryCharacters, baseName)
+  if (fromLibrary) return fromLibrary
   const variants = collectPoseVariants(baseName, libraryCharacters, sessionCharacters)
   const hero =
     findPoseVariant(variants, { headAngle: 'front', legPose: 'standing', armPose: 'relaxed' }) ??

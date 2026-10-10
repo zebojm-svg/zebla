@@ -28,6 +28,13 @@ import {
   getFolder,
 } from '../lib/folders.js'
 import {
+  createStoryProject,
+  wrapDialogAsStory,
+  deleteStoryProject,
+  deleteEmptyStoryFolder,
+  syncStoryFolderName,
+} from '../lib/story-project.js'
+import {
   createClass,
   deleteClass,
   createStudentCode,
@@ -117,18 +124,22 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
+  const slug = req.query.slug
+  if (Array.isArray(slug) && slug.length > 0) {
+    const joined = slug.filter((part) => part && part !== '[...slug]').join('/')
+    if (joined) return joined
+  } else if (typeof slug === 'string' && slug && slug !== '[...slug]') {
+    return slug
+  }
+
   const url = new URL(req.url ?? '/', 'http://localhost')
   const path = url.pathname.replace(/^\/api\/?/, '')
-  if (path) return path
-
-  const slug = req.query.slug
-  if (Array.isArray(slug)) return slug.join('/')
-  if (typeof slug === 'string') return slug
+  if (path && path !== '[...slug]') return path
   return ''
 }
 
@@ -1044,6 +1055,116 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (route === 'story-projects' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { title, filmPrompt, targetLanguage, parentId } = req.body as {
+        title?: string
+        filmPrompt?: string
+        targetLanguage?: string
+        parentId?: string | null
+      }
+      if (!targetLanguage) {
+        res.status(400).json({ error: 'Zielsprache fehlt.' })
+        return
+      }
+      if (parentId) {
+        const parent = await getFolder(parentId)
+        if (!parent) {
+          res.status(400).json({ error: 'Ordner nicht gefunden.' })
+          return
+        }
+        if (parent.scope === 'class') {
+          await assertClassFolderAccess(
+            parentId,
+            profile.id,
+            profile.role,
+            profile.classIds,
+            'read',
+          )
+        } else if (parent.userId !== user.uid) {
+          throw new HttpError('Keine Berechtigung.', 403)
+        }
+      }
+      await consumeQuota(profile, 'dialogCreates')
+      try {
+        const result = await createStoryProject(user.uid, {
+          title: title ?? '',
+          filmPrompt: filmPrompt ?? '',
+          targetLanguage,
+          parentId: parentId ?? null,
+        })
+        res.status(201).json(result)
+      } catch (err) {
+        res.status(400).json({
+          error: err instanceof Error ? err.message : 'Geschichte konnte nicht angelegt werden.',
+        })
+      }
+      return
+    }
+
+    if (route === 'story-project-wrap' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId } = req.body as { dialogId?: string }
+      if (!dialogId) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      try {
+        const result = await wrapDialogAsStory(user.uid, dialogId, profile)
+        res.json(result)
+      } catch (err) {
+        res.status(400).json({
+          error: err instanceof Error ? err.message : 'Konnte die Geschichte nicht in einen Ordner legen.',
+        })
+      }
+      return
+    }
+
+    if (route === 'story-project') {
+      const user = await requireAuth(req)
+      const id = (req.query.id ?? (req.body as { id?: string })?.id) as string
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const existing = await getFolder(id)
+      if (!existing) {
+        res.status(404).json({ error: 'Ordner nicht gefunden.' })
+        return
+      }
+      const profile = await requireProfile(user.uid)
+      if (existing.scope === 'class') {
+        await assertClassFolderAccess(
+          id,
+          profile.id,
+          profile.role,
+          profile.classIds,
+          'manage',
+        )
+      } else if (existing.userId !== user.uid) {
+        throw new HttpError('Keine Berechtigung.', 403)
+      }
+      if (req.method === 'DELETE') {
+        try {
+          const ok = await deleteStoryProject(user.uid, id, profile)
+          if (!ok) {
+            res.status(404).json({ error: 'Ordner nicht gefunden.' })
+            return
+          }
+          res.json({ ok: true })
+        } catch (err) {
+          res.status(400).json({
+            error: err instanceof Error ? err.message : 'Geschichte konnte nicht gelöscht werden.',
+          })
+        }
+        return
+      }
+      methodNotAllowed(res)
+      return
+    }
+
     if (route === 'folders') {
       const user = await requireAuth(req)
       if (req.method === 'POST') {
@@ -1248,15 +1369,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
         }
+        if (typeof (req.body as { title?: unknown }).title === 'string') {
+          await syncStoryFolderName(dialog.folderId, dialog.title)
+        }
         res.json({ dialog })
         return
       }
       if (req.method === 'DELETE') {
+        const existingDialog = await getDialog(id, user.uid, profile)
+        const folderId = existingDialog?.folderId ?? null
         const ok = await deleteDialog(id, user.uid, profile)
         if (!ok) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
         }
+        await deleteEmptyStoryFolder(folderId)
         res.json({ ok: true })
         return
       }
@@ -1524,6 +1651,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (route === 'film-storyboard-reset' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId } = req.body as { dialogId?: string }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await resetFilmStoryboardFromDialog(dialogId.trim(), user.uid, profile)
+      res.json(result)
+      return
+    }
+
     if (route === 'film-from-prompt' && req.method === 'POST') {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
@@ -1692,6 +1833,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         profile,
         note?.trim(),
       )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-panel-layout' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId, placements } = req.body as {
+        dialogId?: string
+        panelId?: string
+        placements?: Array<{
+          name: string
+          poseId: string
+          x: number
+          y: number
+          scale: number
+          flip?: boolean
+        }>
+      }
+      if (!dialogId?.trim() || !panelId?.trim() || !Array.isArray(placements)) {
+        res.status(400).json({ error: 'dialogId, panelId und placements fehlen.' })
+        return
+      }
+      const result = await saveFilmPanelLayout(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        placements,
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-library-rematch' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId } = req.body as { dialogId?: string }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await rematchFilmLibrary(dialogId.trim(), user.uid, profile)
       res.json(result)
       return
     }
@@ -1865,6 +2049,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (
+      req.method === 'DELETE' &&
+      (route === 'story-library' || route.startsWith('story-library/'))
+    ) {
+      const user = await requireAuth(req)
+      const fromPath = route.startsWith('story-library/')
+        ? route.slice('story-library/'.length)
+        : ''
+      const fromQuery = typeof req.query.id === 'string' ? req.query.id : ''
+      const fromBody = typeof (req.body as { id?: string } | undefined)?.id === 'string'
+        ? (req.body as { id: string }).id
+        : ''
+      const id = (fromQuery || fromPath || fromBody).trim()
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const ok = await deleteStoryAsset(user.uid, id)
+      if (!ok) {
+        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
+        return
+      }
+      res.json({ ok: true })
+      return
+    }
+
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
       const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig } = req.body as {
@@ -1902,22 +2112,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         rig: isCharacterRig(rig) ? rig : undefined,
       })
       res.json({ asset })
-      return
-    }
-
-    if (route.startsWith('story-library/') && req.method === 'DELETE') {
-      const user = await requireAuth(req)
-      const id = route.slice('story-library/'.length)
-      if (!id) {
-        res.status(400).json({ error: 'ID fehlt.' })
-        return
-      }
-      const ok = await deleteStoryAsset(user.uid, id)
-      if (!ok) {
-        res.status(404).json({ error: 'Eintrag nicht gefunden.' })
-        return
-      }
-      res.json({ ok: true })
       return
     }
 

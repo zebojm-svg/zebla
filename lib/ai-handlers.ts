@@ -9,7 +9,8 @@ import {
   generateDialogFromSentences,
   chatForDialog,
   translateDialog,
-  applyBirkenbihl,
+  applyBirkenbihlDialog,
+  remapLinesToSections,
   splitIntoSections,
   buildCharacterBible,
   planSpeakerPortraits,
@@ -29,6 +30,7 @@ import { buildVisualBrief, neededVisualQuestions, testImagePrompt } from './visu
 import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
+import { languageName } from '../shared/types.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
   res.json({ configured: isAiConfigured() })
@@ -176,7 +178,6 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
     assertCanUseAi(profile)
-    await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string; targetLanguage?: string }
     const dialogId = dialogIdFromRequest(req, body)
     const { targetLanguage } = body
@@ -189,14 +190,18 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
+    if (dialog.targetLanguage === targetLanguage) {
+      res.json({
+        dialog,
+        unchanged: true,
+        message: `Der Dialog ist schon ${languageName(targetLanguage)}. Für Deutsch unter den Zeilen rechts «Deutsch unter die Zeilen» drücken.`,
+      })
+      return
+    }
+    await consumeQuota(profile, 'aiCalls')
     const allLines = dialog.sections.flatMap((s) => s.lines)
     const translated = await translateDialog(allLines, targetLanguage)
-    let offset = 0
-    const sections = dialog.sections.map((sec) => {
-      const lines = translated.slice(offset, offset + sec.lines.length)
-      offset += sec.lines.length
-      return { ...sec, lines }
-    })
+    const sections = remapLinesToSections(dialog.sections, translated)
     const updated = await updateDialog(
       dialog.id,
       user.uid,
@@ -231,16 +236,14 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
-    const sections = []
-    for (const sec of dialog.sections) {
-      const lines = await applyBirkenbihl(
-        sec.lines,
-        nativeLanguage,
-        dialog.targetLanguage,
-        includeRomanization !== false,
-      )
-      sections.push({ ...sec, lines })
-    }
+    const allLines = dialog.sections.flatMap((s) => s.lines)
+    const processed = await applyBirkenbihlDialog(
+      allLines,
+      nativeLanguage,
+      dialog.targetLanguage,
+      includeRomanization !== false,
+    )
+    const sections = remapLinesToSections(dialog.sections, processed)
     const updated = await updateDialog(
       dialog.id,
       user.uid,
