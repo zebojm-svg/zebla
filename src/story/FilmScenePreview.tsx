@@ -6,6 +6,11 @@ import {
   panelDialogueLines,
   scenePreviewBeats,
 } from '../../shared/film-storyboard'
+import {
+  FilmBeatColumns,
+  FilmBeatNotes,
+  type FilmBeatStep,
+} from './FilmSceneGenerate'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -18,8 +23,6 @@ type Props = {
   panels: FilmStoryboardPanel[]
   onDialogUpdated: (dialog: Dialog) => void
 }
-
-type MobileStep = 'image' | 'text'
 
 export function FilmScenePreviewPlayer({
   dialogId,
@@ -37,7 +40,7 @@ export function FilmScenePreviewPlayer({
   )
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [mobileStep, setMobileStep] = useState<MobileStep>('image')
+  const [mobileStep, setMobileStep] = useState<FilmBeatStep>('image')
   const runId = useRef(0)
   const cancelled = useRef(false)
 
@@ -64,7 +67,6 @@ export function FilmScenePreviewPlayer({
     ? panels.find((p) => p.id === current.panelId)
     : undefined
   const dialogue = currentPanel ? panelDialogueLines(currentPanel, dialog) : []
-  const hasText = dialogue.length > 0 || Boolean(current?.caption)
 
   const pause = () => {
     cancelled.current = true
@@ -101,69 +103,42 @@ export function FilmScenePreviewPlayer({
 
   return (
     <div className="film-scene-player">
-      <div className="film-scene-player-top">
-        <p className="muted film-scene-player-note">
-          <strong>Szene anhören:</strong> Standbilder + Stimme. Die Figuren atmen und blinzeln
-          leicht — noch kein Bewegungsfilm.
-        </p>
-        {hasText ? (
-          <div className="film-scene-player-steps" role="tablist" aria-label="Ansicht">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mobileStep === 'image'}
-              className={`film-scene-step-btn ${mobileStep === 'image' ? 'is-active' : ''}`}
-              onClick={() => setMobileStep('image')}
-            >
-              1 · Bild
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mobileStep === 'text'}
-              className={`film-scene-step-btn ${mobileStep === 'text' ? 'is-active' : ''}`}
-              onClick={() => setMobileStep('text')}
-            >
-              2 · Text
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      <div className={`film-scene-player-stage film-scene-player-stage--${mobileStep}`}>
-        <div className="film-scene-player-visual">
-          <div className="film-scene-player-frame">
-            {current?.stillUrl ? (
+      <p className="muted film-scene-player-note">
+        <strong>Szene anhören:</strong> Standbilder + Stimme. Die Figuren atmen und blinzeln
+        leicht — noch kein Bewegungsfilm.
+      </p>
+      <FilmBeatColumns
+        showMobileSteps
+        mobileStep={mobileStep}
+        onMobileStepChange={setMobileStep}
+        picture={
+          current?.stillUrl ? (
+            <div className="film-scene-player-frame">
               <img
                 src={current.stillUrl}
                 alt={current.caption || `Bild ${current.panelIndex}`}
               />
-            ) : (
-              <div className="film-still-placeholder">Noch kein Bild</div>
-            )}
-          </div>
-          <p className="film-scene-player-count">
-            Bild {current?.panelIndex ?? index + 1} von {beats.length}
-            {scene.title ? ` · ${scene.title}` : ''}
-          </p>
-        </div>
-
-        <div className="film-scene-player-copy">
-          {dialogue.length > 0 ? (
-            <div className="film-still-dialog film-still-dialog--player">
-              {dialogue.map((line, i) => (
-                <p key={`${line.lineId ?? i}`}>
-                  {line.speaker ? <strong>{line.speaker}: </strong> : null}
-                  {line.text}
-                </p>
-              ))}
             </div>
-          ) : current?.caption ? (
-            <p className="film-still-dialog film-still-dialog--player">{current.caption}</p>
-          ) : null}
-        </div>
-      </div>
-
+          ) : (
+            <div className="film-still-placeholder">Noch kein Bild</div>
+          )
+        }
+        lines={dialogue}
+        fallback={current?.caption}
+        targetLanguage={dialog.targetLanguage}
+        sourceLanguage={dialog.sourceLanguage}
+        notes={
+          currentPanel ? (
+            <>
+              <p className="film-beat-count">
+                Bild {current?.panelIndex ?? index + 1} von {beats.length}
+                {scene.title ? ` · ${scene.title}` : ''}
+              </p>
+              <FilmBeatNotes panel={currentPanel} dialog={dialog} />
+            </>
+          ) : null
+        }
+      />
       <div className="film-scene-player-controls">
         <button type="button" className="btn btn-story-studio" onClick={onToggle}>
           {playing || speaking ? 'Pause' : 'Szene abspielen'}

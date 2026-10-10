@@ -639,8 +639,19 @@ function guessNames(text: string): string[] {
 export interface FilmPanelDialogueLine {
   speaker: string
   text: string
+  /** Muttersprache aus Birkenbihl, oft Deutsch. */
+  nativeDe?: string
   lineId?: string
   audioUrl?: string
+}
+
+export function lineNativeDe(line: Pick<DialogLine, 'birkenbihl'>): string {
+  const words = line.birkenbihl
+  if (!words?.length) return ''
+  return words
+    .map((w) => w.translation.trim())
+    .filter(Boolean)
+    .join(' ')
 }
 
 function allDialogLines(dialog: Pick<Dialog, 'sections'>): Map<string, DialogLine> {
@@ -665,6 +676,7 @@ export function panelDialogueLines(
       return fromIds.map((line) => ({
         speaker: line.speaker,
         text: line.text.trim(),
+        nativeDe: lineNativeDe(line),
         lineId: line.id,
         audioUrl: line.audioUrl,
       }))

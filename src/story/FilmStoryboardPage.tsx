@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
-import { FilmPanelDialogue, FilmSceneGenerateBar, FilmStillFixBar } from './FilmSceneGenerate'
+import {
+  FilmBeatColumns,
+  FilmBeatNotes,
+  FilmSceneGenerateBar,
+  FilmStillFixBar,
+} from './FilmSceneGenerate'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { useSceneStills } from './generateSceneStills'
 import type { Dialog } from '../types'
@@ -10,6 +15,7 @@ import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-stor
 import {
   boardNeedsDrawing,
   normalizeFilmStoryboard,
+  panelDialogueLines,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
 
@@ -50,104 +56,118 @@ function PanelCard({
 
   return (
     <article className="film-panel">
-      <header className="film-panel-head">
-        <strong>Bild {panel.panelIndex}</strong>
-        {panel.expressionHint ? (
-          <p className="film-expression">Gesicht: {panel.expressionHint}</p>
-        ) : null}
-      </header>
-      {panel.stillUrl ? (
-        <div className="film-panel-still">
-          <img src={panel.stillUrl} alt={panel.caption} />
-          <p className="muted">Standbild dieser Zeile</p>
-          {panel.harvestNoteDe ? (
-            <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
-          ) : null}
-          <FilmPanelDialogue panel={panel} dialog={dialog} />
-        </div>
-      ) : (
-        <div
-          className="film-panel-stage"
-          style={{
-            backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
-          }}
-        >
-          {!bg.imageUrl && <p className="film-panel-empty">Hintergrund fehlt</p>}
-          {panel.placements.map((pl) => (
+      <FilmBeatColumns
+        picture={
+          panel.stillUrl ? (
+            <>
+              <img src={panel.stillUrl} alt={panel.caption} />
+              {panel.harvestNoteDe ? (
+                <p className="alert alert-info film-harvest-note">{panel.harvestNoteDe}</p>
+              ) : null}
+            </>
+          ) : (
             <div
-              key={`${pl.name}-${pl.poseId}-${pl.x}`}
-              className={`film-cutout film-depth-${pl.depth}`}
+              className="film-panel-stage"
               style={{
-                left: `${pl.x}%`,
-                transform: `translateX(-50%) scale(${pl.scale})${pl.flip ? ' scaleX(-1)' : ''}`,
+                backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
               }}
             >
-              {pl.imageUrl ? (
-                <img src={pl.imageUrl} alt={pl.name} />
-              ) : (
-                <span className="film-cutout-ph">{pl.name}</span>
-              )}
+              {!bg.imageUrl && <p className="film-panel-empty">Noch kein Bild</p>}
+              {panel.placements.map((pl) => (
+                <div
+                  key={`${pl.name}-${pl.poseId}-${pl.x}`}
+                  className={`film-cutout film-depth-${pl.depth}`}
+                  style={{
+                    left: `${pl.x}%`,
+                    transform: `translateX(-50%) scale(${pl.scale})${pl.flip ? ' scaleX(-1)' : ''}`,
+                  }}
+                >
+                  {pl.imageUrl ? (
+                    <img src={pl.imageUrl} alt={pl.name} />
+                  ) : (
+                    <span className="film-cutout-ph">{pl.name}</span>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-      {!panel.stillUrl ? <FilmPanelDialogue panel={panel} dialog={dialog} /> : null}
-      {panel.sketchUrl ? (
-        <div className="film-sketch-wrap">
-          <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
-          <p className="muted">Skizze (in der Bibliothek gespeichert)</p>
-        </div>
-      ) : null}
-      <div className="film-matches">
-        {panel.placements.map((pl) => (
-          <p key={`${pl.name}-m-${pl.poseId}`} className={`film-match ${matchClass(pl.match)}`}>
-            {pl.name} · {pl.poseHint} — {pl.matchNoteDe}
-          </p>
-        ))}
-        <p className={`film-match ${matchClass(bg.match)}`}>{bg.matchNoteDe}</p>
-      </div>
-      <div className="film-tweak">
-        <input
-          className="input"
-          value={note}
-          disabled={busy}
-          placeholder="z.B. Julien eher im Hintergrund"
-          onChange={(e) => setNote(e.target.value)}
-        />
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={busy || !note.trim()}
-          onClick={() => onTweak(note.trim())}
-        >
-          Anpassen
-        </button>
-      </div>
-      <label className="film-comment">
-        <span className="muted">Kommentar zur Zeile</span>
-        <textarea
-          className="input"
-          rows={2}
-          value={comment}
-          disabled={busy}
-          placeholder="Notiz nur für dich …"
-          onChange={(e) => setComment(e.target.value)}
-          onBlur={() => {
-            if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
-          }}
-        />
-      </label>
-      <FilmStillFixBar
-        panel={panel}
-        busy={busy}
-        onCorrect={onCorrect}
-        onInsert={onInsert}
+          )
+        }
+        lines={panelDialogueLines(panel, dialog)}
+        fallback={panel.caption}
+        targetLanguage={dialog.targetLanguage}
+        sourceLanguage={dialog.sourceLanguage}
+        notes={
+          <>
+            <p className="film-beat-count">Bild {panel.panelIndex}</p>
+            <FilmBeatNotes panel={panel} dialog={dialog} />
+            <div className="film-matches">
+              {panel.placements.map((pl) => (
+                <span
+                  key={`${pl.name}-m-${pl.poseId}`}
+                  className={`film-match ${matchClass(pl.match)}`}
+                  title={pl.matchNoteDe}
+                >
+                  {pl.name}
+                </span>
+              ))}
+              <span className={`film-match ${matchClass(bg.match)}`} title={bg.matchNoteDe}>
+                Raum
+              </span>
+            </div>
+          </>
+        }
       />
-      <div className="film-tweak">
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
-          {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
-        </button>
-      </div>
+      <details className="film-panel-more">
+        <summary>Bild ändern</summary>
+        {panel.sketchUrl ? (
+          <div className="film-sketch-wrap">
+            <img src={panel.sketchUrl} alt="Skizze" className="film-sketch" />
+            <p className="muted">Skizze (in der Bibliothek gespeichert)</p>
+          </div>
+        ) : null}
+        <div className="film-tweak">
+          <input
+            className="input"
+            value={note}
+            disabled={busy}
+            placeholder="z.B. Julien eher im Hintergrund"
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy || !note.trim()}
+            onClick={() => onTweak(note.trim())}
+          >
+            Anpassen
+          </button>
+        </div>
+        <label className="film-comment">
+          <span className="muted">Kommentar zur Zeile</span>
+          <textarea
+            className="input"
+            rows={2}
+            value={comment}
+            disabled={busy}
+            placeholder="Notiz nur für dich …"
+            onChange={(e) => setComment(e.target.value)}
+            onBlur={() => {
+              if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
+            }}
+          />
+        </label>
+        <FilmStillFixBar
+          panel={panel}
+          busy={busy}
+          onCorrect={onCorrect}
+          onInsert={onInsert}
+        />
+        <div className="film-tweak">
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
+            {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
+          </button>
+        </div>
+      </details>
     </article>
   )
 }
