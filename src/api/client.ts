@@ -2,6 +2,7 @@ import {
   clientTimeoutMessage,
   DEFAULT_API_TIMEOUT_MS,
   FILM_PLAN_TIMEOUT_MS,
+  TEXT_AI_TIMEOUT_MS,
 } from '../../shared/api-timeout'
 
 const API_BASE = '/api'
@@ -358,10 +359,18 @@ export const api = {
         body: JSON.stringify({ messages, targetLanguage, length }),
       }),
     translate: (dialogId: string, targetLanguage: string) =>
-      request<{ dialog: import('../types').Dialog }>('/translate', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, targetLanguage }),
-      }),
+      request<{
+        dialog: import('../types').Dialog
+        unchanged?: boolean
+        message?: string
+      }>(
+        '/translate',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, targetLanguage }),
+        },
+        TEXT_AI_TIMEOUT_MS,
+      ),
     filmStoryboard: (dialogId: string, cheapAi = true) =>
       request<{
         dialog: import('../types').Dialog
@@ -529,10 +538,14 @@ export const api = {
       nativeLanguage: string,
       includeRomanization?: boolean,
     ) =>
-      request<{ dialog: import('../types').Dialog }>('/birkenbihl', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, nativeLanguage, includeRomanization }),
-      }),
+      request<{ dialog: import('../types').Dialog }>(
+        '/birkenbihl',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, nativeLanguage, includeRomanization }),
+        },
+        TEXT_AI_TIMEOUT_MS,
+      ),
     split: (dialogId: string) =>
       request<{ dialog: import('../types').Dialog }>('/split', {
         method: 'POST',

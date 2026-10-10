@@ -5,7 +5,9 @@
 import {
   clientTimeoutMessage,
   FILM_PLAN_TIMEOUT_MS,
+  TEXT_AI_TIMEOUT_MS,
   isImageGenPath,
+  isTextAiPath,
 } from '../shared/api-timeout.ts'
 import {
   displayFilmTitle,
@@ -21,6 +23,14 @@ function fail(msg: string): never {
 
 if (FILM_PLAN_TIMEOUT_MS < 100_000 || FILM_PLAN_TIMEOUT_MS > 120_000) {
   fail('Film-Wartezeit muss knapp unter 120 s liegen')
+}
+if (TEXT_AI_TIMEOUT_MS !== FILM_PLAN_TIMEOUT_MS) fail('Übersetzen wartet genauso lange wie der Filmplan')
+if (!isTextAiPath('/translate')) fail('/translate ist Text-KI')
+if (!isTextAiPath('/birkenbihl')) fail('/birkenbihl ist Text-KI')
+if (isTextAiPath('/image')) fail('/image ist keine Text-KI')
+const trAbort = clientTimeoutMessage('/birkenbihl', 'abort')
+if (!trAbort.toLowerCase().includes('zwei minuten') && !trAbort.toLowerCase().includes('deutsch')) {
+  fail('Birkenbihl-Timeout erklärt das Warten')
 }
 
 if (!isImageGenPath('/image')) fail('/image ist Bild')
