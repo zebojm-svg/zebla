@@ -605,7 +605,10 @@ export function DialogEditorPage() {
         <h2>KI-Werkzeuge</h2>
         <div className="toolbar-grid">
           <div className="tool-group">
-            <span className="tool-label">Übersetzen in</span>
+            <span className="tool-label">Dialog umschreiben</span>
+            <p className="tool-hint muted">
+              Nur wenn der Text noch nicht {languageName(translateLang)} ist. Ersetzt den Dialog.
+            </p>
             <div className="tool-controls">
               <span className="lang-select-row">
                 <LanguageFlag code={translateLang} size="sm" />
@@ -624,18 +627,30 @@ export function DialogEditorPage() {
                 onClick={async () => {
                   if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
                   await runAction('translate', async () => {
-                    const { dialog: d } = await api.ai.translate(dialog.id, translateLang)
+                    const { dialog: d, unchanged, message } = await api.ai.translate(
+                      dialog.id,
+                      translateLang,
+                    )
                     setDialog(d)
+                    setStatus(
+                      unchanged && message
+                        ? message
+                        : `Dialog steht jetzt auf ${languageName(translateLang)}.`,
+                    )
                   })
                 }}
               >
-                {busy === 'translate' ? '…' : 'Übersetzen'}
+                {busy === 'translate' ? 'Bitte warten …' : 'Umschreiben'}
               </button>
             </div>
           </div>
 
           <div className="tool-group tool-group--stack">
-            <span className="tool-label">Birkenbihl (Muttersprache)</span>
+            <span className="tool-label">Deutsch unter die Zeilen</span>
+            <p className="tool-hint muted">
+              Lässt den Dialog. Schreibt {languageName(birkenbihlLang)} darunter — das brauchst du
+              auf der Bilder-Seite. Kann bis zu zwei Minuten dauern.
+            </p>
             <div className="tool-controls">
               <span className="lang-select-row">
                 <LanguageFlag code={birkenbihlLang} size="sm" />
@@ -649,7 +664,7 @@ export function DialogEditorPage() {
               </span>
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-primary"
                 disabled={!!busy}
                 onClick={async () => {
                   if (!(await confirmCost(estimateBirkenbihl(lineCount(dialog))))) return
@@ -661,10 +676,13 @@ export function DialogEditorPage() {
                       includeRomanization,
                     )
                     setDialog(d)
+                    setStatus(
+                      'Deutsch steht unter den Zeilen. Oben auf Bilder, dann die Spalte Deutsch prüfen.',
+                    )
                   })
                 }}
               >
-                {busy === 'birkenbihl' ? '…' : 'Anwenden'}
+                {busy === 'birkenbihl' ? 'Bitte warten …' : 'Deutsch schreiben'}
               </button>
             </div>
             {needsRomanization(dialog.targetLanguage) && (
