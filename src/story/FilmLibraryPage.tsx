@@ -3,10 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
 import type { StoryLibraryAsset } from '../../shared/story-types'
-import { listCharacterIdentities } from './pose-variants'
-import { characterBaseName } from '../../shared/character-parts'
 import { getStillPose } from '../../shared/story-stills'
 import { isLibraryShelf, LIBRARY_SHELVES, type LibraryShelfId } from '../../shared/story-project'
+import {
+  isCutoutFromStill,
+  partitionLibraryCharacters,
+  type LibraryIdentityGroup,
+} from '../../shared/library-identities'
 import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
 
 const SHELF_ICON: Record<LibraryShelfId, StoryPictogramName> = {
@@ -30,6 +33,63 @@ function poseSubtitle(asset: StoryLibraryAsset): string {
   return asset.tags?.slice(0, 3).join(', ') || 'Figur'
 }
 
+function LibraryCard({
+  asset,
+  confirmId,
+  pendingId,
+  badge,
+  onAsk,
+  onCancel,
+  onDelete,
+}: {
+  asset: StoryLibraryAsset
+  confirmId: string | null
+  pendingId: string | null
+  badge?: string
+  onAsk: (id: string) => void
+  onCancel: () => void
+  onDelete: (id: string) => void
+}) {
+  const pending = pendingId === asset.id
+  const confirm = confirmId === asset.id
+  return (
+    <article className={`story-character-card${isCutoutFromStill(asset) ? ' is-harvest' : ''}`}>
+      <img src={asset.imageUrl} alt={asset.name} />
+      <p>{asset.name}</p>
+      <p className="story-card-subtitle muted">
+        {badge ? `${badge} · ` : ''}
+        {poseSubtitle(asset)}
+      </p>
+      <div className="story-character-card-actions">
+        {confirm ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              disabled={pending || !asset.id}
+              onClick={() => onDelete(asset.id)}
+            >
+              {pending ? '…' : 'Wirklich löschen'}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={onCancel}>
+              Abbrechen
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={pending || !asset.id}
+            onClick={() => onAsk(asset.id)}
+          >
+            Löschen
+          </button>
+        )}
+      </div>
+    </article>
+  )
+}
+
 export function FilmLibraryPage() {
   const [params, setParams] = useSearchParams()
   const dialogId = params.get('dialog') ?? undefined
@@ -39,6 +99,9 @@ export function FilmLibraryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = async () => {
     const { assets: list } = await api.story.listLibrary()
@@ -64,12 +127,17 @@ export function FilmLibraryPage() {
     () => assets.filter((a) => (a.tags ?? []).includes('sketch')),
     [assets],
   )
-  const identities = useMemo(() => listCharacterIdentities(characters, []), [characters])
+  const grouped = useMemo(() => partitionLibraryCharacters(characters), [characters])
 
   const needle = filter.trim().toLowerCase()
   const shownIdentities = needle
-    ? identities.filter((i) => i.baseName.toLowerCase().includes(needle))
-    : identities
+    ? grouped.identities.filter((i) => i.displayName.toLowerCase().includes(needle))
+    : grouped.identities
+  const shownHarvested = needle
+    ? grouped.harvested.filter((e) =>
+        [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
+      )
+    : grouped.harvested
   const shownEnvs = needle
     ? environments.filter((e) =>
         [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
@@ -93,13 +161,69 @@ export function FilmLibraryPage() {
   }
 
   const remove = async (id: string) => {
-    if (!window.confirm('Diesen Eintrag aus der Bibliothek löschen?')) return
+    if (!id) {
+      setError('Dieser Eintrag hat keine ID — bitte die Seite neu laden.')
+      return
+    }
+    setPendingId(id)
+    setError('')
     try {
       await api.story.deleteFromLibrary(id)
       setAssets((prev) => prev.filter((a) => a.id !== id))
+      setConfirmId(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
+      try {
+        await load()
+      } catch {
+        /* Liste bleibt wie sie ist */
+      }
+    } finally {
+      setPendingId(null)
     }
+  }
+
+  const removeMany = async (ids: string[]) => {
+    const unique = [...new Set(ids.filter(Boolean))]
+    if (unique.length === 0) return
+    if (
+      !window.confirm(
+        unique.length === 1
+          ? 'Diesen Eintrag aus der Bibliothek löschen?'
+          : `${unique.length} Einträge aus der Bibliothek löschen?`,
+      )
+    ) {
+      return
+    }
+    setBulkBusy(true)
+    setError('')
+    const failed: string[] = []
+    for (const id of unique) {
+      try {
+        await api.story.deleteFromLibrary(id)
+        setAssets((prev) => prev.filter((a) => a.id !== id))
+      } catch {
+        failed.push(id)
+      }
+    }
+    setConfirmId(null)
+    setBulkBusy(false)
+    if (failed.length) {
+      setError(`${failed.length} Einträge konnten nicht gelöscht werden. Bitte einzeln versuchen.`)
+      try {
+        await load()
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const cardProps = {
+    confirmId,
+    pendingId,
+    onAsk: (id: string) => setConfirmId(id),
+    onCancel: () => setConfirmId(null),
+    onDelete: (id: string) => void remove(id),
   }
 
   return (
@@ -146,46 +270,66 @@ export function FilmLibraryPage() {
           {shelf === 'character' && (
             <>
               <h2>Figuren</h2>
-              {shownIdentities.length === 0 ? (
+              {shownIdentities.length === 0 && shownHarvested.length === 0 ? (
                 <p className="muted">
                   Noch keine Figur.{' '}
                   <Link to="/story">Zeichnen</Link>
                 </p>
               ) : (
-                shownIdentities.map((identity) => {
-                  const poses = characters.filter(
-                    (c) =>
-                      identity.libraryIds.includes(c.id) ||
-                      characterBaseName(c.name).toLowerCase() === identity.baseName.toLowerCase(),
-                  )
-                  return (
-                    <section key={identity.baseName} className="film-identity">
-                      <h3>
-                        {identity.baseName}{' '}
-                        <span className="muted">
-                          {identity.variantCount} Pose{identity.variantCount === 1 ? '' : 'n'}
-                        </span>
-                      </h3>
-                      <div className="story-character-grid">
-                        {poses.map((asset) => (
-                          <article key={asset.id} className="story-character-card">
-                            <img src={asset.imageUrl} alt={asset.name} />
-                            <p>{asset.name}</p>
-                            <p className="story-card-subtitle muted">{poseSubtitle(asset)}</p>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              onClick={() => void remove(asset.id)}
-                            >
-                              Löschen
-                            </button>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  )
-                })
+                shownIdentities.map((identity: LibraryIdentityGroup) => (
+                  <section key={identity.key} className="film-identity">
+                    <h3>
+                      {identity.displayName}{' '}
+                      <span className="muted">
+                        {identity.assets.length} Pose{identity.assets.length === 1 ? '' : 'n'}
+                      </span>
+                    </h3>
+                    <div className="story-character-grid">
+                      {identity.assets.map((asset) => (
+                        <LibraryCard key={asset.id} asset={asset} {...cardProps} />
+                      ))}
+                    </div>
+                    {identity.assets.length > 1 ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={bulkBusy}
+                        onClick={() => void removeMany(identity.assets.map((a) => a.id))}
+                      >
+                        Alle Posen von {identity.displayName} löschen
+                      </button>
+                    ) : null}
+                  </section>
+                ))
               )}
+              {shownHarvested.length > 0 ? (
+                <section className="film-identity film-identity-harvest">
+                  <h3>Aus Gruppenbild geschnitten</h3>
+                  <p className="alert alert-warn">
+                    Diese Bilder kleben oft am Sofa oder sind zu klein. Nicht als Stamm-Figur
+                    verwenden — lieber löschen. Stehende Posen entstehen aus der sauberen
+                    Studio-Figur darüber.
+                  </p>
+                  <div className="story-character-grid">
+                    {shownHarvested.map((asset) => (
+                      <LibraryCard
+                        key={asset.id}
+                        asset={asset}
+                        badge="geschnitten"
+                        {...cardProps}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={bulkBusy}
+                    onClick={() => void removeMany(shownHarvested.map((a) => a.id))}
+                  >
+                    {bulkBusy ? '…' : 'Alle geschnittenen Figuren löschen'}
+                  </button>
+                </section>
+              ) : null}
             </>
           )}
 
@@ -200,17 +344,7 @@ export function FilmLibraryPage() {
               ) : (
                 <div className="story-character-grid">
                   {shownEnvs.map((asset) => (
-                    <article key={asset.id} className="story-character-card">
-                      <img src={asset.imageUrl} alt={asset.name} />
-                      <p>{asset.name}</p>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => void remove(asset.id)}
-                      >
-                        Löschen
-                      </button>
-                    </article>
+                    <LibraryCard key={asset.id} asset={asset} {...cardProps} />
                   ))}
                 </div>
               )}
@@ -228,17 +362,7 @@ export function FilmLibraryPage() {
               ) : (
                 <div className="story-character-grid">
                   {shownProps.map((asset) => (
-                    <article key={asset.id} className="story-character-card">
-                      <img src={asset.imageUrl} alt={asset.name} />
-                      <p>{asset.name}</p>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => void remove(asset.id)}
-                      >
-                        Löschen
-                      </button>
-                    </article>
+                    <LibraryCard key={asset.id} asset={asset} {...cardProps} />
                   ))}
                 </div>
               )}
@@ -256,17 +380,7 @@ export function FilmLibraryPage() {
               ) : (
                 <div className="story-character-grid">
                   {shownSketches.map((asset) => (
-                    <article key={asset.id} className="story-character-card">
-                      <img src={asset.imageUrl} alt={asset.name} />
-                      <p>{asset.name}</p>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => void remove(asset.id)}
-                      >
-                        Löschen
-                      </button>
-                    </article>
+                    <LibraryCard key={asset.id} asset={asset} {...cardProps} />
                   ))}
                 </div>
               )}

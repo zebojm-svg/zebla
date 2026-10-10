@@ -15,8 +15,11 @@ import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
   boardNeedsDrawing,
+  dialogNeedsNativeTranslation,
+  expectedSceneShotCount,
   normalizeFilmStoryboard,
   panelDialogueLines,
+  sceneShotPlanDe,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
 
@@ -154,6 +157,7 @@ export function FilmStoryboardPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [nativeBusy, setNativeBusy] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const [sceneTitle, setSceneTitle] = useState('')
   const [styles, setStyles] = useState<Record<string, string>>({})
@@ -198,7 +202,8 @@ export function FilmStoryboardPage() {
   }
 
   const stills = useSceneStills(id, apply)
-  const locked = busy || stills.busySceneId !== null
+  const locked = busy || nativeBusy || stills.busySceneId !== null
+  const needsGerman = dialog ? dialogNeedsNativeTranslation(dialog) : false
 
   const run = async (fn: () => Promise<{ dialog: Dialog; board: FilmStoryboard }>) => {
     setBusy(true)
@@ -206,10 +211,26 @@ export function FilmStoryboardPage() {
     try {
       const result = await fn()
       apply(result.dialog, result.board)
+      return result
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler')
+      return null
     } finally {
       setBusy(false)
+    }
+  }
+
+  const fetchGerman = async () => {
+    if (!id || !dialog) return
+    setNativeBusy(true)
+    setError('')
+    try {
+      const { dialog: next } = await api.ai.birkenbihl(id, dialog.sourceLanguage || 'de')
+      setDialog(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Übersetzung fehlgeschlagen.')
+    } finally {
+      setNativeBusy(false)
     }
   }
 
@@ -248,10 +269,24 @@ export function FilmStoryboardPage() {
             onClick={() => {
               if (board) {
                 const ok = window.confirm(
-                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen?',
+                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen? Pro Szene entsteht 1 Übersicht plus 1 Nahaufnahme je Sprecher — danach werden die Bilder der ersten Szene erzeugt.',
                 )
                 if (!ok) return
-                void run(() => api.ai.filmStoryboardReset(id))
+                void (async () => {
+                  const result = await run(() => api.ai.filmStoryboardReset(id))
+                  if (!result || !id) return
+                  const nextBoard = normalizeFilmStoryboard(result.board)
+                  const first = nextBoard.scenes[0]
+                  if (!first) return
+                  const panels = nextBoard.panels.filter((p) => p.sceneId === first.id)
+                  if (panels.length === 0) return
+                  await stills.generate(
+                    first.id,
+                    panels,
+                    DEFAULT_STORY_ART_STYLE,
+                    false,
+                  )
+                })()
                 return
               }
               void run(() => api.ai.filmStoryboard(id))
@@ -260,10 +295,28 @@ export function FilmStoryboardPage() {
           >
             {busy ? '…' : board ? 'Vom Text neu' : 'Planen'}
           </button>
+          {needsGerman ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={locked}
+              onClick={() => void fetchGerman()}
+              title="Deutsche Zeilen unter den Dialog schreiben, damit du prüfen kannst, ob die Bilder passen"
+            >
+              {nativeBusy ? '…' : 'Deutsch anzeigen'}
+            </button>
+          ) : null}
         </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+      {dialog && needsGerman ? (
+        <p className="alert alert-warn">
+          In der Spalte Deutsch steht noch «—». Hier «Deutsch anzeigen» drücken — oder unter{' '}
+          <Link to={`/dialog/${dialog.id}#ki-werkzeuge`}>Text → KI-Werkzeuge</Link> «Übersetzen»
+          / Birkenbihl «Anwenden».
+        </p>
+      ) : null}
 
       {board ? (
         <>
@@ -364,6 +417,8 @@ export function FilmStoryboardPage() {
                     )
                   }
                   onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
+                  shotPlanDe={sceneShotPlanDe(panels)}
+                  expectedShots={expectedSceneShotCount(dialog, scene.id)}
                 />
                 <div className="film-panel-grid">
                   {panels.map((panel) => (

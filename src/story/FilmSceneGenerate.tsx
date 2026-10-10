@@ -27,6 +27,8 @@ type Props = {
   error?: string
   onGenerate: (force: boolean) => void
   onRematch?: () => void
+  shotPlanDe?: string
+  expectedShots?: number
 }
 
 export function FilmSceneGenerateBar({
@@ -41,6 +43,8 @@ export function FilmSceneGenerateBar({
   error,
   onGenerate,
   onRematch,
+  shotPlanDe,
+  expectedShots,
 }: Props) {
   const stats = sceneStillProgress(panels, styleId)
   const hint = stillLibraryHintDe(panels)
@@ -91,10 +95,17 @@ export function FilmSceneGenerateBar({
         </button>
       ) : null}
       <p className="muted film-scene-still-note">
-        Zuerst der Raum wie im Dialog, dann Nahaufnahmen der Sprecher (Mund, Augenbrauen) —
-        die Gesichter werden in späteren Szenen wiederverwendet.
+        {shotPlanDe ||
+          'Zuerst der Raum wie im Dialog, dann Nahaufnahmen der Sprecher (Mund, Augenbrauen) — die Gesichter werden in späteren Szenen wiederverwendet.'}
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
+      {expectedShots != null && stats.total < expectedShots ? (
+        <p className="alert alert-warn">
+          Hier sind nur {stats.total} Bild{stats.total === 1 ? '' : 'er'}, erwartet sind{' '}
+          {expectedShots} (1 Übersicht + Nahaufnahme je Sprecher). Oben auf Vom Text neu
+          drücken.
+        </p>
+      ) : null}
       {busy ? (
         <p className="film-scene-progress" aria-live="polite">
           Erzeuge Szene «{scene.title}»
@@ -163,7 +174,10 @@ export function FilmBeatText({
             ) : which === 'native' ? (
               <p className="muted film-beat-de">
                 {line.speaker ? <strong>{line.speaker}: </strong> : null}
-                —
+                {'— '}
+                <span className="film-beat-de-hint">
+                  oben Deutsch anzeigen oder unter Text, KI-Werkzeuge
+                </span>
               </p>
             ) : null
           ) : null}

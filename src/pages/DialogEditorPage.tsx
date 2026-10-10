@@ -115,6 +115,12 @@ export function DialogEditorPage() {
   }, [id])
 
   useEffect(() => {
+    if (loading || !dialog) return
+    if (window.location.hash !== '#ki-werkzeuge') return
+    document.getElementById('ki-werkzeuge')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [loading, dialog])
+
+  useEffect(() => {
     if (loading) return
     if (skipSaveRef.current) {
       skipSaveRef.current = false
@@ -595,7 +601,7 @@ export function DialogEditorPage() {
         )}
       </section>
 
-      <section className="panel toolbar-panel">
+      <section className="panel toolbar-panel" id="ki-werkzeuge">
         <h2>KI-Werkzeuge</h2>
         <div className="toolbar-grid">
           <div className="tool-group">

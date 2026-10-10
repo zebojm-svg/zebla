@@ -2,11 +2,13 @@
  * Fehlende Räume und Figuren einzeln erzeugen — nicht als Gruppenbild.
  */
 
-import { characterBaseName } from '../shared/character-parts.js'
+import {
+  identityReferenceUrl,
+  identitySaveName,
+} from '../shared/library-identities.js'
 import {
   characterPieceTags,
   environmentPieceTags,
-  isHarvestedFromStill,
   libraryForCompose,
   shouldSkipBackground,
   shouldSkipCharacterPose,
@@ -17,18 +19,6 @@ import type { StoryArtStyleId } from '../shared/story-art-styles.js'
 import type { StoryLibraryAsset } from '../shared/story-types.js'
 import { generateStoryCharacter, generateStoryEnvironment } from './story-asset-gen.js'
 import { saveStoryAsset } from './story-library.js'
-
-function identityUrl(library: StoryLibraryAsset[], name: string): string | undefined {
-  const base = characterBaseName(name).trim().toLowerCase()
-  const people = library.filter(
-    (a) =>
-      a.type === 'character' &&
-      a.imageUrl &&
-      characterBaseName(a.name).trim().toLowerCase() === base,
-  )
-  const studio = people.find((a) => !isHarvestedFromStill(a))
-  return (studio ?? people[0])?.imageUrl
-}
 
 export async function ensurePanelPieces(opts: {
   userId: string
@@ -71,14 +61,15 @@ export async function ensurePanelPieces(opts: {
   }
 
   for (const pl of opts.panel.placements) {
-    if (shouldSkipCharacterPose(compose, pl.name, pl.poseId)) continue
+    if (shouldSkipCharacterPose(start, pl.name, pl.poseId)) continue
     const pose = getStillPose(pl.poseId)
-    const ref = identityUrl(compose, pl.name)
+    const saveName = identitySaveName(start, pl.name)
+    const ref = identityReferenceUrl(start, pl.name)
     jobs.push(
       (async () => {
         const made = await generateStoryCharacter(
-          `${pl.name}, ${pose.label}, ${pl.poseHint || pose.hintDe}. ${opts.panel.expressionHint || 'natürlicher Blick'}.`,
-          pl.name,
+          `${saveName}, ${pose.label}, ${pl.poseHint || pose.hintDe}. ${opts.panel.expressionHint || 'natürlicher Blick'}.`,
+          saveName,
           styleId as StoryArtStyleId,
           pose.legPoseId,
           pose.headAngleId,
@@ -91,8 +82,8 @@ export async function ensurePanelPieces(opts: {
         )
         const saved = await saveStoryAsset(opts.userId, {
           type: 'character',
-          name: pl.name,
-          description: `${pl.name} · ${pose.label}`,
+          name: saveName,
+          description: `${saveName} · ${pose.label}`,
           imageUrl: made.imageUrl,
           tags: characterPieceTags(pl.poseId),
           styleId: made.styleId,

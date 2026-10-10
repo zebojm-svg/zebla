@@ -383,8 +383,9 @@ Behalte Sprecher-Namen bei. Gleiche Anzahl Zeilen.`,
   )
 
   return result.lines.map((l, i) => ({
+    ...(lines[i] ?? { id: newLineId(), speaker: '', text: '' }),
     id: lines[i]?.id ?? newLineId(),
-    speaker: l.speaker,
+    speaker: l.speaker || lines[i]?.speaker || '',
     text: l.text,
   }))
 }
