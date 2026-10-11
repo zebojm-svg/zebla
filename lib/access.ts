@@ -1,4 +1,5 @@
 import { HttpError } from './api-utils.js'
+import { meterAiProfile } from './ai-usage-ledger.js'
 import { getUserProfile, type UserProfile } from './firestore.js'
 import type { UsageQuota, UserRole } from '../shared/types.js'
 import {
@@ -41,6 +42,7 @@ export async function requireRole(
 }
 
 export function assertCanUseAi(profile: UserProfile): void {
+  meterAiProfile(profile)
   if (profile.role === 'master' || profile.role === 'student') return
   if (!isProActive(profile.role, profile.subscriptionStatus)) {
     throw new HttpError(

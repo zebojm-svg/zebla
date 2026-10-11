@@ -18,6 +18,7 @@ import type {
 } from '../shared/types.js'
 import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
+import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO, appearanceGuideFor, styleLockPrompt, castIntegrityRules } from './ken-burns-style.js'
 import {
@@ -166,6 +167,7 @@ export async function chatJsonWithImages<T>(
       TEXT_GEN_TIMEOUT_MS,
       'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen.',
     )
+    recordGeminiUsage(images.length ? 'text-with-images' : 'text', TEXT_MODEL, result.response.usageMetadata)
 
     const content = result.response.text()
     if (!content) throw new Error('Keine Antwort von der KI erhalten.')
@@ -374,6 +376,7 @@ Antwortformat als JSON:
   const chat = model.startChat({ history })
   const last = messages[messages.length - 1]
   const result = await chat.sendMessage(last?.content ?? '')
+  recordGeminiUsage('chat', TEXT_MODEL, result.response.usageMetadata)
   const content = result.response.text()
   if (!content) throw new Error('Keine Antwort von der KI erhalten.')
 
@@ -556,6 +559,7 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
   const data = (await res.json()) as {
     predictions?: { bytesBase64Encoded?: string }[]
   }
+  recordGeminiUsage('image', IMAGE_MODEL, null)
   const b64 = data.predictions?.[0]?.bytesBase64Encoded
   if (!b64) throw new Error('Kein Bild generiert.')
   return `data:image/png;base64,${b64}`
@@ -631,8 +635,11 @@ async function generateImageWithGemini(
           content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }
         }[]
         error?: { message?: string }
+        usageMetadata?: unknown
+        modelVersion?: string
       }
       if (data.error?.message) throw new Error(data.error.message)
+      recordGeminiUsage('image', data.modelVersion || model, data.usageMetadata)
       const inlineData = data.candidates?.[0]?.content?.parts?.find(
         (part) => part.inlineData?.data,
       )?.inlineData

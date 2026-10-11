@@ -1,5 +1,6 @@
 import { getGoogleAccessToken, isGoogleCloudConfigured } from './google-auth-token.js'
 import { resolveClassicVoiceName, resolveGeminiVoiceName } from './speaker-voice.js'
+import { recordGeminiUsage } from './ai-usage-ledger.js'
 import {
   geminiTtsLocale,
   isGeminiTtsVoiceName,
@@ -204,6 +205,7 @@ async function callGeminiSynthesize(
   const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
   if (!res.ok) throw new Error(formatApiError(data.error?.message ?? `Gemini-TTS-Fehler (${res.status})`))
   if (!data.audioContent) throw new Error('Keine Audiodaten von Gemini-TTS erhalten.')
+  recordGeminiUsage('tts', GEMINI_TTS_MODEL, null)
 
   return {
     audioBase64: data.audioContent,

@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { Dialog } from '../shared/types.js'
 import { downloadImageByUrl } from './image-storage.js'
 import { beatsForSection } from './visual-script.js'
+import { recordGeminiUsage } from './ai-usage-ledger.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 
@@ -95,6 +96,7 @@ export async function reviewRecentBeats(
   const result = await model.generateContent({
     contents: [{ role: 'user', parts }],
   })
+  recordGeminiUsage('critic', TEXT_MODEL, result.response.usageMetadata)
   const raw = result.response.text()
   const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
   let parsed: {

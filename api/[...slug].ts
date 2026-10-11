@@ -75,6 +75,7 @@ import {
   handleVisualCritic,
 } from '../lib/ai-handlers.js'
 import { checkTtsHealth } from '../lib/tts.js'
+import { meterAiRequest } from '../lib/ai-usage-ledger.js'
 import {
   ensureDialogAudio,
   getOrCreateLineAudio,
@@ -152,6 +153,7 @@ async function gateAi(uid: string) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const route = getRoute(req)
+  meterAiRequest(route)
 
   try {
     if (route === 'health' && req.method === 'GET') {
