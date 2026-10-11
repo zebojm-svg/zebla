@@ -320,6 +320,10 @@ function pickVoicesForSpeakers(
   return result
 }
 
+/** Mini-Stille, damit der Browser Audio nach einem Klick erlaubt. */
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
+
 export interface SpeechReaderOptions {
   /** Cloud-TTS (kostenpflichtig) statt Windows-Sprachausgabe. */
   useCloudTts?: boolean
@@ -379,13 +383,40 @@ export function useSpeechReader(
     }
   }, [])
 
+  const ensureAudioEl = useCallback((): HTMLAudioElement => {
+    if (!cloudAudioRef.current) cloudAudioRef.current = new Audio()
+    return cloudAudioRef.current
+  }, [])
+
+  /** Im Klick aufrufen — Stille weiterlaufen lassen, nicht sofort pausieren. */
+  const unlockPlayback = useCallback(() => {
+    const el = ensureAudioEl()
+    try {
+      el.loop = true
+      el.muted = true
+      el.volume = 1
+      el.src = SILENT_WAV
+      void el.play().catch(() => {
+        el.muted = false
+      })
+    } catch {
+      el.muted = false
+    }
+    try {
+      const u = new SpeechSynthesisUtterance(' ')
+      u.volume = 0
+      window.speechSynthesis.speak(u)
+    } catch {
+      /* kein Browser-TTS */
+    }
+  }, [ensureAudioEl])
+
   const stop = useCallback(() => {
     stoppedRef.current = true
     window.speechSynthesis.cancel()
     if (cloudAudioRef.current) {
+      cloudAudioRef.current.loop = false
       cloudAudioRef.current.pause()
-      cloudAudioRef.current.src = ''
-      cloudAudioRef.current = null
     }
     setSpeaking(false)
     setActiveLineId(null)
@@ -427,23 +458,28 @@ export function useSpeechReader(
       return new Promise<boolean>((resolve) => {
         const bust =
           audioUrl.includes('?') ? `${audioUrl}&play=${Date.now()}` : `${audioUrl}?play=${Date.now()}`
-        const audio = new Audio(bust)
+        const audio = ensureAudioEl()
+        audio.pause()
+        audio.loop = false
+        audio.muted = false
+        audio.volume = 1
         audio.playbackRate = Math.min(1.3, Math.max(0.4, rate))
-        cloudAudioRef.current = audio
         setActiveLineId(lineId)
         setHighlightIndex(null)
 
         const cleanup = (ok: boolean) => {
-          if (cloudAudioRef.current === audio) cloudAudioRef.current = null
+          audio.onended = null
+          audio.onerror = null
           resolve(ok)
         }
 
         audio.onended = () => cleanup(true)
         audio.onerror = () => cleanup(false)
+        audio.src = bust
         audio.play().then(() => {}).catch(() => cleanup(false))
       })
     },
-    [],
+    [ensureAudioEl],
   )
 
   const speakCloud = useCallback(
@@ -600,8 +636,12 @@ export function useSpeechReader(
       highlightWords: boolean,
       onLineChange?: (index: number) => void,
     ): Promise<boolean> => {
-      stop()
-      await sleep(120)
+      stoppedRef.current = true
+      window.speechSynthesis.cancel()
+      if (cloudAudioRef.current && !cloudAudioRef.current.loop) {
+        cloudAudioRef.current.pause()
+      }
+      await sleep(80)
       stoppedRef.current = false
 
       voicesRef.current = await waitForVoices()
@@ -621,12 +661,13 @@ export function useSpeechReader(
       setHighlightIndex(null)
       return stoppedRef.current
     },
-    [ensureSpeakerVoices, speakText, stop],
+    [ensureSpeakerVoices, speakText],
   )
 
   return {
     speakFrom,
     stop,
+    unlockPlayback,
     speaking,
     activeLineId,
     highlightIndex,

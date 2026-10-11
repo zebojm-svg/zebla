@@ -1,6 +1,10 @@
-/** Leise Hintergrundmusik in der Szenen-Vorschau (Web Audio, keine Datei). */
+/** Leise Hintergrundmusik, Foley und Dialogstimme in der Szenen-Vorschau (Web Audio). */
 
-const MASTER_GAIN = 0.028
+import {
+  SCENE_FOLEY_GAIN,
+  SCENE_PAD_GAIN,
+  SCENE_VOICE_GAIN,
+} from '../../shared/film-scene-foley'
 
 type PadVoice = {
   freq: number
@@ -26,7 +30,12 @@ function audioContextCtor(): (new () => AudioContext) | null {
 }
 
 export type SceneBedMusic = {
-  start: () => Promise<void>
+  prepare: () => Promise<boolean>
+  start: (opts?: { crackle?: boolean; city?: boolean }) => Promise<void>
+  decodeVoice: (data: ArrayBuffer) => Promise<AudioBuffer>
+  playVoice: (buffer: AudioBuffer, rate?: number) => Promise<void>
+  stopVoice: () => void
+  pauseBed: () => void
   pause: () => void
   stop: () => void
   dispose: () => void
@@ -35,11 +44,19 @@ export type SceneBedMusic = {
 export function createSceneBedMusic(): SceneBedMusic {
   let ctx: AudioContext | null = null
   let master: GainNode | null = null
+  let foleyBus: GainNode | null = null
   let padOn = false
   let audible = false
   const padNodes: OscillatorNode[] = []
   const bellNodes: OscillatorNode[] = []
+  const foleyNodes: AudioNode[] = []
   let bellTimer: number | null = null
+  let crackleTimer: number | null = null
+  let wantCrackle = false
+  let wantCity = false
+  let cityOn = false
+  let voiceGen = 0
+  let voiceSrc: AudioBufferSourceNode | null = null
 
   function ensure(): boolean {
     if (ctx && ctx.state !== 'closed') return true
@@ -54,6 +71,9 @@ export function createSceneBedMusic(): SceneBedMusic {
     master = ctx.createGain()
     master.gain.value = 0
     master.connect(ctx.destination)
+    foleyBus = ctx.createGain()
+    foleyBus.gain.value = 0
+    foleyBus.connect(ctx.destination)
     return true
   }
 
@@ -62,6 +82,86 @@ export function createSceneBedMusic(): SceneBedMusic {
       window.clearTimeout(bellTimer)
       bellTimer = null
     }
+  }
+
+  function clearCrackleTimer() {
+    if (crackleTimer != null) {
+      window.clearTimeout(crackleTimer)
+      crackleTimer = null
+    }
+  }
+
+  function noiseBuffer(seconds: number): AudioBuffer | null {
+    if (!ctx) return null
+    const n = Math.max(1, Math.floor(ctx.sampleRate * seconds))
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1
+    return buf
+  }
+
+  function playCrackle() {
+    if (!ctx || !foleyBus || !audible || !wantCrackle) return
+    const dur = 0.05 + Math.random() * 0.07
+    const buf = noiseBuffer(dur)
+    if (!buf) return
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const bp = ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 1800 + Math.random() * 1400
+    bp.Q.value = 1.1
+    const hp = ctx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 700
+    const g = ctx.createGain()
+    const now = ctx.currentTime
+    const peak = 0.45 + Math.random() * 0.25
+    g.gain.setValueAtTime(0.0001, now)
+    g.gain.linearRampToValueAtTime(peak, now + 0.006)
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur)
+    src.connect(hp)
+    hp.connect(bp)
+    bp.connect(g)
+    g.connect(foleyBus)
+    src.start(now)
+    src.stop(now + dur + 0.02)
+    foleyNodes.push(src, hp, bp, g)
+    src.onended = () => {
+      for (const n of [src, hp, bp, g]) {
+        const i = foleyNodes.indexOf(n)
+        if (i >= 0) foleyNodes.splice(i, 1)
+      }
+    }
+  }
+
+  function scheduleCrackle() {
+    if (!audible || !wantCrackle) return
+    const pops = 2 + Math.floor(Math.random() * 3)
+    for (let i = 0; i < pops; i++) {
+      window.setTimeout(playCrackle, i * (35 + Math.random() * 55))
+    }
+    crackleTimer = window.setTimeout(scheduleCrackle, 380 + Math.random() * 1100)
+  }
+
+  function spawnCity() {
+    if (!ctx || !foleyBus || cityOn || !wantCity) return
+    const buf = noiseBuffer(2)
+    if (!buf) return
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.loop = true
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 240
+    const g = ctx.createGain()
+    g.gain.value = 0.55
+    src.connect(lp)
+    lp.connect(g)
+    g.connect(foleyBus)
+    src.start()
+    foleyNodes.push(src, lp, g)
+    cityOn = true
   }
 
   function stopList(list: OscillatorNode[], when?: number) {
@@ -154,34 +254,105 @@ export function createSceneBedMusic(): SceneBedMusic {
     padOn = true
   }
 
-  function fadeTo(value: number, seconds: number) {
-    if (!ctx || !master) return
+  function fadeGain(node: GainNode | null, value: number, seconds: number) {
+    if (!ctx || !node) return
     const now = ctx.currentTime
-    master.gain.cancelScheduledValues(now)
-    master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), now)
-    if (value <= 0) master.gain.exponentialRampToValueAtTime(0.0001, now + seconds)
-    else master.gain.linearRampToValueAtTime(value, now + seconds)
+    node.gain.cancelScheduledValues(now)
+    node.gain.setValueAtTime(Math.max(0.0001, node.gain.value), now)
+    if (value <= 0) node.gain.exponentialRampToValueAtTime(0.0001, now + seconds)
+    else node.gain.linearRampToValueAtTime(value, now + seconds)
   }
 
-  async function start() {
-    if (!ensure() || !ctx || !master) return
+  async function prepare(): Promise<boolean> {
+    if (!ensure() || !ctx) return false
     try {
       await ctx.resume()
     } catch {
-      return
+      return false
     }
+    return ctx.state !== 'closed'
+  }
+
+  async function start(opts?: { crackle?: boolean; city?: boolean }) {
+    wantCrackle = Boolean(opts?.crackle)
+    wantCity = Boolean(opts?.city)
+    if (!(await prepare()) || !ctx || !master || !foleyBus) return
     spawnPad()
+    spawnCity()
     audible = true
     clearBellTimer()
+    clearCrackleTimer()
     scheduleBells()
-    fadeTo(MASTER_GAIN, 0.7)
+    if (wantCrackle) scheduleCrackle()
+    fadeGain(master, SCENE_PAD_GAIN, 0.7)
+    fadeGain(foleyBus, SCENE_FOLEY_GAIN, 0.35)
+  }
+
+  async function decodeVoice(data: ArrayBuffer): Promise<AudioBuffer> {
+    if (!(await prepare()) || !ctx) throw new Error('Kein Audio im Browser.')
+    const copy = data.slice(0)
+    return ctx.decodeAudioData(copy)
+  }
+
+  function stopVoice() {
+    voiceGen += 1
+    if (voiceSrc) {
+      try {
+        voiceSrc.stop()
+      } catch {
+        /* already stopped */
+      }
+      voiceSrc = null
+    }
+  }
+
+  function playVoice(buffer: AudioBuffer, rate = 1): Promise<void> {
+    const gen = ++voiceGen
+    if (voiceSrc) {
+      try {
+        voiceSrc.stop()
+      } catch {
+        /* already stopped */
+      }
+      voiceSrc = null
+    }
+    return new Promise((resolve) => {
+      if (!ctx || gen !== voiceGen) {
+        resolve()
+        return
+      }
+      const src = ctx.createBufferSource()
+      src.buffer = buffer
+      src.playbackRate.value = Math.min(1.3, Math.max(0.4, rate))
+      const g = ctx.createGain()
+      g.gain.value = SCENE_VOICE_GAIN
+      src.connect(g)
+      g.connect(ctx.destination)
+      voiceSrc = src
+      src.onended = () => {
+        if (voiceSrc === src) voiceSrc = null
+        resolve()
+      }
+      try {
+        src.start()
+      } catch {
+        resolve()
+      }
+    })
+  }
+
+  function pauseBed() {
+    audible = false
+    fadeGain(master, 0, 0.28)
+    fadeGain(foleyBus, 0, 0.28)
+    clearBellTimer()
+    clearCrackleTimer()
+    stopList(bellNodes, ctx ? ctx.currentTime + 0.3 : undefined)
   }
 
   function pause() {
-    audible = false
-    fadeTo(0, 0.28)
-    clearBellTimer()
-    stopList(bellNodes, ctx ? ctx.currentTime + 0.3 : undefined)
+    pauseBed()
+    stopVoice()
   }
 
   function stop() {
@@ -191,15 +362,29 @@ export function createSceneBedMusic(): SceneBedMusic {
   function dispose() {
     audible = false
     padOn = false
+    cityOn = false
+    stopVoice()
     clearBellTimer()
+    clearCrackleTimer()
     stopList(bellNodes)
     stopList(padNodes)
+    for (const n of foleyNodes) {
+      try {
+        if ('stop' in n && typeof (n as OscillatorNode).stop === 'function') {
+          ;(n as OscillatorNode).stop()
+        }
+      } catch {
+        /* already stopped */
+      }
+    }
+    foleyNodes.length = 0
     if (ctx && ctx.state !== 'closed') {
       void ctx.close()
     }
     ctx = null
     master = null
+    foleyBus = null
   }
 
-  return { start, pause, stop, dispose }
+  return { prepare, start, decodeVoice, playVoice, stopVoice, pauseBed, pause, stop, dispose }
 }
