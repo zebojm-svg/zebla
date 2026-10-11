@@ -61,6 +61,7 @@ export async function ensurePanelPieces(opts: {
   }
 
   for (const pl of opts.panel.placements) {
+    if (isCloseup) continue
     if (shouldSkipCharacterPose(start, pl.name, pl.poseId)) continue
     const pose = getStillPose(pl.poseId)
     const saveName = identitySaveName(start, pl.name)

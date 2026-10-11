@@ -96,7 +96,7 @@ export function FilmSceneGenerateBar({
       ) : null}
       <p className="muted film-scene-still-note">
         {shotPlanDe ||
-          'Zuerst der Raum wie im Dialog, dann Nahaufnahmen der Sprecher (Mund, Augenbrauen) — die Gesichter werden in späteren Szenen wiederverwendet.'}
+          'Zuerst der ganze Raum, dann Nahaufnahme derselben Person am selben Platz — Tisch bleibt sichtbar, scharfe Augen, kein neues Porträt.'}
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {expectedShots != null && stats.total < expectedShots ? (

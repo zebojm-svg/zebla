@@ -68,6 +68,14 @@ export const STORY_CHARACTER_LOOKS: StoryCharacterLook[] = [
     identityLock:
       'This is PAPA: adult man about 45, short dark receding hair, light stubble, beige sweater, dark trousers. Not a teenager.',
   },
+  {
+    name: 'Schöme',
+    hintDe: 'Junge, nicht Mädchen',
+    description:
+      'teenage boy, male, never a girl, short dark hair, warm brown eyes, casual shirt matching the group photo',
+    identityLock:
+      'This is SCHÖME (also Shome): a BOY, male teen, never a girl, never a woman. Same person as in the wide group photo. If a reference photo is attached: THIS EXACT PERSON — same face, hair, clothes, sex. Only pose and expression change.',
+  },
 ]
 
 const LEGACY_GENERIC_DESCRIPTIONS = new Set([
@@ -116,10 +124,18 @@ export function normalizeCharacterLookName(name: string): string {
     .toLowerCase()
 }
 
+const LOOK_NAME_ALIASES: Record<string, string> = {
+  shome: 'schome',
+  schoeme: 'schome',
+}
+
 export function lookForCharacterName(name: string): StoryCharacterLook | undefined {
-  const key = normalizeCharacterLookName(name)
+  const key = LOOK_NAME_ALIASES[normalizeCharacterLookName(name)] ?? normalizeCharacterLookName(name)
   if (!key) return undefined
-  return STORY_CHARACTER_LOOKS.find((look) => normalizeCharacterLookName(look.name) === key)
+  return STORY_CHARACTER_LOOKS.find((look) => {
+    const lookKey = LOOK_NAME_ALIASES[normalizeCharacterLookName(look.name)] ?? normalizeCharacterLookName(look.name)
+    return lookKey === key
+  })
 }
 
 export function descriptionForCharacterName(name: string): string | undefined {
