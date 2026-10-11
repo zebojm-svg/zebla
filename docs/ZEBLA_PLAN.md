@@ -23,6 +23,18 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 
 Teure Bewegung (sprechen/laufen als Film) **erst** wenn Board und Stil stimmen.
 
+## Wie Zebla eine Geschichte zusammenhält
+
+Drei Schichten. Prompts allein reichen nicht.
+
+1. **KI malt und spricht.** Gemini (Bilder), Übersetzen, Stimmen, Musik. Jeder Aufruf kann neu erfinden: anderes Wohnzimmer, anderes Schwimmbad, anderes Gesicht.
+2. **Logik um die KI.** Das Tool formuliert den Prompt, hängt Sitzplan, Blick und «wer wer ist» an. Das ist ein Wunschzettel. Hilft, ist aber kein Schloss.
+3. **Dasselbe Bild wiederverwenden.** Pro Szene ein **Grundbild** (erster weiter Shot dieses Orts). Weitere Zeilen = dasselbe Foto, bis etwas geändert wird. Nahaufnahme = Zoom in dieses Foto, kein neues Porträt. Welt-Regal hält Gesichter. Das hält Wohnzimmer und Schwimmbad gleich: neuer Ort = neues Grundbild, nicht «nochmal Schwimmbad malen».
+
+Ton und Stimmen laufen auf einer zweiten Spur (Text → Sprache). Die bleiben konsistent über Sprecher-Profile, nicht über das Bild.
+
+**Nächster harter Schritt (noch nicht):** Wenn die Kamera wirklich woanders steht (andere Beckenseite), braucht es ein zweites Grundbild oder echten Schnitt — nicht «Gemini, male das Becken von links».
+
 ## Design (die «gleiche Holzart»)
 
 Schon in `src/index.css` `:root`:
@@ -48,7 +60,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen.
 
-**In Arbeit:** Grundbild der Szene geht an jedes neue Bild (Sitzplan, Blick, wer wer ist). «Schöme ist ein Mann» ändert das Gesicht in der Übersicht — er bleibt am Tisch. Nahaufnahme ist Zoom, kein neues Porträt.
+**In Arbeit:** Grundbild gilt für jeden Ort (Wohnzimmer, Schwimmbad, Park). Prompts sagen nicht mehr automatisch «Tisch». Nahaufnahme ist Zoom in denselben Ort.
 
 **Nächste Baustellen (noch nicht hier):**
 
