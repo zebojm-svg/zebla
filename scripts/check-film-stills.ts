@@ -42,7 +42,12 @@ import {
   scenePlayBeats,
   scenePreviewBeats,
 } from '../shared/film-storyboard.ts'
-import { closeupCropBox, closeupSpaceLine, seatSideFromX } from '../shared/film-closeup-space.ts'
+import {
+  closeupCropBox,
+  closeupKontextPrompt,
+  closeupSpaceLine,
+  seatSideFromX,
+} from '../shared/film-closeup-space.ts'
 import { lookForCharacterName } from '../shared/story-character-looks.ts'
 import { isImageGenPath } from '../shared/api-timeout.ts'
 import type { Dialog } from '../shared/types.ts'
@@ -204,6 +209,15 @@ if (closePrompt.toLowerCase().includes('bokeh') || closePrompt.toLowerCase().inc
   fail('Nahaufnahme darf keinen unscharfen Studio-Hintergrund verlangen')
 }
 if (!closePrompt.toLowerCase().includes('this speaker is male')) fail('Khan bleibt männlich')
+if (!closePrompt.toLowerCase().includes('turn') && !closePrompt.toLowerCase().includes('head toward')) {
+  fail('Nahaufnahme verbietet nur den Kopf zur Linse drehen')
+}
+const kRight = closeupKontextPrompt({ speaker: 'Ramo', speakerX: 82, settingHint: 'Wohnzimmer' })
+if (!kRight.toLowerCase().includes('move the camera')) fail('FLUX-Nahaufnahme versetzt die Kamera')
+if (!kRight.toLowerCase().includes('left')) fail('Junge rechts: Kamera kommt von links')
+if (!kRight.toLowerCase().includes('do not only turn')) fail('FLUX: nicht nur den Kopf drehen')
+const kLeft = closeupKontextPrompt({ speaker: 'Schöme', speakerX: 18 })
+if (!kLeft.toLowerCase().includes('right')) fail('Junge links: Kamera kommt von rechts')
 const schoemePrompt = buildFilmStillPrompt({
   caption: 'Schöme spricht',
   imageCue: 'Nahaufnahme Schöme',

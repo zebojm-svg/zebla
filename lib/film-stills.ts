@@ -10,6 +10,7 @@ import {
   closeupLooksLikeWideCrop,
   cropWideStillToSpeaker,
 } from './film-closeup-crop.js'
+import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
 import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
@@ -17,6 +18,7 @@ import {
   referenceUrlsForPanel,
   stillAttachmentInstruction,
 } from '../shared/film-stills.js'
+import { editImageWithKontext, fluxLockAvailable } from './story-stills-gen.js'
 import type { FilmScene, FilmStoryboardPanel } from '../shared/film-storyboard.js'
 import type { StoryArtStyleId } from '../shared/story-art-styles.js'
 
@@ -210,6 +212,28 @@ export async function generateFilmPanelStillImage(opts: {
   })
   const rewritePerson = correctionRewritesPerson(opts.panel.stillCorrection)
   const isCloseup = opts.panel.shot === 'closeup'
+  const faceOnly = correctionIsFaceOnly(opts.panel.stillCorrection)
+  if (
+    isCloseup &&
+    !faceOnly &&
+    opts.sceneWideStillUrl &&
+    fluxLockAvailable()
+  ) {
+    try {
+      const moved = await editImageWithKontext({
+        prompt: closeupKontextPrompt({
+          speaker: opts.panel.closeupSpeaker || '',
+          speakerX: opts.speakerX,
+          settingHint: opts.panel.settingHint,
+        }),
+        imageUrl: opts.sceneWideStillUrl,
+        aspectRatio: '16:9',
+      })
+      return await uploadPng(moved.buffer, `film-stills/${randomUUID()}.png`)
+    } catch {
+      /* Gemini nur wenn FLUX die Kamera nicht versetzen konnte */
+    }
+  }
   let buffer = await generateStillPng(
     prompt,
     refs,
@@ -218,7 +242,7 @@ export async function generateFilmPanelStillImage(opts: {
     rewritePerson,
   )
   const shouldCatchCrop =
-    isCloseup && Boolean(opts.sceneWideStillUrl) && !correctionIsFaceOnly(opts.panel.stillCorrection)
+    isCloseup && Boolean(opts.sceneWideStillUrl) && !faceOnly
   if (shouldCatchCrop && opts.sceneWideStillUrl) {
     const wide = await fetchImageAsInline(opts.sceneWideStillUrl)
     if (wide) {

@@ -434,7 +434,9 @@ export function closeupCameraLine(speaker?: string): string {
     `They stay seated with the others. Tea, cushions, maybe a neighbour’s shoulder at the frame edge. ` +
     `Same face, hair and clothes as this person in the wide photo. ` +
     `FORBIDDEN: a giant face pasted in front of the group. FORBIDDEN: an empty room with only this portrait. ` +
-    `FORBIDDEN: a cropped screenshot of the wide photo. Paint one coherent closer shot of the same table.`
+    `FORBIDDEN: a cropped screenshot of the wide photo. ` +
+    `FORBIDDEN: only turning their head toward the lens while the camera stays in the original wide place. ` +
+    `Paint one coherent closer shot from a new camera position.`
   )
 }
 

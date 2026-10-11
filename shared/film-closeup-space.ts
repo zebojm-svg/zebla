@@ -32,6 +32,31 @@ export function closeupSpaceLine(opts: {
   )
 }
 
+/** FLUX Kontext: Kamera wirklich versetzen, nicht nur den Kopf zur Linse drehen. */
+export function closeupKontextPrompt(opts: {
+  speaker: string
+  speakerX?: number
+  settingHint?: string
+}): string {
+  const who = opts.speaker.trim() || 'the speaker'
+  const side = opts.speakerX != null ? seatSideFromX(opts.speakerX) : undefined
+  const from =
+    side === 'right'
+      ? 'the LEFT side of the gathering, across the table'
+      : side === 'left'
+        ? 'the RIGHT side of the gathering, across the table'
+        : 'a new place beside the table, a few steps closer'
+  const place = opts.settingHint?.trim() || 'the same room'
+  return (
+    `Keep the same watercolor comic illustration, the same people, faces and clothes. ` +
+    `MOVE THE CAMERA to ${from} in ${place}. Film ${who} so we look almost straight at their face. ` +
+    `Over-the-shoulder of a neighbour is good. Head and shoulders of ${who} fill most of the 16:9 frame. ` +
+    `Background is what sits BEHIND them from this new camera (wall, chair, plant) — invent that side if needed. ` +
+    `Do NOT keep the original wide camera. Do NOT only turn their head toward the lens. ` +
+    `Do NOT paste a giant face onto the group photo. Same gathering, new viewpoint.`
+  )
+}
+
 /** 16:9-Fenster um die Person herum — Zoom in die Übersicht. */
 export function closeupCropBox(
   imageW: number,
