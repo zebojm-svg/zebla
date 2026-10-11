@@ -388,26 +388,24 @@ export function useSpeechReader(
     return cloudAudioRef.current
   }, [])
 
-  /** Im Klick aufrufen — sonst blockiert der Browser Sprache nach der 2-Sekunden-Pause. */
+  /** Im Klick aufrufen — Stille weiterlaufen lassen, nicht sofort pausieren. */
   const unlockPlayback = useCallback(() => {
     const el = ensureAudioEl()
     try {
+      el.loop = true
       el.muted = true
+      el.volume = 1
       el.src = SILENT_WAV
-      void el.play().then(() => {
-        el.pause()
-        el.muted = false
-      }).catch(() => {
+      void el.play().catch(() => {
         el.muted = false
       })
     } catch {
       el.muted = false
     }
     try {
-      const u = new SpeechSynthesisUtterance('.')
+      const u = new SpeechSynthesisUtterance(' ')
       u.volume = 0
       window.speechSynthesis.speak(u)
-      window.speechSynthesis.cancel()
     } catch {
       /* kein Browser-TTS */
     }
@@ -417,6 +415,7 @@ export function useSpeechReader(
     stoppedRef.current = true
     window.speechSynthesis.cancel()
     if (cloudAudioRef.current) {
+      cloudAudioRef.current.loop = false
       cloudAudioRef.current.pause()
     }
     setSpeaking(false)
@@ -461,7 +460,9 @@ export function useSpeechReader(
           audioUrl.includes('?') ? `${audioUrl}&play=${Date.now()}` : `${audioUrl}?play=${Date.now()}`
         const audio = ensureAudioEl()
         audio.pause()
+        audio.loop = false
         audio.muted = false
+        audio.volume = 1
         audio.playbackRate = Math.min(1.3, Math.max(0.4, rate))
         setActiveLineId(lineId)
         setHighlightIndex(null)
@@ -635,8 +636,12 @@ export function useSpeechReader(
       highlightWords: boolean,
       onLineChange?: (index: number) => void,
     ): Promise<boolean> => {
-      stop()
-      await sleep(120)
+      stoppedRef.current = true
+      window.speechSynthesis.cancel()
+      if (cloudAudioRef.current && !cloudAudioRef.current.loop) {
+        cloudAudioRef.current.pause()
+      }
+      await sleep(80)
       stoppedRef.current = false
 
       voicesRef.current = await waitForVoices()
@@ -656,7 +661,7 @@ export function useSpeechReader(
       setHighlightIndex(null)
       return stoppedRef.current
     },
-    [ensureSpeakerVoices, speakText, stop],
+    [ensureSpeakerVoices, speakText],
   )
 
   return {

@@ -2,7 +2,13 @@
  * Szenen-Geräusche aus der Ton-Notiz.
  * Aufruf: npx tsx scripts/check-film-scene-foley.ts
  */
-import { foleyFlagsFromNote } from '../shared/film-scene-foley.ts'
+import { readFileSync } from 'node:fs'
+import {
+  foleyFlagsFromNote,
+  SCENE_FOLEY_GAIN,
+  SCENE_PAD_GAIN,
+  SCENE_VOICE_GAIN,
+} from '../shared/film-scene-foley.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -17,5 +23,24 @@ if (!nuts.city) fail('Stadtgeräusch aus der Notiz')
 
 const quiet = foleyFlagsFromNote('nur Stimmen')
 if (quiet.crackle || quiet.city) fail('Ohne Hinweis keine Extra-Geräusche')
+
+if (SCENE_FOLEY_GAIN <= SCENE_PAD_GAIN * 4) {
+  fail('Foley muss deutlich lauter sein als das Pad — sonst hört man die Nüsse nicht')
+}
+if (SCENE_VOICE_GAIN <= SCENE_PAD_GAIN * 10) {
+  fail('Dialogstimme muss über der Hintergrundmusik liegen')
+}
+
+const previewSrc = readFileSync(new URL('../src/story/FilmScenePreview.tsx', import.meta.url), 'utf8')
+if (!previewSrc.includes('playVoice')) fail('Szene abspielen muss die Stimme über Web Audio spielen')
+if (!previewSrc.includes('decodeVoice')) fail('Szene abspielen muss die KI-Stimme decodieren')
+if (!previewSrc.includes('lineAudio')) {
+  fail('Szene abspielen holt die Stimme same-origin, nicht als fremdes HTML-Audio')
+}
+
+const bedSrc = readFileSync(new URL('../src/story/sceneBedMusic.ts', import.meta.url), 'utf8')
+if (!bedSrc.includes('foleyBus')) fail('Knistern braucht einen eigenen Bus, nicht das leise Pad')
+if (!bedSrc.includes('SCENE_FOLEY_GAIN')) fail('Foley-Lautstärke aus der gemeinsamen Konstante')
+if (!bedSrc.includes('SCENE_VOICE_GAIN')) fail('Dialog-Lautstärke aus der gemeinsamen Konstante')
 
 console.log('OK: Szenen-Geräusche aus der Ton-Notiz')
