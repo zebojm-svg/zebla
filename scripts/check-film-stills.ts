@@ -182,8 +182,8 @@ if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase()
 if (!closePrompt.toLowerCase().includes('zoom') && !closePrompt.toLowerCase().includes('push-in')) {
   fail('Nahaufnahme zoomt in die Übersicht')
 }
-if (!closePrompt.toLowerCase().includes('same table') && !closePrompt.toLowerCase().includes('same seat')) {
-  fail('Nahaufnahme bleibt am selben Tisch')
+if (!closePrompt.toLowerCase().includes('same place') && !closePrompt.toLowerCase().includes('same position')) {
+  fail('Nahaufnahme bleibt am selben Ort')
 }
 if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
   fail('Nahaufnahme verlangt undurchsichtige Augen')
@@ -204,8 +204,8 @@ const schoemePrompt = buildFilmStillPrompt({
 if (!schoemePrompt.toLowerCase().includes('boy into a girl')) {
   fail('Ohne Geschlechtsangabe: nicht aus dem Namen ein Mädchen machen')
 }
-if (!closePrompt.toLowerCase().includes('3d room') && !closePrompt.toLowerCase().includes('behind this person')) {
-  fail('Nahaufnahme kennt den Platz im Raum')
+if (!closePrompt.toLowerCase().includes('3d place') && !closePrompt.toLowerCase().includes('behind this person')) {
+  fail('Nahaufnahme kennt den Platz im Ort')
 }
 const schoemeBoy = buildFilmStillPrompt({
   caption: 'Schöme spricht',
@@ -428,8 +428,8 @@ if (!manPrompt.toLowerCase().includes('this speaker is male')) fail('Geschlecht-
 if (!manPrompt.toLowerCase().includes('wrong-gender')) {
   fail('Geschlecht wechseln: altes Gesicht nicht behalten')
 }
-if (!manPrompt.toLowerCase().includes('same seat') && !manPrompt.toLowerCase().includes('same table')) {
-  fail('Geschlecht wechseln: am Tisch bleiben')
+if (!manPrompt.toLowerCase().includes('same place') && !manPrompt.toLowerCase().includes('same position')) {
+  fail('Geschlecht wechseln: am selben Ort bleiben')
 }
 if (!manPrompt.toLowerCase().includes('push-in') && !manPrompt.toLowerCase().includes('zoom')) {
   fail('Geschlecht wechseln: Zoom in die Übersicht, kein neues Porträt')
@@ -444,7 +444,7 @@ const seatEn = seatingLockEn(seatPeople)
 if (!seatEn.toLowerCase().includes('schöme') || !seatEn.toLowerCase().includes('left')) {
   fail('Sitzplan: Schöme links')
 }
-if (!seatEn.toLowerCase().includes('stays in that seat')) fail('Sitzplan sperrt die Plätze')
+if (!seatEn.toLowerCase().includes('stays in that position')) fail('Sitzplan sperrt die Plätze')
 const seatDe = seatingNoteDe(seatPeople)
 if (!seatDe || !seatDe.includes('Schöme sitzt links') || !seatDe.includes('Khan sitzt in der Mitte')) {
   fail('Sitzplan auf Deutsch')
@@ -481,10 +481,23 @@ if (manAttach.toLowerCase().includes('exact people')) {
 if (!manAttach.toLowerCase().includes('sex and face may change')) {
   fail('Anhang sagt: Gesicht darf neu sein')
 }
-if (!manAttach.toLowerCase().includes('table')) fail('Anhang Nahaufnahme: Tisch')
-if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('room')) {
-  fail('Anhang schickt den Raum mit')
+if (!manAttach.toLowerCase().includes('place') && !manAttach.toLowerCase().includes('grundbild')) {
+  fail('Anhang Nahaufnahme: Ort')
 }
+if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('place')) {
+  fail('Anhang schickt den Ort mit')
+}
+
+const poolContig = sceneContinuityBlock({
+  placements: seatPeople,
+  speaker: 'Schöme',
+  addressee: 'Khan',
+  genders: { Schöme: 'male', Khan: 'male', Ubai: 'male' },
+  hasGrundbild: true,
+  settingHint: 'Schwimmbad, Beckenrand',
+})
+if (!poolContig.toLowerCase().includes('schwimmbad')) fail('Grundbild gilt auch fürs Schwimmbad')
+if (poolContig.toLowerCase().includes('at this table')) fail('Schwimmbad ist kein Wohnzimmer-Tisch')
 const mimicAttach = stillAttachmentInstruction({
   correctingExisting: true,
   closeup: true,

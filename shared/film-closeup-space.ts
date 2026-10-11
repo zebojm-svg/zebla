@@ -20,14 +20,14 @@ export function closeupSpaceLine(opts: {
   const speaker = opts.speaker.trim() || 'the speaker'
   const side = opts.speakerX != null ? seatSideFromX(opts.speakerX) : undefined
   const sitting = /sit/i.test(opts.poseHint || '')
-  const place = sitting ? 'sitting at the table' : 'in this gathering'
+  const room = opts.settingHint?.trim() || 'the same place as the wide photo'
+  const place = sitting ? `sitting in ${room}` : `in ${room}`
   const where = side ? `${place} on the ${side} of the frame` : place
-  const room = opts.settingHint?.trim() || 'the same room as the wide photo'
   return (
-    `3D ROOM: ${speaker} is ${where} in ${room}. ` +
+    `3D PLACE: ${speaker} is ${where}. ` +
     `The first attached photo is a camera zoom of that gathering. ` +
-    `Keep the exact furniture BEHIND this person in that photo (table edge, chairs, kitchen, window). ` +
-    `Do not invent a different wall or studio. Camera push-in, not a new portrait.`
+    `Keep exactly what is BEHIND this person in that photo (water, tiles, trees, wall, furniture — whatever the grundbild shows). ` +
+    `Do not invent a different place or studio. Camera push-in, not a new portrait.`
   )
 }
 

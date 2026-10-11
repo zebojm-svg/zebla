@@ -79,6 +79,7 @@ function continuityEnFor(
     genders,
     stillCorrection: correction,
     hasGrundbild: Boolean(wide?.stillUrl || ((panel.shot ?? 'wide') !== 'closeup' && panel.stillUrl)),
+    settingHint: wide?.settingHint || panel.settingHint,
   })
 }
 
@@ -580,7 +581,7 @@ export async function stillFilmPanel(
       const withNote = applyPanelHarvestNote(
         next,
         panelId,
-        `Neu gemalt: ${correction} — bleibt am Tisch der Übersicht.`,
+        `Neu gemalt: ${correction} — bleibt am Ort der Übersicht.`,
       )
       const updated = await persist(withNote)
       return { dialog: updated, board: withNote }
@@ -619,9 +620,9 @@ export async function stillFilmPanel(
       withStill,
       panelId,
       correction
-        ? `Neu gemalt: ${correction} — gleicher Tisch, gleiche Plätze.`
+        ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
         : isCloseup
-          ? `Nahaufnahme ${speaker}: Zoom in die Übersicht — gleicher Platz am Tisch.`
+          ? `Nahaufnahme ${speaker}: Zoom in die Übersicht — gleicher Platz.`
           : pieceNote
             ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
             : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',

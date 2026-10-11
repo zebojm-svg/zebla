@@ -108,7 +108,7 @@ export function FilmSceneGenerateBar({
       ) : null}
       <p className="muted film-scene-still-note">
         {shotPlanDe ||
-          'Ein Bild je Dialogzeile. Die erste Zeile ist das Grundbild (ganzer Raum, wer wo sitzt). Die nächsten nehmen dasselbe Bild, bis du unter «Bild ändern» etwas neu malst. Kurzer Hinweis reicht — Sitzplan und Raum gehen von allein mit.'}
+          'Ein Bild je Dialogzeile. Die erste Zeile ist das Grundbild dieses Orts (Wohnzimmer, Schwimmbad, Park…). Die nächsten nehmen dasselbe Bild, bis du unter «Bild ändern» etwas neu malst. Kurzer Hinweis reicht — Ort und Sitzplan gehen von allein mit.'}
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {expectedShots != null && stats.total < expectedShots ? (
@@ -227,7 +227,7 @@ export function FilmBeatNotes({
         </p>
       ) : (
         <p>
-          <strong>Kamera</strong> Weit — ganzer Raum (Grundbild)
+          <strong>Kamera</strong> Weit — ganzer Ort (Grundbild)
         </p>
       )}
       {panel.imageCue ? <p>{panel.imageCue}</p> : null}

@@ -136,7 +136,7 @@ function PanelCard({
           </button>
         </div>
         <p className="muted film-tweak-hint">
-          Kurzer Hinweis reicht. Wer wo sitzt und der Raum gehen von der Übersicht mit.
+          Kurzer Hinweis reicht. Wer wo steht und der Ort gehen von der Übersicht mit.
         </p>
         <label className="film-comment">
           <span className="muted">Kommentar zur Zeile</span>
