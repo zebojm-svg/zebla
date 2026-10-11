@@ -590,7 +590,7 @@ export async function stillFilmPanel(
       const withNote = applyPanelHarvestNote(
         next,
         panelId,
-        `Neu gemalt: ${correction} — Kamera näher, kein Ausschnitt.`,
+        `Neu gemalt: ${correction} — Kamera wechselt den Platz, nicht nur den Kopf.`,
       )
       const updated = await persist(withNote)
       return { dialog: updated, board: withNote }
@@ -626,7 +626,7 @@ export async function stillFilmPanel(
       correction
         ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
         : isCloseup
-          ? `Nahaufnahme ${speaker}: Kamera näher im selben Ort — neu gemalt, kein Ausschnitt.`
+          ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
           : pieceNote
             ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
             : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',

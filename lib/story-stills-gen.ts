@@ -95,6 +95,7 @@ async function generateWithReplicate(opts: {
   prompt: string
   imageUrl: string
   imagePng?: Buffer | null
+  aspectRatio?: '16:9' | '9:16'
 }): Promise<Buffer> {
   const token = process.env.REPLICATE_API_TOKEN?.trim()
   if (!token) throw new Error('REPLICATE_API_TOKEN fehlt.')
@@ -120,7 +121,7 @@ async function generateWithReplicate(opts: {
         input: {
           prompt: opts.prompt,
           input_image: inputImage,
-          aspect_ratio: '9:16',
+          aspect_ratio: opts.aspectRatio ?? '9:16',
           output_format: 'png',
           safety_tolerance: 2,
         },
@@ -175,6 +176,7 @@ async function generateWithFal(opts: {
   prompt: string
   imageUrl: string
   imagePng?: Buffer | null
+  aspectRatio?: '16:9' | '9:16'
 }): Promise<Buffer> {
   const key = process.env.FAL_KEY?.trim()
   if (!key) throw new Error('FAL_KEY fehlt.')
@@ -198,7 +200,7 @@ async function generateWithFal(opts: {
       body: JSON.stringify({
         prompt: opts.prompt,
         image_url: imageUrl,
-        aspect_ratio: '9:16',
+        aspect_ratio: opts.aspectRatio ?? '9:16',
         output_format: 'png',
         sync_mode: true,
       }),
@@ -278,4 +280,35 @@ export async function generateLockedStillPng(opts: {
 
 export function fluxLockAvailable(): boolean {
   return Boolean(process.env.REPLICATE_API_TOKEN?.trim() || process.env.FAL_KEY?.trim())
+}
+
+/** Bild-zu-Bild mit FLUX Kontext (Nahaufnahme: Kamera versetzen, 16:9). */
+export async function editImageWithKontext(opts: {
+  prompt: string
+  imageUrl: string
+  imagePng?: Buffer | null
+  aspectRatio?: '16:9' | '9:16'
+}): Promise<{ buffer: Buffer; engine: StillsEngineId }> {
+  const errors: string[] = []
+  if (process.env.REPLICATE_API_TOKEN?.trim()) {
+    try {
+      const buffer = await generateWithReplicate(opts)
+      return { buffer, engine: 'flux-kontext-replicate' }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : 'Replicate fehlgeschlagen')
+    }
+  }
+  if (process.env.FAL_KEY?.trim()) {
+    try {
+      const buffer = await generateWithFal(opts)
+      return { buffer, engine: 'flux-kontext-fal' }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : 'Fal fehlgeschlagen')
+    }
+  }
+  throw new Error(
+    errors.length
+      ? `FLUX Kontext nicht gelungen (${errors.join(' · ')}).`
+      : 'Kein FLUX-Kontext-Key (REPLICATE_API_TOKEN oder FAL_KEY).',
+  )
 }

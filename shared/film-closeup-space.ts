@@ -25,9 +25,35 @@ export function closeupSpaceLine(opts: {
   const room = opts.settingHint?.trim() || 'the same room as the wide photo'
   return (
     `3D ROOM: ${speaker} is ${where} in ${room}. ` +
-    `The first attached photo is the WIDE GROUNDBILD of that gathering. ` +
-    `Walk the camera closer to this person. Same furniture behind them, but it shifts with parallax ` +
-    `(not a blown-up crop of the wide photo). Do not invent a different wall or studio. Camera push-in, not a new portrait.`
+    `The first attached photo is the WIDE GROUNDBILD of that occupied gathering. ` +
+    `Move in so the frame is tight on this person: you no longer see the whole sofa and far wall. ` +
+    `The others stay at the table (cut by the frame if needed). Do not empty the room. ` +
+    `Do not paste a giant head over the group photo. Same clothes. Camera push-in, not a new portrait.`
+  )
+}
+
+/** FLUX Kontext: Kamera wirklich versetzen, nicht nur den Kopf zur Linse drehen. */
+export function closeupKontextPrompt(opts: {
+  speaker: string
+  speakerX?: number
+  settingHint?: string
+}): string {
+  const who = opts.speaker.trim() || 'the speaker'
+  const side = opts.speakerX != null ? seatSideFromX(opts.speakerX) : undefined
+  const from =
+    side === 'right'
+      ? 'the LEFT side of the gathering, across the table'
+      : side === 'left'
+        ? 'the RIGHT side of the gathering, across the table'
+        : 'a new place beside the table, a few steps closer'
+  const place = opts.settingHint?.trim() || 'the same room'
+  return (
+    `Keep the same watercolor comic illustration, the same people, faces and clothes. ` +
+    `MOVE THE CAMERA to ${from} in ${place}. Film ${who} so we look almost straight at their face. ` +
+    `Over-the-shoulder of a neighbour is good. Head and shoulders of ${who} fill most of the 16:9 frame. ` +
+    `Background is what sits BEHIND them from this new camera (wall, chair, plant) — invent that side if needed. ` +
+    `Do NOT keep the original wide camera. Do NOT only turn their head toward the lens. ` +
+    `Do NOT paste a giant face onto the group photo. Same gathering, new viewpoint.`
   )
 }
 
