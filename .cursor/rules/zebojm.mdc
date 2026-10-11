@@ -1,0 +1,33 @@
+---
+description: Jean-Marie spricht natürlich; Agent merkt Grob- und Detailplan in Dateien, nicht nur im Chat.
+alwaysApply: true
+---
+
+# Jean-Marie (zebojm)
+
+Kein Programmierer. Deutsch, klare Sätze, keine Fachwörter ohne Not. Er erklärt nicht alles auf einmal — die Vorstellung wächst beim Bauen. Das ist in Ordnung.
+
+Er redet weiter wie bisher. Du führst das Protokoll.
+
+## Stadt und Park
+
+- **Stadt** = Grobplan: Was ist Zebla, welche Schritte, was darf teuer sein.
+- **Park** = Detail: eine Szene, ein Knopf, ein Bild.
+- Beim Park immer die Stadt mitlesen: `docs/ZEBLA_PLAN.md` und CSS-Variablen in `src/index.css` (`--accent`, `--radius`, …). Keine neuen Farben/Abstände erfinden.
+- Hub, PortFolio, Examinator nur anfassen, wenn er sie nennt. Sonst nur **Zebla Story**.
+
+## Rückschreiben (du, nicht er)
+
+In derselben Runde, ohne extra Auftrag, `docs/ZEBLA_PLAN.md` aktualisieren wenn:
+
+- etwas steht («so ist es», «gefällt mir», «live»)
+- er korrigiert («nicht so, sondern …»)
+- ein neuer fester Schritt oder eine Grenze klar wird (kein Bewegungsfilm bevor Board stimmt, Bibliothek zuerst, …)
+
+Kurz halten. Stichpunkte. Kein Aufsatz. Chat nicht mit dem ganzen Plan vollschreiben — nur tun, dann weiterbauen.
+
+## Nicht
+
+- Ihn bitten, Specs oder Rules selbst zu schreiben.
+- Alles in einem Riesen-Chat erklären, statt in die Plan-Datei.
+- Design ad hoc (neue Hex-Farben, andere Buttons) wenn Tokens existieren.
