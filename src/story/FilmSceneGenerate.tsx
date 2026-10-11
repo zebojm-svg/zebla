@@ -223,7 +223,7 @@ export function FilmBeatNotes({
     <div className="film-beat-notes-list">
       {panel.shot === 'closeup' ? (
         <p>
-          <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''} — Zoom in die Übersicht
+          <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''} — Kamera näher, neu gemalt
         </p>
       ) : (
         <p>

@@ -392,7 +392,7 @@ export function stillAttachmentInstruction(opts: {
   rewritePerson?: boolean
 }): string {
   if (opts.rewritePerson && opts.closeup) {
-    return 'Attached photos: FIRST a CAMERA ZOOM crop of the gathering — this person still sitting in their seat at the table, table edge visible. SECOND the full GROUNDBILD (whole room) so you know who sits where and what is behind whom. Keep them sitting at that table. Sex and face may change as the director fix says. Do not stand them up. Do not move them to a studio. Do not paint a new room. Do not keep a wrong-gender face.'
+    return 'Attached photos: FIRST a crop used only as a MAP of what is behind this person. SECOND the full GROUNDBILD. Paint a NEW closer camera shot — not a cropped screenshot. Keep them in that place. Sex and face may change as the director fix says. Do not keep a wrong-gender face.'
   }
   if (opts.rewritePerson) {
     return 'Attached photos: first the GROUNDBILD of this room. Keep that same room, furniture, camera and seating. Everyone stays at this table. Redraw only the named person as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl. Do not invent a new location.'
@@ -401,9 +401,27 @@ export function stillAttachmentInstruction(opts: {
     return 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
   }
   if (opts.closeup) {
-    return 'Attached photos: FIRST a CAMERA ZOOM crop of the wide gathering (same table and furniture behind this person). SECOND the full room photo so you know who sits where and what is behind whom. Keep that exact room. Same face, hair, clothes, sex unless the director fix changes this person. Fully drawn opaque eyes (iris and pupil, not glass). Not a new studio, not heavy blur, not a cut-out bust.'
+    return 'Attached photos: FIRST a crop used only as a MAP of what is behind this person (shelf, window, plant). SECOND the full GROUNDBILD. Paint a NEW closer camera shot — not a cropped screenshot of the wide photo. Same person, same place, slight new perspective. Fully drawn opaque eyes. Not a studio, not a cut-out bust.'
   }
   return 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.'
+}
+
+/** Nur Mimik auf einer bestehenden Nahaufnahme — sonst neu filmen, nicht den Ausschnitt behalten. */
+export function correctionIsFaceOnly(note?: string): boolean {
+  const t = (note || '').toLowerCase()
+  if (!t || correctionRewritesPerson(t)) return false
+  return /mund|lächel|mimik|augenbrau|lid|facial|weint|freut|zorn|überrascht/.test(t)
+}
+
+/** Nahaufnahme = Kamera näher, kein zerschnittener Weit-Shot. */
+export function closeupCameraLine(speaker?: string): string {
+  const who = speaker?.trim() || 'the speaker'
+  return (
+    `CAMERA PUSH-IN of ${who}: the camera physically moves closer in the same place. ` +
+    `Slight new perspective (face larger, same person, same background objects shift as a real camera would). ` +
+    `Do NOT output a cropped screenshot or cut-out of the wide photo. ` +
+    `The attached crop is only a map of what sits behind them (shelf, window, plant, water). Paint a NEW closer shot.`
+  )
 }
 
 /** Nahaufnahme: gleiches Geschlecht wie Übersicht/Stammbild — nicht aus dem Namen raten. */
@@ -472,9 +490,11 @@ export function buildFilmStillPrompt(opts: {
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
-      ? rewritePerson
-        ? `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached GROUNDBILD. They stay in the SAME seat at the SAME table with the others. New correct face and sex. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. Table edge still visible. Not a studio portrait. Do not keep a wrong-gender face from the attached photo.`
-        : `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached WIDE still. They stay in the SAME seat at the SAME table. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. The same room stays recognizable behind them (table, kitchen), fairly sharp — not a studio, not heavy blur.`
+      ? `${closeupCameraLine(opts.closeupSpeaker)} Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. ${
+          rewritePerson
+            ? 'New correct face and sex. Do not keep a wrong-gender face from the attached photo.'
+            : 'Same face as in the wide gathering.'
+        }`
       : rewritePerson
         ? `WIDE shot of the SAME gathering. Keep this camera, this table and these seats. Apply the director fix to the named person only. Everyone else stays where they are. Sitting people stay sitting, hips on the seat.`
         : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,

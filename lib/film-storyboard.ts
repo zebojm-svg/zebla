@@ -19,6 +19,7 @@ import {
   type FilmDraftPanel,
   type FilmPlan,
   type FilmPlacement,
+  type FilmScene,
   type FilmStoryboard,
   type FilmStoryboardPanel,
 } from '../shared/film-storyboard.js'
@@ -29,6 +30,7 @@ import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
+  correctionIsFaceOnly,
   correctionRewritesPerson,
   correctFromUrlForPanel,
   genderFromPictureNote,
@@ -82,31 +84,42 @@ function continuityEnFor(
   })
 }
 
-async function recropSpeakerCloseups(
-  board: FilmStoryboard,
-  sceneId: string,
-  speaker: string,
-  wideUrl: string,
-  widePlacements: FilmPlacement[],
-  styleId: string,
-  alsoPanelId?: string,
-): Promise<FilmStoryboard> {
-  const want = speaker.trim().toLowerCase()
-  let next = board
-  for (const p of board.panels) {
-    if (p.sceneId !== sceneId) continue
-    if ((p.shot ?? 'wide') !== 'closeup') continue
-    const who = (p.closeupSpeaker || p.placements[0]?.name || '').trim().toLowerCase()
-    if (p.id !== alsoPanelId && who !== want) continue
-    const seat = widePlacements.find((pl) => pl.name.trim().toLowerCase() === (who || want))
-    const cropped = await closeupUrlFromWideStill({
-      wideUrl,
-      speakerX: seat?.x,
-      speakerSitting: sittingFromPlacement(seat),
+async function paintCloseupPushIn(opts: {
+  panel: FilmStoryboardPanel
+  scene?: FilmScene
+  styleId: string
+  wideUrl: string
+  speakerGender?: 'male' | 'female'
+  speakerX?: number
+  speakerSitting: boolean
+  continuityEn: string
+  targetLanguage?: string
+  beatTotal: number
+}): Promise<string> {
+  try {
+    return await generateFilmPanelStillImage({
+      panel: { ...opts.panel, stillCorrection: undefined },
+      scene: opts.scene,
+      styleId: opts.styleId,
+      previousStillUrl: undefined,
+      correctFromUrl: undefined,
+      targetLanguage: opts.targetLanguage,
+      beatTotal: opts.beatTotal,
+      sceneWideStillUrl: opts.wideUrl,
+      speakerGender: opts.speakerGender,
+      speakerX: opts.speakerX,
+      speakerSitting: opts.speakerSitting,
+      continuityEn: opts.continuityEn,
     })
-    if (cropped) next = applyPanelStill(next, p.id, cropped, styleId)
+  } catch {
+    const cropped = await closeupUrlFromWideStill({
+      wideUrl: opts.wideUrl,
+      speakerX: opts.speakerX,
+      speakerSitting: opts.speakerSitting,
+    })
+    if (cropped) return cropped
+    throw new Error('Nahaufnahme fehlgeschlagen.')
   }
-  return next
 }
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
@@ -568,24 +581,34 @@ export async function stillFilmPanel(
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
       next = replaceStillUrl(next, grundUrl, newWideUrl, panelForGen.sceneId)
-      next = await recropSpeakerCloseups(
-        next,
-        panelForGen.sceneId,
-        speaker,
-        newWideUrl,
-        wideForGen.placements,
-        resolvedStyle,
-        panelId,
-      )
+      const closeUrl = await paintCloseupPushIn({
+        panel: panelForGen,
+        scene,
+        styleId: resolvedStyle,
+        wideUrl: newWideUrl,
+        speakerGender:
+          genderFromPictureNote(correction) ??
+          speakerGender(dialog, speaker) ??
+          genderFromKnownName(speaker),
+        speakerX: whoOnWide?.x,
+        speakerSitting: sittingFromPlacement(whoOnWide),
+        continuityEn,
+        targetLanguage,
+        beatTotal,
+      })
+      next = applyPanelStill(next, panelId, closeUrl, resolvedStyle)
       const withNote = applyPanelHarvestNote(
         next,
         panelId,
-        `Neu gemalt: ${correction} — bleibt am Tisch der Übersicht.`,
+        `Neu gemalt: ${correction} — Kamera näher, kein Ausschnitt.`,
       )
       const updated = await persist(withNote)
       return { dialog: updated, board: withNote }
     }
 
+    if (isCloseup && !correctionIsFaceOnly(correction)) {
+      correctFromUrl = undefined
+    }
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -606,22 +629,14 @@ export async function stillFilmPanel(
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && panelForGen.stillUrl) {
       withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
-      withStill = await recropSpeakerCloseups(
-        withStill,
-        panelForGen.sceneId,
-        speaker,
-        url,
-        panelForGen.placements,
-        resolvedStyle,
-      )
     }
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
       correction
-        ? `Neu gemalt: ${correction} — gleicher Tisch, gleiche Plätze.`
+        ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
         : isCloseup
-          ? `Nahaufnahme ${speaker}: Zoom in die Übersicht — gleicher Platz am Tisch.`
+          ? `Nahaufnahme ${speaker}: Kamera näher im selben Ort — neu gemalt, kein Ausschnitt.`
           : pieceNote
             ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
             : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',

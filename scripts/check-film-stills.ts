@@ -5,7 +5,9 @@
 import {
   applyPanelStill,
   buildFilmStillPrompt,
+  closeupCameraLine,
   closeupGenderLine,
+  correctionIsFaceOnly,
   correctFromUrlForPanel,
   correctionRewritesPerson,
   filmStillLanguageEn,
@@ -182,8 +184,11 @@ if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase()
 if (!closePrompt.toLowerCase().includes('zoom') && !closePrompt.toLowerCase().includes('push-in')) {
   fail('Nahaufnahme zoomt in die Übersicht')
 }
-if (!closePrompt.toLowerCase().includes('same table') && !closePrompt.toLowerCase().includes('same seat')) {
-  fail('Nahaufnahme bleibt am selben Tisch')
+if (!closePrompt.toLowerCase().includes('physically') && !closePrompt.toLowerCase().includes('perspective')) {
+  fail('Nahaufnahme ist Kamera näher, nicht nur Zoom-Wort')
+}
+if (!closePrompt.toLowerCase().includes('cropped screenshot') && !closePrompt.toLowerCase().includes('cut-out of the wide')) {
+  fail('Nahaufnahme darf kein Ausschnitt des Weit-Bilds sein')
 }
 if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
   fail('Nahaufnahme verlangt undurchsichtige Augen')
@@ -428,8 +433,8 @@ if (!manPrompt.toLowerCase().includes('this speaker is male')) fail('Geschlecht-
 if (!manPrompt.toLowerCase().includes('wrong-gender')) {
   fail('Geschlecht wechseln: altes Gesicht nicht behalten')
 }
-if (!manPrompt.toLowerCase().includes('same seat') && !manPrompt.toLowerCase().includes('same table')) {
-  fail('Geschlecht wechseln: am Tisch bleiben')
+if (!manPrompt.toLowerCase().includes('cropped screenshot') && !manPrompt.toLowerCase().includes('new closer')) {
+  fail('Geschlecht wechseln: neu filmen, nicht ausschneiden')
 }
 if (!manPrompt.toLowerCase().includes('push-in') && !manPrompt.toLowerCase().includes('zoom')) {
   fail('Geschlecht wechseln: Zoom in die Übersicht, kein neues Porträt')
@@ -481,9 +486,17 @@ if (manAttach.toLowerCase().includes('exact people')) {
 if (!manAttach.toLowerCase().includes('sex and face may change')) {
   fail('Anhang sagt: Gesicht darf neu sein')
 }
-if (!manAttach.toLowerCase().includes('table')) fail('Anhang Nahaufnahme: Tisch')
-if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('room')) {
-  fail('Anhang schickt den Raum mit')
+if (!manAttach.toLowerCase().includes('cropped screenshot') && !manAttach.toLowerCase().includes('new closer')) {
+  fail('Anhang: neu filmen, nicht ausschneiden')
+}
+if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('map')) {
+  fail('Anhang schickt den Ort mit')
+}
+if (!correctionIsFaceOnly('Mund etwas offener')) fail('Mund = nur Mimik')
+if (correctionIsFaceOnly('Schöme ist ein Mann')) fail('Mann ist kein Mimik-Fix')
+if (correctionIsFaceOnly('Kamera näher')) fail('Kamera näher ist keine Mimik')
+if (!closeupCameraLine('Ramo').toLowerCase().includes('cropped screenshot')) {
+  fail('Kamera-Zeile verbietet den Ausschnitt')
 }
 const mimicAttach = stillAttachmentInstruction({
   correctingExisting: true,
