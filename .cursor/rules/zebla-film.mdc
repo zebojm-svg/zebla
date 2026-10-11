@@ -1,0 +1,15 @@
+---
+description: Zebla Story Film-Grobplan. Immer docs/ZEBLA_PLAN.md lesen bevor Film-UI oder KI-Bilder geändert werden.
+globs: src/story/**,shared/film-*.ts,lib/film-*.ts,src/pages/CreateDialogPage.tsx,src/pages/DialogEditorPage.tsx
+alwaysApply: false
+---
+
+# Film bauen
+
+Zuerst `docs/ZEBLA_PLAN.md`. Dann den Park (die eine Datei).
+
+- Bibliothek vor neuer KI: Posen und Orte wiederverwenden.
+- Standbilder Szene für Szene, nicht den ganzen Film auf einmal.
+- Nach dem Malen: Figur und Hintergrund getrennt speichern.
+- Kein Bewegungsfilm, solange das Board nicht sitzt.
+- Texte in der UI: Deutsch, kurz, wie Jean-Marie spricht.

@@ -2,6 +2,8 @@
 
 Sprachlern-App zum Erstellen von **Geschichten** (Dialog, Storyboard, Film, Diashow) – mit KI.
 
+**Film-Grobplan (lebend):** [docs/ZEBLA_PLAN.md](docs/ZEBLA_PLAN.md) — Stadtplan für Cursor und Jean-Marie. Nicht den Chat als Gedächtnis nutzen.
+
 **Cloud-Stack:** [Vercel](https://vercel.com) (Hosting + API) · [Firebase Auth](https://firebase.google.com/products/auth) · [Firestore](https://firebase.google.com/products/firestore) · [Google Gemini](https://aistudio.google.com)
 
 ## Funktionen
