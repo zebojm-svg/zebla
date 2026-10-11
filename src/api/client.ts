@@ -285,13 +285,17 @@ export const api = {
       request<{ configured: boolean; working: boolean; provider: string; error?: string }>(
         `/tts-status${languageCode ? `?lang=${encodeURIComponent(languageCode)}` : ''}`,
       ),
-    getOrCreate: (data: { dialogId: string; lineId: string; rate?: number }) =>
+    getOrCreate: (
+      data: { dialogId: string; lineId: string; rate?: number },
+      timeoutMs = DEFAULT_API_TIMEOUT_MS,
+    ) =>
       request<{ audioUrl: string; cached: boolean; dialog: import('../types').Dialog }>(
         '/tts',
         {
           method: 'POST',
           body: JSON.stringify(data),
         },
+        timeoutMs,
       ),
     ensureAll: (dialogId: string, rate?: number, options?: { force?: boolean }) =>
       request<{

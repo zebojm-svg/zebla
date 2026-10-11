@@ -1455,7 +1455,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'dialog-audio-line' && req.method === 'GET') {
       const user = await requireAuth(req)
-      const profile = await requireProfile(user.uid)
       const dialogId = req.query.dialogId as string | undefined
       const lineId = req.query.lineId as string | undefined
       if (!dialogId || !lineId) {
@@ -1463,7 +1462,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       try {
-        const dialog = await getDialog(dialogId, user.uid, profile)
+        const dialog = await getDialog(dialogId, user.uid)
         if (!dialog) {
           res.status(404).json({ error: 'Dialog nicht gefunden.' })
           return
@@ -1473,7 +1472,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(404).json({ error: 'Keine Audiodatei für diese Zeile.' })
           return
         }
-        const buffer = await downloadLineAudio(dialogId, lineId)
+        let buffer: Buffer
+        try {
+          buffer = await downloadLineAudio(dialogId, lineId)
+        } catch {
+          const remote = await fetch(found.line.audioUrl)
+          if (!remote.ok) throw new Error('Audiodatei nicht lesbar.')
+          buffer = Buffer.from(await remote.arrayBuffer())
+        }
         res.setHeader('Content-Type', 'audio/mpeg')
         res.setHeader('Cache-Control', 'private, max-age=3600')
         res.send(buffer)

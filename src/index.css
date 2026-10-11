@@ -3791,6 +3791,12 @@ html[dir='rtl'] .slideshow-topbar {
   margin: 0 0 0.55rem;
 }
 
+.film-scene-player-wait {
+  margin: 0 0 0.55rem;
+  font-weight: 700;
+  color: var(--accent-hover);
+}
+
 .film-play-now {
   margin: 0.55rem 0 0.2rem;
 }
