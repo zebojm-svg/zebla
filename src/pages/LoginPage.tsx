@@ -2,6 +2,14 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
+import { isVercelGitPreviewHost } from '../../shared/deploy-host'
+
+function firebaseErrorCode(err: unknown): string {
+  if (err && typeof err === 'object' && 'code' in err) {
+    return String((err as { code: unknown }).code)
+  }
+  return ''
+}
 
 export function LoginPage() {
   const { loginGoogle, loginStudent, firebaseReady } = useAuth()
@@ -11,15 +19,26 @@ export function LoginPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const previewHost =
+    typeof window !== 'undefined' && isVercelGitPreviewHost(window.location.hostname)
 
   const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (previewHost) {
+      setError(t('login.previewBlocked'))
+      return
+    }
     setLoading(true)
     try {
       await loginStudent(studentCode, name || undefined, classCode || undefined)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.error'))
+      const code = firebaseErrorCode(err)
+      if (code === 'auth/unauthorized-domain') {
+        setError(t('login.unauthorizedDomain'))
+      } else {
+        setError(err instanceof Error ? err.message : t('common.error'))
+      }
     } finally {
       setLoading(false)
     }
@@ -27,11 +46,20 @@ export function LoginPage() {
 
   const handleGoogleLogin = async () => {
     setError('')
+    if (previewHost) {
+      setError(t('login.previewBlocked'))
+      return
+    }
     setLoading(true)
     try {
       await loginGoogle()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.error'))
+      const code = firebaseErrorCode(err)
+      if (code === 'auth/unauthorized-domain') {
+        setError(t('login.unauthorizedDomain'))
+      } else {
+        setError(err instanceof Error ? err.message : t('common.error'))
+      }
     } finally {
       setLoading(false)
     }
@@ -60,7 +88,11 @@ export function LoginPage() {
         <h1>{t('brand.name')}</h1>
         <p className="login-subtitle">{t('login.subtitle')}</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {previewHost ? (
+          <div className="alert alert-error">{t('login.previewBlocked')}</div>
+        ) : error ? (
+          <div className="alert alert-error">{error}</div>
+        ) : null}
 
         <section className="login-section">
           <h2>{t('login.googleTitle')}</h2>
@@ -71,7 +103,7 @@ export function LoginPage() {
             type="button"
             className="btn btn-secondary google-btn"
             onClick={handleGoogleLogin}
-            disabled={loading}
+            disabled={loading || previewHost}
           >
             {t('login.googleBtn')}
           </button>
@@ -114,7 +146,7 @@ export function LoginPage() {
                 placeholder={t('login.displayNamePh')}
               />
             </label>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            <button type="submit" className="btn btn-primary" disabled={loading || previewHost}>
               {loading ? t('login.studentBusy') : t('login.studentBtn')}
             </button>
           </form>

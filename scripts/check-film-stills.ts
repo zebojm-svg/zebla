@@ -5,7 +5,9 @@
 import {
   applyPanelStill,
   buildFilmStillPrompt,
+  closeupCameraLine,
   closeupGenderLine,
+  correctionIsFaceOnly,
   correctFromUrlForPanel,
   correctionRewritesPerson,
   filmStillLanguageEn,
@@ -39,7 +41,7 @@ import {
   scenePlayBeats,
   scenePreviewBeats,
 } from '../shared/film-storyboard.ts'
-import { closeupCropBox, seatSideFromX } from '../shared/film-closeup-space.ts'
+import { closeupCropBox, closeupSpaceLine, seatSideFromX } from '../shared/film-closeup-space.ts'
 import { lookForCharacterName } from '../shared/story-character-looks.ts'
 import { isImageGenPath } from '../shared/api-timeout.ts'
 import type { Dialog } from '../shared/types.ts'
@@ -182,8 +184,14 @@ if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase()
 if (!closePrompt.toLowerCase().includes('zoom') && !closePrompt.toLowerCase().includes('push-in')) {
   fail('Nahaufnahme zoomt in die Übersicht')
 }
-if (!closePrompt.toLowerCase().includes('same table') && !closePrompt.toLowerCase().includes('same seat')) {
-  fail('Nahaufnahme bleibt am selben Tisch')
+if (!closePrompt.toLowerCase().includes('physically') && !closePrompt.toLowerCase().includes('perspective')) {
+  fail('Nahaufnahme ist Kamera näher, nicht nur Zoom-Wort')
+}
+if (!closePrompt.toLowerCase().includes('cropped screenshot') && !closePrompt.toLowerCase().includes('cut-out of the wide')) {
+  fail('Nahaufnahme darf kein Ausschnitt des Weit-Bilds sein')
+}
+if (!closePrompt.toLowerCase().includes('parallax') && !closePrompt.toLowerCase().includes('film from')) {
+  fail('Nahaufnahme verlangt neue Kameraposition, nicht Pixel-Zoom')
 }
 if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
   fail('Nahaufnahme verlangt undurchsichtige Augen')
@@ -428,8 +436,8 @@ if (!manPrompt.toLowerCase().includes('this speaker is male')) fail('Geschlecht-
 if (!manPrompt.toLowerCase().includes('wrong-gender')) {
   fail('Geschlecht wechseln: altes Gesicht nicht behalten')
 }
-if (!manPrompt.toLowerCase().includes('same seat') && !manPrompt.toLowerCase().includes('same table')) {
-  fail('Geschlecht wechseln: am Tisch bleiben')
+if (!manPrompt.toLowerCase().includes('cropped screenshot') && !manPrompt.toLowerCase().includes('new closer')) {
+  fail('Geschlecht wechseln: neu filmen, nicht ausschneiden')
 }
 if (!manPrompt.toLowerCase().includes('push-in') && !manPrompt.toLowerCase().includes('zoom')) {
   fail('Geschlecht wechseln: Zoom in die Übersicht, kein neues Porträt')
@@ -481,9 +489,43 @@ if (manAttach.toLowerCase().includes('exact people')) {
 if (!manAttach.toLowerCase().includes('sex and face may change')) {
   fail('Anhang sagt: Gesicht darf neu sein')
 }
-if (!manAttach.toLowerCase().includes('table')) fail('Anhang Nahaufnahme: Tisch')
-if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('room')) {
-  fail('Anhang schickt den Raum mit')
+if (!manAttach.toLowerCase().includes('cropped screenshot') && !manAttach.toLowerCase().includes('new closer')) {
+  fail('Anhang: neu filmen, nicht ausschneiden')
+}
+if (!manAttach.toLowerCase().includes('groundbild')) {
+  fail('Anhang schickt den Ort mit')
+}
+if (manAttach.toLowerCase().includes('first a crop') || manAttach.toLowerCase().includes('used only as a map')) {
+  fail('Anhang darf keinen Pixel-Ausschnitt als erstes Foto schicken')
+}
+if (!manAttach.toLowerCase().includes('walked closer') && !manAttach.toLowerCase().includes('parallax')) {
+  fail('Anhang: Kamera näher, neue Perspektive')
+}
+if (!correctionIsFaceOnly('Mund etwas offener')) fail('Mund = nur Mimik')
+if (correctionIsFaceOnly('Schöme ist ein Mann')) fail('Mann ist kein Mimik-Fix')
+if (correctionIsFaceOnly('Kamera näher')) fail('Kamera näher ist keine Mimik')
+if (!closeupCameraLine('Ramo').toLowerCase().includes('cropped screenshot')) {
+  fail('Kamera-Zeile verbietet den Ausschnitt')
+}
+if (!closeupCameraLine('Ramo').toLowerCase().includes('film from')) {
+  fail('Kamera-Zeile: Grundbild ist Vorlage, nicht das Ergebnis')
+}
+const spaceLine = closeupSpaceLine({ speaker: 'Ramo', settingHint: 'Wohnzimmer', speakerX: 20 })
+if (spaceLine.toLowerCase().includes('camera zoom of that gathering')) {
+  fail('Raumzeile darf den Ausschnitt nicht als Kamera ausgeben')
+}
+if (!spaceLine.toLowerCase().includes('wide groundbild') && !spaceLine.toLowerCase().includes('wide grundbild')) {
+  fail('Raumzeile: erstes Foto ist das Weit-Bild')
+}
+if (!spaceLine.toLowerCase().includes('parallax')) {
+  fail('Raumzeile: echte Kamerabewegung, nicht Crop')
+}
+const closeAttach = stillAttachmentInstruction({ correctingExisting: false, closeup: true })
+if (closeAttach.toLowerCase().includes('first a crop')) {
+  fail('Nahaufnahme-Anhang beginnt nicht mit dem Ausschnitt')
+}
+if (!closeAttach.toLowerCase().includes('wide groundbild') && !closeAttach.toLowerCase().includes('wide grundbild')) {
+  fail('Nahaufnahme-Anhang: zuerst das ganze Grundbild')
 }
 const mimicAttach = stillAttachmentInstruction({
   correctingExisting: true,

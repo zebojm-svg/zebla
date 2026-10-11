@@ -6,9 +6,13 @@ import { recordGeminiResponse } from './ai-usage-ledger.js'
 
 import { randomUUID } from 'crypto'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
-import { cropWideStillToSpeaker } from './film-closeup-crop.js'
+import {
+  closeupLooksLikeWideCrop,
+  cropWideStillToSpeaker,
+} from './film-closeup-crop.js'
 import {
   buildFilmStillPrompt,
+  correctionIsFaceOnly,
   correctionRewritesPerson,
   referenceUrlsForPanel,
   stillAttachmentInstruction,
@@ -56,49 +60,9 @@ async function loadRefs(urls: string[]): Promise<InlineImage[]> {
   return out
 }
 
-async function loadCloseupAwareRefs(
-  urls: string[],
-  cropFirst: boolean,
-  speakerX?: number,
-  speakerSitting?: boolean,
-): Promise<InlineImage[]> {
-  const refs = await loadRefs(urls)
-  if (!cropFirst || refs.length === 0) return refs
-  try {
-    const original = refs[0]!
-    const cropped = await cropWideStillToSpeaker(
-      Buffer.from(original.data, 'base64'),
-      speakerX ?? 50,
-      speakerSitting !== false,
-    )
-    const zoom: InlineImage = { mimeType: 'image/png', data: cropped.toString('base64') }
-    if (refs.length === 1) return [zoom, original]
-    return [zoom, ...refs.slice(1)]
-  } catch {
-    /* Übersicht unverändert anhängen */
-  }
-  return refs
-}
-
-/** Nahaufnahme = Zoom in die Übersicht, ohne die KI neu malen zu lassen. */
-export async function closeupUrlFromWideStill(opts: {
-  wideUrl: string
-  speakerX?: number
-  speakerSitting?: boolean
-}): Promise<string | undefined> {
-  const img = await fetchImageAsInline(opts.wideUrl)
-  if (!img) return undefined
-  try {
-    const cropped = await cropWideStillToSpeaker(
-      Buffer.from(img.data, 'base64'),
-      opts.speakerX ?? 50,
-      opts.speakerSitting !== false,
-    )
-    return await uploadPng(cropped, `film-stills/${randomUUID()}.png`)
-  } catch {
-    return undefined
-  }
-}
+const CLOSEUP_NOT_CROP_RETRY =
+  'RETRY: The previous image was a cropped screenshot of the wide photo. ' +
+  'Paint a NEW closer camera with parallax. Face larger. Do not copy, enlarge, or screenshot the attached photo.'
 
 async function uploadPng(buffer: Buffer, path: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -233,15 +197,7 @@ export async function generateFilmPanelStillImage(opts: {
     opts.correctFromUrl,
     opts.sceneWideStillUrl,
   )
-  const cropFromGrundbild =
-    opts.panel.shot === 'closeup' &&
-    Boolean(urls[0] && opts.sceneWideStillUrl && urls[0] === opts.sceneWideStillUrl)
-  const refs = await loadCloseupAwareRefs(
-    urls,
-    cropFromGrundbild,
-    opts.speakerX,
-    opts.speakerSitting,
-  )
+  const refs = await loadRefs(urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
     hasLibraryRefs: refs.length > 0,
     targetLanguage: opts.targetLanguage,
@@ -252,12 +208,39 @@ export async function generateFilmPanelStillImage(opts: {
     speakerX: opts.speakerX,
     continuityEn: opts.continuityEn,
   })
-  const buffer = await generateStillPng(
+  const rewritePerson = correctionRewritesPerson(opts.panel.stillCorrection)
+  const isCloseup = opts.panel.shot === 'closeup'
+  let buffer = await generateStillPng(
     prompt,
     refs,
     Boolean(opts.correctFromUrl),
-    opts.panel.shot === 'closeup',
-    correctionRewritesPerson(opts.panel.stillCorrection),
+    isCloseup,
+    rewritePerson,
   )
+  const shouldCatchCrop =
+    isCloseup && Boolean(opts.sceneWideStillUrl) && !correctionIsFaceOnly(opts.panel.stillCorrection)
+  if (shouldCatchCrop && opts.sceneWideStillUrl) {
+    const wide = await fetchImageAsInline(opts.sceneWideStillUrl)
+    if (wide) {
+      try {
+        const crop = await cropWideStillToSpeaker(
+          Buffer.from(wide.data, 'base64'),
+          opts.speakerX ?? 50,
+          opts.speakerSitting !== false,
+        )
+        if (await closeupLooksLikeWideCrop(buffer, crop)) {
+          buffer = await generateStillPng(
+            `${prompt}\n${CLOSEUP_NOT_CROP_RETRY}`,
+            refs,
+            Boolean(opts.correctFromUrl),
+            true,
+            rewritePerson,
+          )
+        }
+      } catch {
+        /* Vergleich fehlgeschlagen: das gemalte Bild trotzdem behalten */
+      }
+    }
+  }
   return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
 }

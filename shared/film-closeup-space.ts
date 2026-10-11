@@ -1,6 +1,6 @@
 /**
  * Nahaufnahme = Kamera näher an dieselbe Stelle im Weit-Bild.
- * Links/Mitte/Rechts und der Zuschnitt sagen der KI, was hinter der Person steht.
+ * Links/Mitte/Rechts sagen der KI, wen sie näher filmen soll — kein Pixel-Ausschnitt.
  */
 
 export type SeatSide = 'left' | 'center' | 'right'
@@ -25,9 +25,9 @@ export function closeupSpaceLine(opts: {
   const room = opts.settingHint?.trim() || 'the same room as the wide photo'
   return (
     `3D ROOM: ${speaker} is ${where} in ${room}. ` +
-    `The first attached photo is a camera zoom of that gathering. ` +
-    `Keep the exact furniture BEHIND this person in that photo (table edge, chairs, kitchen, window). ` +
-    `Do not invent a different wall or studio. Camera push-in, not a new portrait.`
+    `The first attached photo is the WIDE GROUNDBILD of that gathering. ` +
+    `Walk the camera closer to this person. Same furniture behind them, but it shifts with parallax ` +
+    `(not a blown-up crop of the wide photo). Do not invent a different wall or studio. Camera push-in, not a new portrait.`
   )
 }
 
