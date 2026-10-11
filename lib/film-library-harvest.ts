@@ -1,3 +1,4 @@
+import { recordGeminiResponse } from './ai-usage-ledger.js'
 /**
  * Standbild zerlegen und sofort in die Bibliothek legen.
  * Pro Figur eine Maske (auch bei Überlappung), Hintergrund ohne Leute.
@@ -112,6 +113,7 @@ async function generateGeminiPng(
       )
       clearTimeout(timer)
       const data = (await res.json()) as GeminiImageResponse
+      recordGeminiResponse('image-cutout', model, data)
       if (data.error?.message) throw new Error(data.error.message)
       const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
       if (!img?.data) throw new Error(fallback)

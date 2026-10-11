@@ -1,3 +1,4 @@
+import { recordGeminiResponse } from './ai-usage-ledger.js'
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
 import {
   armPosePrompt,
@@ -119,6 +120,7 @@ async function generateGeminiPng(
         timeoutMs,
       )
       const data = (await res.json()) as GeminiImageResponse
+      recordGeminiResponse('story-asset', model, data)
       return extractGeminiImage(data, fallback, model)
     } catch (err) {
       lastError = err instanceof Error ? err.message : fallback

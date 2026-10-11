@@ -1,3 +1,4 @@
+import { recordGeminiResponse } from './ai-usage-ledger.js'
 /**
  * Fertiges Standbild für eine Storyboard-Zeile.
  * Gemini mit Bibliotheks-Fotos als Lock — kein Blinken, kein Film.
@@ -155,6 +156,7 @@ async function generateStillPng(
       )
       clearTimeout(timer)
       const data = (await res.json()) as GeminiImageResponse
+      recordGeminiResponse('still', model, data)
       if (data.error?.message) throw new Error(data.error.message)
       const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
       if (!img?.data) throw new Error('Kein Standbild erhalten.')

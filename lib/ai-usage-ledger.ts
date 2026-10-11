@@ -123,3 +123,10 @@ export function recordGeminiUsage(kind: string, model: string, usage: unknown): 
     // Verbrauchsbuch darf den KI-Aufruf nie stören.
   }
 }
+
+/** Für rohe REST-Antworten von `:generateContent` (usageMetadata/modelVersion aus dem JSON). */
+export function recordGeminiResponse(kind: string, model: string, data: unknown): void {
+  const d = (data ?? {}) as { usageMetadata?: unknown; modelVersion?: unknown }
+  const version = typeof d.modelVersion === 'string' && d.modelVersion ? d.modelVersion : model
+  recordGeminiUsage(kind, version, d.usageMetadata)
+}

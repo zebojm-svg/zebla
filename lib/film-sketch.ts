@@ -1,3 +1,4 @@
+import { recordGeminiResponse } from './ai-usage-ledger.js'
 import { randomUUID } from 'crypto'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
 
@@ -59,6 +60,7 @@ export async function generateCheapStoryboardSketch(opts: {
         },
       )
       const data = (await res.json()) as GeminiImageResponse
+      recordGeminiResponse('sketch', model, data)
       if (data.error?.message) throw new Error(data.error.message)
       const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
       if (!img?.data) throw new Error('Kein Skizzenbild.')
