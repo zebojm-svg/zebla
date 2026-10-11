@@ -50,10 +50,13 @@ export function FilmSceneGenerateBar({
   const hint = stillLibraryHintDe(panels)
   const harvestNotes = sceneHarvestNotesDe(panels)
   const allDone = stats.total > 0 && stats.pending === 0
+  const paintingOne = Boolean(busy && progress && progress.total === 1)
   const label = busy
-    ? progress
-      ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
-      : 'Erzeuge Szene …'
+    ? paintingOne
+      ? 'Bild wird neu gemalt …'
+      : progress
+        ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
+        : 'Erzeuge Szene …'
     : allDone
       ? 'Szene nochmals erzeugen'
       : stats.done > 0
@@ -96,7 +99,7 @@ export function FilmSceneGenerateBar({
       ) : null}
       <p className="muted film-scene-still-note">
         {shotPlanDe ||
-          'Ein Bild je Dialogzeile. Die erste Zeile ist der ganze Raum; die nächsten nehmen dasselbe Bild, bis du etwas änderst (z.B. Ramo aufstehen).'}
+          'Ein Bild je Dialogzeile. Die erste Zeile ist der ganze Raum; die nächsten nehmen dasselbe Bild, bis du unter «Bild ändern» etwas neu malst (z.B. Schöme ist ein Mann).'}
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {expectedShots != null && stats.total < expectedShots ? (
@@ -108,8 +111,11 @@ export function FilmSceneGenerateBar({
       ) : null}
       {busy ? (
         <p className="film-scene-progress" aria-live="polite">
-          Erzeuge Szene «{scene.title}»
-          {progress ? ` — Bild ${progress.current} von ${progress.total}` : ' …'}
+          {paintingOne
+            ? `Bild in «${scene.title}» wird neu gemalt …`
+            : `Erzeuge Szene «${scene.title}»${
+                progress ? ` — Bild ${progress.current} von ${progress.total}` : ' …'
+              }`}
         </p>
       ) : null}
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -329,7 +335,7 @@ export function FilmStillFixBar({
             className="input"
             value={note}
             disabled={busy}
-            placeholder="z.B. lass Ramo aufstehen, Nahaufnahme Khan"
+            placeholder="z.B. Schöme ist ein Mann, Ramo steht auf"
             onChange={(e) => setNote(e.target.value)}
           />
           <button

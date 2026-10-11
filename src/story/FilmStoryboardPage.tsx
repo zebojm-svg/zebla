@@ -33,7 +33,7 @@ function PanelCard({
   panel,
   dialog,
   busy,
-  onTweak,
+  painting,
   onComment,
   onInsert,
   onCorrect,
@@ -43,16 +43,23 @@ function PanelCard({
   panel: FilmStoryboardPanel
   dialog: Dialog
   busy: boolean
-  onTweak: (note: string) => void
+  painting?: boolean
   onComment: (comment: string) => void
   onInsert: (text: string) => void
   onCorrect: (note: string) => void
   onSketch: () => void
   onLayout: (dialog: Dialog, board: FilmStoryboard) => void
 }) {
-  const [note, setNote] = useState(panel.directorNote ?? '')
+  const [note, setNote] = useState(panel.stillCorrection || panel.directorNote || '')
   const [comment, setComment] = useState(panel.comment ?? '')
   const bg = panel.background
+
+  useEffect(() => {
+    setNote(panel.stillCorrection || panel.directorNote || '')
+  }, [panel.id, panel.stillCorrection, panel.directorNote])
+  useEffect(() => {
+    setComment(panel.comment ?? '')
+  }, [panel.id, panel.comment])
 
   return (
     <article className="film-panel">
@@ -82,7 +89,10 @@ function PanelCard({
         sourceLanguage={dialog.sourceLanguage}
         notes={
           <>
-            <p className="film-beat-count">Bild {panel.panelIndex}</p>
+            <p className="film-beat-count">
+              Bild {panel.panelIndex}
+              {painting ? <span> · wird neu gemalt …</span> : null}
+            </p>
             <FilmBeatNotes panel={panel} dialog={dialog} />
             <div className="film-matches">
               {panel.placements.map((pl) => (
@@ -103,21 +113,26 @@ function PanelCard({
       />
       <details className="film-panel-more">
         <summary>Bild ändern</summary>
+        {painting ? (
+          <p className="film-panel-painting" aria-live="polite">
+            Bild wird neu gemalt … das dauert etwa eine Minute.
+          </p>
+        ) : null}
         <div className="film-tweak">
           <input
             className="input"
             value={note}
             disabled={busy}
-            placeholder="z.B. Julien eher im Hintergrund"
+            placeholder="z.B. Schöme ist ein Mann"
             onChange={(e) => setNote(e.target.value)}
           />
           <button
             type="button"
             className="btn btn-secondary btn-sm"
             disabled={busy || !note.trim()}
-            onClick={() => onTweak(note.trim())}
+            onClick={() => onCorrect(note.trim())}
           >
-            Anpassen
+            {painting ? 'Malt …' : 'Bild neu malen'}
           </button>
         </div>
         <label className="film-comment">
@@ -134,12 +149,7 @@ function PanelCard({
             }}
           />
         </label>
-        <FilmStillFixBar
-          panel={panel}
-          busy={busy}
-          onCorrect={onCorrect}
-          onInsert={onInsert}
-        />
+        <FilmStillFixBar panel={panel} busy={busy} onInsert={onInsert} />
         <div className="film-tweak">
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
             {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
@@ -428,7 +438,7 @@ export function FilmStoryboardPage() {
                       dialog={dialog}
                       busy={locked}
                       onLayout={apply}
-                      onTweak={(note) => void run(() => api.ai.filmStoryboardTweak(id, panel.id, note))}
+                      painting={stills.busyPanelId === panel.id}
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
                       }
