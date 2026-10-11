@@ -64,17 +64,39 @@ async function loadCloseupAwareRefs(
   const refs = await loadRefs(urls)
   if (!cropFirst || refs.length === 0) return refs
   try {
-    const first = refs[0]!
+    const original = refs[0]!
     const cropped = await cropWideStillToSpeaker(
-      Buffer.from(first.data, 'base64'),
+      Buffer.from(original.data, 'base64'),
       speakerX ?? 50,
       speakerSitting !== false,
     )
-    refs[0] = { mimeType: 'image/png', data: cropped.toString('base64') }
+    const zoom: InlineImage = { mimeType: 'image/png', data: cropped.toString('base64') }
+    if (refs.length === 1) return [zoom, original]
+    return [zoom, ...refs.slice(1)]
   } catch {
     /* Übersicht unverändert anhängen */
   }
   return refs
+}
+
+/** Nahaufnahme = Zoom in die Übersicht, ohne die KI neu malen zu lassen. */
+export async function closeupUrlFromWideStill(opts: {
+  wideUrl: string
+  speakerX?: number
+  speakerSitting?: boolean
+}): Promise<string | undefined> {
+  const img = await fetchImageAsInline(opts.wideUrl)
+  if (!img) return undefined
+  try {
+    const cropped = await cropWideStillToSpeaker(
+      Buffer.from(img.data, 'base64'),
+      opts.speakerX ?? 50,
+      opts.speakerSitting !== false,
+    )
+    return await uploadPng(cropped, `film-stills/${randomUUID()}.png`)
+  } catch {
+    return undefined
+  }
 }
 
 async function uploadPng(buffer: Buffer, path: string): Promise<string> {
@@ -161,6 +183,7 @@ export function stillPromptForPanel(
     beatTotal?: number
     speakerGender?: 'male' | 'female'
     speakerX?: number
+    continuityEn?: string
   },
 ): string {
   return buildFilmStillPrompt({
@@ -184,6 +207,7 @@ export function stillPromptForPanel(
     closeupSpeaker: panel.closeupSpeaker,
     speakerGender: extras.speakerGender,
     speakerX: extras.speakerX,
+    continuityEn: extras.continuityEn,
   })
 }
 
@@ -199,6 +223,7 @@ export async function generateFilmPanelStillImage(opts: {
   speakerGender?: 'male' | 'female'
   speakerX?: number
   speakerSitting?: boolean
+  continuityEn?: string
 }): Promise<string> {
   const urls = referenceUrlsForPanel(
     opts.panel,
@@ -206,9 +231,12 @@ export async function generateFilmPanelStillImage(opts: {
     opts.correctFromUrl,
     opts.sceneWideStillUrl,
   )
+  const cropFromGrundbild =
+    opts.panel.shot === 'closeup' &&
+    Boolean(urls[0] && opts.sceneWideStillUrl && urls[0] === opts.sceneWideStillUrl)
   const refs = await loadCloseupAwareRefs(
     urls,
-    opts.panel.shot === 'closeup' && !opts.correctFromUrl,
+    cropFromGrundbild,
     opts.speakerX,
     opts.speakerSitting,
   )
@@ -220,6 +248,7 @@ export async function generateFilmPanelStillImage(opts: {
     beatTotal: opts.beatTotal,
     speakerGender: opts.speakerGender,
     speakerX: opts.speakerX,
+    continuityEn: opts.continuityEn,
   })
   const buffer = await generateStillPng(
     prompt,

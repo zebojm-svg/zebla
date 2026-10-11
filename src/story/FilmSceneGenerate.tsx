@@ -8,11 +8,20 @@ import type { Dialog } from '../types'
 import { isRtlLanguage, languageName } from '../types'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
+  isFilmStoryboard,
+  normalizeFilmStoryboard,
+  panelAddressee,
   panelDialogueLines,
   type FilmPanelDialogueLine,
 } from '../../shared/film-storyboard'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
-import { sceneStillProgress, stillLibraryHintDe } from '../../shared/film-stills'
+import {
+  gazeNoteDe,
+  sceneGrundbildPanel,
+  sceneStillProgress,
+  seatingNoteDe,
+  stillLibraryHintDe,
+} from '../../shared/film-stills'
 import { FilmStillPicture } from './FilmStillArrange'
 
 type Props = {
@@ -99,7 +108,7 @@ export function FilmSceneGenerateBar({
       ) : null}
       <p className="muted film-scene-still-note">
         {shotPlanDe ||
-          'Ein Bild je Dialogzeile. Die erste Zeile ist der ganze Raum; die nächsten nehmen dasselbe Bild, bis du unter «Bild ändern» etwas neu malst (z.B. Schöme ist ein Mann).'}
+          'Ein Bild je Dialogzeile. Die erste Zeile ist das Grundbild (ganzer Raum, wer wo sitzt). Die nächsten nehmen dasselbe Bild, bis du unter «Bild ändern» etwas neu malst. Kurzer Hinweis reicht — Sitzplan und Raum gehen von allein mit.'}
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {expectedShots != null && stats.total < expectedShots ? (
@@ -202,18 +211,31 @@ export function FilmBeatNotes({
 }) {
   const voices = dialog?.storyMeta?.voicesNote?.trim()
   const look = dialog?.storyMeta?.lookNote?.trim()
+  const board =
+    dialog?.filmStoryboard && isFilmStoryboard(dialog.filmStoryboard)
+      ? normalizeFilmStoryboard(dialog.filmStoryboard)
+      : null
+  const wide = board ? sceneGrundbildPanel(board, panel.sceneId) : undefined
+  const seats = seatingNoteDe((wide ?? panel).placements)
+  const speaker = panel.closeupSpeaker || panelDialogueLines(panel, dialog)[0]?.speaker || ''
+  const gaze = gazeNoteDe(speaker, panelAddressee(panel, dialog), look)
   return (
     <div className="film-beat-notes-list">
       {panel.shot === 'closeup' ? (
         <p>
-          <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''}
+          <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''} — Zoom in die Übersicht
         </p>
       ) : (
         <p>
-          <strong>Kamera</strong> Weit — ganzer Raum
+          <strong>Kamera</strong> Weit — ganzer Raum (Grundbild)
         </p>
       )}
       {panel.imageCue ? <p>{panel.imageCue}</p> : null}
+      {seats ? (
+        <p>
+          <strong>Sitzplan</strong> {seats}
+        </p>
+      ) : null}
       {voices ? (
         <p>
           <strong>Stimmen</strong> {voices}
@@ -229,9 +251,9 @@ export function FilmBeatNotes({
           <strong>Ton</strong> {panel.soundCue}
         </p>
       ) : null}
-      {look ? (
+      {gaze ? (
         <p>
-          <strong>Blick</strong> {look}
+          <strong>Blick</strong> {gaze}
         </p>
       ) : null}
       {panel.expressionHint ? (

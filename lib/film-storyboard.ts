@@ -15,20 +15,28 @@ import {
   insertSceneAfter,
   isFilmStoryboard,
   normalizeFilmStoryboard,
+  panelAddressee,
   type FilmDraftPanel,
   type FilmPlan,
+  type FilmPlacement,
   type FilmStoryboard,
+  type FilmStoryboardPanel,
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
-import { generateFilmPanelStillImage } from './film-stills.js'
+import { closeupUrlFromWideStill, generateFilmPanelStillImage } from './film-stills.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
+  correctionRewritesPerson,
   correctFromUrlForPanel,
   genderFromPictureNote,
+  personNamedInCorrection,
   previousStillUrlInScene,
+  replaceStillUrl,
+  sceneContinuityBlock,
+  sceneGrundbildPanel,
   sceneWidePanel,
   sceneWideStillUrl,
 } from '../shared/film-stills.js'
@@ -40,6 +48,66 @@ import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
 import { speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
+
+function sittingFromPlacement(pl: FilmPlacement | undefined): boolean {
+  if (!pl) return true
+  return pl.poseId === 'sitting' || /sit/i.test(pl.poseHint || '')
+}
+
+function continuityEnFor(
+  dialog: Dialog,
+  panel: FilmStoryboardPanel,
+  wide: FilmStoryboardPanel | undefined,
+  speaker: string,
+  correction?: string,
+): string {
+  const placements = (wide ?? panel).placements
+  const names = [...new Set(placements.map((pl) => pl.name.trim()).filter(Boolean))]
+  const genders: Record<string, 'male' | 'female' | undefined> = {}
+  for (const name of names) {
+    const fromNote =
+      speaker && name.trim().toLowerCase() === speaker.trim().toLowerCase()
+        ? genderFromPictureNote(correction)
+        : undefined
+    genders[name] = fromNote ?? speakerGender(dialog, name) ?? genderFromKnownName(name)
+  }
+  return sceneContinuityBlock({
+    placements,
+    speaker,
+    addressee: panelAddressee(panel, dialog),
+    lookNote: dialog.storyMeta?.lookNote,
+    genders,
+    stillCorrection: correction,
+    hasGrundbild: Boolean(wide?.stillUrl || ((panel.shot ?? 'wide') !== 'closeup' && panel.stillUrl)),
+  })
+}
+
+async function recropSpeakerCloseups(
+  board: FilmStoryboard,
+  sceneId: string,
+  speaker: string,
+  wideUrl: string,
+  widePlacements: FilmPlacement[],
+  styleId: string,
+  alsoPanelId?: string,
+): Promise<FilmStoryboard> {
+  const want = speaker.trim().toLowerCase()
+  let next = board
+  for (const p of board.panels) {
+    if (p.sceneId !== sceneId) continue
+    if ((p.shot ?? 'wide') !== 'closeup') continue
+    const who = (p.closeupSpeaker || p.placements[0]?.name || '').trim().toLowerCase()
+    if (p.id !== alsoPanelId && who !== want) continue
+    const seat = widePlacements.find((pl) => pl.name.trim().toLowerCase() === (who || want))
+    const cropped = await closeupUrlFromWideStill({
+      wideUrl,
+      speakerX: seat?.x,
+      speakerSitting: sittingFromPlacement(seat),
+    })
+    if (cropped) next = applyPanelStill(next, p.id, cropped, styleId)
+  }
+  return next
+}
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
 Nur JSON.
@@ -449,15 +517,75 @@ export async function stillFilmPanel(
       }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
-    if (!correctFromUrl) {
+    if (!correctFromUrl && (panelForGen.shot ?? 'wide') !== 'closeup') {
       const prevUrl = previousStillUrlInScene(boardForGen, panelForGen)
       if (prevUrl) correctFromUrl = prevUrl
     }
-    const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
-    const wide = (panelForGen.shot ?? 'wide') === 'closeup' ? sceneWidePanel(boardForGen, panelForGen) : undefined
-    const whoOnWide = wide?.placements.find(
+    const grund = sceneGrundbildPanel(boardForGen, panelForGen.sceneId)
+    const wide =
+      grund && grund.id !== panelForGen.id
+        ? grund
+        : (panelForGen.shot ?? 'wide') === 'closeup'
+          ? sceneWidePanel(boardForGen, panelForGen)
+          : panelForGen
+    const seatNames = (wide ?? panelForGen).placements.map((pl) => pl.name)
+    const speaker =
+      personNamedInCorrection(correction, seatNames) ||
+      panelForGen.closeupSpeaker ||
+      panelForGen.placements[0]?.name ||
+      ''
+    const whoOnWide = (wide ?? panelForGen).placements.find(
       (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
     )
+    const continuityEn = continuityEnFor(dialog, panelForGen, wide, speaker, correction)
+    const rewrite = Boolean(correction && correctionRewritesPerson(correction))
+    const isCloseup = (panelForGen.shot ?? 'wide') === 'closeup'
+    const grundUrl = grund?.stillUrl
+
+    if (rewrite && isCloseup && grundUrl && grund) {
+      const wideForGen: FilmStoryboardPanel = {
+        ...grund,
+        stillCorrection: correction,
+        directorNote: correction,
+        shot: 'wide',
+      }
+      const newWideUrl = await generateFilmPanelStillImage({
+        panel: wideForGen,
+        scene,
+        styleId: resolvedStyle,
+        previousStillUrl: undefined,
+        correctFromUrl: grundUrl,
+        targetLanguage,
+        beatTotal,
+        sceneWideStillUrl: grundUrl,
+        speakerGender:
+          genderFromPictureNote(correction) ??
+          speakerGender(dialog, speaker) ??
+          genderFromKnownName(speaker),
+        speakerX: whoOnWide?.x,
+        speakerSitting: sittingFromPlacement(whoOnWide),
+        continuityEn,
+      })
+      let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
+      next = replaceStillUrl(next, grundUrl, newWideUrl, panelForGen.sceneId)
+      next = await recropSpeakerCloseups(
+        next,
+        panelForGen.sceneId,
+        speaker,
+        newWideUrl,
+        wideForGen.placements,
+        resolvedStyle,
+        panelId,
+      )
+      const withNote = applyPanelHarvestNote(
+        next,
+        panelId,
+        `Neu gemalt: ${correction} — bleibt am Tisch der Übersicht.`,
+      )
+      const updated = await persist(withNote)
+      return { dialog: updated, board: withNote }
+    }
+
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -466,24 +594,34 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
       beatTotal,
-      sceneWideStillUrl: wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen),
+      sceneWideStillUrl: wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen) ?? grundUrl,
       speakerGender:
         genderFromPictureNote(correction) ??
         speakerGender(dialog, speaker) ??
         genderFromKnownName(speaker),
       speakerX: whoOnWide?.x,
-      speakerSitting: whoOnWide
-        ? whoOnWide.poseId === 'sitting' || /sit/i.test(whoOnWide.poseHint || '')
-        : true,
+      speakerSitting: sittingFromPlacement(whoOnWide),
+      continuityEn,
     })
-    const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+    let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+    if (rewrite && !isCloseup && panelForGen.stillUrl) {
+      withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
+      withStill = await recropSpeakerCloseups(
+        withStill,
+        panelForGen.sceneId,
+        speaker,
+        url,
+        panelForGen.placements,
+        resolvedStyle,
+      )
+    }
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
       correction
-        ? `Neu gemalt: ${correction}`
-        : (panelForGen.shot ?? 'wide') === 'closeup'
-          ? `Nahaufnahme ${speaker}: Kamera näher an dieselbe Person in der Übersicht — gleicher Platz, scharfe Augen.`
+        ? `Neu gemalt: ${correction} — gleicher Tisch, gleiche Plätze.`
+        : isCloseup
+          ? `Nahaufnahme ${speaker}: Zoom in die Übersicht — gleicher Platz am Tisch.`
           : pieceNote
             ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
             : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',

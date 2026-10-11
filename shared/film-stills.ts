@@ -3,11 +3,13 @@
  * Bibliothek zuerst (Gesichter festhalten), Stil aus dem Film-Schritt.
  */
 
-import { closeupSpaceLine } from './film-closeup-space.js'
+import { closeupSpaceLine, seatSideFromX } from './film-closeup-space.js'
 import { getStoryArtStyle, getStoryStylePrompt } from './story-art-styles.js'
 import { STORY_STILLS_LOCK_PROMPT } from './story-stills.js'
+import { lookForCharacterName } from './story-character-looks.js'
 import {
   normalizeFilmStoryboard,
+  type FilmPlacement,
   type FilmStoryboard,
   type FilmStoryboardPanel,
 } from './film-storyboard.js'
@@ -125,6 +127,159 @@ export function sceneWideStillUrl(
   return sceneWidePanel(board, panel)?.stillUrl
 }
 
+/** Erstes Weit-Bild der Szene — das Grundbild (Raum + wer wo sitzt). */
+export function sceneGrundbildPanel(
+  board: FilmStoryboard,
+  sceneId: string,
+): FilmStoryboardPanel | undefined {
+  return panelsForScene(board, sceneId).find(
+    (p) => (p.shot ?? 'wide') !== 'closeup' && Boolean(p.stillUrl?.startsWith('http')),
+  )
+}
+
+export function replaceStillUrl(
+  board: FilmStoryboard,
+  fromUrl: string,
+  toUrl: string,
+  sceneId?: string,
+): FilmStoryboard {
+  if (!fromUrl || fromUrl === toUrl) return normalizeFilmStoryboard(board)
+  const next = normalizeFilmStoryboard(board)
+  return {
+    ...next,
+    panels: next.panels.map((p) => {
+      if (sceneId && p.sceneId !== sceneId) return p
+      if (p.stillUrl !== fromUrl) return p
+      return { ...p, stillUrl: toUrl, stillError: undefined }
+    }),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+const SIDE_DE: Record<ReturnType<typeof seatSideFromX>, string> = {
+  left: 'links',
+  center: 'in der Mitte',
+  right: 'rechts',
+}
+
+function isSittingPlacement(pl: Pick<FilmPlacement, 'poseId' | 'poseHint'>): boolean {
+  return pl.poseId === 'sitting' || /sit/i.test(pl.poseHint || '')
+}
+
+/** Sitzplan für die KI: wer bleibt wo am Tisch. */
+export function seatingLockEn(
+  placements: Array<Pick<FilmPlacement, 'name' | 'x' | 'poseId' | 'poseHint'>>,
+): string {
+  const people = placements.filter((pl) => pl.name.trim())
+  if (people.length === 0) return ''
+  const bits = people.map((pl) => {
+    const side = seatSideFromX(pl.x)
+    return `${pl.name} ${isSittingPlacement(pl) ? 'sits' : 'stands'} on the ${side}`
+  })
+  return (
+    `SEATING LOCK (180-degree rule): ${bits.join('; ')}. ` +
+    `Everyone stays in that seat at this table unless the director fix explicitly stands them up. ` +
+    `Do not move someone to a new room, a studio, or an empty chair. ` +
+    `What is behind each person (wall, kitchen, window, table edge) stays as in the attached room photo.`
+  )
+}
+
+export function seatingNoteDe(
+  placements: Array<Pick<FilmPlacement, 'name' | 'x' | 'poseId' | 'poseHint'>>,
+): string | null {
+  const people = placements.filter((pl) => pl.name.trim())
+  if (people.length === 0) return null
+  return people
+    .map((pl) => {
+      const sit = isSittingPlacement(pl)
+      return `${pl.name} ${sit ? 'sitzt' : 'steht'} ${SIDE_DE[seatSideFromX(pl.x)]}`
+    })
+    .join(', ')
+}
+
+export function gazeLockEn(speaker: string, addressee?: string, lookNote?: string): string {
+  const who = speaker.trim() || 'the speaker'
+  const to = addressee?.trim()
+  const look = lookNote?.trim()
+  const gaze = to
+    ? `${who} looks at ${to} (conversation partner in this gathering), NOT at the camera.`
+    : `${who} looks at their conversation partner in this gathering, NOT at the camera.`
+  return `GAZE LOCK: ${gaze}${look ? ` Look/lighting: ${look}.` : ''}`
+}
+
+export function gazeNoteDe(speaker: string, addressee?: string, lookNote?: string): string | null {
+  const who = speaker.trim()
+  const to = addressee?.trim()
+  const look = lookNote?.trim()
+  if (who && to) return `${who} schaut ${to} an${look ? ` — ${look}` : ''}`
+  if (look) return look
+  return null
+}
+
+export function personNamedInCorrection(note: string | undefined, names: string[]): string | undefined {
+  const t = (note || '').toLowerCase()
+  if (!t) return undefined
+  return names.find((n) => n.trim() && t.includes(n.trim().toLowerCase()))
+}
+
+export function castIdentityLockEn(opts: {
+  names: string[]
+  genders: Record<string, 'male' | 'female' | undefined>
+  stillCorrection?: string
+}): string {
+  const names = opts.names.filter(Boolean)
+  if (names.length === 0) return ''
+  const rewrite = correctionRewritesPerson(opts.stillCorrection)
+  const changed = personNamedInCorrection(opts.stillCorrection, names)
+  const bits = names.map((name) => {
+    const g = opts.genders[name]
+    const sex =
+      g === 'male' ? 'male' : g === 'female' ? 'female' : 'the same sex as in the attached room photo'
+    const changing = rewrite && changed && name.trim().toLowerCase() === changed.trim().toLowerCase()
+    return changing
+      ? `${name} is ${sex} AFTER the director fix (face/sex may change; they stay the same person in the same seat)`
+      : `${name} is ${sex} — same person throughout this scene, same face as in the attached room photo`
+  })
+  const looks = rewrite
+    ? []
+    : names
+        .map((n) => lookForCharacterName(n)?.identityLock)
+        .filter((s): s is string => Boolean(s))
+  return `CAST LOCK: ${bits.join('. ')}. ${
+    rewrite
+      ? 'Only the named person in the director fix may change sex/face. Everyone else stays the same people in the same seats.'
+      : 'Keep these exact identities. Do not swap faces.'
+  }${looks.length ? ` ${looks.join(' ')}` : ''}`
+}
+
+export function sceneContinuityBlock(opts: {
+  placements?: Array<Pick<FilmPlacement, 'name' | 'x' | 'poseId' | 'poseHint'>>
+  speaker?: string
+  addressee?: string
+  lookNote?: string
+  genders?: Record<string, 'male' | 'female' | undefined>
+  stillCorrection?: string
+  hasGrundbild?: boolean
+}): string {
+  const placements = opts.placements ?? []
+  const names = [...new Set(placements.map((pl) => pl.name.trim()).filter(Boolean))]
+  const ground = opts.hasGrundbild
+    ? 'GROUNDBILD: The attached room photo is THIS scene. Same table, same furniture, same people in the same seats. Do not invent a new location.'
+    : ''
+  return [
+    ground,
+    seatingLockEn(placements),
+    gazeLockEn(opts.speaker || '', opts.addressee, opts.lookNote),
+    castIdentityLockEn({
+      names,
+      genders: opts.genders ?? {},
+      stillCorrection: opts.stillCorrection,
+    }),
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 export function referenceUrlsForPanel(
   panel: FilmStoryboardPanel,
   _previousStillUrl?: string,
@@ -225,7 +380,7 @@ export function correctFromUrlForPanel(
   const note = correction?.trim()
   if (!note) return undefined
   if (correctionRewritesPerson(note)) {
-    return sceneWideStillUrl(board, panel) || panel.stillUrl
+    return sceneGrundbildPanel(board, panel.sceneId)?.stillUrl || panel.stillUrl
   }
   return panel.stillUrl
 }
@@ -236,14 +391,17 @@ export function stillAttachmentInstruction(opts: {
   closeup: boolean
   rewritePerson?: boolean
 }): string {
+  if (opts.rewritePerson && opts.closeup) {
+    return 'Attached photos: FIRST a CAMERA ZOOM crop of the gathering — this person still sitting in their seat at the table, table edge visible. SECOND the full GROUNDBILD (whole room) so you know who sits where and what is behind whom. Keep them sitting at that table. Sex and face may change as the director fix says. Do not stand them up. Do not move them to a studio. Do not paint a new room. Do not keep a wrong-gender face.'
+  }
   if (opts.rewritePerson) {
-    return 'Attached photos: first the CURRENT room/frame. Keep that same room, furniture and camera. Redraw the speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl.'
+    return 'Attached photos: first the GROUNDBILD of this room. Keep that same room, furniture, camera and seating. Everyone stays at this table. Redraw only the named person as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl. Do not invent a new location.'
   }
   if (opts.correctingExisting) {
     return 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
   }
   if (opts.closeup) {
-    return 'Attached photos: first a CAMERA ZOOM crop of the wide gathering (same table and furniture behind this person), then the identity plate. Keep that exact room behind them. Same face, hair, clothes, sex. Fully drawn opaque eyes (iris and pupil, not glass). Not a new studio, not heavy blur, not a cut-out bust.'
+    return 'Attached photos: FIRST a CAMERA ZOOM crop of the wide gathering (same table and furniture behind this person). SECOND the full room photo so you know who sits where and what is behind whom. Keep that exact room. Same face, hair, clothes, sex unless the director fix changes this person. Fully drawn opaque eyes (iris and pupil, not glass). Not a new studio, not heavy blur, not a cut-out bust.'
   }
   return 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.'
 }
@@ -280,6 +438,7 @@ export function buildFilmStillPrompt(opts: {
   closeupSpeaker?: string
   speakerGender?: 'male' | 'female'
   speakerX?: number
+  continuityEn?: string
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -291,7 +450,7 @@ export function buildFilmStillPrompt(opts: {
   const closeEyes =
     'Eyes fully drawn and opaque: white sclera, colored iris, dark pupil — never translucent, glassy, hollow, see-through, or empty-white.'
   const lock = rewritePerson
-    ? `${closeEyes} ${closeupGenderLine(opts.speakerGender)} Keep the same room and furniture. Redraw the speaker as the director fix says. Do not keep a wrong-gender face.`
+    ? `${closeEyes} ${closeupGenderLine(opts.speakerGender)} Keep the same room, the same table and the same seats. The speaker stays sitting with the others. Redraw only that person as the director fix says. Do not keep a wrong-gender face. Do not stand them up or move them to a studio.`
     : opts.hasLibraryRefs
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: zoom into THAT person in the gathering. They stay in the SAME seat at the SAME table in the SAME room (table edge still visible and fairly sharp). Same face, hair, clothes, light, sex. If only an identity plate is attached, paint a close-up of that exact person still in that place. Head and shoulders filling the frame, hair fully visible (not cropped). ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust, not a full-body studio figure pasted into a sofa, not a blurry studio wash.`
@@ -314,13 +473,16 @@ export function buildFilmStillPrompt(opts: {
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
       ? rewritePerson
-        ? `CLOSE-UP of ${opts.closeupSpeaker || 'the speaker'} as the director fix describes: same room and seat, new correct face and sex. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. Do not keep a wrong-gender face from the attached photo.`
+        ? `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached GROUNDBILD. They stay in the SAME seat at the SAME table with the others. New correct face and sex. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. Table edge still visible. Not a studio portrait. Do not keep a wrong-gender face from the attached photo.`
         : `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached WIDE still. They stay in the SAME seat at the SAME table. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. The same room stays recognizable behind them (table, kitchen), fairly sharp — not a studio, not heavy blur.`
-      : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
+      : rewritePerson
+        ? `WIDE shot of the SAME gathering. Keep this camera, this table and these seats. Apply the director fix to the named person only. Everyone else stays where they are. Sitting people stay sitting, hips on the seat.`
+        : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
     opts.correctingExisting
       ? ''
       : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
+    opts.continuityEn || '',
     lock,
     isCloseup
       ? closeupSpaceLine({
@@ -332,7 +494,7 @@ export function buildFilmStillPrompt(opts: {
       : '',
     opts.correctingExisting
       ? correctionRewritesPerson(opts.stillCorrection)
-        ? 'An attached photo is the CURRENT frame. Keep the SAME room, furniture and camera. Redraw the speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face.'
+        ? 'An attached photo is the CURRENT GROUNDBILD. Keep the SAME room, furniture, camera and seats. The named person stays at this table. Redraw that speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not stand them up.'
         : isCloseup
           ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'
           : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'

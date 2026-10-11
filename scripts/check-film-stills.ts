@@ -10,12 +10,20 @@ import {
   correctionRewritesPerson,
   filmStillLanguageEn,
   genderFromPictureNote,
+  gazeLockEn,
+  gazeNoteDe,
   panelsForScene,
   panelsNeedingStills,
+  personNamedInCorrection,
   previousStillUrlInScene,
   referenceUrlsForPanel,
+  replaceStillUrl,
+  sceneContinuityBlock,
+  sceneGrundbildPanel,
   sceneStillProgress,
   sceneWideStillUrl,
+  seatingLockEn,
+  seatingNoteDe,
   stillAttachmentInstruction,
   stillLibraryHintDe,
   stillTimeoutHintDe,
@@ -24,6 +32,7 @@ import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-
 import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
+  panelAddressee,
   panelDialogueLines,
   panelSpeakLines,
   planBoardWithoutAi,
@@ -419,6 +428,47 @@ if (!manPrompt.toLowerCase().includes('this speaker is male')) fail('Geschlecht-
 if (!manPrompt.toLowerCase().includes('wrong-gender')) {
   fail('Geschlecht wechseln: altes Gesicht nicht behalten')
 }
+if (!manPrompt.toLowerCase().includes('same seat') && !manPrompt.toLowerCase().includes('same table')) {
+  fail('Geschlecht wechseln: am Tisch bleiben')
+}
+if (!manPrompt.toLowerCase().includes('push-in') && !manPrompt.toLowerCase().includes('zoom')) {
+  fail('Geschlecht wechseln: Zoom in die Übersicht, kein neues Porträt')
+}
+
+const seatPeople = [
+  { name: 'Schöme', x: 18, poseId: 'sitting' as const, poseHint: 'sitzt' },
+  { name: 'Khan', x: 50, poseId: 'sitting' as const, poseHint: 'sitzt' },
+  { name: 'Ubai', x: 82, poseId: 'sitting' as const, poseHint: 'sitzt' },
+]
+const seatEn = seatingLockEn(seatPeople)
+if (!seatEn.toLowerCase().includes('schöme') || !seatEn.toLowerCase().includes('left')) {
+  fail('Sitzplan: Schöme links')
+}
+if (!seatEn.toLowerCase().includes('stays in that seat')) fail('Sitzplan sperrt die Plätze')
+const seatDe = seatingNoteDe(seatPeople)
+if (!seatDe || !seatDe.includes('Schöme sitzt links') || !seatDe.includes('Khan sitzt in der Mitte')) {
+  fail('Sitzplan auf Deutsch')
+}
+if (!gazeLockEn('Schöme', 'Khan').toLowerCase().includes('looks at khan')) {
+  fail('Blick: Schöme schaut Khan an')
+}
+if (gazeNoteDe('Schöme', 'Khan') !== 'Schöme schaut Khan an') fail('Blick-Notiz Deutsch')
+if (personNamedInCorrection('Schöme ist ein Mann', ['Khan', 'Schöme']) !== 'Schöme') {
+  fail('Notiz nennt Schöme')
+}
+const contig = sceneContinuityBlock({
+  placements: seatPeople,
+  speaker: 'Schöme',
+  addressee: 'Khan',
+  genders: { Schöme: 'male', Khan: 'male', Ubai: 'male' },
+  stillCorrection: 'Schöme ist ein Mann',
+  hasGrundbild: true,
+})
+if (!contig.includes('GROUNDBILD')) fail('Kontinuität: Grundbild')
+if (!contig.includes('SEATING LOCK')) fail('Kontinuität: Sitzplan')
+if (!contig.includes('GAZE LOCK')) fail('Kontinuität: Blick')
+if (!contig.includes('CAST LOCK')) fail('Kontinuität: wer wer ist')
+if (!contig.toLowerCase().includes('male')) fail('Kontinuität: Schöme männlich')
 
 const manAttach = stillAttachmentInstruction({
   correctingExisting: true,
@@ -430,6 +480,10 @@ if (manAttach.toLowerCase().includes('exact people')) {
 }
 if (!manAttach.toLowerCase().includes('sex and face may change')) {
   fail('Anhang sagt: Gesicht darf neu sein')
+}
+if (!manAttach.toLowerCase().includes('table')) fail('Anhang Nahaufnahme: Tisch')
+if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('room')) {
+  fail('Anhang schickt den Raum mit')
 }
 const mimicAttach = stillAttachmentInstruction({
   correctingExisting: true,
@@ -465,6 +519,21 @@ const rewriteRefs = referenceUrlsForPanel(
 if (rewriteRefs[0] !== 'https://example.com/wide.png') fail('Neu malen: zuerst die Übersicht')
 if (rewriteRefs.includes('https://example.com/schoeme-girl.png')) {
   fail('Neu malen hängt nicht das Mädchen-Porträt an')
+}
+if (sceneGrundbildPanel(boardGirl, girlCu.sceneId)?.stillUrl !== 'https://example.com/wide.png') {
+  fail('Grundbild ist die Übersicht der Szene')
+}
+const reused = applyPanelStill(boardGirl, girlCu.id, 'https://example.com/wide.png', 'illustration-lebendig')
+const swapped = replaceStillUrl(reused, 'https://example.com/wide.png', 'https://example.com/wide-boy.png', girlCu.sceneId)
+if (swapped.panels.some((p) => p.stillUrl === 'https://example.com/wide.png' && p.sceneId === girlCu.sceneId)) {
+  fail('Neues Grundbild ersetzt das alte in der Szene')
+}
+if (!swapped.panels.some((p) => p.stillUrl === 'https://example.com/wide-boy.png')) {
+  fail('Neues Grundbild liegt auf den Zeilen')
+}
+
+if (panelAddressee({ ...s1[0]!, closeupSpeaker: 'Julien', lineIds: ['l1'] }, dialog) !== 'Tara') {
+  fail('Gegenüber von Julien ist Tara')
 }
 
 const playQuiet = scenePlayBeats(s1, dialog)
