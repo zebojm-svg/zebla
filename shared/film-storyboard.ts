@@ -382,7 +382,7 @@ function speakersInSection(
 }
 
 /** Gemini schreibt oft «1» oder den Szenentitel statt der echten Abschnitts-Id. */
-export function resolveDraftSectionId(dialog: Dialog, raw?: string): string {
+export function resolveDraftSectionId(dialog: Pick<Dialog, 'sections'>, raw?: string): string {
   const fallback = dialog.sections[0]?.id || 'scene-1'
   const id = (raw ?? '').trim()
   if (!id) return fallback
@@ -390,6 +390,11 @@ export function resolveDraftSectionId(dialog: Dialog, raw?: string): string {
   const lower = id.toLowerCase()
   const byTitle = dialog.sections.find((s) => s.title.trim().toLowerCase() === lower)
   if (byTitle) return byTitle.id
+  const byContains = dialog.sections.find((s) => {
+    const t = s.title.trim().toLowerCase()
+    return Boolean(t) && (lower.includes(t) || t.includes(lower))
+  })
+  if (byContains) return byContains.id
   const n = Number(id)
   if (Number.isInteger(n) && n >= 1 && n <= dialog.sections.length) {
     return dialog.sections[n - 1]!.id
@@ -998,20 +1003,55 @@ export interface FilmPlayBeat {
 function dialogLinesForPanels(
   panels: FilmStoryboardPanel[],
   dialog?: Pick<Dialog, 'sections'> | null,
+  sceneTitle?: string,
 ): DialogLine[] {
-  if (!dialog) return []
-  const sectionIds = [...new Set(panels.map((p) => p.sectionId))]
-  const out: DialogLine[] = []
+  if (!dialog?.sections.length) return []
+  const byId = allDialogLines(dialog)
   const seen = new Set<string>()
-  for (const sid of sectionIds) {
-    const section = dialog.sections.find((s) => s.id === sid)
-    if (!section) continue
-    for (const line of section.lines) {
-      if (seen.has(line.id) || !line.text.trim()) continue
-      seen.add(line.id)
-      out.push(line)
-    }
+  const out: DialogLine[] = []
+  const add = (line?: DialogLine) => {
+    if (!line?.text.trim() || seen.has(line.id)) return
+    seen.add(line.id)
+    out.push(line)
   }
+
+  for (const panel of panels) {
+    for (const id of panel.lineIds ?? []) add(byId.get(id))
+  }
+  if (out.length > 0) return out
+
+  const keys = [
+    ...new Set(
+      [...panels.map((p) => p.sectionId), ...panels.map((p) => p.sceneId), sceneTitle].filter(
+        (k): k is string => Boolean(k?.trim()),
+      ),
+    ),
+  ]
+  for (const key of keys) {
+    const resolved = resolveDraftSectionId(dialog, key)
+    const section = dialog.sections.find((s) => s.id === key || s.id === resolved)
+    if (!section) continue
+    for (const line of section.lines) add(line)
+  }
+  if (out.length > 0) return out
+
+  for (const panel of panels) {
+    const cap = panel.caption.trim()
+    const match = cap.match(/^([^:]{1,48}):\s+(.+)$/)
+    if (!match) continue
+    const speaker = match[1]!.trim()
+    const text = match[2]!.trim()
+    const all = dialog.sections.flatMap((s) => s.lines)
+    add(
+      all.find((l) => l.speaker.trim() === speaker && l.text.trim() === text) ||
+        all.find((l) => l.text.trim() === text),
+    )
+  }
+  if (out.length > 0) return out
+
+  const idx = Math.max(0, panels[0]?.sceneIndex ?? 0)
+  const fallback = dialog.sections[Math.min(idx, dialog.sections.length - 1)]
+  for (const line of fallback?.lines ?? []) add(line)
   return out
 }
 
@@ -1032,9 +1072,10 @@ function panelForSpeaker(
 export function scenePlayBeats(
   panels: FilmStoryboardPanel[],
   dialog?: Pick<Dialog, 'sections'> | null,
+  sceneTitle?: string,
 ): FilmPlayBeat[] {
   const wide = panels.find((p) => (p.shot ?? 'wide') !== 'closeup')
-  const lines = dialogLinesForPanels(panels, dialog)
+  const lines = dialogLinesForPanels(panels, dialog, sceneTitle)
   const spoken: FilmPlayBeat[] = lines.map((line, i) => {
     const panel = panelForSpeaker(panels, line.speaker)
     return {

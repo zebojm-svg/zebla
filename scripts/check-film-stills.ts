@@ -611,4 +611,37 @@ const playWithRoom = scenePlayBeats(panelsForScene(withStill, scene1.id), dialog
 if (!playWithRoom[0]?.establishing) fail('Zuerst den Raum anschauen')
 if (playWithRoom.filter((b) => !b.establishing).length !== 2) fail('dann die Zeilen nacheinander')
 
+const geminiIds: typeof s1 = s1.map((p) => ({
+  ...p,
+  sectionId: '1',
+  sceneId: 'scene-1',
+  lineIds: [],
+}))
+const fromTitle = scenePlayBeats(geminiIds, dialog, 'Szene 1: La Chasse aux Cadeaux')
+if (fromTitle.filter((b) => !b.establishing).length !== 2) {
+  fail('Abspielen findet den Dialog auch wenn Gemini «1» statt der Abschnitts-Id schreibt')
+}
+
+const byLineId: typeof s1 = [
+  {
+    ...s1[0]!,
+    sectionId: 'not-a-section',
+    sceneId: 'other',
+    lineIds: ['l1'],
+    stillUrl: undefined,
+  },
+  {
+    ...s1[0]!,
+    id: 'p-l2',
+    sectionId: 'not-a-section',
+    sceneId: 'other',
+    lineIds: ['l2'],
+    stillUrl: undefined,
+  },
+]
+const fromLineIds = scenePlayBeats(byLineId, dialog)
+if (fromLineIds.filter((b) => !b.establishing).map((b) => b.line?.lineId).join() !== 'l1,l2') {
+  fail('Abspielen nimmt die Zeilen-Ids am Bild, nicht nur die Abschnitts-Id')
+}
+
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')
