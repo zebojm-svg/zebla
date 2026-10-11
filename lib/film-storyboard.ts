@@ -26,6 +26,8 @@ import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
+  correctFromUrlForPanel,
+  genderFromPictureNote,
   previousStillUrlInScene,
   sceneWidePanel,
   sceneWideStillUrl,
@@ -373,7 +375,9 @@ export async function stillFilmPanel(
     (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
     DEFAULT_STORY_ART_STYLE
   const correction = note?.trim()
-  const panel = correction ? { ...found, stillCorrection: correction } : found
+  const panel = correction
+    ? { ...found, stillCorrection: correction, directorNote: correction }
+    : found
   const working: FilmStoryboard = correction
     ? {
         ...board,
@@ -381,7 +385,7 @@ export async function stillFilmPanel(
       }
     : board
   const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
-  let correctFromUrl = correction && panel.stillUrl ? panel.stillUrl : undefined
+  let correctFromUrl = correctFromUrlForPanel(working, panel, correction)
 
   const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
   const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
@@ -464,9 +468,9 @@ export async function stillFilmPanel(
       beatTotal,
       sceneWideStillUrl: wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen),
       speakerGender:
-        (panelForGen.shot ?? 'wide') === 'closeup'
-          ? speakerGender(dialog, speaker) ?? genderFromKnownName(speaker)
-          : undefined,
+        genderFromPictureNote(correction) ??
+        speakerGender(dialog, speaker) ??
+        genderFromKnownName(speaker),
       speakerX: whoOnWide?.x,
       speakerSitting: whoOnWide
         ? whoOnWide.poseId === 'sitting' || /sit/i.test(whoOnWide.poseHint || '')
@@ -476,11 +480,13 @@ export async function stillFilmPanel(
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
-      (panelForGen.shot ?? 'wide') === 'closeup'
-        ? `Nahaufnahme ${speaker}: Kamera näher an dieselbe Person in der Übersicht — gleicher Platz, scharfe Augen.`
-        : pieceNote
-          ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
-          : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+      correction
+        ? `Neu gemalt: ${correction}`
+        : (panelForGen.shot ?? 'wide') === 'closeup'
+          ? `Nahaufnahme ${speaker}: Kamera näher an dieselbe Person in der Übersicht — gleicher Platz, scharfe Augen.`
+          : pieceNote
+            ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+            : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
     )
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }

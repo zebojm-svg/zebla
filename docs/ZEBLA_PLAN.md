@@ -15,7 +15,7 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 1. **Geschichte = Ordner.** Dialog, Skript (Film-Prompt), Storyboard, Film und Diashow liegen zusammen. Neue Geschichte legt den Ordner selbst an.
 2. **Welt-Regal** (`/library`): Figuren, Räume, Möbel, Skizzen — über allen Geschichten. Zeichnen nur, wenn etwas fehlt. Gleiche Person (Ramo 1 / Ramo 2) bleibt getrennt; Ernten aus einem Standbild ist kein zweites Gesicht.
 3. **Meta-Blatt** auf der Dialog-Seite: wer spielt, Stimmen, Räume, Licht/Blick. Gilt für die ganze Geschichte.
-4. **Standbilder zuerst.** Ein Bild je Dialogzeile. Die erste Zeile einer Szene ist der ganze Raum; die nächsten Zeilen nehmen dasselbe Bild, bis man etwas ändert («lass Ramo aufstehen», Nahaufnahme). Zwischenbilder (Klingeln, zur Tür) kann man einfügen. Laufen durchs Bild kommt später. Beim Abspielen: eine Zeile nach der anderen mit Deutsch darunter, leise Hintergrundmusik.
+4. **Standbilder zuerst.** Ein Bild je Dialogzeile. Die erste Zeile einer Szene ist der ganze Raum; die nächsten Zeilen nehmen dasselbe Bild, bis man unter «Bild ändern» etwas **neu malt** («Schöme ist ein Mann», «lass Ramo aufstehen»). Das dauert etwa eine Minute. Zwischenbilder (Klingeln, zur Tür) kann man einfügen. Laufen durchs Bild kommt später. Beim Abspielen: eine Zeile nach der anderen mit Deutsch darunter, leise Hintergrundmusik.
 5. **Diashow** bleibt die Lernansicht derselben Geschichte, kein zweites Produkt.
 6. **Figuren stellen ohne KI.** Nach dem Ernten: ziehen und zoomen auf Film/Storyboard. Die Lage bleibt gespeichert.
 7. **Freisteller sitzen im Raum.** Kontakt-Schatten unter den Figuren. In der Vorschau leichtes Atmen und Blinzeln (noch keine Lippen).
@@ -47,6 +47,8 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 ## Stand (2026-10)
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder (weit + nah), Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen.
+
+**In Arbeit:** «Bild neu malen» (früher Anpassen) malt das Standbild wirklich neu — «Schöme ist ein Mann» darf das Gesicht wechseln, nicht nur eine Notiz speichern.
 
 **Nächste Baustellen (noch nicht hier):**
 

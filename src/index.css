@@ -3454,6 +3454,12 @@ html[dir='rtl'] .slideshow-topbar {
   font-weight: 600;
 }
 
+.film-panel-painting {
+  margin: 0.45rem 0 0;
+  color: #0f766e;
+  font-weight: 600;
+}
+
 .film-panel-more .film-tweak,
 .film-panel-more .film-comment,
 .film-panel-more .film-still-fix {

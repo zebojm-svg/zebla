@@ -8,7 +8,9 @@ import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-i
 import { cropWideStillToSpeaker } from './film-closeup-crop.js'
 import {
   buildFilmStillPrompt,
+  correctionRewritesPerson,
   referenceUrlsForPanel,
+  stillAttachmentInstruction,
 } from '../shared/film-stills.js'
 import type { FilmScene, FilmStoryboardPanel } from '../shared/film-storyboard.js'
 import type { StoryArtStyleId } from '../shared/story-art-styles.js'
@@ -91,6 +93,7 @@ async function generateStillPng(
   refs: InlineImage[],
   correctingExisting = false,
   closeup = false,
+  rewritePerson = false,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
@@ -99,11 +102,11 @@ async function generateStillPng(
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
     }
     parts.push({
-      text: correctingExisting
-        ? 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
-        : closeup
-          ? 'Attached photos: first a CAMERA ZOOM crop of the wide gathering (same table and furniture behind this person), then the identity plate. Keep that exact room behind them. Same face, hair, clothes, sex. Fully drawn opaque eyes (iris and pupil, not glass). Not a new studio, not heavy blur, not a cut-out bust.'
-          : 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.',
+      text: stillAttachmentInstruction({
+        correctingExisting,
+        closeup,
+        rewritePerson,
+      }),
     })
   }
   parts.push({ text: prompt })
@@ -223,6 +226,7 @@ export async function generateFilmPanelStillImage(opts: {
     refs,
     Boolean(opts.correctFromUrl),
     opts.panel.shot === 'closeup',
+    correctionRewritesPerson(opts.panel.stillCorrection),
   )
   return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
 }

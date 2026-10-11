@@ -200,6 +200,54 @@ export function applyPanelStillError(
   }
 }
 
+/** «Schöme ist ein Mann» — Gesicht neu, Raum behalten. */
+export function correctionRewritesPerson(note?: string): boolean {
+  const t = (note || '').toLowerCase()
+  if (!t) return false
+  return /mann|junge|männlich|frau|mädchen|weiblich|\bman\b|\bboy\b|\bgirl\b|gesicht|andere person|ist ein/.test(
+    t,
+  )
+}
+
+export function genderFromPictureNote(note?: string): 'male' | 'female' | undefined {
+  const t = (note || '').toLowerCase()
+  if (/mann|junge|männlich|\bboy\b|\bmale\b|kein mädchen/.test(t)) return 'male'
+  if (/frau|mädchen|weiblich|\bgirl\b|\bfemale\b/.test(t)) return 'female'
+  return undefined
+}
+
+/** Vorlage für «Bild neu malen»: bei Geschlechtswechsel die Übersicht, nicht das Mädchen-Porträt. */
+export function correctFromUrlForPanel(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+  correction?: string,
+): string | undefined {
+  const note = correction?.trim()
+  if (!note) return undefined
+  if (correctionRewritesPerson(note)) {
+    return sceneWideStillUrl(board, panel) || panel.stillUrl
+  }
+  return panel.stillUrl
+}
+
+/** Was an den angehängten Fotos steht — Gesicht nicht einfrieren, wenn die Person neu soll. */
+export function stillAttachmentInstruction(opts: {
+  correctingExisting: boolean
+  closeup: boolean
+  rewritePerson?: boolean
+}): string {
+  if (opts.rewritePerson) {
+    return 'Attached photos: first the CURRENT room/frame. Keep that same room, furniture and camera. Redraw the speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl.'
+  }
+  if (opts.correctingExisting) {
+    return 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
+  }
+  if (opts.closeup) {
+    return 'Attached photos: first a CAMERA ZOOM crop of the wide gathering (same table and furniture behind this person), then the identity plate. Keep that exact room behind them. Same face, hair, clothes, sex. Fully drawn opaque eyes (iris and pupil, not glass). Not a new studio, not heavy blur, not a cut-out bust.'
+  }
+  return 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.'
+}
+
 /** Nahaufnahme: gleiches Geschlecht wie Übersicht/Stammbild — nicht aus dem Namen raten. */
 export function closeupGenderLine(gender?: 'male' | 'female'): string {
   if (gender === 'male') {
@@ -239,9 +287,12 @@ export function buildFilmStillPrompt(opts: {
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const isCloseup = opts.shot === 'closeup'
+  const rewritePerson = correctionRewritesPerson(opts.stillCorrection)
   const closeEyes =
     'Eyes fully drawn and opaque: white sclera, colored iris, dark pupil — never translucent, glassy, hollow, see-through, or empty-white.'
-  const lock = opts.hasLibraryRefs
+  const lock = rewritePerson
+    ? `${closeEyes} ${closeupGenderLine(opts.speakerGender)} Keep the same room and furniture. Redraw the speaker as the director fix says. Do not keep a wrong-gender face.`
+    : opts.hasLibraryRefs
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: zoom into THAT person in the gathering. They stay in the SAME seat at the SAME table in the SAME room (table edge still visible and fairly sharp). Same face, hair, clothes, light, sex. If only an identity plate is attached, paint a close-up of that exact person still in that place. Head and shoulders filling the frame, hair fully visible (not cropped). ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust, not a full-body studio figure pasted into a sofa, not a blurry studio wash.`
       : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
@@ -262,7 +313,9 @@ export function buildFilmStillPrompt(opts: {
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
-      ? `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached WIDE still. They stay in the SAME seat at the SAME table. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. The same room stays recognizable behind them (table, kitchen), fairly sharp — not a studio, not heavy blur.`
+      ? rewritePerson
+        ? `CLOSE-UP of ${opts.closeupSpeaker || 'the speaker'} as the director fix describes: same room and seat, new correct face and sex. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. Do not keep a wrong-gender face from the attached photo.`
+        : `CAMERA PUSH-IN close-up of ${opts.closeupSpeaker || 'the speaker'}: zoom into that person in the attached WIDE still. They stay in the SAME seat at the SAME table. Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. One person. The same room stays recognizable behind them (table, kitchen), fairly sharp — not a studio, not heavy blur.`
       : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
     opts.correctingExisting
       ? ''
@@ -278,9 +331,11 @@ export function buildFilmStillPrompt(opts: {
         })
       : '',
     opts.correctingExisting
-      ? isCloseup
-        ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'
-        : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
+      ? correctionRewritesPerson(opts.stillCorrection)
+        ? 'An attached photo is the CURRENT frame. Keep the SAME room, furniture and camera. Redraw the speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face.'
+        : isCloseup
+          ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'
+          : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
       : '',
     `Scene title: ${opts.sceneTitle || 'Scene'}.`,
     `Place: ${opts.settingHint || 'as implied'}.`,

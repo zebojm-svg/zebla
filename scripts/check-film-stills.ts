@@ -6,13 +6,17 @@ import {
   applyPanelStill,
   buildFilmStillPrompt,
   closeupGenderLine,
+  correctFromUrlForPanel,
+  correctionRewritesPerson,
   filmStillLanguageEn,
+  genderFromPictureNote,
   panelsForScene,
   panelsNeedingStills,
   previousStillUrlInScene,
   referenceUrlsForPanel,
   sceneStillProgress,
   sceneWideStillUrl,
+  stillAttachmentInstruction,
   stillLibraryHintDe,
   stillTimeoutHintDe,
 } from '../shared/film-stills.ts'
@@ -388,6 +392,81 @@ if (!closeupGenderLine().toLowerCase().includes('boy into a girl')) {
   fail('Ohne Angabe nicht das Geschlecht aus dem Namen raten')
 }
 
+if (!correctionRewritesPerson('Schöme ist ein Mann')) fail('«ist ein Mann» wechselt die Person')
+if (correctionRewritesPerson('Mund etwas offener')) fail('Nur Mimik ist kein Personenwechsel')
+if (genderFromPictureNote('Schöme ist ein Mann') !== 'male') fail('Notiz: Schöme männlich')
+if (genderFromPictureNote('kein Mädchen') !== 'male') fail('Notiz: kein Mädchen = Junge')
+if (genderFromPictureNote('Mund etwas offener')) fail('Mimik setzt kein Geschlecht')
+
+const manPrompt = buildFilmStillPrompt({
+  caption: 'Schöme spricht',
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  shot: 'closeup',
+  closeupSpeaker: 'Schöme',
+  names: ['Schöme'],
+  speakerGender: 'male',
+  correctingExisting: true,
+  stillCorrection: 'Schöme ist ein Mann',
+})
+if (manPrompt.toLowerCase().includes('change only facial muscles')) {
+  fail('Geschlecht wechseln darf das Gesicht nicht einfrieren')
+}
+if (!manPrompt.toLowerCase().includes('sex and face may change')) {
+  fail('Geschlecht wechseln: Gesicht neu')
+}
+if (!manPrompt.toLowerCase().includes('this speaker is male')) fail('Geschlecht-Prompt: männlich')
+if (!manPrompt.toLowerCase().includes('wrong-gender')) {
+  fail('Geschlecht wechseln: altes Gesicht nicht behalten')
+}
+
+const manAttach = stillAttachmentInstruction({
+  correctingExisting: true,
+  closeup: true,
+  rewritePerson: true,
+})
+if (manAttach.toLowerCase().includes('exact people')) {
+  fail('Anhang darf bei Geschlechtswechsel das Gesicht nicht sperren')
+}
+if (!manAttach.toLowerCase().includes('sex and face may change')) {
+  fail('Anhang sagt: Gesicht darf neu sein')
+}
+const mimicAttach = stillAttachmentInstruction({
+  correctingExisting: true,
+  closeup: true,
+})
+if (!mimicAttach.toLowerCase().includes('exact people')) {
+  fail('Nur Mimik: vorhandenes Gesicht behalten')
+}
+
+const girlCu = {
+  ...closePanel,
+  id: 'cu-schoeme-girl',
+  stillUrl: 'https://example.com/schoeme-girl.png',
+  closeupSpeaker: 'Schöme',
+  shot: 'closeup' as const,
+}
+const boardGirl = {
+  ...withWide,
+  panels: [...withWide.panels, girlCu],
+}
+if (correctFromUrlForPanel(boardGirl, girlCu, 'Schöme ist ein Mann') !== 'https://example.com/wide.png') {
+  fail('Geschlecht wechseln nimmt die Übersicht, nicht das Mädchen-Porträt')
+}
+if (correctFromUrlForPanel(boardGirl, girlCu, 'Mund etwas offener') !== girlCu.stillUrl) {
+  fail('Nur Mimik nimmt das vorhandene Nah-Bild')
+}
+const rewriteRefs = referenceUrlsForPanel(
+  girlCu,
+  undefined,
+  'https://example.com/wide.png',
+  'https://example.com/wide.png',
+)
+if (rewriteRefs[0] !== 'https://example.com/wide.png') fail('Neu malen: zuerst die Übersicht')
+if (rewriteRefs.includes('https://example.com/schoeme-girl.png')) {
+  fail('Neu malen hängt nicht das Mädchen-Porträt an')
+}
+
 const playQuiet = scenePlayBeats(s1, dialog)
 if (playQuiet.some((b) => b.establishing)) fail('Ohne Weit-Bild keine stille Raumaufnahme')
 if (playQuiet.filter((b) => !b.establishing).length !== 2) {
@@ -397,4 +476,4 @@ const playWithRoom = scenePlayBeats(panelsForScene(withStill, scene1.id), dialog
 if (!playWithRoom[0]?.establishing) fail('Zuerst den Raum anschauen')
 if (playWithRoom.filter((b) => !b.establishing).length !== 2) fail('dann die Zeilen nacheinander')
 
-console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Sprache, Vorschau')
+console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')
