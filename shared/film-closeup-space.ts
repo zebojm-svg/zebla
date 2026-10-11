@@ -25,9 +25,10 @@ export function closeupSpaceLine(opts: {
   const room = opts.settingHint?.trim() || 'the same room as the wide photo'
   return (
     `3D ROOM: ${speaker} is ${where} in ${room}. ` +
-    `The first attached photo is the WIDE GROUNDBILD of that gathering. ` +
-    `Walk the camera closer to this person. Same furniture behind them, but it shifts with parallax ` +
-    `(not a blown-up crop of the wide photo). Do not invent a different wall or studio. Camera push-in, not a new portrait.`
+    `The first attached photo is the WIDE GROUNDBILD of that occupied gathering. ` +
+    `Move in so the frame is tight on this person: you no longer see the whole sofa and far wall. ` +
+    `The others stay at the table (cut by the frame if needed). Do not empty the room. ` +
+    `Do not paste a giant head over the group photo. Same clothes. Camera push-in, not a new portrait.`
   )
 }
 

@@ -29,6 +29,7 @@ import {
   stillAttachmentInstruction,
   stillLibraryHintDe,
   stillTimeoutHintDe,
+  speakerIdentityUrl,
 } from '../shared/film-stills.ts'
 import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
 import {
@@ -184,14 +185,17 @@ if (!closePrompt.toLowerCase().includes('cut-out') && !closePrompt.toLowerCase()
 if (!closePrompt.toLowerCase().includes('zoom') && !closePrompt.toLowerCase().includes('push-in')) {
   fail('Nahaufnahme zoomt in die Übersicht')
 }
-if (!closePrompt.toLowerCase().includes('physically') && !closePrompt.toLowerCase().includes('perspective')) {
-  fail('Nahaufnahme ist Kamera näher, nicht nur Zoom-Wort')
+if (!closePrompt.toLowerCase().includes('empty room') && !closePrompt.toLowerCase().includes('emptied')) {
+  fail('Nahaufnahme darf den Raum nicht leeren')
+}
+if (!closePrompt.toLowerCase().includes('giant') && !closePrompt.toLowerCase().includes('pasted')) {
+  fail('Nahaufnahme darf keinen Riesenkopf über die Gruppe kleben')
 }
 if (!closePrompt.toLowerCase().includes('cropped screenshot') && !closePrompt.toLowerCase().includes('cut-out of the wide')) {
   fail('Nahaufnahme darf kein Ausschnitt des Weit-Bilds sein')
 }
-if (!closePrompt.toLowerCase().includes('parallax') && !closePrompt.toLowerCase().includes('film from')) {
-  fail('Nahaufnahme verlangt neue Kameraposition, nicht Pixel-Zoom')
+if (!closePrompt.toLowerCase().includes('same clothes') && !closePrompt.toLowerCase().includes('same face')) {
+  fail('Nahaufnahme behält Gesicht und Kleidung')
 }
 if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
   fail('Nahaufnahme verlangt undurchsichtige Augen')
@@ -295,8 +299,11 @@ if (cuRefs[0] !== 'https://example.com/wide.png') fail('Nahaufnahme zoomt zuerst
 if (cuRefs.includes('https://example.com/park.png')) {
   fail('Nahaufnahme hängt nicht den ganzen Raum als Vorlage an')
 }
-if (cuRefs.includes('https://example.com/julien.png')) {
-  fail('Nahaufnahme nimmt nicht das Bibliothek-Porträt (sonst wird Schöme wieder ein Mädchen)')
+if (!cuRefs.includes('https://example.com/julien.png')) {
+  fail('Nahaufnahme hängt das Stammbild des Sprechers an (Gesicht und Kleidung)')
+}
+if (speakerIdentityUrl(cuWithBg) !== 'https://example.com/julien.png') {
+  fail('Stammbild gehört zum Sprecher Julien')
 }
 const withWide = applyPanelStill(board, s1[0]!.id, 'https://example.com/wide.png', 'illustration-lebendig')
 if (sceneWideStillUrl(withWide, closePanel) !== 'https://example.com/wide.png') {
@@ -489,8 +496,8 @@ if (manAttach.toLowerCase().includes('exact people')) {
 if (!manAttach.toLowerCase().includes('sex and face may change')) {
   fail('Anhang sagt: Gesicht darf neu sein')
 }
-if (!manAttach.toLowerCase().includes('cropped screenshot') && !manAttach.toLowerCase().includes('new closer')) {
-  fail('Anhang: neu filmen, nicht ausschneiden')
+if (!manAttach.toLowerCase().includes('empty') && !manAttach.toLowerCase().includes('giant')) {
+  fail('Anhang: Raum nicht leeren, keinen Riesenkopf')
 }
 if (!manAttach.toLowerCase().includes('groundbild')) {
   fail('Anhang schickt den Ort mit')
@@ -498,17 +505,17 @@ if (!manAttach.toLowerCase().includes('groundbild')) {
 if (manAttach.toLowerCase().includes('first a crop') || manAttach.toLowerCase().includes('used only as a map')) {
   fail('Anhang darf keinen Pixel-Ausschnitt als erstes Foto schicken')
 }
-if (!manAttach.toLowerCase().includes('walked closer') && !manAttach.toLowerCase().includes('parallax')) {
-  fail('Anhang: Kamera näher, neue Perspektive')
-}
 if (!correctionIsFaceOnly('Mund etwas offener')) fail('Mund = nur Mimik')
 if (correctionIsFaceOnly('Schöme ist ein Mann')) fail('Mann ist kein Mimik-Fix')
 if (correctionIsFaceOnly('Kamera näher')) fail('Kamera näher ist keine Mimik')
 if (!closeupCameraLine('Ramo').toLowerCase().includes('cropped screenshot')) {
   fail('Kamera-Zeile verbietet den Ausschnitt')
 }
-if (!closeupCameraLine('Ramo').toLowerCase().includes('film from')) {
-  fail('Kamera-Zeile: Grundbild ist Vorlage, nicht das Ergebnis')
+if (!closeupCameraLine('Ramo').toLowerCase().includes('empty room')) {
+  fail('Kamera-Zeile: Raum bleibt besetzt')
+}
+if (!closeupCameraLine('Ramo').toLowerCase().includes('giant')) {
+  fail('Kamera-Zeile: kein Riesenkopf über die Gruppe')
 }
 const spaceLine = closeupSpaceLine({ speaker: 'Ramo', settingHint: 'Wohnzimmer', speakerX: 20 })
 if (spaceLine.toLowerCase().includes('camera zoom of that gathering')) {
@@ -517,8 +524,8 @@ if (spaceLine.toLowerCase().includes('camera zoom of that gathering')) {
 if (!spaceLine.toLowerCase().includes('wide groundbild') && !spaceLine.toLowerCase().includes('wide grundbild')) {
   fail('Raumzeile: erstes Foto ist das Weit-Bild')
 }
-if (!spaceLine.toLowerCase().includes('parallax')) {
-  fail('Raumzeile: echte Kamerabewegung, nicht Crop')
+if (!spaceLine.toLowerCase().includes('empty the room')) {
+  fail('Raumzeile: niemand verschwindet')
 }
 const closeAttach = stillAttachmentInstruction({ correctingExisting: false, closeup: true })
 if (closeAttach.toLowerCase().includes('first a crop')) {
@@ -526,6 +533,9 @@ if (closeAttach.toLowerCase().includes('first a crop')) {
 }
 if (!closeAttach.toLowerCase().includes('wide groundbild') && !closeAttach.toLowerCase().includes('wide grundbild')) {
   fail('Nahaufnahme-Anhang: zuerst das ganze Grundbild')
+}
+if (!closeAttach.toLowerCase().includes('empty') || !closeAttach.toLowerCase().includes('giant')) {
+  fail('Nahaufnahme-Anhang: nicht leeren, nicht Riesenkopf')
 }
 const mimicAttach = stillAttachmentInstruction({
   correctingExisting: true,

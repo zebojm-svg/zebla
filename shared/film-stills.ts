@@ -296,14 +296,25 @@ export function referenceUrlsForPanel(
       : undefined
   const closeup = panel.shot === 'closeup'
   const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
+  const speakerId = closeup ? speakerIdentityUrl(panel) : undefined
   const ordered = (
     correctFromUrl
-      ? [correctFromUrl, sceneWideStillUrl]
+      ? [correctFromUrl, sceneWideStillUrl, speakerId]
       : closeup
-        ? [sceneWideStillUrl]
+        ? [sceneWideStillUrl, speakerId]
         : [bg, ...people]
   ).filter(http)
-  return [...new Set(ordered)].slice(0, closeup ? 2 : 4)
+  return [...new Set(ordered)].slice(0, closeup ? 3 : 4)
+}
+
+/** Stammbild der sprechenden Person — Gesicht und Kleidung der Nahaufnahme. */
+export function speakerIdentityUrl(panel: FilmStoryboardPanel): string | undefined {
+  const who = panel.closeupSpeaker?.trim().toLowerCase()
+  if (!who) return undefined
+  const hit = panel.placements.find(
+    (p) => p.name.trim().toLowerCase() === who && p.imageUrl?.startsWith('http'),
+  )
+  return hit?.imageUrl
 }
 
 export function previousStillUrlInScene(
@@ -392,7 +403,7 @@ export function stillAttachmentInstruction(opts: {
   rewritePerson?: boolean
 }): string {
   if (opts.rewritePerson && opts.closeup) {
-    return 'Attached photos: FIRST the full WIDE GROUNDBILD of this gathering. Film the same moment from a camera that has walked closer to the speaker. New viewpoint and parallax — not a cropped screenshot or digital zoom of the attached photo. Keep them in that place. Sex and face may change as the director fix says. Do not keep a wrong-gender face.'
+    return 'Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.'
   }
   if (opts.rewritePerson) {
     return 'Attached photos: first the GROUNDBILD of this room. Keep that same room, furniture, camera and seating. Everyone stays at this table. Redraw only the named person as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl. Do not invent a new location.'
@@ -401,7 +412,7 @@ export function stillAttachmentInstruction(opts: {
     return 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
   }
   if (opts.closeup) {
-    return 'Attached photos: FIRST the full WIDE GROUNDBILD of this gathering. Film the same moment from a camera that has walked closer to the speaker. New viewpoint (face larger, background objects shift with parallax). Do NOT output a cropped screenshot or digital zoom of the attached photo. Same person, same place. Fully drawn opaque eyes. Not a studio, not a cut-out bust.'
+    return 'Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate (this speaker’s face and clothes). Output a TIGHT head-and-shoulders of that same person still sitting in that gathering. Neighbours may be cut by the frame edge. Do NOT empty the room into a vacant set. Do NOT paste a giant bust over the group photo. Do NOT copy a cropped screenshot. Same clothes as the wide.'
   }
   return 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.'
 }
@@ -417,11 +428,13 @@ export function correctionIsFaceOnly(note?: string): boolean {
 export function closeupCameraLine(speaker?: string): string {
   const who = speaker?.trim() || 'the speaker'
   return (
-    `CAMERA PUSH-IN of ${who}: physically walk the camera closer in the same room. ` +
-    `New viewpoint: face larger, same person, background objects shift with parallax as a real camera would ` +
-    `(a shelf or window behind them may now fill more of the frame or sit at a slightly different angle). ` +
-    `Do NOT output a cropped screenshot, cut-out, or digital zoom of the wide photo. ` +
-    `The attached photo is the WIDE GROUNDBILD to film FROM, not the output. Paint a NEW closer shot.`
+    `CAMERA PUSH-IN close-up of ${who}: stand much closer, eye level, still in the SAME occupied gathering. ` +
+    `Head and shoulders fill most of the frame (about 50–70%). Only a SLICE of the same room behind them ` +
+    `(one window pane, one plant, table edge) — not the whole living room. ` +
+    `They stay seated with the others. Tea, cushions, maybe a neighbour’s shoulder at the frame edge. ` +
+    `Same face, hair and clothes as this person in the wide photo. ` +
+    `FORBIDDEN: a giant face pasted in front of the group. FORBIDDEN: an empty room with only this portrait. ` +
+    `FORBIDDEN: a cropped screenshot of the wide photo. Paint one coherent closer shot of the same table.`
   )
 }
 
@@ -472,7 +485,7 @@ export function buildFilmStillPrompt(opts: {
     ? `${closeEyes} ${closeupGenderLine(opts.speakerGender)} Keep the same room, the same table and the same seats. The speaker stays sitting with the others. Redraw only that person as the director fix says. Do not keep a wrong-gender face. Do not stand them up or move them to a studio.`
     : opts.hasLibraryRefs
     ? isCloseup
-      ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: walk the camera closer to THAT person in the gathering — a new camera position, not a cropped screenshot. They stay in the SAME seat at the SAME table in the SAME room (table edge still visible and fairly sharp). Same face, hair, clothes, light, sex. If only an identity plate is attached, paint a close-up of that exact person still in that place. Head and shoulders filling the frame, hair fully visible (not cropped). ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust, not a full-body studio figure pasted into a sofa, not a blurry studio wash.`
+      ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
       : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
@@ -501,7 +514,9 @@ export function buildFilmStillPrompt(opts: {
         : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
     opts.correctingExisting
       ? ''
-      : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
+      : isCloseup
+        ? `${moment} Same gathering and clothes as the wide still. Only the camera is closer — do not invent a new room or a new person.`
+        : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     opts.continuityEn || '',
     lock,
