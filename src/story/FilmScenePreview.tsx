@@ -7,7 +7,7 @@ import { scenePlayBeats } from '../../shared/film-storyboard'
 import { foleyFlagsFromNote, SCENE_ESTABLISHING_MS } from '../../shared/film-scene-foley'
 import { FilmStillPicture } from './FilmStillArrange'
 import { createSceneBedMusic } from './sceneBedMusic'
-import { api } from '../api/client'
+import { api, FILM_PLAN_TIMEOUT_MS } from '../api/client'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -30,10 +30,18 @@ export function FilmScenePreviewPlayer({
 }: Props) {
   const beats = scenePlayBeats(panels, dialog)
   const hasPicture = beats.some((b) => Boolean(b.stillUrl))
-  const { speakFrom, stop, unlockPlayback, speaking, cloudTtsReady, ttsError, activeLineId } =
-    useSpeechReader(dialog.targetLanguage, dialogId, onDialogUpdated)
-  const voiceBuffers = useRef<Map<string, AudioBuffer>>(new Map())
-  const warming = useRef<Map<string, Promise<AudioBuffer | null>>>(new Map())
+  const {
+    speakFrom,
+    stop,
+    unlockPlayback,
+    playBlob,
+    speaking,
+    cloudTtsReady,
+    ttsError,
+    activeLineId,
+  } = useSpeechReader(dialog.targetLanguage, dialogId, onDialogUpdated)
+  const voiceBlobs = useRef<Map<string, Blob>>(new Map())
+  const warming = useRef<Map<string, Promise<Blob>>>(new Map())
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [waitingVoice, setWaitingVoice] = useState(false)
@@ -91,27 +99,44 @@ export function FilmScenePreviewPlayer({
     setPlaying(false)
   }
 
-  const warmLine = (lineId: string): Promise<AudioBuffer | null> => {
-    const cached = voiceBuffers.current.get(lineId)
+  const warmLine = (lineId: string): Promise<Blob> => {
+    const cached = voiceBlobs.current.get(lineId)
     if (cached) return Promise.resolve(cached)
     const inflight = warming.current.get(lineId)
     if (inflight) return inflight
     const job = (async () => {
       try {
-        const res = await api.tts.getOrCreate({ dialogId, lineId, rate: 0.95 })
-        onDialogUpdated(res.dialog)
+        await api.tts.getOrCreate({ dialogId, lineId, rate: 0.95 }, FILM_PLAN_TIMEOUT_MS)
         const blob = await api.tts.lineAudio(dialogId, lineId)
-        const buf = await getMusic().decodeVoice(await blob.arrayBuffer())
-        voiceBuffers.current.set(lineId, buf)
-        return buf
-      } catch {
-        return null
+        voiceBlobs.current.set(lineId, blob)
+        return blob
       } finally {
         warming.current.delete(lineId)
       }
     })()
     warming.current.set(lineId, job)
     return job
+  }
+
+  const speakLineAudio = async (lineId: string, blob: Blob, beatLine: { speaker: string; text: string; audioUrl?: string }) => {
+    const bed = getMusic()
+    await bed.prepare()
+    const viaEl = await playBlob(blob, lineId, 0.95)
+    if (viaEl) return
+    try {
+      const buf = await bed.decodeVoice(await blob.arrayBuffer())
+      await bed.playVoice(buf, 0.95)
+      return
+    } catch {
+      /* Web Audio decode failed */
+    }
+    const speakLine = {
+      id: lineId,
+      speaker: beatLine.speaker || 'Sprecher',
+      text: beatLine.text,
+      audioUrl: beatLine.audioUrl,
+    }
+    await speakFrom([speakLine], buildSpeakerIndexMap([speakLine]), 0, 0.95, false)
   }
 
   const play = async (from: number) => {
@@ -123,39 +148,45 @@ export function FilmScenePreviewPlayer({
     const bed = getMusic()
     await bed.prepare()
     const foley = foleyFlagsFromNote(soundNote)
-    if (musicOnRef.current) void bed.start(foley)
+    if (musicOnRef.current) await bed.start(foley)
     for (let i = from; i < beats.length; i++) {
       if (cancelled.current || id !== runId.current) break
       setIndex(i)
       const beat = beats[i]!
       if (beat.establishing || !beat.line) {
         const next = beats.slice(i + 1).find((b) => b.line)
-        if (next?.line?.lineId) void warmLine(next.line.lineId)
+        if (next?.line?.lineId) {
+          setWaitingVoice(true)
+          void warmLine(next.line.lineId).catch((err) => {
+            setPlayError(err instanceof Error ? err.message : 'Stimme konnte nicht geladen werden.')
+          })
+        }
         await sleep(SCENE_ESTABLISHING_MS)
         continue
       }
       const lineId = beat.line.lineId || beat.panelId
       const nextSpoken = beats.slice(i + 1).find((b) => b.line)
-      if (nextSpoken?.line?.lineId) void warmLine(nextSpoken.line.lineId)
+      if (nextSpoken?.line?.lineId) void warmLine(nextSpoken.line.lineId).catch(() => undefined)
       setWaitingVoice(true)
-      const buf = await warmLine(lineId)
-      setWaitingVoice(false)
-      if (cancelled.current || id !== runId.current) break
-      if (buf) {
-        setPlayError(null)
-        await bed.playVoice(buf, 0.95)
+      let blob: Blob
+      try {
+        blob = await warmLine(lineId)
+      } catch (err) {
+        setWaitingVoice(false)
+        setPlayError(err instanceof Error ? err.message : 'Stimme konnte nicht geladen werden.')
+        const speakLine = {
+          id: lineId,
+          speaker: beat.line.speaker || 'Sprecher',
+          text: beat.line.text,
+          audioUrl: beat.line.audioUrl,
+        }
+        await speakFrom([speakLine], buildSpeakerIndexMap([speakLine]), 0, 0.95, false)
         continue
       }
-      setPlayError(
-        'KI-Stimme nicht geladen — Browser-Stimme wird versucht. Wenn es still bleibt, noch einmal auf «Szene abspielen» klicken.',
-      )
-      const speakLine = {
-        id: lineId,
-        speaker: beat.line.speaker || 'Sprecher',
-        text: beat.line.text,
-        audioUrl: beat.line.audioUrl,
-      }
-      await speakFrom([speakLine], buildSpeakerIndexMap([speakLine]), 0, 0.95, false)
+      setWaitingVoice(false)
+      if (cancelled.current || id !== runId.current) break
+      setPlayError(null)
+      await speakLineAudio(lineId, blob, beat.line)
     }
     if (id === runId.current) {
       musicRef.current?.pause()
@@ -198,7 +229,7 @@ export function FilmScenePreviewPlayer({
       {ttsError ? <div className="alert alert-error">{ttsError}</div> : null}
       {playError ? <div className="alert alert-warn">{playError}</div> : null}
       {waitingVoice ? (
-        <p className="muted film-scene-player-wait">Stimme wird vorbereitet…</p>
+        <p className="film-scene-player-wait">Stimme wird vorbereitet — bitte warten, dann kommt der Dialog.</p>
       ) : null}
       {spokenBeats.length === 0 ? (
         <p className="alert alert-warn">Kein Dialog in dieser Szene — deshalb spricht niemand.</p>

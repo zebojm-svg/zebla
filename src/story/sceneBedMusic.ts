@@ -57,6 +57,7 @@ export function createSceneBedMusic(): SceneBedMusic {
   let cityOn = false
   let voiceGen = 0
   let voiceSrc: AudioBufferSourceNode | null = null
+  let keepAlive: OscillatorNode | null = null
 
   function ensure(): boolean {
     if (ctx && ctx.state !== 'closed') return true
@@ -74,6 +75,17 @@ export function createSceneBedMusic(): SceneBedMusic {
     foleyBus = ctx.createGain()
     foleyBus.gain.value = 0
     foleyBus.connect(ctx.destination)
+    keepAlive = ctx.createOscillator()
+    keepAlive.frequency.value = 20
+    const keepGain = ctx.createGain()
+    keepGain.gain.value = 0.0004
+    keepAlive.connect(keepGain)
+    keepGain.connect(ctx.destination)
+    try {
+      keepAlive.start()
+    } catch {
+      keepAlive = null
+    }
     return true
   }
 
@@ -141,7 +153,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     for (let i = 0; i < pops; i++) {
       window.setTimeout(playCrackle, i * (35 + Math.random() * 55))
     }
-    crackleTimer = window.setTimeout(scheduleCrackle, 380 + Math.random() * 1100)
+    crackleTimer = window.setTimeout(scheduleCrackle, 180 + Math.random() * 520)
   }
 
   function spawnCity() {
@@ -285,7 +297,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     scheduleBells()
     if (wantCrackle) scheduleCrackle()
     fadeGain(master, SCENE_PAD_GAIN, 0.7)
-    fadeGain(foleyBus, SCENE_FOLEY_GAIN, 0.35)
+    fadeGain(foleyBus, SCENE_FOLEY_GAIN, 0.12)
   }
 
   async function decodeVoice(data: ArrayBuffer): Promise<AudioBuffer> {
@@ -306,7 +318,8 @@ export function createSceneBedMusic(): SceneBedMusic {
     }
   }
 
-  function playVoice(buffer: AudioBuffer, rate = 1): Promise<void> {
+  async function playVoice(buffer: AudioBuffer, rate = 1): Promise<void> {
+    await prepare()
     const gen = ++voiceGen
     if (voiceSrc) {
       try {
@@ -368,6 +381,14 @@ export function createSceneBedMusic(): SceneBedMusic {
     clearCrackleTimer()
     stopList(bellNodes)
     stopList(padNodes)
+    if (keepAlive) {
+      try {
+        keepAlive.stop()
+      } catch {
+        /* already stopped */
+      }
+      keepAlive = null
+    }
     for (const n of foleyNodes) {
       try {
         if ('stop' in n && typeof (n as OscillatorNode).stop === 'function') {

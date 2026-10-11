@@ -33,6 +33,7 @@ if (SCENE_VOICE_GAIN <= SCENE_PAD_GAIN * 10) {
 
 const previewSrc = readFileSync(new URL('../src/story/FilmScenePreview.tsx', import.meta.url), 'utf8')
 if (!previewSrc.includes('playVoice')) fail('Szene abspielen muss die Stimme über Web Audio spielen')
+if (!previewSrc.includes('playBlob')) fail('Szene abspielen muss die Stimme als lokale Datei abspielen')
 if (!previewSrc.includes('decodeVoice')) fail('Szene abspielen muss die KI-Stimme decodieren')
 if (!previewSrc.includes('lineAudio')) {
   fail('Szene abspielen holt die Stimme same-origin, nicht als fremdes HTML-Audio')

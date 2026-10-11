@@ -384,7 +384,12 @@ export function useSpeechReader(
   }, [])
 
   const ensureAudioEl = useCallback((): HTMLAudioElement => {
-    if (!cloudAudioRef.current) cloudAudioRef.current = new Audio()
+    if (!cloudAudioRef.current) {
+      const el = document.createElement('audio')
+      el.setAttribute('playsinline', 'true')
+      el.preload = 'auto'
+      cloudAudioRef.current = el
+    }
     return cloudAudioRef.current
   }, [])
 
@@ -393,14 +398,12 @@ export function useSpeechReader(
     const el = ensureAudioEl()
     try {
       el.loop = true
-      el.muted = true
-      el.volume = 1
-      el.src = SILENT_WAV
-      void el.play().catch(() => {
-        el.muted = false
-      })
-    } catch {
       el.muted = false
+      el.volume = 0
+      el.src = SILENT_WAV
+      void el.play().catch(() => undefined)
+    } catch {
+      /* kein HTML-Audio */
     }
     try {
       const u = new SpeechSynthesisUtterance(' ')
@@ -459,7 +462,6 @@ export function useSpeechReader(
         const bust =
           audioUrl.includes('?') ? `${audioUrl}&play=${Date.now()}` : `${audioUrl}?play=${Date.now()}`
         const audio = ensureAudioEl()
-        audio.pause()
         audio.loop = false
         audio.muted = false
         audio.volume = 1
@@ -476,6 +478,35 @@ export function useSpeechReader(
         audio.onended = () => cleanup(true)
         audio.onerror = () => cleanup(false)
         audio.src = bust
+        audio.play().then(() => {}).catch(() => cleanup(false))
+      })
+    },
+    [ensureAudioEl],
+  )
+
+  const playBlob = useCallback(
+    (blob: Blob, lineId: string, rate: number): Promise<boolean> => {
+      if (stoppedRef.current) return Promise.resolve(false)
+      const objectUrl = URL.createObjectURL(blob)
+      return new Promise<boolean>((resolve) => {
+        const audio = ensureAudioEl()
+        audio.loop = false
+        audio.muted = false
+        audio.volume = 1
+        audio.playbackRate = Math.min(1.3, Math.max(0.4, rate))
+        setActiveLineId(lineId)
+        setHighlightIndex(null)
+
+        const cleanup = (ok: boolean) => {
+          audio.onended = null
+          audio.onerror = null
+          URL.revokeObjectURL(objectUrl)
+          resolve(ok)
+        }
+
+        audio.onended = () => cleanup(true)
+        audio.onerror = () => cleanup(false)
+        audio.src = objectUrl
         audio.play().then(() => {}).catch(() => cleanup(false))
       })
     },
@@ -668,6 +699,7 @@ export function useSpeechReader(
     speakFrom,
     stop,
     unlockPlayback,
+    playBlob,
     speaking,
     activeLineId,
     highlightIndex,
