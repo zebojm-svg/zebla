@@ -24,7 +24,7 @@ import {
   type FilmStoryboardPanel,
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
-import { closeupUrlFromWideStill, generateFilmPanelStillImage } from './film-stills.js'
+import { generateFilmPanelStillImage } from './film-stills.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelHarvestNote,
@@ -96,30 +96,20 @@ async function paintCloseupPushIn(opts: {
   targetLanguage?: string
   beatTotal: number
 }): Promise<string> {
-  try {
-    return await generateFilmPanelStillImage({
-      panel: { ...opts.panel, stillCorrection: undefined },
-      scene: opts.scene,
-      styleId: opts.styleId,
-      previousStillUrl: undefined,
-      correctFromUrl: undefined,
-      targetLanguage: opts.targetLanguage,
-      beatTotal: opts.beatTotal,
-      sceneWideStillUrl: opts.wideUrl,
-      speakerGender: opts.speakerGender,
-      speakerX: opts.speakerX,
-      speakerSitting: opts.speakerSitting,
-      continuityEn: opts.continuityEn,
-    })
-  } catch {
-    const cropped = await closeupUrlFromWideStill({
-      wideUrl: opts.wideUrl,
-      speakerX: opts.speakerX,
-      speakerSitting: opts.speakerSitting,
-    })
-    if (cropped) return cropped
-    throw new Error('Nahaufnahme fehlgeschlagen.')
-  }
+  return generateFilmPanelStillImage({
+    panel: { ...opts.panel, stillCorrection: undefined },
+    scene: opts.scene,
+    styleId: opts.styleId,
+    previousStillUrl: undefined,
+    correctFromUrl: undefined,
+    targetLanguage: opts.targetLanguage,
+    beatTotal: opts.beatTotal,
+    sceneWideStillUrl: opts.wideUrl,
+    speakerGender: opts.speakerGender,
+    speakerX: opts.speakerX,
+    speakerSitting: opts.speakerSitting,
+    continuityEn: opts.continuityEn,
+  })
 }
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
