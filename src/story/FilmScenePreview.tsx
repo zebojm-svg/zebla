@@ -4,8 +4,10 @@ import { isRtlLanguage } from '../types'
 import type { Dialog } from '../types'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { scenePlayBeats } from '../../shared/film-storyboard'
+import { foleyFlagsFromNote } from '../../shared/film-scene-foley'
 import { FilmStillPicture } from './FilmStillArrange'
 import { createSceneBedMusic } from './sceneBedMusic'
+import { api } from '../api/client'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -28,11 +30,9 @@ export function FilmScenePreviewPlayer({
 }: Props) {
   const beats = scenePlayBeats(panels, dialog)
   const hasPicture = beats.some((b) => Boolean(b.stillUrl))
-  const { speakFrom, stop, speaking, cloudTtsReady, activeLineId } = useSpeechReader(
-    dialog.targetLanguage,
-    dialogId,
-    onDialogUpdated,
-  )
+  const { speakFrom, stop, unlockPlayback, speaking, cloudTtsReady, ttsError, activeLineId } =
+    useSpeechReader(dialog.targetLanguage, dialogId, onDialogUpdated)
+  const lineAudio = useRef<Map<string, string>>(new Map())
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [musicOn, setMusicOn] = useState(true)
@@ -88,21 +88,35 @@ export function FilmScenePreviewPlayer({
   const play = async (from: number) => {
     const id = ++runId.current
     cancelled.current = false
+    unlockPlayback()
     setPlaying(true)
-    if (musicOnRef.current) void getMusic().start()
+    const foley = foleyFlagsFromNote(soundNote)
+    if (musicOnRef.current) void getMusic().start(foley)
     for (let i = from; i < beats.length; i++) {
       if (cancelled.current || id !== runId.current) break
       setIndex(i)
       const beat = beats[i]!
       if (beat.establishing || !beat.line) {
-        await sleep(2200)
+        const next = beats.slice(i + 1).find((b) => b.line)
+        const warm =
+          next?.line?.lineId && dialogId
+            ? api.tts
+                .getOrCreate({ dialogId, lineId: next.line.lineId, rate: 0.95 })
+                .then((res) => {
+                  lineAudio.current.set(next.line!.lineId!, res.audioUrl)
+                  onDialogUpdated(res.dialog)
+                })
+                .catch(() => undefined)
+            : Promise.resolve()
+        await Promise.all([sleep(2200), warm])
         continue
       }
+      const lineId = beat.line.lineId || beat.panelId
       const speakLine = {
-        id: beat.line.lineId || beat.panelId,
+        id: lineId,
         speaker: beat.line.speaker || 'Sprecher',
         text: beat.line.text,
-        audioUrl: beat.line.audioUrl,
+        audioUrl: lineAudio.current.get(lineId) || beat.line.audioUrl,
       }
       await speakFrom([speakLine], buildSpeakerIndexMap([speakLine]), 0, 0.95, false)
     }
@@ -125,7 +139,7 @@ export function FilmScenePreviewPlayer({
     const next = !musicOn
     setMusicOn(next)
     if (playing || speaking) {
-      if (next) void getMusic().start()
+      if (next) void getMusic().start(foleyFlagsFromNote(soundNote))
       else musicRef.current?.pause()
     }
   }
@@ -143,6 +157,10 @@ export function FilmScenePreviewPlayer({
         {musicOn ? ' · Hintergrund an' : ' · Hintergrund aus'}
         {soundNote ? ` · ${soundNote}` : ''}
       </p>
+      {ttsError ? <div className="alert alert-error">{ttsError}</div> : null}
+      {spokenBeats.length === 0 ? (
+        <p className="alert alert-warn">Kein Dialog in dieser Szene — deshalb spricht niemand.</p>
+      ) : null}
       <div className="film-scene-player-frame">
         {currentPanel?.stillUrl ? (
           <FilmStillPicture dialogId={dialogId} panel={currentPanel} interactive={false} />

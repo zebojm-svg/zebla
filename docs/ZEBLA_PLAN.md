@@ -52,7 +52,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Nächste Baustellen (noch nicht hier):**
 
-- Klingeln und Schritte im Ton
+- Klingeln und Schritte im Ton (Nuss-Knistern und Stadtbrummen in der Szene-Vorschau sind drin)
 - Figur läuft / schiebt sich durchs Bild
 - Lippenbewegung zur Stimme
 - Schatten weicher / lichtabhängig

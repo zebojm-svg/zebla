@@ -26,7 +26,7 @@ function audioContextCtor(): (new () => AudioContext) | null {
 }
 
 export type SceneBedMusic = {
-  start: () => Promise<void>
+  start: (opts?: { crackle?: boolean; city?: boolean }) => Promise<void>
   pause: () => void
   stop: () => void
   dispose: () => void
@@ -39,7 +39,12 @@ export function createSceneBedMusic(): SceneBedMusic {
   let audible = false
   const padNodes: OscillatorNode[] = []
   const bellNodes: OscillatorNode[] = []
+  const foleyNodes: AudioNode[] = []
   let bellTimer: number | null = null
+  let crackleTimer: number | null = null
+  let wantCrackle = false
+  let wantCity = false
+  let cityOn = false
 
   function ensure(): boolean {
     if (ctx && ctx.state !== 'closed') return true
@@ -62,6 +67,77 @@ export function createSceneBedMusic(): SceneBedMusic {
       window.clearTimeout(bellTimer)
       bellTimer = null
     }
+  }
+
+  function clearCrackleTimer() {
+    if (crackleTimer != null) {
+      window.clearTimeout(crackleTimer)
+      crackleTimer = null
+    }
+  }
+
+  function noiseBuffer(seconds: number): AudioBuffer | null {
+    if (!ctx) return null
+    const n = Math.max(1, Math.floor(ctx.sampleRate * seconds))
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1
+    return buf
+  }
+
+  function playCrackle() {
+    if (!ctx || !master || !audible || !wantCrackle) return
+    const buf = noiseBuffer(0.08)
+    if (!buf) return
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const hp = ctx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 1800
+    const g = ctx.createGain()
+    const now = ctx.currentTime
+    g.gain.setValueAtTime(0.0001, now)
+    g.gain.linearRampToValueAtTime(0.045, now + 0.008)
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.07)
+    src.connect(hp)
+    hp.connect(g)
+    g.connect(master)
+    src.start(now)
+    src.stop(now + 0.09)
+    foleyNodes.push(src, hp, g)
+    src.onended = () => {
+      for (const n of [src, hp, g]) {
+        const i = foleyNodes.indexOf(n)
+        if (i >= 0) foleyNodes.splice(i, 1)
+      }
+    }
+  }
+
+  function scheduleCrackle() {
+    if (!audible || !wantCrackle) return
+    playCrackle()
+    if (Math.random() < 0.45) playCrackle()
+    crackleTimer = window.setTimeout(scheduleCrackle, 280 + Math.random() * 900)
+  }
+
+  function spawnCity() {
+    if (!ctx || !master || cityOn || !wantCity) return
+    const buf = noiseBuffer(2)
+    if (!buf) return
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.loop = true
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 220
+    const g = ctx.createGain()
+    g.gain.value = 0.018
+    src.connect(lp)
+    lp.connect(g)
+    g.connect(master)
+    src.start()
+    foleyNodes.push(src, lp, g)
+    cityOn = true
   }
 
   function stopList(list: OscillatorNode[], when?: number) {
@@ -163,7 +239,9 @@ export function createSceneBedMusic(): SceneBedMusic {
     else master.gain.linearRampToValueAtTime(value, now + seconds)
   }
 
-  async function start() {
+  async function start(opts?: { crackle?: boolean; city?: boolean }) {
+    wantCrackle = Boolean(opts?.crackle)
+    wantCity = Boolean(opts?.city)
     if (!ensure() || !ctx || !master) return
     try {
       await ctx.resume()
@@ -171,9 +249,12 @@ export function createSceneBedMusic(): SceneBedMusic {
       return
     }
     spawnPad()
+    spawnCity()
     audible = true
     clearBellTimer()
+    clearCrackleTimer()
     scheduleBells()
+    if (wantCrackle) scheduleCrackle()
     fadeTo(MASTER_GAIN, 0.7)
   }
 
@@ -181,6 +262,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     audible = false
     fadeTo(0, 0.28)
     clearBellTimer()
+    clearCrackleTimer()
     stopList(bellNodes, ctx ? ctx.currentTime + 0.3 : undefined)
   }
 
@@ -191,9 +273,21 @@ export function createSceneBedMusic(): SceneBedMusic {
   function dispose() {
     audible = false
     padOn = false
+    cityOn = false
     clearBellTimer()
+    clearCrackleTimer()
     stopList(bellNodes)
     stopList(padNodes)
+    for (const n of foleyNodes) {
+      try {
+        if ('stop' in n && typeof (n as OscillatorNode).stop === 'function') {
+          ;(n as OscillatorNode).stop()
+        }
+      } catch {
+        /* already stopped */
+      }
+    }
+    foleyNodes.length = 0
     if (ctx && ctx.state !== 'closed') {
       void ctx.close()
     }
