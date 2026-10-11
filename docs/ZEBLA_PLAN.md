@@ -15,7 +15,7 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 1. **Geschichte = Ordner.** Dialog, Skript (Film-Prompt), Storyboard, Film und Diashow liegen zusammen. Neue Geschichte legt den Ordner selbst an.
 2. **Welt-Regal** (`/library`): Figuren, Räume, Möbel, Skizzen — über allen Geschichten. Zeichnen nur, wenn etwas fehlt. Gleiche Person (Ramo 1 / Ramo 2) bleibt getrennt; Ernten aus einem Standbild ist kein zweites Gesicht.
 3. **Meta-Blatt** auf der Dialog-Seite: wer spielt, Stimmen, Räume, Licht/Blick. Gilt für die ganze Geschichte.
-4. **Standbilder zuerst.** Weit plus Nahaufnahme derselben Szene. Die Nahaufnahme ist ein Kamera-Zoom in die Übersicht (Platz im Raum, Möbel hinter der Person) — gleiche Person, gleicher Tisch, gleiches Geschlecht, scharfe Augen. Beim Abspielen: erst den Raum, dann eine Dialogzeile nach der anderen mit Deutsch darunter, leise Hintergrundmusik. Figuren und Hintergründe nach einer Szene ernten und wiederverwenden. Volle Animation kommt später.
+4. **Standbilder zuerst.** Ein Bild je Dialogzeile. Die erste Zeile einer Szene ist der ganze Raum; die nächsten Zeilen nehmen dasselbe Bild, bis man etwas ändert («lass Ramo aufstehen», Nahaufnahme). Zwischenbilder (Klingeln, zur Tür) kann man einfügen. Laufen durchs Bild kommt später. Beim Abspielen: eine Zeile nach der anderen mit Deutsch darunter, leise Hintergrundmusik.
 5. **Diashow** bleibt die Lernansicht derselben Geschichte, kein zweites Produkt.
 6. **Figuren stellen ohne KI.** Nach dem Ernten: ziehen und zoomen auf Film/Storyboard. Die Lage bleibt gespeichert.
 7. **Freisteller sitzen im Raum.** Kontakt-Schatten unter den Figuren. In der Vorschau leichtes Atmen und Blinzeln (noch keine Lippen).
@@ -50,6 +50,8 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Nächste Baustellen (noch nicht hier):**
 
+- Klingeln und Schritte im Ton
+- Figur läuft / schiebt sich durchs Bild
 - Lippenbewegung zur Stimme
 - Schatten weicher / lichtabhängig
 - Möbel in der Szene selbst verschieben wie Figuren

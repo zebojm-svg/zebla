@@ -131,10 +131,6 @@ export function referenceUrlsForPanel(
   correctFromUrl?: string,
   sceneWideStillUrl?: string,
 ): string[] {
-  const speakerName = (panel.closeupSpeaker || panel.placements[0]?.name || '').trim().toLowerCase()
-  const speakerUrl =
-    panel.placements.find((pl) => pl.name.trim().toLowerCase() === speakerName && pl.imageUrl)
-      ?.imageUrl ?? panel.placements[0]?.imageUrl
   const people: string[] = []
   for (const pl of panel.placements) {
     if (pl.imageUrl) people.push(pl.imageUrl)
@@ -147,9 +143,9 @@ export function referenceUrlsForPanel(
   const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
   const ordered = (
     correctFromUrl
-      ? [correctFromUrl, speakerUrl]
+      ? [correctFromUrl, sceneWideStillUrl]
       : closeup
-        ? [sceneWideStillUrl, speakerUrl]
+        ? [sceneWideStillUrl]
         : [bg, ...people]
   ).filter(http)
   return [...new Set(ordered)].slice(0, closeup ? 2 : 4)

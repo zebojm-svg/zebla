@@ -6,6 +6,7 @@ import {
   applyDirectorNote,
   dialogNeedsNativeTranslation,
   ensureCoverageDrafts,
+  cueAsksNewPicture,
   expectedSceneShotCount,
   findReusableCloseup,
   inferExpression,
@@ -109,29 +110,39 @@ const dialog: Dialog = {
 }
 
 const board = planBoardWithoutAi(dialog, [julienSit, park])
-if (board.panels.length !== 2) fail('Szene = Weit + Nahaufnahme je Sprecher')
+if (board.panels.length !== 1) fail('Eine Dialogzeile → ein Bild')
 const panel = board.panels[0]
 if (panel.shot !== 'wide') fail('erstes Bild ist Weit')
-if (board.panels[1]?.shot !== 'closeup') fail('zweites Bild ist Nahaufnahme')
-if (board.panels[1]?.closeupSpeaker !== 'Julien') fail('Nahaufnahme Julien')
-if (board.panels[1]?.placements[0]?.poseId !== 'sitting') {
-  fail('Nahaufnahme nimmt die Sitz-Pose der Szene, kein extra Stehen')
-}
-const closeDraft = ensureCoverageDrafts(dialog, []).find((d) => d.shot === 'closeup')
-if (!closeDraft?.imageCue.toLowerCase().includes('platz')) {
-  fail('Nahaufnahme-Text: Person bleibt am Platz')
-}
+if (panel.lineIds.length !== 1 || panel.lineIds[0] !== 'l1') fail('Bild hängt an der Dialogzeile')
 if (panel.placements[0]?.match !== 'reuse') fail('sitzender Julien aus Bibliothek')
 if (panel.background.match !== 'reuse') fail('Park aus Bibliothek')
+if (!cueAsksNewPicture('lass Ramo aufstehen')) fail('Aufstehen braucht ein neues Bild')
+if (cueAsksNewPicture('Wie das vorige Bild. Khan spricht.')) fail('Wie zuvor bleibt dasselbe Bild')
 const reusedClose = findReusableCloseup(
-  { ...board, panels: board.panels.map((p, i) => (i === 1 ? { ...p, stillUrl: 'https://example.com/julien-cu.png' } : p)) },
+  {
+    ...board,
+    panels: board.panels.map((p) => ({
+      ...p,
+      shot: 'closeup' as const,
+      closeupSpeaker: 'Julien',
+      stillUrl: 'https://example.com/julien-cu.png',
+    })),
+  },
   'Julien',
-  board.panels[1]?.expressionHint,
+  board.panels[0]?.expressionHint,
   'other',
 )
 if (reusedClose !== 'https://example.com/julien-cu.png') fail('Nahaufnahme wiederverwenden')
 const reusedOtherMood = findReusableCloseup(
-  { ...board, panels: board.panels.map((p, i) => (i === 1 ? { ...p, stillUrl: 'https://example.com/julien-cu.png' } : p)) },
+  {
+    ...board,
+    panels: board.panels.map((p) => ({
+      ...p,
+      shot: 'closeup' as const,
+      closeupSpeaker: 'Julien',
+      stillUrl: 'https://example.com/julien-cu.png',
+    })),
+  },
   'Julien',
   'freut sich',
   'other',
@@ -148,7 +159,7 @@ if (!tweaked.panels[0]?.directorNote) fail('Regie-Notiz speichern')
 if (inferExpression('Julien springt und ruft Juhe') !== 'freut sich') fail('Juhe → freut sich')
 if (!board.scenes.length) fail('Szenen müssen existieren')
 const inserted = insertPanelAfter(board, panel.id, 'Julien springt in die Luft und ruft Juhe', [julienSit, park])
-if (inserted.panels.length !== 3) fail('Zeile einfügen')
+if (inserted.panels.length !== 2) fail('Zeile einfügen')
 if (!inserted.panels[1]?.expressionHint) fail('Ausdruck an neuer Zeile')
 if (inserted.panels[1]?.imageCue !== 'Julien springt in die Luft und ruft Juhe') {
   fail('Eingefügtes Bild trägt die Bild-Notiz')
@@ -172,12 +183,12 @@ const four: Dialog = {
   ],
 }
 const fourBoard = planBoardWithoutAi(four, [])
-if (fourBoard.panels.length !== 5) fail('Vier Sprecher → 1 Weit + 4 Nahaufnahmen')
-if (expectedSceneShotCount(four, 'ankunft') !== 5) fail('erwartet 5 Bilder')
-if (fourBoard.panels.filter((p) => p.shot === 'closeup').length !== 4) {
-  fail('vier Nahaufnahmen')
+if (fourBoard.panels.length !== 4) fail('Vier Dialogzeilen → vier Bilder')
+if (expectedSceneShotCount(four, 'ankunft') !== 4) fail('erwartet 4 Bilder')
+if (fourBoard.panels.filter((p) => (p.shot ?? 'wide') === 'wide').length !== 4) {
+  fail('ohne Bild-Notiz bleiben alle beim Weit-Bild')
 }
-if (!sceneShotPlanDe(fourBoard.panels).includes('Ramo')) fail('Plan nennt Ramo')
+if (!sceneShotPlanDe(fourBoard.panels).includes('Dialogzeile')) fail('Plan sagt ein Bild je Zeile')
 
 const geminiWrongId = ensureCoverageDrafts(four, [
   {
@@ -187,7 +198,7 @@ const geminiWrongId = ensureCoverageDrafts(four, [
     lineIds: ['a'],
   },
 ])
-if (geminiWrongId.length !== 5) fail('Gemini-Id 1 wird auf den Abschnitt gemappt, Coverage bleibt 5')
+if (geminiWrongId.length !== 4) fail('Gemini-Id 1 wird auf den Abschnitt gemappt, Coverage bleibt 4 Zeilen')
 if (resolveDraftSectionId(four, 'Ankunft und Begrüßung') !== 'ankunft') {
   fail('Szenentitel auf Abschnitts-Id')
 }
@@ -206,8 +217,10 @@ const unnamed: Dialog = {
   ],
 }
 const fromText = ensureCoverageDrafts(unnamed, [])
-if (fromText.length !== 3) fail('Sprecher aus «Name:» im Text → Weit + 2 Nah')
-if (!fromText.some((d) => d.closeupSpeaker === 'Ramo')) fail('Nahaufnahme Ramo aus dem Text')
+if (fromText.length !== 2) fail('Zwei Zeilen → zwei Bilder')
+if (!fromText.some((d) => (d.characters ?? []).some((c) => c.name === 'Ramo'))) {
+  fail('Ramo aus «Name:» im Text')
+}
 
 const needsDe: Dialog = {
   ...four,

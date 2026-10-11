@@ -29,6 +29,18 @@ import {
   isGeminiImageUnavailable,
 } from './gemini-image-model.js'
 import { fluxLockAvailable, generateLockedStillPng } from './story-stills-gen.js'
+import { genderFromKnownName } from './speaker-gender.js'
+
+function lockAppearanceSex(name: string, appearance: string): string {
+  const g = genderFromKnownName(name)
+  if (g === 'male') {
+    return `${appearance}\nThis person is MALE (a boy or man), never a girl, never a woman.`
+  }
+  if (g === 'female') {
+    return `${appearance}\nThis person is FEMALE (a girl or woman), never a boy, never a man.`
+  }
+  return appearance
+}
 
 async function uploadStoryAsset(buffer: Buffer, assetPath: string): Promise<string> {
   const { adminStorage } = await import('./firebase-admin.js')
@@ -245,7 +257,7 @@ export async function generateStoryCharacter(
   buildRig = false,
   punchCutout = true,
 ): Promise<StoryCharacterResult> {
-  const appearance = resolveStoryCharacterAppearance(name, description)
+  const appearance = lockAppearanceSex(name, resolveStoryCharacterAppearance(name, description))
   const still = stillPoseId ? getStillPose(stillPoseId) : undefined
   const resolvedLeg = still?.legPoseId ?? legPoseId
   const resolvedHead = still?.headAngleId ?? headAngleId
