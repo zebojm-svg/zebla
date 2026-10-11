@@ -253,8 +253,12 @@ if (fixRefs[0] !== 'https://example.com/this-still.png') {
   fail('Beim Korrigieren zuerst das aktuelle Standbild')
 }
 
-const closePanel = s1.find((p) => p.shot === 'closeup')
-if (!closePanel) fail('Szene braucht eine Nahaufnahme')
+const closePanel = {
+  ...s1[0]!,
+  id: 'cu-test',
+  shot: 'closeup' as const,
+  closeupSpeaker: 'Julien',
+}
 const cuWithBg = {
   ...closePanel,
   placements: [{ ...closePanel.placements[0]!, imageUrl: 'https://example.com/julien.png' }],
@@ -270,7 +274,9 @@ if (cuRefs[0] !== 'https://example.com/wide.png') fail('Nahaufnahme zoomt zuerst
 if (cuRefs.includes('https://example.com/park.png')) {
   fail('Nahaufnahme hängt nicht den ganzen Raum als Vorlage an')
 }
-if (!cuRefs.includes('https://example.com/julien.png')) fail('Nahaufnahme braucht das Stamm-Gesicht')
+if (cuRefs.includes('https://example.com/julien.png')) {
+  fail('Nahaufnahme nimmt nicht das Bibliothek-Porträt (sonst wird Schöme wieder ein Mädchen)')
+}
 const withWide = applyPanelStill(board, s1[0]!.id, 'https://example.com/wide.png', 'illustration-lebendig')
 if (sceneWideStillUrl(withWide, closePanel) !== 'https://example.com/wide.png') {
   fail('Weit-Bild der Szene für die Nahaufnahme finden')

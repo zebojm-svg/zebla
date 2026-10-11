@@ -96,13 +96,13 @@ export function FilmSceneGenerateBar({
       ) : null}
       <p className="muted film-scene-still-note">
         {shotPlanDe ||
-          'Zuerst der ganze Raum, dann Nahaufnahme derselben Person am selben Platz — Tisch bleibt sichtbar, scharfe Augen, kein neues Porträt.'}
+          'Ein Bild je Dialogzeile. Die erste Zeile ist der ganze Raum; die nächsten nehmen dasselbe Bild, bis du etwas änderst (z.B. Ramo aufstehen).'}
         {stats.done > 0 ? ` ${stats.done} von ${stats.total} Bildern fertig.` : ''}
       </p>
       {expectedShots != null && stats.total < expectedShots ? (
         <p className="alert alert-warn">
           Hier sind nur {stats.total} Bild{stats.total === 1 ? '' : 'er'}, erwartet sind{' '}
-          {expectedShots} (1 Übersicht + Nahaufnahme je Sprecher). Oben auf Vom Text neu
+          {expectedShots} (eines je Dialogzeile). Oben auf Vom Text neu
           drücken.
         </p>
       ) : null}
@@ -329,7 +329,7 @@ export function FilmStillFixBar({
             className="input"
             value={note}
             disabled={busy}
-            placeholder="Was stimmt nicht? z.B. Prospekt fehlt, beide schauen in die Luft"
+            placeholder="z.B. lass Ramo aufstehen, Nahaufnahme Khan"
             onChange={(e) => setNote(e.target.value)}
           />
           <button
@@ -348,7 +348,7 @@ export function FilmStillFixBar({
             className="input"
             value={insertText}
             disabled={busy}
-            placeholder="z.B. Nahaufnahme Prospekt, man sieht direkt hinein"
+            placeholder="z.B. Es klingelt, Ramo geht zur Tür"
             onChange={(e) => setInsertText(e.target.value)}
           />
           <button

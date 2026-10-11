@@ -397,9 +397,29 @@ export function resolveDraftSectionId(dialog: Dialog, raw?: string): string {
   return fallback
 }
 
+/** Bild-Notiz verlangt ein neues Standbild (sonst die vorige Zeile wiederverwenden). */
+export function cueAsksNewPicture(cue?: string): boolean {
+  const t = (cue || '').trim().toLowerCase()
+  if (!t) return false
+  if (/wie zuvor|wie das vorige|gleiches bild|wie vorher/.test(t)) return false
+  return /nahaufnahme|close-?up|steht auf|aufstehen|geht |laufen|läuft |klingelt|zoom|tür|tuer|prospekt|winkt|setzt sich/.test(
+    t,
+  )
+}
+
+export function panelWantsOwnStill(
+  panel: Pick<FilmStoryboardPanel, 'id' | 'stillCorrection' | 'imageCue' | 'panelIndex'>,
+  scenePanels: Pick<FilmStoryboardPanel, 'id' | 'panelIndex'>[],
+): boolean {
+  const ordered = [...scenePanels].sort((a, b) => a.panelIndex - b.panelIndex)
+  if (ordered[0]?.id === panel.id) return true
+  if (panel.stillCorrection?.trim()) return true
+  return cueAsksNewPicture(panel.imageCue)
+}
+
 /**
- * Pro Szene: 1 Weit (ganzer Raum, alle) + 1 Nahaufnahme je Sprecher.
- * Nahaufnahmen dürfen später in anderen Szenen wiederverwendet werden.
+ * Pro Dialogzeile ein Bild. Die erste Zeile einer Szene ist die Übersicht;
+ * die nächsten Zeilen nehmen dasselbe Bild, bis eine Bild-Notiz etwas Neues verlangt.
  */
 export function ensureCoverageDrafts(
   dialog: Dialog,
@@ -419,51 +439,40 @@ export function ensureCoverageDrafts(
     const setting = existing[0]?.settingHint?.trim() || defaultSetting(dialog, section)
     const blob = section.lines.map((l) => lineCueText(l)).join(' ')
     const poseHint = inferPoseId(blob)
-    const widePrior = existing.find((d) => (d.shot ?? 'wide') !== 'closeup')
-    out.push({
-      sectionId: section.id,
-      shot: 'wide',
-      lineIds: section.lines.map((l) => l.id),
-      caption: widePrior?.caption?.trim() || section.title || 'Alle zusammen',
-      imageCue:
-        widePrior?.imageCue?.trim() ||
-        section.lines.find((l) => l.cueImage?.trim())?.cueImage?.trim() ||
-        `Ganzer Raum: ${setting}. Alle: ${speakers.join(', ') || 'die Figuren'}.`,
-      soundCue: widePrior?.soundCue || dialog.soundDirection?.trim() || '',
-      speechCue: widePrior?.speechCue || dialog.speechDirection?.trim() || '',
-      settingHint: setting,
-      expressionHint: widePrior?.expressionHint || inferExpression(blob),
-      characters:
-        widePrior?.characters?.length
-          ? widePrior.characters
-          : speakers.map((name) => ({
-              name,
-              poseHint,
-              depth: 'mid' as FilmDepth,
-            })),
-    })
-    for (const speaker of speakers) {
-      const lines = section.lines.filter((l) => l.speaker.trim() === speaker)
-      const prior = existing.find(
-        (d) => d.shot === 'closeup' && (d.closeupSpeaker || d.characters?.[0]?.name) === speaker,
-      )
-      const talk = lines.map((l) => l.text).join(' ')
+    section.lines.forEach((line, i) => {
+      const prior =
+        existing.find((d) => d.lineIds?.includes(line.id)) ||
+        (i === 0 ? existing.find((d) => (d.shot ?? 'wide') !== 'closeup') : undefined)
+      const speaker = line.speaker.trim() || speakers[0] || 'Figur'
+      const lineCue = line.cueImage?.trim() || ''
+      const imageCue =
+        prior?.imageCue?.trim() ||
+        lineCue ||
+        (i === 0
+          ? `Ganzer Raum: ${setting}. Alle: ${speakers.join(', ') || 'die Figuren'}.`
+          : `Wie das vorige Bild. ${speaker} spricht.`)
+      const close = i > 0 && /nahaufnahme|close-?up/.test(imageCue.toLowerCase())
       out.push({
         sectionId: section.id,
-        shot: 'closeup',
-        closeupSpeaker: speaker,
-        lineIds: lines.map((l) => l.id),
-        caption: prior?.caption?.trim() || `${speaker}: ${lines[0]?.text ?? ''}`.slice(0, 140),
-        imageCue:
-          prior?.imageCue?.trim() ||
-          `Nahaufnahme ${speaker}: Kamera näher an dasselbe Gesicht in diesem Raum — ${speaker} bleibt am Platz. Scharfe Augen.`,
-        soundCue: prior?.soundCue || '',
-        speechCue: prior?.speechCue || lines[0]?.cueSpeech || '',
+        shot: i === 0 || !close ? 'wide' : 'closeup',
+        closeupSpeaker: close ? speaker : undefined,
+        lineIds: [line.id],
+        caption: prior?.caption?.trim() || `${speaker}: ${line.text}`.slice(0, 140),
+        imageCue,
+        soundCue: prior?.soundCue || (i === 0 ? dialog.soundDirection?.trim() || '' : ''),
+        speechCue: prior?.speechCue || line.cueSpeech || '',
         settingHint: setting,
-        expressionHint: prior?.expressionHint || inferExpression(talk),
-        characters: [{ name: speaker, poseHint, depth: 'foreground' }],
+        expressionHint: prior?.expressionHint || inferExpression(line.text),
+        characters:
+          i === 0
+            ? speakers.map((name) => ({
+                name,
+                poseHint,
+                depth: 'mid' as FilmDepth,
+              }))
+            : [{ name: speaker, poseHint, depth: 'foreground' as FilmDepth }],
       })
-    }
+    })
   }
   return out
 }
@@ -472,26 +481,16 @@ export function draftPanelsFromDialog(dialog: Dialog): FilmDraftPanel[] {
   return ensureCoverageDrafts(dialog, [])
 }
 
-/** 1 Weit + 1 Nahaufnahme je Sprecher in dieser Szene. */
+/** Eine Bildzeile je Dialogzeile. */
 export function expectedSceneShotCount(dialog: Dialog, sectionId: string): number {
   const section = dialog.sections.find((s) => s.id === sectionId)
   if (!section) return 1
-  return 1 + speakersInSection(section).length
+  return Math.max(1, section.lines.length)
 }
 
 export function sceneShotPlanDe(panels: FilmStoryboardPanel[]): string {
-  const wide = panels.filter((p) => (p.shot ?? 'wide') !== 'closeup').length
-  const close = panels.filter((p) => p.shot === 'closeup')
-  const names = [
-    ...new Set(close.map((p) => p.closeupSpeaker?.trim()).filter(Boolean) as string[]),
-  ]
-  const closeBit =
-    close.length === 0
-      ? 'noch keine Nahaufnahmen'
-      : `${close.length} Nahaufnahme${close.length === 1 ? '' : 'n'}${
-          names.length ? ` (${names.join(', ')})` : ''
-        }`
-  return `Geplant: ${wide} Übersicht, ${closeBit}.`
+  const n = panels.length
+  return `Geplant: ${n} Bild${n === 1 ? '' : 'er'} — eines je Dialogzeile. Gleiches Bild bis du etwas änderst.`
 }
 
 export function dialogNeedsNativeTranslation(dialog: Pick<Dialog, 'sections'>): boolean {
@@ -578,8 +577,13 @@ export function buildBoardFromDrafts(
       } satisfies FilmPlacement
     })
 
-    const keepId = `p-${i + 1}-${sceneId.slice(0, 8)}`
-    const prev = prevById.get(keepId)
+    const lineKey = (draft.lineIds[0] || `n${i + 1}`).slice(0, 16)
+    const keepId = `p-${lineKey}-${sceneId.slice(0, 8)}`
+    const prev =
+      prevById.get(keepId) ||
+      (previous?.panels ?? []).find(
+        (p) => draft.lineIds[0] && p.lineIds.includes(draft.lineIds[0]),
+      )
     return {
       id: keepId,
       sceneId,

@@ -36,6 +36,7 @@ import {
 } from './visual-script.js'
 import type { DialogVisualScript } from '../shared/types.js'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
+import { genderFromKnownName } from './speaker-gender.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
@@ -738,8 +739,9 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
 
   const genderHints = cast
     .map((c) => {
-      const g = dialog.speakerProfiles?.[c.name]?.gender
-      return g ? `${c.name} (Nutzer: ${g === 'male' ? 'männlich' : 'weiblich'})` : c.name
+      const g =
+        dialog.speakerProfiles?.[c.name]?.gender ?? genderFromKnownName(c.name)
+      return g ? `${c.name} (${g === 'male' ? 'männlich, Junge/Mann' : 'weiblich, Mädchen/Frau'})` : c.name
     })
     .join(', ')
 
@@ -767,7 +769,13 @@ JSON:
   if (!result.characters?.length) {
     throw new Error('KI konnte keine Figuren-Beschreibung erstellen.')
   }
-  return result.characters
+  return result.characters.map((c) => ({
+    ...c,
+    gender:
+      dialog.speakerProfiles?.[c.name]?.gender ??
+      genderFromKnownName(c.name) ??
+      c.gender,
+  }))
 }
 
 export function formatCharacterBibleForPrompt(bible: CharacterVisual[]): string {

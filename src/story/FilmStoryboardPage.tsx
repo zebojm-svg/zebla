@@ -269,7 +269,7 @@ export function FilmStoryboardPage() {
             onClick={() => {
               if (board) {
                 const ok = window.confirm(
-                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen? Pro Szene entsteht 1 Übersicht plus 1 Nahaufnahme je Sprecher — danach werden die Bilder der ersten Szene erzeugt.',
+                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen? Pro Dialogzeile entsteht ein Bild — gleiche Bilder werden wiederverwendet, bis du etwas änderst. Danach wird die erste Szene gemalt.',
                 )
                 if (!ok) return
                 void (async () => {

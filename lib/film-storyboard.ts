@@ -10,8 +10,7 @@ import {
   draftPanelsFromDialog,
   ensureCoverageDrafts,
   resolveDraftSectionId,
-  closeupExprKey,
-  findReusableCloseupPanel,
+  panelWantsOwnStill,
   insertPanelAfter,
   insertSceneAfter,
   isFilmStoryboard,
@@ -23,11 +22,11 @@ import {
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
-import { identityReferenceUrl } from '../shared/library-identities.js'
 import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
+  previousStillUrlInScene,
   sceneWidePanel,
   sceneWideStillUrl,
 } from '../shared/film-stills.js'
@@ -42,10 +41,9 @@ import { genderFromKnownName } from './speaker-gender.js'
 
 const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
 Nur JSON.
-Pro Szene/Abschnitt PFLICHT:
-1. Genau EIN Bild shot="wide": ganzer Raum, ALLE Personen, Einrichtung GENAU wie der Dialog (Teppich, Tisch, Kissen …). Nicht ein beliebiges altes Wohnzimmer.
-2. Danach genau EIN Bild shot="closeup" je Sprecher: Kamera näher an DIESELBE Person im Weit-Bild (gleicher Tisch, gleiches Geschlecht, scharfe Augen). Kein neues Studio-Porträt.
-Nahaufnahmen derselben Person dürfen in späteren Szenen wiederverwendet werden — also nicht extra erfinden, wenn die Mimik gleich bleibt.
+Genau EIN Bild je Dialogzeile (lineIds: eine id).
+Erstes Bild einer Szene shot="wide": ganzer Raum, ALLE Personen, Einrichtung wie der Dialog.
+Weitere Zeilen: dasselbe Bild (imageCue z.B. «Wie das vorige Bild. Khan spricht.»), ausser die Zeile eine neue Aktion braucht (aufstehen, zur Tür, Nahaufnahme). Dann shot="closeup" nur wenn wirklich Nahaufnahme.
 Schema:
 {
   "summaryDe": "ein Satz",
@@ -54,9 +52,9 @@ Schema:
       "sectionId": "id",
       "shot": "wide|closeup",
       "closeupSpeaker": "Name nur bei closeup",
-      "lineIds": ["id"],
+      "lineIds": ["eine-zeilen-id"],
       "caption": "kurz",
-      "imageCue": "was man sieht, inkl. Möbel/Ort aus dem Dialog",
+      "imageCue": "was man sieht, oder Wie das vorige Bild",
       "soundCue": "Ton oder leer",
       "speechCue": "wie gesprochen",
       "settingHint": "Ort wie im Dialog, konkret",
@@ -415,6 +413,20 @@ export async function stillFilmPanel(
     let boardForGen = working
     let panelForGen = panel
     let pieceNote = ''
+    const scenePanels0 = working.panels.filter((p) => p.sceneId === panel.sceneId)
+    if (!correction && !panelWantsOwnStill(panel, scenePanels0)) {
+      const prevUrl = previousStillUrlInScene(working, panel)
+      if (prevUrl) {
+        const withStill = applyPanelStill(working, panelId, prevUrl, resolvedStyle)
+        const withNote = applyPanelHarvestNote(
+          withStill,
+          panelId,
+          'Dasselbe Bild wie die vorige Zeile — bis du etwas änderst.',
+        )
+        const updated = await persist(withNote)
+        return { dialog: updated, board: withNote }
+      }
+    }
     if (!correction) {
       try {
         const library0 = libraryForCompose(await listStoryAssets(userId))
@@ -428,52 +440,14 @@ export async function stillFilmPanel(
         pieceNote = pieces.noteDe
         boardForGen = rematchFilmBoard(working, libraryForCompose(pieces.library))
         panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
-        if ((panelForGen.shot ?? 'wide') === 'closeup') {
-          const who = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
-          const face = identityReferenceUrl(pieces.library, who)
-          if (face) {
-            panelForGen = {
-              ...panelForGen,
-              placements: panelForGen.placements.map((pl, i) =>
-                i === 0 || pl.name.trim().toLowerCase() === who.trim().toLowerCase()
-                  ? { ...pl, imageUrl: face }
-                  : pl,
-              ),
-            }
-          }
-        }
       } catch {
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
-    if (!correction && (panelForGen.shot ?? 'wide') === 'closeup') {
-      const base = findReusableCloseupPanel(
-        boardForGen,
-        panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || '',
-        panelForGen.id,
-      )
-      if (base?.stillUrl) {
-        const sameFace =
-          closeupExprKey(base.expressionHint) === closeupExprKey(panelForGen.expressionHint)
-        if (sameFace) {
-          const withStill = applyPanelStill(boardForGen, panelId, base.stillUrl, resolvedStyle)
-          const withNote = applyPanelHarvestNote(
-            withStill,
-            panelId,
-            'Nahaufnahme schon da — dasselbe Gesicht wiederverwendet.',
-          )
-          const updated = await persist(withNote)
-          return { dialog: updated, board: withNote }
-        }
-        panelForGen = {
-          ...panelForGen,
-          stillCorrection:
-            panelForGen.stillCorrection ||
-            `Keep this EXACT close-up (same crop, face, hair, clothes). Only change facial muscles: ${panelForGen.expressionHint || 'talking'}. Eyebrows, eyelids, mouth, maybe wrinkle the nose. Do not redraw the person.`,
-        }
-        correctFromUrl = base.stillUrl
-      }
+    if (!correctFromUrl) {
+      const prevUrl = previousStillUrlInScene(boardForGen, panelForGen)
+      if (prevUrl) correctFromUrl = prevUrl
     }
     const speaker = panelForGen.closeupSpeaker || panelForGen.placements[0]?.name || ''
     const wide = (panelForGen.shot ?? 'wide') === 'closeup' ? sceneWidePanel(boardForGen, panelForGen) : undefined
