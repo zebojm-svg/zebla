@@ -29,6 +29,10 @@ const de = {
   'login.demoCodes': 'Standard-Schülercodes:',
   'login.firebaseMissing':
     'Firebase ist nicht konfiguriert. Bitte VITE_FIREBASE_* Variablen in .env setzen (siehe README).',
+  'login.previewBlocked':
+    'Auf dieser Vorschau-Adresse geht die Google-Anmeldung nicht. Bitte nach dem Merge auf zebla.zebotools.ch anmelden — dort ist Google erlaubt.',
+  'login.unauthorizedDomain':
+    'Diese Adresse ist bei Google nicht erlaubt. Bitte zebla.zebotools.ch verwenden.',
   'dashboard.title': 'Meine Geschichten',
   'dashboard.newDialog': 'Neue Geschichte',
   'dashboard.newFolder': 'Neuer Ordner',
@@ -111,6 +115,10 @@ const en: Record<MessageKey, string> = {
   'login.demoCodes': 'Default student codes:',
   'login.firebaseMissing':
     'Firebase is not configured. Set VITE_FIREBASE_* variables in .env (see README).',
+  'login.previewBlocked':
+    'Google sign-in does not work on this preview URL. After the merge, sign in at zebla.zebotools.ch.',
+  'login.unauthorizedDomain':
+    'This address is not allowed for Google sign-in. Use zebla.zebotools.ch.',
   'dashboard.title': 'My stories',
   'dashboard.newDialog': 'New story',
   'dashboard.newFolder': 'New folder',
@@ -194,6 +202,10 @@ const fr: Record<MessageKey, string> = {
   'login.demoCodes': 'Codes élève par défaut :',
   'login.firebaseMissing':
     'Firebase n’est pas configuré. Définissez les variables VITE_FIREBASE_* dans .env (voir README).',
+  'login.previewBlocked':
+    'La connexion Google ne fonctionne pas sur cette adresse de prévisualisation. Après la fusion, connectez-vous sur zebla.zebotools.ch.',
+  'login.unauthorizedDomain':
+    'Cette adresse n’est pas autorisée pour Google. Utilisez zebla.zebotools.ch.',
   'dashboard.title': 'Mes histoires',
   'dashboard.newDialog': 'Nouvelle histoire',
   'dashboard.newFolder': 'Nouveau dossier',
@@ -276,6 +288,10 @@ const fa: Record<MessageKey, string> = {
   'login.demoCodes': 'کدهای پیش‌فرض:',
   'login.firebaseMissing':
     'Firebase پیکربندی نشده است. متغیرهای VITE_FIREBASE_* را در .env تنظیم کنید.',
+  'login.previewBlocked':
+    'ورود با گوگل روی این آدرس پیش‌نمایش کار نمی‌کند. بعد از ادغام در zebla.zebotools.ch وارد شوید.',
+  'login.unauthorizedDomain':
+    'این آدرس برای ورود گوگل مجاز نیست. از zebla.zebotools.ch استفاده کنید.',
   'dashboard.title': 'داستان‌های من',
   'dashboard.newDialog': 'داستان جدید',
   'dashboard.newFolder': 'پوشه جدید',

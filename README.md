@@ -106,10 +106,12 @@ npm run dev:client
 
 ### Google-Anmeldung in Production
 
-In Firebase Console → Authentication → Google → **Autorisierte Domains** hinzufügen:
+In Firebase Console → Authentication → **Autorisierte Domains** hinzufügen:
 
 - `dein-projekt.vercel.app`
-- Eigene Domain (falls vorhanden)
+- Eigene Domain (falls vorhanden, z.B. `zebla.zebotools.ch`)
+
+Vercel-Git-Vorschauen (`…-git-….vercel.app`) sind **nicht** eingetragen. Google-Anmeldung dort geht nicht — auf der Live-Domain testen.
 
 ---
 

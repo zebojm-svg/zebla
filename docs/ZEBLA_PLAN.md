@@ -41,7 +41,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 | Cursor-Tokens | [cursor.com/dashboard/spending](https://cursor.com/dashboard/spending) |
 | Standbilder (aktuell Gemini) | [Google AI Studio](https://aistudio.google.com) → Usage / Billing |
 | FLUX-Reserve | [Replicate Billing](https://replicate.com/account/billing) (Guthaben kann unberührt sein, wenn Gemini malt) |
-| Live/Deploy | [Vercel Zebla](https://vercel.com/zebojm-svgs-projects/zebla) |
+| Live/Deploy | [Vercel Zebla](https://vercel.com/zebojm-svgs-projects/zebla) · Anmeldung nur auf [zebla.zebotools.ch](https://zebla.zebotools.ch) — Vercel-Git-Vorschau (`…-git-….vercel.app`) darf Google nicht |
 | Zebla intern | App oben **Pro** (Master = fast kein Limit) |
 
 ## Stand (2026-10)
