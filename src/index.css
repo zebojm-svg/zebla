@@ -3478,6 +3478,11 @@ html[dir='rtl'] .slideshow-topbar {
   padding: 0 1rem;
 }
 
+.film-tweak-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
 .film-identity {
   margin-bottom: 1.5rem;
 }

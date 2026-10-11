@@ -872,6 +872,40 @@ function allDialogLines(dialog: Pick<Dialog, 'sections'>): Map<string, DialogLin
   return byId
 }
 
+export function dialogLinesInOrder(dialog: Pick<Dialog, 'sections'>): DialogLine[] {
+  return dialog.sections.flatMap((section) => section.lines)
+}
+
+/** Gegenüber im Gespräch — für Blickrichtung, nicht die Kamera. */
+export function panelAddressee(
+  panel: FilmStoryboardPanel,
+  dialog?: Pick<Dialog, 'sections'> | null,
+): string | undefined {
+  const lines = panelDialogueLines(panel, dialog)
+  const speaker = (panel.closeupSpeaker || lines[0]?.speaker || '').trim()
+  if (!speaker) return undefined
+  const otherInPanel = lines.find(
+    (line) => line.speaker.trim() && line.speaker.trim() !== speaker,
+  )?.speaker
+  if (otherInPanel?.trim()) return otherInPanel.trim()
+  if (!dialog) return undefined
+  const all = dialogLinesInOrder(dialog)
+  const id = panel.lineIds[0]
+  const idx = id
+    ? all.findIndex((line) => line.id === id)
+    : all.findIndex((line) => line.speaker.trim() === speaker)
+  if (idx < 0) return undefined
+  for (let i = idx - 1; i >= 0; i--) {
+    const name = all[i]?.speaker.trim()
+    if (name && name !== speaker) return name
+  }
+  for (let i = idx + 1; i < all.length; i++) {
+    const name = all[i]?.speaker.trim()
+    if (name && name !== speaker) return name
+  }
+  return undefined
+}
+
 /** Sprecher + Text unter dem Standbild, zum Vergleichen. */
 export function panelDialogueLines(
   panel: FilmStoryboardPanel,
