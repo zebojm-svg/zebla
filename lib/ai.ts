@@ -559,7 +559,7 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
   const data = (await res.json()) as {
     predictions?: { bytesBase64Encoded?: string }[]
   }
-  recordGeminiUsage('image', IMAGE_MODEL, null)
+  recordGeminiUsage('image', IMAGE_MODEL, null, { units: 1, unitType: 'image' })
   const b64 = data.predictions?.[0]?.bytesBase64Encoded
   if (!b64) throw new Error('Kein Bild generiert.')
   return `data:image/png;base64,${b64}`

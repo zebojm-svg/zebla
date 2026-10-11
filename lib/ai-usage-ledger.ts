@@ -106,8 +106,11 @@ function waitUntil(p: Promise<unknown>): void {
 /**
  * Einen erfolgreichen Gemini-Aufruf melden. `kind` unterscheidet Teilschritte (text, image, tts, …).
  * `usage` = usageMetadata der Antwort (fehlt bei Imagen/Cloud-TTS → Aufruf wird ohne Tokens gezählt).
+ * `units` = Menge für die Kostenschätzung im Hub, falls Tokens fehlen (Bilder, Audiosekunden).
  */
-export function recordGeminiUsage(kind: string, model: string, usage: unknown): void {
+export type AiUsageUnits = { units: number; unitType: 'image' | 'request' | 'audio_second' }
+
+export function recordGeminiUsage(kind: string, model: string, usage: unknown, units?: AiUsageUnits): void {
   try {
     const ctx = store.getStore()
     const u = (usage ?? {}) as Record<string, unknown>
@@ -117,6 +120,7 @@ export function recordGeminiUsage(kind: string, model: string, usage: unknown): 
         model: model.replace(/^models\//, ''),
         inputTokens: num(u.promptTokenCount),
         outputTokens: num(u.candidatesTokenCount) + num(u.thoughtsTokenCount),
+        ...(units ?? {}),
       }),
     )
   } catch {

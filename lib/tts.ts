@@ -39,6 +39,9 @@ export interface TtsHealth {
 
 const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
 
+/** Cloud TTS liefert MP3 mit 32 kbit/s. */
+const MP3_BYTES_PER_SECOND = 4000
+
 /** Google Cloud TTS – klassische Stimmen (Neural2/Wavenet). */
 const CLASSIC_VOICES: Record<string, { locale: string; female?: string; male?: string }> = {
   de: { locale: 'de-DE', female: 'de-DE-Neural2-F', male: 'de-DE-Neural2-D' },
@@ -205,7 +208,10 @@ async function callGeminiSynthesize(
   const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
   if (!res.ok) throw new Error(formatApiError(data.error?.message ?? `Gemini-TTS-Fehler (${res.status})`))
   if (!data.audioContent) throw new Error('Keine Audiodaten von Gemini-TTS erhalten.')
-  recordGeminiUsage('tts', GEMINI_TTS_MODEL, null)
+  recordGeminiUsage('tts', GEMINI_TTS_MODEL, null, {
+    units: Math.max(1, Math.round((data.audioContent.length * 3) / 4 / MP3_BYTES_PER_SECOND)),
+    unitType: 'audio_second',
+  })
 
   return {
     audioBase64: data.audioContent,
