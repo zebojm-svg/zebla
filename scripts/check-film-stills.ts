@@ -41,7 +41,7 @@ import {
   scenePlayBeats,
   scenePreviewBeats,
 } from '../shared/film-storyboard.ts'
-import { closeupCropBox, seatSideFromX } from '../shared/film-closeup-space.ts'
+import { closeupCropBox, closeupSpaceLine, seatSideFromX } from '../shared/film-closeup-space.ts'
 import { lookForCharacterName } from '../shared/story-character-looks.ts'
 import { isImageGenPath } from '../shared/api-timeout.ts'
 import type { Dialog } from '../shared/types.ts'
@@ -189,6 +189,9 @@ if (!closePrompt.toLowerCase().includes('physically') && !closePrompt.toLowerCas
 }
 if (!closePrompt.toLowerCase().includes('cropped screenshot') && !closePrompt.toLowerCase().includes('cut-out of the wide')) {
   fail('Nahaufnahme darf kein Ausschnitt des Weit-Bilds sein')
+}
+if (!closePrompt.toLowerCase().includes('parallax') && !closePrompt.toLowerCase().includes('film from')) {
+  fail('Nahaufnahme verlangt neue Kameraposition, nicht Pixel-Zoom')
 }
 if (!closePrompt.toLowerCase().includes('opaque') && !closePrompt.toLowerCase().includes('iris')) {
   fail('Nahaufnahme verlangt undurchsichtige Augen')
@@ -489,14 +492,40 @@ if (!manAttach.toLowerCase().includes('sex and face may change')) {
 if (!manAttach.toLowerCase().includes('cropped screenshot') && !manAttach.toLowerCase().includes('new closer')) {
   fail('Anhang: neu filmen, nicht ausschneiden')
 }
-if (!manAttach.toLowerCase().includes('groundbild') && !manAttach.toLowerCase().includes('map')) {
+if (!manAttach.toLowerCase().includes('groundbild')) {
   fail('Anhang schickt den Ort mit')
+}
+if (manAttach.toLowerCase().includes('first a crop') || manAttach.toLowerCase().includes('used only as a map')) {
+  fail('Anhang darf keinen Pixel-Ausschnitt als erstes Foto schicken')
+}
+if (!manAttach.toLowerCase().includes('walked closer') && !manAttach.toLowerCase().includes('parallax')) {
+  fail('Anhang: Kamera näher, neue Perspektive')
 }
 if (!correctionIsFaceOnly('Mund etwas offener')) fail('Mund = nur Mimik')
 if (correctionIsFaceOnly('Schöme ist ein Mann')) fail('Mann ist kein Mimik-Fix')
 if (correctionIsFaceOnly('Kamera näher')) fail('Kamera näher ist keine Mimik')
 if (!closeupCameraLine('Ramo').toLowerCase().includes('cropped screenshot')) {
   fail('Kamera-Zeile verbietet den Ausschnitt')
+}
+if (!closeupCameraLine('Ramo').toLowerCase().includes('film from')) {
+  fail('Kamera-Zeile: Grundbild ist Vorlage, nicht das Ergebnis')
+}
+const spaceLine = closeupSpaceLine({ speaker: 'Ramo', settingHint: 'Wohnzimmer', speakerX: 20 })
+if (spaceLine.toLowerCase().includes('camera zoom of that gathering')) {
+  fail('Raumzeile darf den Ausschnitt nicht als Kamera ausgeben')
+}
+if (!spaceLine.toLowerCase().includes('wide groundbild') && !spaceLine.toLowerCase().includes('wide grundbild')) {
+  fail('Raumzeile: erstes Foto ist das Weit-Bild')
+}
+if (!spaceLine.toLowerCase().includes('parallax')) {
+  fail('Raumzeile: echte Kamerabewegung, nicht Crop')
+}
+const closeAttach = stillAttachmentInstruction({ correctingExisting: false, closeup: true })
+if (closeAttach.toLowerCase().includes('first a crop')) {
+  fail('Nahaufnahme-Anhang beginnt nicht mit dem Ausschnitt')
+}
+if (!closeAttach.toLowerCase().includes('wide groundbild') && !closeAttach.toLowerCase().includes('wide grundbild')) {
+  fail('Nahaufnahme-Anhang: zuerst das ganze Grundbild')
 }
 const mimicAttach = stillAttachmentInstruction({
   correctingExisting: true,

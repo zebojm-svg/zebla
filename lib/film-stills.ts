@@ -55,31 +55,7 @@ async function loadRefs(urls: string[]): Promise<InlineImage[]> {
   return out
 }
 
-async function loadCloseupAwareRefs(
-  urls: string[],
-  cropFirst: boolean,
-  speakerX?: number,
-  speakerSitting?: boolean,
-): Promise<InlineImage[]> {
-  const refs = await loadRefs(urls)
-  if (!cropFirst || refs.length === 0) return refs
-  try {
-    const original = refs[0]!
-    const cropped = await cropWideStillToSpeaker(
-      Buffer.from(original.data, 'base64'),
-      speakerX ?? 50,
-      speakerSitting !== false,
-    )
-    const zoom: InlineImage = { mimeType: 'image/png', data: cropped.toString('base64') }
-    if (refs.length === 1) return [zoom, original]
-    return [zoom, ...refs.slice(1)]
-  } catch {
-    /* Übersicht unverändert anhängen */
-  }
-  return refs
-}
-
-/** Nahaufnahme = Zoom in die Übersicht, ohne die KI neu malen zu lassen. */
+/** Nur Notausgang: wenn Gemini die nähere Kamera nicht malt. */
 export async function closeupUrlFromWideStill(opts: {
   wideUrl: string
   speakerX?: number
@@ -231,15 +207,7 @@ export async function generateFilmPanelStillImage(opts: {
     opts.correctFromUrl,
     opts.sceneWideStillUrl,
   )
-  const cropFromGrundbild =
-    opts.panel.shot === 'closeup' &&
-    Boolean(urls[0] && opts.sceneWideStillUrl && urls[0] === opts.sceneWideStillUrl)
-  const refs = await loadCloseupAwareRefs(
-    urls,
-    cropFromGrundbild,
-    opts.speakerX,
-    opts.speakerSitting,
-  )
+  const refs = await loadRefs(urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
     hasLibraryRefs: refs.length > 0,
     targetLanguage: opts.targetLanguage,
