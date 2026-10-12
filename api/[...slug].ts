@@ -1294,6 +1294,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           filmPrompt,
           soundDirection,
           speechDirection,
+          filmInventory,
         } = req.body as {
           title?: string
           sourceLanguage?: string
@@ -1308,6 +1309,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           filmPrompt?: string
           soundDirection?: string
           speechDirection?: string
+          filmInventory?: Dialog['filmInventory']
         }
         if (!title || !targetLanguage || !length || !sections?.length) {
           res.status(400).json({ error: 'Pflichtfelder fehlen.' })
@@ -1340,6 +1342,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           filmPrompt,
           soundDirection,
           speechDirection,
+          filmInventory: filmInventory ?? undefined,
         })
         res.status(201).json({ dialog })
         return

@@ -240,6 +240,7 @@ export const api = {
       filmPrompt?: string
       soundDirection?: string
       speechDirection?: string
+      filmInventory?: import('../types').FilmInventory | null
     }) =>
       request<{ dialog: import('../types').Dialog }>('/dialogs', {
         method: 'POST',
@@ -437,6 +438,7 @@ export const api = {
         imageDirection?: string
         soundDirection?: string
         speechDirection?: string
+        filmInventory?: import('../types').FilmInventory | null
         questions?: string[]
       }>(
         '/film-from-prompt',

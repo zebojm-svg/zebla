@@ -27,6 +27,14 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 
 Teure Bewegung (sprechen/laufen als Film) **erst** wenn Board und Stil stimmen.
 
+## Zebla denkt nicht — es reicht weiter
+
+Zebla malt nicht selbst und überlegt nicht selbst. Es hängt Prompts und Fotos von einer KI zur nächsten:
+
+1. **Drehbuch-KI** schreibt Dialog plus Inventar (Figuren, Räume, Requisiten mit fester id). Dieselbe Kanne ist überall `kanne-1`.
+2. **Vorlagen-Check** (zweite KI, nur JSON, malt nicht): für jedes Bild, welche Fotos mitmüssen.
+3. **Bild-KI** bekommt höchstens vier Fotos, zuerst das vorige Bild wo die Requisite sichtbar war (Küchen-Kanne, nicht ein beliebiges Wohnzimmer-Weit), dann Ort, dann Gesicht.
+
 ## Design (die «gleiche Holzart»)
 
 Schon in `src/index.css` `:root`:
@@ -52,7 +60,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder (vorige Küche mitschicken, Wasser vor dem Herd), Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler). Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): **Dialog daraus machen**, dann Bilder neu — sonst bleibt die alte Kanne.
 
-**In Arbeit:** —
+**In Arbeit:** Drehbuch → Inventar → Vorlagen pro Bild — Kanne und Tablett wandern mit Foto (dieser Zweig). Zwischenbilder auf Augenhöhe ([#62](https://github.com/zebojm-svg/zebla/pull/62)) bleibt ein eigener Vorschlag. Nicht mergen, bis Jean-Marie ja sagt.
 
 **Nächste Baustellen (noch nicht hier):**
 

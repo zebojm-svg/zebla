@@ -16,6 +16,12 @@ import { STORY_STILLS_LOCK_PROMPT } from './story-stills.js'
 import { teaBeatLockEn } from './film-scene-foley.js'
 import { lookForCharacterName } from './story-character-looks.js'
 import {
+  inferPropIdsFromText,
+  propLabelDe,
+  propLabelEn,
+  uniqueStable,
+} from './film-inventory.js'
+import {
   normalizeFilmStoryboard,
   type FilmPlacement,
   type FilmStoryboard,
@@ -343,9 +349,40 @@ export function referenceUrlsForPanel(
   return [...new Set(ordered)].slice(0, closeup ? 3 : 4)
 }
 
-export type StillRefRole = 'grundbild' | 'place' | 'person' | 'identity'
+export type StillRefRole = 'grundbild' | 'place' | 'person' | 'identity' | 'prop'
 
-export type StillRefItem = { role: StillRefRole; name: string; url: string }
+export type StillRefItem = { role: StillRefRole; name: string; url: string; propId?: string }
+
+export function panelPropIds(panel: FilmStoryboardPanel): string[] {
+  return uniqueStable([
+    ...(panel.refNeeds?.propIds ?? []),
+    ...(panel.propIds ?? []),
+    ...inferPropIdsFromText(`${panel.caption || ''} ${panel.imageCue || ''} ${panel.settingHint || ''}`),
+  ])
+}
+
+/**
+ * Letztes gemaltes Bild, in dem DIESE Requisite sichtbar war —
+ * Küchen-Kanne, nicht ein beliebiges Wohnzimmer-Weit.
+ */
+export function previousPropStillUrl(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+  propId: string,
+): string | undefined {
+  const want = propId.trim().toLowerCase()
+  if (!want) return undefined
+  const all = normalizeFilmStoryboard(board).panels
+  const idx = all.findIndex((p) => p.id === panel.id)
+  const search = idx >= 0 ? all.slice(0, idx) : all.filter((p) => p.id !== panel.id)
+  for (let i = search.length - 1; i >= 0; i--) {
+    const prev = search[i]
+    if (!prev?.stillUrl?.startsWith('http')) continue
+    const ids = panelPropIds(prev)
+    if (ids.includes(want)) return prev.stillUrl
+  }
+  return undefined
+}
 
 /**
  * Welche Vorlagen die Bild-KI bekommt: Raum dieses Ortes, Stammbilder der Figuren,
@@ -384,6 +421,29 @@ export function stillReferencePack(
     if (!http(item.url) || items.some((x) => x.url === item.url)) return
     items.push(item)
   }
+
+  const wantedPeople = new Set(
+    (panel.refNeeds?.people ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
+  )
+  const wantedPlaces = new Set(
+    (panel.refNeeds?.places ?? []).map((k) => k.trim().toLowerCase()).filter(Boolean),
+  )
+  const propIds = panelPropIds(panel)
+  const propUrls = new Set<string>()
+  if (opts?.board) {
+    for (const propId of propIds) {
+      const url = previousPropStillUrl(opts.board, panel, propId)
+      if (!url) continue
+      propUrls.add(url)
+      add({
+        role: 'prop',
+        name: propLabelDe(propId),
+        url,
+        propId,
+      })
+    }
+  }
+
   if (opts?.correctFromUrl) {
     add({ role: 'grundbild', name: 'aktuelles Bild', url: opts.correctFromUrl })
   }
@@ -391,13 +451,14 @@ export function stillReferencePack(
     add({ role: 'grundbild', name: placeLabelDe(place), url: safeWide })
   }
   const prevPlace = opts?.board ? previousPlaceStillUrl(opts.board, panel) : undefined
-  if (insert && prevPlace && !opts?.correctFromUrl) {
+  const wantsThisPlace = !wantedPlaces.size || wantedPlaces.has(place)
+  if (insert && prevPlace && !opts?.correctFromUrl && !propUrls.has(prevPlace) && wantsThisPlace) {
     add({ role: 'grundbild', name: `vorige ${placeLabelDe(place)}`, url: prevPlace })
   }
-  if (!closeup && !insert && bg) {
+  if (!closeup && !insert && bg && wantsThisPlace) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
   }
-  if (insert && bg && !opts?.correctFromUrl && !prevPlace) {
+  if (insert && bg && !opts?.correctFromUrl && !prevPlace && wantsThisPlace) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
   }
   const speakerId = closeup ? speakerIdentityUrl(panel) : undefined
@@ -410,12 +471,31 @@ export function stillReferencePack(
   }
   if (!closeup) {
     for (const pl of panel.placements) {
-      if (pl.imageUrl) add({ role: 'person', name: pl.name.trim() || 'Figur', url: pl.imageUrl })
+      const name = pl.name.trim() || 'Figur'
+      if (wantedPeople.size && !wantedPeople.has(name.toLowerCase())) continue
+      if (pl.imageUrl) add({ role: 'person', name, url: pl.imageUrl })
     }
   }
+
   const max = closeup ? 3 : 4
-  const clipped = items.slice(0, max)
+  const rank = (it: StillRefItem): number => {
+    if (it.role === 'grundbild' && it.url === opts?.correctFromUrl) return 0
+    if (it.role === 'prop') return 1
+    if (it.role === 'place' || it.role === 'grundbild') return 2
+    return 3
+  }
+  const ranked = [...items].sort((a, b) => rank(a) - rank(b))
+  const clipped: StillRefItem[] = []
+  for (const it of ranked) {
+    if (clipped.length >= max) break
+    if (clipped.some((x) => x.url === it.url)) continue
+    clipped.push(it)
+  }
   const labels = clipped.map((it, i) => {
+    if (it.role === 'prop') {
+      const what = propLabelEn(it.propId || it.name)
+      return `${i + 1}. PROP: the SAME ${what} as in this photo — do not invent a new one.`
+    }
     if (it.role === 'grundbild') {
       return insert
         ? `${i + 1}. PREVIOUS still of the SAME ${placeLabelEn(place)} — same kettle, same stove type (gas stays gas, induction stays induction). New action only. NOT a different room.`
@@ -430,10 +510,12 @@ export function stillReferencePack(
     return `${i + 1}. PERSON identity of ${it.name} — this exact face and clothes, same sex. Never swap with another guest.`
   })
   const instruction = labels.length
-    ? `Attached photos in order: ${labels.join(' | ')} Use each photo only for that role. Do not mix rooms.`
+    ? `Attached photos in order: ${labels.join(' | ')} Use each photo only for that role. Do not mix rooms. PROP photos lock the object: SAME kettle/tray as earlier. If a kitchen still is attached: same stove type (gas stays gas, induction stays induction).`
     : ''
   const noteDe = clipped.length
-    ? `Mitgeschickt: ${clipped.map((it) => it.name).join(', ')}.`
+    ? `Mitgeschickt: ${clipped
+        .map((it) => (it.role === 'prop' ? `${it.name} (dieselbe)` : it.name))
+        .join(', ')}.`
     : 'Keine Vorlage mitgeschickt.'
   return { urls: clipped.map((it) => it.url), items: clipped, instruction, noteDe }
 }
@@ -557,7 +639,7 @@ export function stillAttachmentInstruction(opts: {
 }): string {
   const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
   if (opts.insert && !opts.correctingExisting) {
-    return `${pack}If a GROUNDBILD / previous still of this place is attached, keep that SAME room, SAME kettle, SAME stove type (gas stays gas, induction stays induction). Paint the NEW named action in that kitchen. Identity plates are faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a new kettle or a new hob. Fill the frame with the named detail.`
+    return `${pack}If a PROP photo is attached, paint the SAME object as in that photo (same kettle, same tray) — do not invent a new one. If a GROUNDBILD / previous still of this place is attached, keep that SAME room, SAME kettle, SAME stove type (gas stays gas, induction stays induction). Paint the NEW named action. Identity plates are faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a new kettle or a new hob. Fill the frame with the named detail.`
   }
   if (opts.rewritePerson && opts.closeup) {
     return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.`
@@ -581,20 +663,54 @@ export function correctionIsFaceOnly(note?: string): boolean {
   return /mund|lächel|mimik|augenbrau|lid|facial|weint|freut|zorn|überrascht/.test(t)
 }
 
-/** Zwischenbild = Detail, nicht der ganze Raum. */
+function insertCameraHeightEn(cue: string): string {
+  const blob = cue.toLowerCase()
+  const place = inferFilmPlaceKey(cue)
+  const kitchenish =
+    place === 'kitchen' ||
+    /kessel|spüle|spuele|herd|sink|stove|kettle|kanne|tee|wasserhahn/.test(blob)
+  const doorish =
+    place === 'door' || /tür|tuer|door|klopf|klingel|schloss|lock|riegel|klinke/.test(blob)
+  if (doorish) {
+    return (
+      `CAMERA: standing adult at eye level, from INSIDE the apartment looking at the door. ` +
+      `The door fills the frame at HAND and FACE height. ` +
+      `Lock, handle and peephole sit at normal door height about 1.0–1.2 metres from the floor. ` +
+      `Never a lock lying on the floor. Never a shot of only feet or shoes.`
+    )
+  }
+  if (kitchenish) {
+    return (
+      `CAMERA: standing adult at eye level in the kitchen. ` +
+      `Kettle, sink, stove and tap at standing work height (waist to chest). ` +
+      `Never a shot of feet or shoes under the counter.`
+    )
+  }
+  return (
+    `CAMERA: standing adult at eye level. ` +
+    `Named objects at their normal height in the room (door hardware at door height, kitchen tools at the counter).`
+  )
+}
+
+/** Zwischenbild = Detail auf Augenhöhe, nicht der ganze Raum und nicht der Boden. */
 export function insertCameraLine(cue?: string): string {
   const what = (cue || 'the named detail').trim()
   return (
     `INSERT / cutaway: fill the frame with this detail — ${what}. ` +
     `Not a wide of the whole room, not a talking-head close-up. ` +
-    `Same house and lighting as this scene. Camera close to the object or small action. ` +
+    `Same house and lighting as this scene. ${insertCameraHeightEn(what)} ` +
+    `Camera close to the named detail but still at standing-adult eye level — never a ground-level or worm's-eye camera. ` +
     `Paint each named person ONCE. Never twins, never two copies of the same face. ` +
     `If one person fills a kettle or pours tea, paint exactly that one person — not two copies doing the same action. ` +
+    `If a PROP photo is attached: PROP LOCK — the SAME kettle/tray as in that photo, do not invent a new one. ` +
     `If a previous kitchen still is attached: SAME kettle, SAME stove (gas stays gas, induction stays induction). ` +
     `Water goes into the kettle at the sink BEFORE the kettle sits on the stove. ` +
     `FORBIDDEN: copying the previous living-room photo. ` +
     `FORBIDDEN: everyone sitting around the table unless the cue names that gathering. ` +
-    `FORBIDDEN: an extra guest who is not named in this frame.`
+    `FORBIDDEN: an extra guest who is not named in this frame. ` +
+    `FORBIDDEN: ground-level camera. ` +
+    `FORBIDDEN: only feet or shoes in frame. ` +
+    `FORBIDDEN: the named object lying on the floor unless the cue names the floor.`
   )
 }
 
@@ -664,8 +780,8 @@ export function buildFilmStillPrompt(opts: {
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
       : isInsert
-        ? `${STORY_STILLS_LOCK_PROMPT} If a previous still of THIS place is attached, keep that SAME kettle and SAME stove type. Identity plates are faces only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
-        : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
+        ? `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, paint the SAME kettle/tray as in that photo — do not invent a new one. If a previous still of THIS place is attached, keep that SAME kettle and SAME stove type. Identity plates are faces only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
+        : `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, the SAME kettle/tray as in that photo must appear — do not invent a new one. Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
       : isInsert

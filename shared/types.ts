@@ -32,7 +32,7 @@ export function isNarratorName(name?: string): boolean {
   return NARRATOR_SPEAKER_RE.test((name || '').trim())
 }
 
-/** Geschichte zum Vorlesen — nicht nur Wasser/Pfeifen/Klopfen. */
+/** Geschichte zum Vorlesen — nicht Tee/Klopfen und nicht deutsche Handlungsnotizen. */
 export function looksLikeSpokenNarration(text?: string): boolean {
   const t = (text || '').replace(/\s+/g, ' ').trim().toLowerCase()
   if (!t) return false
@@ -41,8 +41,14 @@ export function looksLikeSpokenNarration(text?: string): boolean {
   ) {
     return false
   }
-  if (/eingeladen|freunde zum tee|hat ein paar freunde|eines tages/.test(t)) return true
-  if (/bereitet tee vor für/.test(t)) return true
+  const story = /eingeladen|freunde zum tee|hat ein paar freunde|eines tages/.test(t)
+  if (
+    /bereitet tee|füllt wasser|stellt den kessel|an der spüle|da klopft/.test(t) &&
+    !story
+  ) {
+    return false
+  }
+  if (story) return true
   return false
 }
 
@@ -85,6 +91,8 @@ export interface DialogLine {
   cueSound?: string
   /** Regie Sprache (laut, flüstern, Pause). */
   cueSpeech?: string
+  /** Requisiten aus dem Film-Inventar, die in dieser Zeile sichtbar sind (gleiche id über Szenen). */
+  propIds?: string[]
 }
 
 export interface LineImageBeat {
@@ -282,8 +290,39 @@ export interface Dialog {
   visualBrief?: VisualBrief | null
   /** Ein Blatt für die ganze Geschichte: Cast, Räume, Stimmen, Blick. */
   storyMeta?: StoryMeta | null
+  /** Figuren, Orte, Requisiten aus dem Drehbuch — gleiche Kanne behält dieselbe id. */
+  filmInventory?: FilmInventory | null
   createdAt: string
   updatedAt: string
+}
+
+export interface FilmInventoryPerson {
+  name: string
+}
+
+export interface FilmInventoryPlace {
+  key: string
+  labelDe: string
+}
+
+export interface FilmInventoryProp {
+  id: string
+  nameDe: string
+  firstSeenLineHint?: string
+}
+
+/** Was die Drehbuch-KI über die Welt weiss — nicht nur Dialog. */
+export interface FilmInventory {
+  people: FilmInventoryPerson[]
+  places: FilmInventoryPlace[]
+  props: FilmInventoryProp[]
+}
+
+/** Welche Inventar-Teile dieses Einzelbild als Foto braucht. */
+export interface FilmRefNeeds {
+  people: string[]
+  places: string[]
+  propIds: string[]
 }
 
 /** Wer, wo, wie — damit Szenen nicht auseinanderlaufen. */

@@ -14,7 +14,9 @@ import {
   type DialogLine,
   type DialogLineKind,
   type DialogSection,
+  type FilmRefNeeds,
 } from './types.js'
+import { deriveFilmInventory, deriveRefNeeds, mergeLinePropIds } from './film-inventory.js'
 import { spokenSpeakerName } from './speakers.js'
 import { foleyEventsFromText, inferSoundCueDe, type FoleyKind } from './film-scene-foley.js'
 import { inferFilmPlaceKey, inferSettingHintDe } from './film-place.js'
@@ -92,6 +94,10 @@ export interface FilmStoryboardPanel {
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */
   closeupSpeaker?: string
+  /** Requisiten aus dem Drehbuch-Inventar, die in diesem Bild sichtbar sind. */
+  propIds?: string[]
+  /** Welche Vorlagen (Person / Ort / Requisite) dieses Bild braucht. */
+  refNeeds?: FilmRefNeeds
 }
 
 export interface FilmScene {
@@ -128,6 +134,7 @@ export interface FilmDraftPanel {
   expressionHint?: string
   shot?: FilmShot
   closeupSpeaker?: string
+  propIds?: string[]
   characters?: Array<{
     name: string
     poseHint?: string
@@ -671,10 +678,16 @@ export function ensureCoverageDrafts(
         place === 'kitchen' || place === 'door'
           ? namesMentioned(`${line.text} ${lineCue} ${imageCue}`, speakers)
           : speakers
+      const propIds = mergeLinePropIds({
+        text: line.text,
+        cueImage: lineCue || priorCue || imageCue,
+        propIds: [...(prior?.propIds ?? []), ...(line.propIds ?? [])],
+      })
       out.push({
         sectionId: section.id,
         shot,
         closeupSpeaker,
+        propIds,
         lineIds: [line.id],
         caption,
         imageCue,
@@ -832,6 +845,8 @@ export function buildBoardFromDrafts(
       expressionHint: draft.expressionHint?.trim() || inferExpression(blob),
       shot: parseFilmShot(draft.shot) ?? 'wide',
       closeupSpeaker: draft.closeupSpeaker,
+      propIds: draft.propIds?.length ? draft.propIds : undefined,
+      refNeeds: prev?.refNeeds,
       placements,
       background: opts?.freshPlaces
         ? {
@@ -855,7 +870,7 @@ export function buildBoardFromDrafts(
   const scenes = scenesFromPanels(panels, dialog, previous)
   const missing = boardNeedsDrawing({ version: 1, source, scenes, panels, updatedAt: '' })
 
-  return {
+  return applyFilmInventoryToBoard(dialog, {
     version: 1,
     source,
     scenes,
@@ -865,7 +880,7 @@ export function buildBoardFromDrafts(
       missing === 0
         ? `${panels.length} Bilder in ${scenes.length} Szene(n) — Bibliothek zuerst.`
         : `${panels.length} Bilder, ${missing} brauchen noch eine Zeichnung.`,
-  }
+  })
 }
 
 export function planBoardWithoutAi(
@@ -873,6 +888,41 @@ export function planBoardWithoutAi(
   library: StoryLibraryAsset[],
 ): FilmStoryboard {
   return buildBoardFromDrafts(dialog, draftPanelsFromDialog(dialog), library, 'rules')
+}
+
+/** Prop-ids und Vorlagen-Bedarf aus Dialog/Inventar auf jedes Bild legen. */
+export function applyFilmInventoryToBoard(
+  dialog: Pick<Dialog, 'sections' | 'filmInventory'>,
+  board: FilmStoryboard,
+): FilmStoryboard {
+  const inventory = deriveFilmInventory(dialog)
+  const byId = new Map(dialogLinesInOrder(dialog).map((l) => [l.id, l]))
+  const panels = board.panels.map((panel) => {
+    const lines = (panel.lineIds ?? []).map((id) => byId.get(id)).filter(Boolean)
+    const fromLines = lines.flatMap((line) =>
+      mergeLinePropIds({
+        text: line!.text,
+        cueImage: line!.cueImage,
+        propIds: line!.propIds,
+      }),
+    )
+    const propIds = mergeLinePropIds({
+      text: panel.caption,
+      cueImage: panel.imageCue,
+      propIds: [...fromLines, ...(panel.propIds ?? [])],
+    })
+    const people = panel.placements.map((pl) => pl.name.trim()).filter(Boolean)
+    const refNeeds = deriveRefNeeds({
+      people,
+      settingHint: panel.settingHint,
+      caption: panel.caption,
+      imageCue: panel.imageCue,
+      propIds,
+      inventory,
+    })
+    return { ...panel, propIds, refNeeds }
+  })
+  return { ...board, panels }
 }
 
 export function applyDirectorNote(
