@@ -30,6 +30,7 @@ import {
   sceneRepeatsEarlierDialog,
   sceneShotPlanDe,
 } from '../shared/film-storyboard.ts'
+import { uniqueSpeakersInDialog } from '../shared/speakers.ts'
 import type { Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
@@ -254,6 +255,42 @@ if (!teaPlay[0]?.silent) fail('Tee ohne Stimme')
 if (!teaPlay[1]?.silent) fail('Klopfen ohne Stimme')
 if (!teaPlay[2]?.line || teaPlay[2].silent) fail('Ramo spricht nach dem Klopfen')
 if (!cueAsksNewPicture('Da klopft es an der Tür')) fail('Klopfen braucht ein neues Bild')
+if (!/wasser|kessel|tee/i.test(teaBoard.panels[0]?.soundCue || '')) {
+  fail('Tee-Handlung braucht Ton-Regie (Wasser / Kessel)')
+}
+if (!/klopf/i.test(teaBoard.panels[1]?.soundCue || '')) fail('Klopfen braucht Ton-Regie')
+if (!teaPlay[0]?.foley?.includes('fill')) fail('Auffüllen wird beim Abspielen gehört')
+if (!teaPlay[1]?.foley?.includes('knock')) fail('Klopfen wird beim Abspielen gehört')
+if (uniqueSpeakersInDialog(tea).includes('Handlung')) fail('Handlung bekommt keine Stimme')
+
+const told: Dialog = {
+  ...dialog,
+  id: 'd-erz',
+  title: 'Erzählt',
+  sections: [
+    {
+      id: 'erz',
+      title: 'Anfang',
+      lines: [
+        {
+          id: 'n1',
+          speaker: 'Erzähler',
+          kind: 'narrator',
+          text: 'Ramo hat Freunde eingeladen.',
+        },
+        { id: 'n2', speaker: 'Ramo', text: 'Salam.' },
+      ],
+    },
+  ],
+}
+const toldBoard = planBoardWithoutAi(told, [])
+const toldPlay = scenePlayBeats(toldBoard.panels, told)
+const erzBeat = toldPlay.find((b) => !b.establishing)
+if (erzBeat?.silent) fail('Erzähler spricht, Handlung bleibt still')
+if (erzBeat?.line?.speaker !== 'Erzähler') fail('Erzähler-Stimme heißt Erzähler')
+if (!uniqueSpeakersInDialog(told).includes('Erzähler')) {
+  fail('Stimmen anpassen zeigt den Erzähler')
+}
 
 const geminiWrongId = ensureCoverageDrafts(four, [
   {
@@ -350,11 +387,16 @@ const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', impo
 if (!editorSrc.includes('filmStoryboard: null')) {
   fail('Dialog daraus machen löscht den alten Bildplan')
 }
+const voicesSrc = readFileSync(new URL('../src/story/FilmCastVoices.tsx', import.meta.url), 'utf8')
+if (!voicesSrc.includes('Erzähler')) fail('Stimmen anpassen erklärt die Erzählerstimme')
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
 if (!aiSrc.includes('dropRepeatedDialogSections')) fail('kopierte Dialog-Szenen fallen weg')
 if (!aiSrc.includes('kind')) fail('Dialog darf Handlung und Erzähler')
+if (!aiSrc.includes('Kessel pfeift')) fail('Prompt verlangt Pfeifen als eigene Handlung')
+if (!aiSrc.includes('plätschert')) fail('Prompt verlangt Eingießen als Geräusch')
+if (!aiSrc.includes('inferSoundCueDe')) fail('fehlende Ton-Regie wird aus der Handlung ergänzt')
 if (!aiSrc.includes('const system =')) fail('Dialog-Prompt ist ein Text, keine verschmolzenen Templates')
 if (/braucht\.`\s*`\$\{prompt/.test(aiSrc)) {
   fail('Zwei Template-Strings hintereinander — Dialog daraus machen stürzt ab')
@@ -362,6 +404,8 @@ if (/braucht\.`\s*`\$\{prompt/.test(aiSrc)) {
 const planSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 if (!planSrc.includes('shot="insert"')) fail('Regie darf Zwischenbilder planen')
 if (!planSrc.includes('closeup')) fail('Regie zeigt wer spricht')
+if (!planSrc.includes('Zwillinge')) fail('Regie: keine Zwillingsfiguren im Zwischenbild')
+if (!planSrc.includes('leeres Wohnzimmer')) fail('Regie: Gäste bleiben im Weit-Bild')
 
 const unnamed: Dialog = {
   ...dialog,

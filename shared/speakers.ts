@@ -33,8 +33,14 @@ export function uniqueSpeakersInDialog(dialog: Dialog): string[] {
   const seen = new Set<string>()
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      const name = line.speaker.trim()
-      if (!name || isStageSpeaker(name) || inferDialogLineKind(line) !== 'speech') continue
+      const kind = inferDialogLineKind(line)
+      if (kind === 'action') continue
+      let name = line.speaker.trim()
+      if (kind === 'narrator') {
+        name = name && !isStageSpeaker(name) ? name : 'Erzähler'
+      } else if (!name || isStageSpeaker(name)) {
+        continue
+      }
       if (!seen.has(name)) {
         seen.add(name)
         order.push(name)

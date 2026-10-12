@@ -15,6 +15,7 @@ import {
   type DialogLineKind,
   type DialogSection,
 } from './types.js'
+import { foleyEventsFromText, inferSoundCueDe, type FoleyKind } from './film-scene-foley.js'
 import type { StoryLibraryAsset } from './story-types.js'
 import {
   STILL_POSES,
@@ -637,7 +638,10 @@ export function ensureCoverageDrafts(
         lineIds: [line.id],
         caption,
         imageCue,
-        soundCue: prior?.soundCue || (i === 0 ? dialog.soundDirection?.trim() || '' : ''),
+        soundCue:
+          line.cueSound?.trim() ||
+          (kind === 'action' ? inferSoundCueDe(line.text, line.cueSound) : '') ||
+          (i === 0 ? dialog.soundDirection?.trim() || '' : ''),
         speechCue: prior?.speechCue || line.cueSpeech || '',
         settingHint: setting,
         expressionHint: prior?.expressionHint || inferExpression(line.text),
@@ -1156,8 +1160,15 @@ export function panelAddressee(
 }
 
 function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
+  const kind = inferDialogLineKind(line)
+  const speaker =
+    kind === 'narrator'
+      ? line.speaker.trim() && !isStageSpeaker(line.speaker)
+        ? line.speaker.trim()
+        : 'Erzähler'
+      : line.speaker
   return {
-    speaker: line.speaker,
+    speaker,
     text: line.text.trim(),
     nativeDe: lineNativeDe(line),
     lineId: line.id,
@@ -1215,10 +1226,17 @@ export function panelSpeakLines(
   if (inferDialogLineKind(line) === 'action') return []
   const text = lineSpeechText(line).trim() || line.text.trim()
   if (!text) return []
+  const kind = inferDialogLineKind(line)
+  const speaker =
+    kind === 'narrator'
+      ? line.speaker.trim() && !isStageSpeaker(line.speaker)
+        ? line.speaker.trim()
+        : 'Erzähler'
+      : line.speaker || 'Sprecher'
   return [
     {
       id: line.id,
-      speaker: line.speaker || 'Sprecher',
+      speaker,
       text,
       audioUrl: line.audioUrl,
     },
@@ -1255,6 +1273,8 @@ export interface FilmPlayBeat {
   establishing?: boolean
   /** Stilles Zwischenbild — Bild und Pause, keine Stimme. */
   silent?: boolean
+  soundCue?: string
+  foley?: FoleyKind[]
   line?: FilmPanelDialogueLine
   lineIndex: number
   lineTotal: number
@@ -1451,6 +1471,12 @@ export function scenePlayBeats(
         ? line.text.slice(0, 140)
         : `${line.speaker}: ${line.text}`.slice(0, 140)
       : panel.caption
+    const soundCue =
+      panel.soundCue?.trim() ||
+      line?.cueSound?.trim() ||
+      (kind === 'action' && line ? inferSoundCueDe(line.text, line.cueSound) : '') ||
+      ''
+    const foley = foleyEventsFromText(soundCue, panel.imageCue, caption, line?.text)
     beats.push({
       panelId: panel.id,
       stillUrl:
@@ -1458,6 +1484,8 @@ export function scenePlayBeats(
         ((panel.shot ?? 'wide') === 'closeup' ? wide?.stillUrl : undefined),
       caption,
       silent,
+      soundCue: soundCue || undefined,
+      foley: foley.length ? foley : undefined,
       line: silent || !line ? undefined : toFilmDialogueLine(line),
       lineIndex: silent ? -1 : spoken++,
       lineTotal: 0,

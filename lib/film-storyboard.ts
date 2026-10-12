@@ -2,7 +2,7 @@ import { chatJson, generateFilmSceneDialog } from './ai.js'
 import { newLineId } from './ids.js'
 import { listStoryAssets, saveStoryAsset } from './story-library.js'
 import { getDialog, updateDialog, type UserProfile } from './firestore.js'
-import type { Dialog } from '../shared/types.js'
+import { isStageSpeaker, type Dialog } from '../shared/types.js'
 import {
   applyDirectorNote,
   applyPanelComment,
@@ -154,7 +154,9 @@ Regeln:
 - settingHint konkret, nicht nur «Wohnzimmer».
 - Nur die Dialog-Abschnitte. Keine Extra-Szenen erfinden, die nicht im Dialog stehen.
 - sectionId = die echte Abschnitts-Id aus dem Dialog.
-- Handlung/Erzähler-Zeilen: shot=insert (oder wide wenn es wirklich der ganze Raum ist).`
+- Handlung/Erzähler-Zeilen: shot=insert (oder wide wenn es wirklich der ganze Raum ist).
+- soundCue bei Handlung IMMER das konkrete Geräusch: Wasser läuft in den Kessel, Kessel pfeift, Tee plätschert, Klopfen an der Tür — nicht nur «leise».
+- Insert mit einer Person: nur diese Person einmal, keine Zwillinge. Weit-Bild mit Gästen: die Gäste müssen sichtbar sein, kein leeres Wohnzimmer.`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -482,7 +484,11 @@ export async function writeFilmSceneDialog(
     }
   })
   const speakers = [
-    ...new Set(dialog.sections.flatMap((s) => s.lines.map((l) => l.speaker.trim()).filter(Boolean))),
+    ...new Set(
+      dialog.sections.flatMap((s) =>
+        s.lines.map((l) => l.speaker.trim()).filter((name) => name && !isStageSpeaker(name)),
+      ),
+    ),
   ]
   const drafted = await generateFilmSceneDialog({
     targetLanguage: dialog.targetLanguage,
@@ -499,6 +505,7 @@ export async function writeFilmSceneDialog(
     speaker: l.speaker,
     text: l.text,
     cueImage: l.cueImage,
+    cueSound: l.cueSound,
   }))
   const existingIdx = dialog.sections.findIndex((s) => s.id === sceneId)
   const newSection = {
@@ -762,7 +769,9 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
       beatTotal,
-      sceneWideStillUrl: wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen) ?? grundUrl,
+      sceneWideStillUrl: isInsert
+        ? undefined
+        : wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen) ?? grundUrl,
       speakerGender:
         genderFromPictureNote(correction) ??
         speakerGender(dialog, speaker) ??

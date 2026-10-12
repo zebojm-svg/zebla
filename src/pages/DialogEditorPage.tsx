@@ -991,7 +991,7 @@ export function DialogEditorPage() {
                     <input
                       className="input"
                       defaultValue={line.cueSound ?? ''}
-                      placeholder="Ton …"
+                      placeholder="Ton: Kessel pfeift …"
                       disabled={!!busy}
                       onBlur={(e) => {
                         if ((e.target.value.trim() || '') !== (line.cueSound ?? '')) {
