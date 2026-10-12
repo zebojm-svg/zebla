@@ -175,6 +175,8 @@ export function CreateDialogPage() {
         soundDirection: payload.soundDirection,
         speechDirection: payload.speechDirection,
         targetLanguage: payload.targetLanguage,
+        filmStoryboard: null,
+        filmPlan: null,
       })
       navigate(`/dialog/${dialog.id}`)
       return

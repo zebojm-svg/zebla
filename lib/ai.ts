@@ -614,28 +614,49 @@ Antworte als JSON:
   })
 }
 
-const BIRKENBIHL_CHUNK = 10
+const BIRKENBIHL_CHUNK = 8
 
-/** Alle Zeilen auf einmal, bei langen Dialogen in kleinen Paketen. */
+function lineNeedsBirkenbihl(line: DialogLine): boolean {
+  if (inferDialogLineKind(line) === 'action') return false
+  if (line.nativeText?.trim()) return false
+  return Boolean(line.text.trim())
+}
+
+function lineWithoutAi(line: DialogLine): DialogLine {
+  if (inferDialogLineKind(line) === 'action' && !line.nativeText?.trim()) {
+    return { ...line, nativeText: line.text.trim() || undefined }
+  }
+  return line
+}
+
+/** Alle Zeilen auf einmal, bei langen Dialogen in kleinen Paketen. Handlung ohne KI. */
 export async function applyBirkenbihlDialog(
   lines: DialogLine[],
   nativeLanguage: string,
   targetLanguage?: string,
   includeRomanization = true,
 ): Promise<DialogLine[]> {
-  if (lines.length <= BIRKENBIHL_CHUNK) {
-    return applyBirkenbihl(lines, nativeLanguage, targetLanguage, includeRomanization)
-  }
-  const out: DialogLine[] = []
-  for (let i = 0; i < lines.length; i += BIRKENBIHL_CHUNK) {
+  const prepared = lines.map(lineWithoutAi)
+  const todoIdx = prepared
+    .map((line, i) => (lineNeedsBirkenbihl(line) ? i : -1))
+    .filter((i) => i >= 0)
+  if (todoIdx.length === 0) return prepared
+
+  const todo = todoIdx.map((i) => prepared[i]!)
+  const done: DialogLine[] = []
+  for (let i = 0; i < todo.length; i += BIRKENBIHL_CHUNK) {
     const chunk = await applyBirkenbihl(
-      lines.slice(i, i + BIRKENBIHL_CHUNK),
+      todo.slice(i, i + BIRKENBIHL_CHUNK),
       nativeLanguage,
       targetLanguage,
       includeRomanization,
     )
-    out.push(...chunk)
+    done.push(...chunk)
   }
+  const out = [...prepared]
+  todoIdx.forEach((idx, j) => {
+    if (done[j]) out[idx] = done[j]!
+  })
   return out
 }
 

@@ -1310,6 +1310,15 @@ export function filmScenesFromDialog(
   })
 }
 
+/** Altes Board nach neuem Dialog: Szenen-Ids passen nicht mehr. */
+export function boardFollowsDialog(
+  board: FilmStoryboard | null | undefined,
+  dialog: Pick<Dialog, 'sections'>,
+): boolean {
+  if (!board || dialog.sections.length === 0) return false
+  return dialog.sections.some((section) => panelsForDialogScene(board, dialog, section.id).length > 0)
+}
+
 export function panelsForDialogScene(
   board: FilmStoryboard,
   dialog: Pick<Dialog, 'sections'>,
