@@ -27,6 +27,14 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 
 Teure Bewegung (sprechen/laufen als Film) **erst** wenn Board und Stil stimmen.
 
+## Zebla denkt nicht — es reicht weiter
+
+Zebla malt nicht selbst und überlegt nicht selbst. Es hängt Prompts und Fotos von einer KI zur nächsten:
+
+1. **Drehbuch-KI** liest die Geschichte und schreibt Inventar: Figuren, Räume, **jede wiederkehrende Sache** mit fester id. Wenn Khan Blumen mitbringt und sie später auf dem Tisch stehen — dieselben Blumen (`blumen-1`). Gleiche Regel für Kanne, Tablett, Mantel, Zeitung.
+2. **Vorlagen-Check** (zweite KI, nur JSON, malt nicht): für jedes Bild, welche Fotos mitmüssen.
+3. **Bild-KI** bekommt höchstens vier Fotos, zuerst das vorige Bild wo **diese** Sache sichtbar war (nicht ein beliebiges Weit ohne den Gegenstand), dann Ort, dann Gesicht.
+
 ## Design (die «gleiche Holzart»)
 
 Schon in `src/index.css` `:root`:
@@ -52,7 +60,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder (vorige Küche mitschicken, Wasser vor dem Herd), Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler). Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): **Dialog daraus machen**, dann Bilder neu — sonst bleibt die alte Kanne.
 
-**In Arbeit:** —
+**In Arbeit:** Drehbuch → Inventar **jeder wiederkehrenden Sache** → Vorlagen pro Bild (dieser Zweig). Methode: dieselbe id, später das vorige Foto **dieser** Sache. Beispiel: Blumen an der Tür, später auf dem Wohnzimmertisch. Kanne/Tablett ist derselbe Mechanismus, keine Extra-Tee-Logik. Zwischenbilder auf Augenhöhe ([#62](https://github.com/zebojm-svg/zebla/pull/62)) bleibt ein eigener Vorschlag. Nicht mergen, bis Jean-Marie ja sagt.
 
 **Nächste Baustellen (noch nicht hier):**
 

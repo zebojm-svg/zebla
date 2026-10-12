@@ -8,6 +8,8 @@ import type {
   FilmDraftMode,
   DialogLine,
   DialogSection,
+  FilmInventory,
+  FilmRefNeeds,
   BirkenbihlWord,
   ChatMessage,
   LineImageBeat,
@@ -18,6 +20,13 @@ import type {
   VisualBrief,
 } from '../shared/types.js'
 import { inferDialogLineKind, isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
+import {
+  applyContinuityCues,
+  deriveFilmInventory,
+  mergeLinePropIds,
+  normalizeFilmInventory,
+  uniqueStable,
+} from '../shared/film-inventory.js'
 import { spokenSpeakerName } from '../shared/speakers.js'
 import { inferSoundCueDe, orderTeaBeats } from '../shared/film-scene-foley.js'
 import { linesFromRaw, newLineId } from './ids.js'
@@ -210,6 +219,7 @@ export async function generateFilmFromPrompt(
   imageDirection?: string
   soundDirection?: string
   speechDirection?: string
+  filmInventory?: FilmInventory | null
   questions?: string[]
 }> {
   if (mode === 'ask' && !answers?.trim()) {
@@ -235,9 +245,10 @@ Originalfiguren, kein Petit Nicolas.`,
     ? `\nAntworten des Autors auf Rückfragen:\n${answers.trim()}`
     : ''
 
+  const spokenLang = languageName(targetLanguage)
   const system = `Du planst einen Kurzfilm als Bilderbuch-Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
-Sprache der GESPROCHENEN Zeilen (kind=speech und kind=narrator): ${targetLanguage}.
-Handlung (kind=action) darf auf Deutsch beschreiben, was man sieht — die wird nicht gesprochen.
+Sprache der GESPROCHENEN Zeilen (kind=speech und kind=narrator): NUR ${spokenLang} (${targetLanguage}). Niemals Englisch, niemals Deutsch in diesen Zeilen (kein Once upon a time, kein The guests arrive, kein Ramo hat Freunde eingeladen als gesprochener Text).
+Handlung (kind=action) darf auf Deutsch beschreiben, was man sieht — die wird NICHT gesprochen, nicht an TTS schicken.
 Lies den Prompt selbst: was Dialog ist, was dazwischen passiert, was Erzähler, was Bild-Regie, was Ton/Sprache.
 ${modeHint}
 JSON:
@@ -246,32 +257,46 @@ JSON:
   "imageDirection": "Ort, Licht, wer wo steht (aus dem Prompt gezogen)",
   "soundDirection": "Geräusche und Musik",
   "speechDirection": "laut, flüstern, Tempo",
+  "filmInventory": {
+    "people": [{ "name": "Ramo" }],
+    "places": [{ "key": "kitchen", "labelDe": "Küche" }, { "key": "living", "labelDe": "Wohnzimmer" }],
+    "props": [{ "id": "blumen-1", "nameDe": "Blumen", "firstSeenLineHint": "Khan bringt Blumen" }, { "id": "kanne-1", "nameDe": "Kanne", "firstSeenLineHint": "Wasser in den Kessel" }]
+  },
   "sections": [
     {
       "title": "Szenenname",
       "lines": [
-        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen", "cueSpeech": "optional" }
+        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen", "cueSpeech": "optional", "propIds": ["blumen-1"] }
       ]
     }
   ]
 }
 kind:
-- speech = jemand spricht (speaker = Figurenname, text in ${targetLanguage})
-- narrator = Erzähler erzählt (speaker "Erzähler", text in ${targetLanguage}). Beispiel: speaker "Erzähler", text "Ramo hat Freunde zum Tee eingeladen."
-- action = stilles Zwischenbild, niemand spricht. Nur kurze Geräusch-Handlung. Beispiel: speaker "Handlung", text "Ramo füllt Wasser in den Kessel.", cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kessel noch nicht auf dem Herd", cueSound "Wasser läuft in den Kessel"
+- speech = jemand spricht (speaker = Figurenname, text NUR in ${spokenLang})
+- narrator = Erzähler erzählt (speaker "Erzähler", text NUR in ${spokenLang}, niemals Englisch, niemals Deutsch). Die Einladung / Geschichte gehört hierher — in ${spokenLang}.
+- action = stilles Zwischenbild, niemand spricht. Nur kurze Geräusch-Handlung auf Deutsch. Beispiel: speaker "Handlung", text "Ramo füllt Wasser in den Kessel.", cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kamera auf Augenhöhe eines Stehenden, Kessel und Hahn in Arbeitshöhe, nicht die Füsse, Kessel noch nicht auf dem Herd", cueSound "Wasser läuft in den Kessel"
 Niemals die Geschichte als kind=action schreiben — sonst erzählt der Erzähler nichts.
+Niemals deutsche Handlungsnotizen (bereitet Tee vor, füllt Wasser, trägt die Kanne) als kind=narrator oder kind=speech — die bleiben still. Tee-Zubereitung ist Handlung, nicht Erzähler.
 Bei Handlung cueSound immer konkret, und jede Geräusch-Handlung ist eine EIGENE Zeile (nicht auffüllen + pfeifen + eingießen in einem Satz):
 Dieselbe Kanne und derselbe Herd in ALLEN Küchenzeilen (nicht mal Gasherd, mal Induktion; nicht jede Zeile eine neue Kanne).
 Reihenfolge beim Tee (nicht umdrehen):
-1. Wasser in den Kessel an der Spüle — Kessel ist noch NICHT auf dem Herd. cueImage "EIN Ramo füllt denselben Kessel an der Spüle", cueSound "Wasser läuft in den Kessel"
-2. denselben vollen Kessel auf denselben Herd setzen
-3. Kessel pfeift: cueImage "derselbe Teekessel mit Dampf auf demselben Herd", cueSound "Der Teekessel pfeift"
-4. Tee eingießen: cueImage "Einschenken aus derselben Kanne", cueSound "Tee plätschert in die Kanne"
+1. Wasser in den Kessel an der Spüle — Kessel ist noch NICHT auf dem Herd. cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kamera auf Augenhöhe eines Stehenden, Kessel in Arbeitshöhe, nicht die Füsse", cueSound "Wasser läuft in den Kessel"
+2. denselben vollen Kessel auf denselben Herd setzen — cueImage auf Augenhöhe am Herd, nicht die Füsse
+3. Kessel pfeift: cueImage "derselbe Teekessel mit Dampf auf demselben Herd, Kamera auf Augenhöhe", cueSound "Der Teekessel pfeift"
+4. Tee eingießen: cueImage "Einschenken aus derselben Kanne, Arbeitshöhe, nicht die Füsse", cueSound "Tee plätschert in die Kanne"
 Niemals den leeren Kessel auf den Herd stellen, bevor Wasser drin ist.
-- Klopfen: cueImage "Die Wohnungstür von innen, die Tür füllt das Bild", cueSound "Klopfen an der Tür"
-Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen — niemals kind=action. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt.
+- Klopfen: cueImage "Die Wohnungstür von innen, Schloss und Klinke auf Türhöhe (etwa 1–1,2 m), Kamera auf Augenhöhe eines stehenden Erwachsenen, nicht den Boden und nicht nur Füsse", cueSound "Klopfen an der Tür"
+Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen IN ${spokenLang} — niemals kind=action, niemals Deutsch oder Englisch als Erzählertext. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt.
 Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das hergibt.
-cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür, Tee), niemals «ganzer Raum» bei jeder Zeile.
+cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür auf Augenhöhe, Tee in Arbeitshöhe), niemals «ganzer Raum» bei jeder Zeile, niemals Kamerahöhe am Boden.
+INVENTAR und KONTINUITÄT:
+- Lies die Geschichte und suche JEDE wiederkehrende Figur, jeden Ort, JEDE Sache die später wieder vorkommt. Keine feste Liste (nicht nur Kanne/Tablett).
+- filmInventory listet jede Figur, jeden Ort, jede wiederkehrende Requisite EINMAL, mit einer id aus der Geschichte (blumen-1, mantel-1, zeitung-1, kanne-1 — was der Stoff hergibt).
+- Dieselbe Sache behält dieselbe id in ALLEN Szenen.
+- Wenn Khan Blumen mitbringt und sie später auf dem Tisch stehen — dieselben Blumen. Gleiche Regel für jedes Requisit (Mantel, Zeitung, Teekanne, Tablett, Prospekt, …).
+- Jede Zeile, in der der Gegenstand sichtbar ist, setzt propIds auf genau diese ids.
+- Wenn ein Gegenstand schon vorkam, cueImage MUSS den englischen Satz enthalten: SAME <object> as earlier — z.B. SAME flowers as earlier, SAME kettle as earlier, SAME coat as earlier.
+- Beispiel Tee: Wenn Ramo Kanne und Tablett aus der Küche ins Wohnzimmer bringt: dieselben ids, SAME kettle/tray as earlier. Das ist dieselbe Regel wie bei den Blumen, nicht eine Extra-Tee-Logik.
 Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
 Teile den Prompt in Szenen, wo Ort, Zeit oder Handlung wechselt.
 Küche und Wohnzimmer sind zwei Szenen (nicht ein Bild mit Herd und Sitzkissen).
@@ -285,6 +310,7 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     imageDirection?: string
     soundDirection?: string
     speechDirection?: string
+    filmInventory?: FilmInventory
     sections: Array<{
       title: string
       lines: Array<{
@@ -294,9 +320,12 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
         cueImage?: string
         cueSound?: string
         cueSpeech?: string
+        propIds?: string[]
       }>
     }>
   }>(system, `${prompt.trim()}${extra}`)
+
+  const aiInventory = normalizeFilmInventory(result.filmInventory)
 
   const sections: DialogSection[] = dropRepeatedDialogSections(
     (result.sections ?? []).map((sec) => ({
@@ -317,17 +346,28 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
               text: l.text ?? '',
               cueImage: l.cueImage,
             }) || (kind === 'action' ? 'Handlung' : 'Sprecher')
+          const text = l.text?.trim() || (kind === 'action' ? l.cueImage?.trim() || '' : '')
+          const cueImage = l.cueImage?.trim() || ''
+          const propIds = mergeLinePropIds(
+            {
+              text,
+              cueImage,
+              propIds: l.propIds,
+            },
+            aiInventory,
+          )
           return {
             id: newLineId(),
             kind,
             speaker,
-            text: l.text?.trim() || l.cueImage?.trim() || '',
-            cueImage: l.cueImage?.trim() || undefined,
+            text,
+            cueImage: cueImage || undefined,
             cueSound:
               kind === 'action'
                 ? inferSoundCueDe(l.text ?? '', l.cueSound) || undefined
                 : l.cueSound?.trim() || undefined,
             cueSpeech: l.cueSpeech?.trim() || undefined,
+            propIds: propIds.length ? propIds : undefined,
           }
         })
         .filter((l) => l.text),
@@ -342,13 +382,72 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     throw new Error('Die KI hat keinen Dialog geliefert. Bitte den Prompt etwas genauer schreiben.')
   }
 
+  const filmInventory = deriveFilmInventory({
+    sections,
+    filmInventory: aiInventory,
+  })
+  const withContinuity = applyContinuityCues(sections, filmInventory)
+
   return {
     title: result.title?.trim() || 'Film',
-    sections,
+    sections: withContinuity,
     imageDirection: result.imageDirection?.trim(),
     soundDirection: result.soundDirection?.trim(),
     speechDirection: result.speechDirection?.trim(),
+    filmInventory,
   }
+}
+
+/** Zweite KI: nur JSON, kein Bild. Welche Vorlagen braucht jedes Standbild? */
+export async function planFilmPanelRefNeeds(opts: {
+  inventory: FilmInventory
+  panels: Array<{
+    id: string
+    caption: string
+    imageCue: string
+    settingHint: string
+    shot?: string
+    people: string[]
+    propIds?: string[]
+  }>
+}): Promise<Record<string, FilmRefNeeds>> {
+  const inventory = normalizeFilmInventory(opts.inventory) || opts.inventory
+  const raw = await chatJson<{
+    panels?: Array<{
+      id?: string
+      people?: string[]
+      places?: string[]
+      propIds?: string[]
+    }>
+  }>(
+    `Du prüfst Vorlagen für Standbilder. Du malst NICHT. Nur JSON.
+Inventar der Geschichte — nur diese Namen/Ids verwenden:
+${JSON.stringify(inventory)}
+Für JEDES Bild: welche Personen, Orte, Requisiten aus dem Inventar müssen als Foto mit?
+Regel Requisite: wenn propId schon in einem früheren Bild vorkam, dieses Bild braucht dieselbe id. Wenn Khan Blumen mitbringt und sie später auf dem Tisch stehen — blumen-1 bleibt blumen-1. Gleiche Regel für jedes Requisit (Kanne, Tablett, Mantel, Zeitung).
+Nicht raten: ein Wohnzimmer-Weit ohne den Gegenstand ist NICHT das Requisiten-Foto.
+JSON:
+{ "panels": [ { "id": "panel-id", "people": ["Khan"], "places": ["living"], "propIds": ["blumen-1"] } ] }`,
+    opts.panels
+      .map((p, i) => {
+        const props = (p.propIds ?? []).join(', ') || '—'
+        const people = p.people.join(', ') || '—'
+        return `${i + 1}. id=${p.id} shot=${p.shot || 'wide'} ort=${p.settingHint || '—'} leute=${people} propIds=${props}\n   caption: ${p.caption}\n   cue: ${p.imageCue}`
+      })
+      .join('\n'),
+    { temperature: 0.2 },
+  )
+  const byId: Record<string, FilmRefNeeds> = {}
+  for (const row of raw.panels ?? []) {
+    const id = (row.id || '').trim()
+    if (!id) continue
+    byId[id] = {
+      people: (row.people ?? []).map((n) => n.trim()).filter(Boolean),
+      places: uniqueStable(row.places ?? []),
+      propIds: uniqueStable(row.propIds ?? []),
+    }
+  }
+  return byId
 }
 
 /** Echten Dialog für eine spätere Film-Szene — nicht den Text von Szene 1 kopieren. */

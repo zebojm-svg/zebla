@@ -508,6 +508,7 @@ export function DialogEditorPage() {
                     imageDirection: result.imageDirection,
                     soundDirection: result.soundDirection,
                     speechDirection: result.speechDirection,
+                    filmInventory: result.filmInventory ?? null,
                     filmStoryboard: null,
                     filmPlan: null,
                   })

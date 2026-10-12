@@ -145,6 +145,7 @@ export function CreateDialogPage() {
     imageDirection?: string
     soundDirection?: string
     speechDirection?: string
+    filmInventory?: import('../types').FilmInventory | null
   }) => {
     if (!result.title || !result.sections?.length) {
       throw new Error('Kein Dialog gekommen.')
@@ -164,6 +165,7 @@ export function CreateDialogPage() {
       imageDirection: result.imageDirection,
       soundDirection: result.soundDirection,
       speechDirection: result.speechDirection,
+      filmInventory: result.filmInventory ?? null,
     }
     if (dialogIdRef.current) {
       const { dialog } = await api.dialogs.update(dialogIdRef.current, {
@@ -175,6 +177,7 @@ export function CreateDialogPage() {
         soundDirection: payload.soundDirection,
         speechDirection: payload.speechDirection,
         targetLanguage: payload.targetLanguage,
+        filmInventory: result.filmInventory ?? null,
         filmStoryboard: null,
         filmPlan: null,
       })

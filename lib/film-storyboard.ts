@@ -1,8 +1,9 @@
-import { chatJson, generateFilmSceneDialog } from './ai.js'
+import { chatJson, generateFilmSceneDialog, planFilmPanelRefNeeds } from './ai.js'
 import { newLineId } from './ids.js'
 import { listStoryAssets, saveStoryAsset } from './story-library.js'
 import { getDialog, updateDialog, type UserProfile } from './firestore.js'
-import { isStageSpeaker, type Dialog } from '../shared/types.js'
+import { isStageSpeaker, type Dialog, type FilmInventory } from '../shared/types.js'
+import { deriveFilmInventory, mergeRefNeeds } from '../shared/film-inventory.js'
 import {
   applyDirectorNote,
   applyPanelComment,
@@ -98,6 +99,7 @@ async function paintCloseupPushIn(opts: {
   continuityEn: string
   targetLanguage?: string
   beatTotal: number
+  inventory?: FilmInventory | null
 }): Promise<string> {
   return generateFilmPanelStillImage({
     panel: { ...opts.panel, stillCorrection: undefined },
@@ -112,6 +114,7 @@ async function paintCloseupPushIn(opts: {
     speakerX: opts.speakerX,
     speakerSitting: opts.speakerSitting,
     continuityEn: opts.continuityEn,
+    inventory: opts.inventory,
   })
 }
 
@@ -140,6 +143,7 @@ Schema:
       "speechCue": "wie gesprochen, leer bei Handlung",
       "settingHint": "Ort wie im Dialog, konkret",
       "expressionHint": "freut sich|traurig|schreit|überrascht|neutral|leise / flüstert",
+      "propIds": ["blumen-1"],
       "characters": [
         { "name": "Julien", "poseHint": "sitting|standing-front|waving|look-left|look-right|walking|standing-three-quarter", "depth": "foreground|mid|background", "x": 40 }
       ]
@@ -156,7 +160,8 @@ Regeln:
 - sectionId = die echte Abschnitts-Id aus dem Dialog.
 - Handlung/Erzähler-Zeilen: shot=insert (oder wide wenn es wirklich der ganze Raum ist).
 - soundCue bei Handlung IMMER das konkrete Geräusch: Wasser läuft in den Kessel, Kessel pfeift, Tee plätschert, Klopfen an der Tür — nicht nur «leise».
-- Insert mit einer Person: nur diese Person einmal, keine Zwillinge. Weit-Bild mit Gästen: die Gäste müssen sichtbar sein, kein leeres Wohnzimmer.`
+- Insert mit einer Person: nur diese Person einmal, keine Zwillinge. Weit-Bild mit Gästen: die Gäste müssen sichtbar sein, kein leeres Wohnzimmer.
+- propIds: dieselben Requisiten-ids wie im Dialog. Was die Geschichte hergibt (Blumen, Kanne, Mantel, Zeitung) — dieselbe id, wenn der Gegenstand später wieder da ist.`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -168,6 +173,9 @@ function flattenDialog(dialog: Dialog, extra = ''): string {
     dialog.speechDirection ? `Sprach-Regie: ${dialog.speechDirection}` : '',
     extra,
   ]
+  if (dialog.filmInventory) {
+    lines.push(`Inventar (feste ids): ${JSON.stringify(dialog.filmInventory)}`)
+  }
   lines.push('Szenen nur aus diesen Dialog-Abschnitten. Keine Extra-Szenen ohne neuen Dialog.')
   for (const section of dialog.sections) {
     lines.push(`Abschnitt ${section.id} «${section.title}»`)
@@ -244,9 +252,53 @@ export async function planFilmStoryboard(
     previous,
     { freshPlaces: Boolean(opts?.freshPlaces) },
   )
+  const inventory = deriveFilmInventory(dialog)
+  const withRefs = useAi ? await attachRefNeedsFromAi(board, inventory) : board
 
-  const updated = await saveBoard(dialogId, userId, board, profile)
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    {
+      filmStoryboard: normalizeFilmStoryboard(withRefs),
+      filmInventory: inventory,
+    },
+    profile,
+  )
+  if (!updated) throw new Error('Storyboard konnte nicht gespeichert werden.')
   return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
+}
+
+async function attachRefNeedsFromAi(
+  board: FilmStoryboard,
+  inventory: FilmInventory,
+): Promise<FilmStoryboard> {
+  try {
+    const planned = await planFilmPanelRefNeeds({
+      inventory,
+      panels: board.panels.map((p) => ({
+        id: p.id,
+        caption: p.caption,
+        imageCue: p.imageCue,
+        settingHint: p.settingHint,
+        shot: p.shot,
+        people: p.placements.map((pl) => pl.name.trim()).filter(Boolean),
+        propIds: p.propIds,
+      })),
+    })
+    return {
+      ...board,
+      panels: board.panels.map((panel) => ({
+        ...panel,
+        refNeeds: mergeRefNeeds(panel.refNeeds, planned[panel.id]),
+        propIds: mergeRefNeeds(
+          { people: [], places: [], propIds: panel.propIds ?? [] },
+          planned[panel.id],
+        ).propIds,
+      })),
+    }
+  } catch {
+    return board
+  }
 }
 
 /** Alte Standbilder und den Bildplan löschen, dann nur aus dem Dialog neu planen. */
@@ -726,6 +778,7 @@ export async function stillFilmPanel(
         speakerX: whoOnWide?.x,
         speakerSitting: sittingFromPlacement(whoOnWide),
         continuityEn: continuityForShot,
+        inventory: dialog.filmInventory,
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
       next = replaceStillUrl(next, grundUrl, newWideUrl, panelForGen.sceneId)
@@ -743,6 +796,7 @@ export async function stillFilmPanel(
         continuityEn,
         targetLanguage,
         beatTotal,
+        inventory: dialog.filmInventory,
       })
       next = applyPanelStill(next, panelId, closeUrl, resolvedStyle)
       const withNote = applyPanelHarvestNote(
@@ -762,6 +816,7 @@ export async function stillFilmPanel(
       correctFromUrl,
       sceneWideStillUrl: placeWideUrl,
       board: boardForGen,
+      inventory: dialog.filmInventory,
     })
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
@@ -780,6 +835,7 @@ export async function stillFilmPanel(
       speakerSitting: sittingFromPlacement(whoOnWide),
       continuityEn: continuityForShot,
       board: boardForGen,
+      inventory: dialog.filmInventory,
     })
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {

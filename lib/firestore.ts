@@ -52,6 +52,7 @@ interface DialogDoc {
   visualScript?: DialogVisualScript
   visualBrief?: Dialog['visualBrief']
   storyMeta?: Dialog['storyMeta']
+  filmInventory?: Dialog['filmInventory']
   createdAt: string
   updatedAt: string
 }
@@ -103,6 +104,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     visualScript: data.visualScript,
     visualBrief: data.visualBrief ?? null,
     storyMeta: data.storyMeta ?? null,
+    filmInventory: data.filmInventory ?? null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -346,6 +348,7 @@ export async function createDialog(
     referenceImageUrl?: string
     referenceImagePrompt?: string
     speakerProfiles?: Dialog['speakerProfiles']
+    filmInventory?: Dialog['filmInventory']
   },
 ): Promise<Dialog> {
   let classId = data.classId ?? null
@@ -376,6 +379,7 @@ export async function createDialog(
     referenceImageUrl: data.referenceImageUrl,
     referenceImagePrompt: data.referenceImagePrompt,
     speakerProfiles: data.speakerProfiles,
+    filmInventory: data.filmInventory ?? undefined,
     createdAt: now,
     updatedAt: now,
   }
@@ -410,6 +414,7 @@ export async function updateDialog(
     visualScript: DialogVisualScript | null
     visualBrief: Dialog['visualBrief']
     storyMeta: Dialog['storyMeta']
+    filmInventory: Dialog['filmInventory']
   }>,
   profile?: UserProfile | null,
 ): Promise<Dialog | null> {
@@ -478,6 +483,7 @@ export async function updateDialog(
     visualScript: pick(data.visualScript, existing.visualScript),
     visualBrief: pick(data.visualBrief, existing.visualBrief ?? undefined),
     storyMeta: pick(data.storyMeta, existing.storyMeta ?? undefined),
+    filmInventory: pick(data.filmInventory, existing.filmInventory ?? undefined),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
@@ -630,6 +636,9 @@ export async function cloneDialog(
       : undefined,
     storyMeta: source.storyMeta
       ? JSON.parse(JSON.stringify(source.storyMeta))
+      : undefined,
+    filmInventory: source.filmInventory
+      ? JSON.parse(JSON.stringify(source.filmInventory))
       : undefined,
     createdAt: now,
     updatedAt: now,
