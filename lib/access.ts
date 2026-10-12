@@ -44,11 +44,5 @@ export async function requireRole(
 
 export async function assertCanUseAi(profile: UserProfile): Promise<void> {
   meterAiProfile(profile)
-  if (profile.role !== 'master' && profile.role !== 'student' && !isProActive(profile.role, profile.subscriptionStatus)) {
-    throw new HttpError(
-      'KI ist in der kostenlosen Lehrer-Version deaktiviert. Bitte Pro abonnieren.',
-      402,
-    )
-  }
   await assertAiAllowedFor(profile)
 }

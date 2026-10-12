@@ -120,13 +120,6 @@ export function ClassesPage() {
 
       {error && <div className="alert alert-warn">{error}</div>}
 
-      {!user?.proActive && user?.role === 'teacher' && (
-        <div className="alert alert-warn">
-          Ohne Pro ist KI für dich deaktiviert.{' '}
-          <Link to="/pro">Pro freischalten</Link>
-        </div>
-      )}
-
       {classes.length === 0 ? (
         <div className="empty-state">
           <h2>Noch keine Klasse</h2>

@@ -464,8 +464,6 @@ export function DashboardPage() {
       : '/create'
   const showNewStory = !inStoryFolder || !storyDialog
   const isEmpty = childFolders.length === 0 && childDialogs.length === 0
-  const showProBanner = user?.role === 'teacher' && !user.proActive
-
   if (loading) {
     return (
       <div className="page-center">
@@ -524,13 +522,6 @@ export function DashboardPage() {
       </nav>
 
       {error && <div className="alert alert-warn">{error}</div>}
-
-      {showProBanner && (
-        <div className="alert alert-warn">
-          Ohne Pro ist KI für dich deaktiviert.{' '}
-          <Link to="/pro">Pro freischalten</Link>
-        </div>
-      )}
 
       {inClassFolder && (
         <div className="alert alert-info">

@@ -97,7 +97,7 @@ export function LoginPage() {
         <section className="login-section">
           <h2>{t('login.googleTitle')}</h2>
           <p className="hint">
-            Mit Google anmelden. Neue Lehrkräfte registrieren sich selbst; KI braucht später Pro.
+            Mit Google anmelden. Neue Lehrkräfte registrieren sich selbst; KI läuft über die KI-Punkte im Hub.
           </p>
           <button
             type="button"

@@ -13,11 +13,11 @@ export const QUOTA_LIMITS: Record<UserRole, UsageQuota> = {
   student: { dialogCreates: 15, aiCalls: 40, slideshowPreps: 8 },
 }
 
-/** Lehrer ohne Abo: Bibliothek ja, KI nein. */
+/** Lehrer ohne Abo: KI wie mit Abo (Grenze sind die Hub-KI-Punkte), nur weniger neue Dialoge. */
 export const TEACHER_FREE_QUOTA: UsageQuota = {
   dialogCreates: 30,
-  aiCalls: 0,
-  slideshowPreps: 5,
+  aiCalls: QUOTA_LIMITS.teacher.aiCalls,
+  slideshowPreps: QUOTA_LIMITS.teacher.slideshowPreps,
 }
 
 export function resolveRole(

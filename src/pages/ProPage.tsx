@@ -37,7 +37,7 @@ export function ProPage() {
       .confirm(sessionId)
       .then((res) => {
         setStatusUser(res.user)
-        setMessage('Pro ist aktiv. Du kannst KI wieder nutzen.')
+        setMessage('Pro ist aktiv.')
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Bestätigung fehlgeschlagen'))
       .finally(() => setBusy(false))
@@ -89,7 +89,7 @@ export function ProPage() {
         <div>
           <h1>Zebla Pro</h1>
           <p className="muted">
-            Lehrkräfte nutzen KI erst mit Abo. Schüler arbeiten über Klassenkontingente.
+            KI läuft für alle über die KI-Punkte im Hub, ohne Abo. Pro erhöht nur das Kontingent für neue Dialoge.
           </p>
         </div>
         <Link to="/" className="btn btn-secondary">

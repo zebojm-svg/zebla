@@ -57,7 +57,7 @@ export async function consumeQuota(
       : 0
     if (current + amount > limits[field]) {
       throw new HttpError(
-        `Kontingent erschöpft (${field}). Pro-Abo oder nächsten Monat abwarten.`,
+        `Kontingent erschöpft (${field}). Nächsten Monat abwarten.`,
         402,
       )
     }
