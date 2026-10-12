@@ -757,5 +757,61 @@ const insertAttach = stillAttachmentInstruction({
 if (!insertAttach.toLowerCase().includes('not copy the wide')) {
   fail('Zwischenbild kopiert nicht das Weit-Bild')
 }
+if (!insertCameraLine('Tee').includes('ONCE') && !insertCameraLine('Tee').toLowerCase().includes('once')) {
+  fail('Zwischenbild: jede Person nur einmal')
+}
+
+const insertPanel = {
+  ...s1[0]!,
+  shot: 'insert' as const,
+  placements: [{ ...s1[0]!.placements[0]!, imageUrl: 'https://example.com/julien.png' }],
+  background: {
+    ...s1[0]!.background,
+    imageUrl: 'https://example.com/park.png',
+    match: 'reuse' as const,
+  },
+}
+const insertRefs = referenceUrlsForPanel(
+  insertPanel,
+  'https://example.com/prev.png',
+  undefined,
+  'https://example.com/wide.png',
+)
+if (insertRefs.includes('https://example.com/prev.png')) {
+  fail('Zwischenbild hängt nicht das vorige Standbild an — sonst zwei gleiche Figuren')
+}
+if (insertRefs.includes('https://example.com/wide.png')) {
+  fail('Zwischenbild hängt nicht das Weit-Bild an')
+}
+if (insertRefs.includes('https://example.com/park.png')) {
+  fail('Zwischenbild hängt nicht den ganzen Raum an')
+}
+if (!insertRefs.includes('https://example.com/julien.png')) {
+  fail('Zwischenbild darf das Stammbild der genannten Person')
+}
+
+const kitchenInsert = {
+  ...s1[0]!,
+  id: 'kitchen-insert',
+  shot: 'insert' as const,
+  stillUrl: 'https://example.com/kitchen.png',
+}
+const boardKitchen = {
+  ...withWide,
+  panels: [kitchenInsert, girlCu],
+}
+if (sceneGrundbildPanel(boardKitchen, girlCu.sceneId)?.stillUrl === 'https://example.com/kitchen.png') {
+  fail('Küchen-Insert ist kein Grundbild fürs Wohnzimmer')
+}
+
+const wideGuests = buildFilmStillPrompt({
+  caption: 'Gäste im Wohnzimmer',
+  names: ['Ramo', 'Khan', 'Ubai'],
+  hasLibraryRefs: true,
+  shot: 'wide',
+})
+if (!wideGuests.toLowerCase().includes('empty room')) {
+  fail('Weit-Bild mit Gästen darf kein leeres Zimmer sein')
+}
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

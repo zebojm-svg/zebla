@@ -114,10 +114,7 @@ export function sceneWidePanel(
   const same = board.panels.filter(
     (p) => p.sceneId === panel.sceneId && p.id !== panel.id && Boolean(p.stillUrl?.startsWith('http')),
   )
-  return (
-    same.find((p) => p.shot === 'wide') ||
-    same.find((p) => (p.shot ?? 'wide') !== 'closeup')
-  )
+  return same.find((p) => p.shot === 'wide')
 }
 
 export function sceneWideStillUrl(
@@ -133,10 +130,7 @@ export function sceneGrundbildPanel(
   sceneId: string,
 ): FilmStoryboardPanel | undefined {
   const same = panelsForScene(board, sceneId).filter((p) => Boolean(p.stillUrl?.startsWith('http')))
-  return (
-    same.find((p) => p.shot === 'wide') ||
-    same.find((p) => (p.shot ?? 'wide') !== 'closeup')
-  )
+  return same.find((p) => p.shot === 'wide')
 }
 
 export function replaceStillUrl(
@@ -306,7 +300,7 @@ export function referenceUrlsForPanel(
       : closeup
         ? [sceneWideStillUrl, speakerId]
         : insert
-          ? [sceneWideStillUrl, bg]
+          ? [...people]
           : [bg, ...people]
   ).filter(http)
   return [...new Set(ordered)].slice(0, closeup ? 3 : 4)
@@ -409,7 +403,7 @@ export function stillAttachmentInstruction(opts: {
   rewritePerson?: boolean
 }): string {
   if (opts.insert && !opts.correctingExisting) {
-    return 'Attached photos are LOCATION LOCK only (same house). Paint a NEW insert/cutaway of the named object or small action. Do NOT copy the wide group photo. Do NOT show the whole room again. Fill the frame with the detail.'
+    return 'Attached photos are identity plates of the named people only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT show the whole room again. Fill the frame with the named detail.'
   }
   if (opts.rewritePerson && opts.closeup) {
     return 'Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.'
@@ -440,8 +434,11 @@ export function insertCameraLine(cue?: string): string {
     `INSERT / cutaway: fill the frame with this detail — ${what}. ` +
     `Not a wide of the whole room, not a talking-head close-up. ` +
     `Same house and lighting as this scene. Camera close to the object or small action. ` +
+    `Paint each named person ONCE. Never twins, never two copies of the same face. ` +
+    `If one person fills a kettle or pours tea, paint exactly that one person — not two copies doing the same action. ` +
     `FORBIDDEN: copying the previous living-room photo. ` +
-    `FORBIDDEN: everyone sitting around the table unless the cue names that gathering.`
+    `FORBIDDEN: everyone sitting around the table unless the cue names that gathering. ` +
+    `FORBIDDEN: an extra guest who is not named in this frame.`
   )
 }
 
@@ -511,7 +508,7 @@ export function buildFilmStillPrompt(opts: {
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
       : isInsert
-        ? `${STORY_STILLS_LOCK_PROMPT} If a room photo is attached, use it only as location lock. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
+        ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
         : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
@@ -541,7 +538,7 @@ export function buildFilmStillPrompt(opts: {
         ? insertCameraLine(opts.imageCue || opts.caption)
         : rewritePerson
         ? `WIDE shot of the SAME gathering. Keep this camera, this table and these seats. Apply the director fix to the named person only. Everyone else stays where they are. Sitting people stay sitting, hips on the seat.`
-        : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
+        : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people. FORBIDDEN: an empty room with no guests if people are named.`,
     opts.correctingExisting
       ? ''
       : isCloseup
@@ -575,7 +572,13 @@ export function buildFilmStillPrompt(opts: {
     opts.spokenLine ? `Spoken in this moment: ${opts.spokenLine}.` : '',
     opts.imageCue ? `What we see in THIS frame only: ${opts.imageCue}.` : '',
     `Faces: ${opts.expressionHint || 'natural'}.`,
-    people ? `People in frame: ${people}.` : '',
+    people
+      ? isInsert
+        ? `People in frame (exactly these, each ONCE, no twins): ${people}.`
+        : `People in frame — they MUST be visible, not an empty room: ${people}.`
+      : isInsert
+        ? 'No extra people in this insert unless the cue names them.'
+        : '',
     poses ? `Poses: ${poses}.` : '',
     opts.directorNote ? `Director note: ${opts.directorNote}.` : '',
     opts.stillCorrection

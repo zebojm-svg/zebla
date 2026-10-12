@@ -94,7 +94,8 @@ export function FilmCastVoices({ dialog, disabled, onDialogUpdated }: Props) {
     <details className="film-cast-voices">
       <summary>Stimmen anpassen</summary>
       <p className="muted">
-        Jederzeit Probe hören und eine Stimme wählen. Jungennamen bleiben männlich.
+        Jederzeit Probe hören und eine Stimme wählen. Jungennamen bleiben männlich. Erzähler
+        bekommt hier eine eigene Stimme — Handlung bleibt still.
       </p>
       {status ? <p className="film-cast-voices-status">{status}</p> : null}
       <div className="film-cast-voices-grid">

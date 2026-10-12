@@ -4,7 +4,7 @@ import { isRtlLanguage } from '../types'
 import type { Dialog } from '../types'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { scenePlayBeats } from '../../shared/film-storyboard'
-import { foleyFlagsFromNote, SCENE_ESTABLISHING_MS } from '../../shared/film-scene-foley'
+import { foleyDurationMs, foleyFlagsFromNote, SCENE_ESTABLISHING_MS } from '../../shared/film-scene-foley'
 import { FilmStillPicture } from './FilmStillArrange'
 import { createSceneBedMusic } from './sceneBedMusic'
 import { api, FILM_PLAN_TIMEOUT_MS } from '../api/client'
@@ -196,7 +196,9 @@ export function FilmScenePreviewPlayer({
             setPlayError(err instanceof Error ? err.message : 'Stimme konnte nicht geladen werden.')
           })
         }
-        await sleep(SCENE_ESTABLISHING_MS)
+        const events = beat.foley ?? []
+        if (events.length) getMusic().playFoley(events)
+        await sleep(events.length ? foleyDurationMs(events) : SCENE_ESTABLISHING_MS)
         continue
       }
       const lineId = beat.line.lineId || beat.panelId
@@ -258,8 +260,9 @@ export function FilmScenePreviewPlayer({
   return (
     <div className="film-scene-player">
       <p className="muted film-scene-player-note">
-        <strong>Szene anhören:</strong> jedes gemalte Bild der Reihe nach — Zwischenbilder still,
-        dann wer spricht. Deutsch steht unter der Zeile.
+        <strong>Szene anhören:</strong> jedes gemalte Bild der Reihe nach — Zwischenbilder mit
+        Geräusch (Wasser, Pfeifen, Klopfen), Erzähler spricht, Dialog spricht. Deutsch steht unter
+        der Zeile.
       </p>
       <p className="muted film-scene-player-voice">
         {voiceLabel}
@@ -316,6 +319,9 @@ export function FilmScenePreviewPlayer({
       {current?.silent && current.caption ? (
         <div className="film-play-now">
           <p className="film-play-now-speaker">{current.caption}</p>
+          {current.soundCue ? (
+            <p className="muted film-play-now-de">Ton: {current.soundCue}</p>
+          ) : null}
         </div>
       ) : nowLine ? (
         <div className="film-play-now">

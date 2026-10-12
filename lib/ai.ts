@@ -17,6 +17,7 @@ import type {
   VisualBrief,
 } from '../shared/types.js'
 import { inferDialogLineKind, isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
+import { inferSoundCueDe } from '../shared/film-scene-foley.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
@@ -245,17 +246,22 @@ JSON:
     {
       "title": "Szenenname",
       "lines": [
-        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "optional", "cueSpeech": "optional" }
+        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen", "cueSpeech": "optional" }
       ]
     }
   ]
 }
 kind:
 - speech = jemand spricht (speaker = Figurenname, text in ${targetLanguage})
-- action = stilles Zwischenbild, niemand spricht. Beispiel: speaker "Handlung", text "Ramo bereitet Tee vor für seine Gäste.", cueImage "Ramo an der Teekanne, Gläser, Dampf — nicht der ganze Raum"
-- narrator = Erzähler-Stimme (speaker "Erzähler")
+- action = stilles Zwischenbild, niemand spricht. Beispiel: speaker "Handlung", text "Ramo bereitet Tee vor für seine Gäste.", cueImage "EIN Ramo an der Teekanne, nicht zwei Personen", cueSound "Wasser läuft in den Kessel"
+- narrator = Erzähler-Stimme (speaker "Erzähler") — wird gesprochen, eigene Stimme unter Stimmen anpassen
+Bei Handlung cueSound immer konkret, und jede Geräusch-Handlung ist eine EIGENE Zeile (nicht auffüllen + pfeifen + eingießen in einem Satz):
+- Wasser in den Kessel: cueImage "EIN Ramo füllt den Kessel, nicht zwei Personen", cueSound "Wasser läuft in den Kessel"
+- Kessel pfeift: cueImage "Teekessel mit Dampf, nah", cueSound "Der Teekessel pfeift"
+- Tee eingießen: cueImage "Einschenken, Wasser plätschert", cueSound "Tee plätschert in die Kanne"
+- Klopfen: cueImage "Die Wohnungstür von innen, die Tür füllt das Bild", cueSound "Klopfen an der Tür"
+Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen — eigene Stimme unter Stimmen anpassen. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt.
 Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das hergibt.
-Beispiel-Regie: «Da klopft es an der Tür» → kind=action, cueImage "Die Wohnungstür von innen, jemand klopft — die Tür füllt das Bild".
 cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür, Tee), niemals «ganzer Raum» bei jeder Zeile.
 Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
 Teile den Prompt in Szenen, wo Ort, Zeit oder Handlung wechselt.
@@ -303,7 +309,10 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
             speaker,
             text: l.text?.trim() || l.cueImage?.trim() || '',
             cueImage: l.cueImage?.trim() || undefined,
-            cueSound: l.cueSound?.trim() || undefined,
+            cueSound:
+              kind === 'action'
+                ? inferSoundCueDe(l.text ?? '', l.cueSound) || undefined
+                : l.cueSound?.trim() || undefined,
             cueSpeech: l.cueSpeech?.trim() || undefined,
           }
         })
@@ -333,7 +342,15 @@ export async function generateFilmSceneDialog(opts: {
   imageDirection?: string
   earlier: Array<{ title: string; lines: Array<{ speaker: string; text: string }> }>
   speakers: string[]
-}): Promise<Array<{ speaker: string; text: string; cueImage?: string; kind?: 'speech' | 'action' | 'narrator' }>> {
+}): Promise<
+  Array<{
+    speaker: string
+    text: string
+    cueImage?: string
+    cueSound?: string
+    kind?: 'speech' | 'action' | 'narrator'
+  }>
+> {
   const earlierBlock = opts.earlier
     .map((scene) => {
       const lines = scene.lines.map((l) => `- ${l.speaker}: ${l.text}`).join('\n')
@@ -342,16 +359,24 @@ export async function generateFilmSceneDialog(opts: {
     .join('\n\n')
   const names = opts.speakers.filter(Boolean).join(', ') || 'die Figuren aus dem Prompt'
   const result = await chatJson<{
-    lines?: Array<{ speaker?: string; text?: string; cueImage?: string; kind?: 'speech' | 'action' | 'narrator' }>
+    lines?: Array<{
+      speaker?: string
+      text?: string
+      cueImage?: string
+      cueSound?: string
+      kind?: 'speech' | 'action' | 'narrator'
+    }>
   }>(
     `Du schreibst die NÄCHSTE Szene eines Sprachlern-Films (Dialog plus Handlung dazwischen).
 Gesprochene Zeilen (kind=speech/narrator): ${opts.targetLanguage}.
-kind=action auf Deutsch, wird nicht gesprochen (Tee, Klopfen, Tür).
+kind=action auf Deutsch, wird nicht gesprochen (Tee, Klopfen, Tür) — cueSound ist das Geräusch.
+kind=narrator (speaker Erzähler) wird gesprochen.
+Jede Geräusch-Handlung eigene Zeile: Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen.
 Dieselben Figuren (${names}), neue Sätze. Die Geschichte geht weiter.
 Niemals den vorigen Dialog wörtlich oder fast wörtlich wiederholen.
 Originalfiguren, kein Petit Nicolas.
 6–14 kurze Zeilen, wechselnde Sprecher, Handlung wo die Kamera ein Detail braucht.
-JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz", "cueImage": "was die Kamera zeigt" } ] }`,
+JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz", "cueImage": "was die Kamera zeigt", "cueSound": "Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen" } ] }`,
     [
       opts.filmPrompt ? `Film-Prompt:\n${opts.filmPrompt.trim()}` : '',
       opts.imageDirection ? `Bild-Regie: ${opts.imageDirection}` : '',
@@ -378,6 +403,10 @@ JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Han
           (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher'),
         text: (l.text ?? '').trim(),
         cueImage: (l.cueImage ?? '').trim() || undefined,
+        cueSound:
+          kind === 'action'
+            ? inferSoundCueDe(l.text ?? '', l.cueSound) || undefined
+            : (l.cueSound ?? '').trim() || undefined,
       }
     })
     .filter((l) => l.text)

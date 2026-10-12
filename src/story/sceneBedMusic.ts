@@ -4,6 +4,8 @@ import {
   SCENE_FOLEY_GAIN,
   SCENE_PAD_GAIN,
   SCENE_VOICE_GAIN,
+  foleyDurationMs,
+  type FoleyKind,
 } from '../../shared/film-scene-foley'
 
 /** D-Schur, angenähert — keine westliche C-Dur-Drohne. */
@@ -22,6 +24,7 @@ export type SceneBedMusic = {
   prepare: () => Promise<boolean>
   loadBed: (data: ArrayBuffer) => Promise<boolean>
   start: (opts?: { crackle?: boolean; city?: boolean }) => Promise<void>
+  playFoley: (kinds: FoleyKind[]) => number
   decodeVoice: (data: ArrayBuffer) => Promise<AudioBuffer>
   playVoice: (buffer: AudioBuffer, rate?: number) => Promise<void>
   stopVoice: () => void
@@ -307,6 +310,124 @@ export function createSceneBedMusic(): SceneBedMusic {
     }
   }
 
+  function trackFoley(...nodes: AudioNode[]) {
+    foleyNodes.push(...nodes)
+  }
+
+  function playNoiseBurst(opts: {
+    duration: number
+    when: number
+    peak: number
+    lowpass?: number
+    bandpass?: number
+    q?: number
+  }) {
+    if (!ctx || !foleyBus) return
+    const buf = noiseBuffer(opts.duration)
+    if (!buf) return
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, opts.when)
+    g.gain.linearRampToValueAtTime(opts.peak, opts.when + Math.min(0.04, opts.duration / 6))
+    g.gain.exponentialRampToValueAtTime(0.0001, opts.when + opts.duration)
+    let node: AudioNode = src
+    if (opts.lowpass) {
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = opts.lowpass
+      node.connect(lp)
+      node = lp
+      trackFoley(lp)
+    }
+    if (opts.bandpass) {
+      const bp = ctx.createBiquadFilter()
+      bp.type = 'bandpass'
+      bp.frequency.value = opts.bandpass
+      bp.Q.value = opts.q ?? 1.2
+      node.connect(bp)
+      node = bp
+      trackFoley(bp)
+    }
+    node.connect(g)
+    g.connect(foleyBus)
+    src.start(opts.when)
+    src.stop(opts.when + opts.duration + 0.02)
+    trackFoley(src, g)
+  }
+
+  function playOneFoley(kind: FoleyKind, when: number): number {
+    if (!ctx || !foleyBus) return 0
+    if (kind === 'knock') {
+      for (let i = 0; i < 3; i++) {
+        const t = when + i * 0.22
+        playNoiseBurst({ duration: 0.05, when: t, peak: 0.9, lowpass: 420 })
+        const osc = ctx.createOscillator()
+        osc.type = 'sine'
+        osc.frequency.value = 90
+        const g = ctx.createGain()
+        g.gain.setValueAtTime(0.0001, t)
+        g.gain.linearRampToValueAtTime(0.45, t + 0.008)
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12)
+        osc.connect(g)
+        g.connect(foleyBus)
+        osc.start(t)
+        osc.stop(t + 0.14)
+        trackFoley(osc, g)
+      }
+      return 1.1
+    }
+    if (kind === 'whistle') {
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(1680, when)
+      osc.frequency.linearRampToValueAtTime(2280, when + 1.7)
+      const lfo = ctx.createOscillator()
+      lfo.frequency.value = 6
+      const lfoG = ctx.createGain()
+      lfoG.gain.value = 18
+      lfo.connect(lfoG)
+      lfoG.connect(osc.frequency)
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, when)
+      g.gain.linearRampToValueAtTime(0.22, when + 0.12)
+      g.gain.setValueAtTime(0.2, when + 1.4)
+      g.gain.exponentialRampToValueAtTime(0.0001, when + 1.95)
+      osc.connect(g)
+      g.connect(foleyBus)
+      osc.start(when)
+      lfo.start(when)
+      osc.stop(when + 2)
+      lfo.stop(when + 2)
+      trackFoley(osc, lfo, lfoG, g)
+      return 2
+    }
+    if (kind === 'fill') {
+      playNoiseBurst({ duration: 1.9, when, peak: 0.28, lowpass: 780, bandpass: 520, q: 0.7 })
+      return 2
+    }
+    if (kind === 'pour') {
+      playNoiseBurst({ duration: 1.8, when, peak: 0.32, bandpass: 1400, q: 0.9 })
+      playNoiseBurst({ duration: 1.6, when: when + 0.12, peak: 0.18, lowpass: 2400 })
+      return 2
+    }
+    playCrackle()
+    return 0.4
+  }
+
+  function playFoley(kinds: FoleyKind[]): number {
+    if (!kinds.length) return 0
+    if (!ensure() || !ctx || !foleyBus) return 0
+    audible = true
+    fadeGain(foleyBus, SCENE_FOLEY_GAIN, 0.04)
+    const t0 = ctx.currentTime + 0.02
+    let offset = 0
+    for (const kind of kinds) {
+      offset += playOneFoley(kind, t0 + offset)
+    }
+    return foleyDurationMs(kinds)
+  }
+
   async function start(opts?: { crackle?: boolean; city?: boolean }) {
     wantCrackle = Boolean(opts?.crackle)
     wantCity = Boolean(opts?.city)
@@ -434,5 +555,17 @@ export function createSceneBedMusic(): SceneBedMusic {
     foleyBus = null
   }
 
-  return { prepare, loadBed, start, decodeVoice, playVoice, stopVoice, pauseBed, pause, stop, dispose }
+  return {
+    prepare,
+    loadBed,
+    start,
+    playFoley,
+    decodeVoice,
+    playVoice,
+    stopVoice,
+    pauseBed,
+    pause,
+    stop,
+    dispose,
+  }
 }

@@ -1,4 +1,4 @@
-import type { Dialog, DialogLine, DialogSection } from '../shared/types.js'
+import { inferDialogLineKind, type Dialog, type DialogLine, type DialogSection } from '../shared/types.js'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { getDialog, updateDialog } from './firestore.js'
 import { uploadLineAudio } from './audio-storage.js'
@@ -30,6 +30,7 @@ function speakerIndexMap(dialog: Dialog): Map<string, number> {
   let idx = 0
   for (const section of dialog.sections) {
     for (const line of section.lines) {
+      if (inferDialogLineKind(line) === 'action') continue
       if (!map.has(line.speaker)) {
         map.set(line.speaker, idx++)
       }
@@ -103,6 +104,9 @@ export async function getOrCreateLineAudio(
 
   const found = findLineInDialog(dialog, lineId)
   if (!found) throw new Error('Zeile nicht gefunden.')
+  if (inferDialogLineKind(found.line) === 'action') {
+    throw new Error('Handlung bleibt still — kein Sprachton.')
+  }
 
   if (found.line.audioUrl && !speechTextDiffersFromLineText(found.line)) {
     return { audioUrl: found.line.audioUrl, cached: true, dialog }
@@ -168,6 +172,7 @@ export async function ensureDialogAudio(
 
   for (const section of dialog.sections) {
     for (const line of section.lines) {
+      if (inferDialogLineKind(line) === 'action') continue
       const speechText = lineSpeechText(line)
       if (!speechText) continue
       if (!force && line.audioUrl && !speechTextDiffersFromLineText(line)) {
@@ -233,6 +238,7 @@ export async function regenerateSpeakerAudio(
   for (const section of dialog.sections) {
     for (const line of section.lines) {
       if (line.speaker !== speaker) continue
+      if (inferDialogLineKind(line) === 'action') continue
       const speechText = lineSpeechText(line)
       if (!speechText) continue
 
