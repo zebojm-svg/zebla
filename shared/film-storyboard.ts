@@ -1100,6 +1100,61 @@ export function dialogLineFingerprint(
     .join('\n')
 }
 
+/** Kopierte Szenen (gleicher Dialog) gehören nicht in die Geschichte. */
+export function dropRepeatedDialogSections<
+  T extends { title?: string; lines: Array<Pick<DialogLine, 'speaker' | 'text'>> },
+>(sections: T[]): T[] {
+  const seen = new Set<string>()
+  return sections.filter((section) => {
+    const fp = dialogLineFingerprint(section.lines)
+    if (!fp || seen.has(fp)) return false
+    seen.add(fp)
+    return true
+  })
+}
+
+export function repeatedDialogSectionTitles(dialog: Pick<Dialog, 'sections'>): string[] {
+  const kept = new Map<string, string>()
+  const repeats: string[] = []
+  for (const section of dialog.sections) {
+    const fp = dialogLineFingerprint(section.lines)
+    if (!fp) continue
+    const first = kept.get(fp)
+    if (first) repeats.push(section.title || 'Szene')
+    else kept.set(fp, section.title || 'Szene')
+  }
+  return repeats
+}
+
+/** Board zeigt nur Dialog-Szenen — keine Extra-Szenen vom Storyboard. */
+export function filmScenesFromDialog(
+  dialog: Pick<Dialog, 'sections'>,
+  board?: FilmStoryboard,
+): FilmScene[] {
+  return dialog.sections.map((section, i) => {
+    const old = board?.scenes.find((s) => s.id === section.id)
+    return {
+      id: section.id,
+      title: old?.title || section.title || `Szene ${i + 1}`,
+      noteDe: old?.noteDe ?? '',
+    }
+  })
+}
+
+export function panelsForDialogScene(
+  board: FilmStoryboard,
+  dialog: Pick<Dialog, 'sections'>,
+  sectionId: string,
+): FilmStoryboardPanel[] {
+  const matched = board.panels.filter((p) => p.sceneId === sectionId || p.sectionId === sectionId)
+  if (matched.length > 0) return matched
+  const lineIds = new Set(
+    dialog.sections.find((s) => s.id === sectionId)?.lines.map((l) => l.id) ?? [],
+  )
+  if (lineIds.size === 0) return []
+  return board.panels.filter((p) => (p.lineIds ?? []).some((id) => lineIds.has(id)))
+}
+
 function sceneLookupKeys(
   panels: FilmStoryboardPanel[],
   sceneTitle?: string,

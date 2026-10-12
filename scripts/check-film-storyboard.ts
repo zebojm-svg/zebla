@@ -2,13 +2,16 @@
  * Dialog → Storyboard, Bibliothek zuerst (ohne echte KI-Bilder).
  * Aufruf: npx tsx scripts/check-film-storyboard.ts
  */
+import { readFileSync } from 'node:fs'
 import {
   applyDirectorNote,
   applyPanelCues,
   dialogNeedsNativeTranslation,
+  dropRepeatedDialogSections,
   ensureCoverageDrafts,
   cueAsksNewPicture,
   expectedSceneShotCount,
+  filmScenesFromDialog,
   findReusableCloseup,
   inferExpression,
   inferPoseId,
@@ -263,6 +266,30 @@ if (trimmed.scenes.length !== 1) fail('Szene entfernen lässt Szene 1')
 const withThird = insertSceneAfter(extraBoard, extraId, 'Szene 3')
 const ended = removeScenesAfter(withThird, fourBoard.scenes[0]!.id)
 if (ended.scenes.length !== 1) fail('Geschichte hier beenden entfernt die folgenden Szenen')
+
+const uniqueSecs = dropRepeatedDialogSections([
+  { title: 'Eins', lines: [{ speaker: 'Ramo', text: 'Salam.' }] },
+  { title: 'Zwei', lines: [{ speaker: 'Ramo', text: 'Salam.' }] },
+  { title: 'Drei', lines: [{ speaker: 'Khan', text: 'Bia.' }] },
+])
+if (uniqueSecs.length !== 2) fail('kopierter Dialog wird nicht zur zweiten Szene')
+if (uniqueSecs[1]?.title !== 'Drei') fail('echte nächste Szene bleibt')
+
+const boardOnly = filmScenesFromDialog(four, extraBoard)
+if (boardOnly.length !== 1 || boardOnly[0]?.id !== 'ankunft') {
+  fail('Board zeigt nur Dialog-Szenen, keine eingefügte Extra-Szene')
+}
+
+const pageSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
+if (pageSrc.includes('Szene einfügen')) fail('Szenen entstehen nicht auf dem Board')
+if (pageSrc.includes('Dialog für diese Szene schreiben')) {
+  fail('Dialog wird im Text-Teil geschrieben, nicht auf den Bildern')
+}
+if (!pageSrc.includes('filmScenesFromDialog')) fail('Board folgt den Dialog-Szenen')
+
+const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
+if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
+if (!aiSrc.includes('dropRepeatedDialogSections')) fail('kopierte Dialog-Szenen fallen weg')
 
 const unnamed: Dialog = {
   ...dialog,

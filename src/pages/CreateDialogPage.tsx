@@ -301,7 +301,7 @@ export function CreateDialogPage() {
         />
 
         <fieldset className="film-draft-modes">
-          <legend>Wie soll die KI damit umgehen?</legend>
+          <legend>Dialog und Szenen aus dem Text</legend>
           {FILM_DRAFT_MODES.map((m) => (
             <label key={m.id} className={`film-draft-mode${draftMode === m.id ? ' is-on' : ''}`}>
               <input

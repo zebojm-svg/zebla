@@ -24,6 +24,7 @@ import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
 import { StoryMetaSheet } from '../story/StoryMetaSheet'
 import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
+import { repeatedDialogSectionTitles } from '../../shared/film-storyboard'
 import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
 import type { Dialog, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
@@ -337,8 +338,8 @@ export function DialogEditorPage() {
             <span className="dialog-lang-flag-inline" aria-hidden>
               <LanguageFlag code={dialog.targetLanguage} size="md" />
             </span>{' '}
-            {languageName(dialog.targetLanguage)} · {dialog.sections.length} Abschnitt
-            {dialog.sections.length !== 1 ? 'e' : ''}{' '}
+            {languageName(dialog.targetLanguage)} · {dialog.sections.length} Szene
+            {dialog.sections.length !== 1 ? 'n' : ''}{' '}
             <FilmSaveStatusText status={saveStatus} />
           </p>
         </div>
@@ -367,6 +368,12 @@ export function DialogEditorPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-warn">{status}</div>}
+      {repeatedDialogSectionTitles(dialog).length > 0 ? (
+        <p className="alert alert-warn">
+          Spätere Szenen haben denselben Dialog wie die erste. Oben «Dialog daraus machen»
+          drücken — die Szenen entstehen hier aus dem Prompt, nicht auf den Bildern.
+        </p>
+      ) : null}
 
       <StoryMetaSheet
         value={storyMetaDraft}
@@ -423,7 +430,7 @@ export function DialogEditorPage() {
         </details>
         <div className="dialog-meta-block">
           <fieldset className="film-draft-modes">
-            <legend>Dialog aus dem Text oben machen</legend>
+            <legend>Dialog und Szenen aus dem Text oben machen</legend>
             {FILM_DRAFT_MODES.map((m) => (
               <label key={m.id} className={`film-draft-mode${draftMode === m.id ? ' is-on' : ''}`}>
                 <input
@@ -482,7 +489,10 @@ export function DialogEditorPage() {
                   if (result.imageDirection) setImageDirectionDraft(result.imageDirection)
                   if (result.soundDirection) setSoundDirectionDraft(result.soundDirection)
                   if (result.speechDirection) setSpeechDirectionDraft(result.speechDirection)
-                  setStatus('Dialog gespeichert. Dein Text oben ist geblieben.')
+                  const n = d.sections.length
+                  setStatus(
+                    `${n} Szene${n === 1 ? '' : 'n'} mit Dialog. Dein Text oben ist geblieben. Als Nächstes: Bilder → Vom Text neu.`,
+                  )
                 })
               }
             >

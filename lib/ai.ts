@@ -38,6 +38,7 @@ import {
 import type { DialogVisualScript } from '../shared/types.js'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
 import { genderFromKnownName } from './speaker-gender.js'
+import { dropRepeatedDialogSections } from '../shared/film-storyboard.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
@@ -264,24 +265,29 @@ JSON:
     }
   ]
 }
-Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.
-Jede Szene braucht NEUEN gesprochenen Dialog, der die Geschichte weiterführt — niemals denselben Text der vorigen Szene wiederholen.
-Wenn die Handlung nach der ersten Szene fertig ist, keine weiteren Szenen anlegen.`
+Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
+Teile den Prompt in Szenen, wo Ort, Zeit oder Handlung wechselt.
+Jede Szene = ein Abschnitt mit NEUEM gesprochenem Dialog (nicht Bildnotizen, nicht denselben Text).
+Niemals den Dialog der vorigen Szene kopieren. Szenen ohne neuen Dialog weglassen.
+Wenn die Handlung nach der ersten Szene fertig ist, nur eine Szene anlegen.
+Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.`
     `${prompt.trim()}${extra}`,
   )
 
-  const sections: DialogSection[] = (result.sections ?? []).map((sec) => ({
-    id: randomUUID(),
-    title: sec.title?.trim() || 'Szene',
-    lines: (sec.lines ?? []).map((l) => ({
-      id: newLineId(),
-      speaker: l.speaker?.trim() || 'Sprecher',
-      text: l.text?.trim() || '',
-      cueImage: l.cueImage?.trim() || undefined,
-      cueSound: l.cueSound?.trim() || undefined,
-      cueSpeech: l.cueSpeech?.trim() || undefined,
+  const sections: DialogSection[] = dropRepeatedDialogSections(
+    (result.sections ?? []).map((sec) => ({
+      id: randomUUID(),
+      title: sec.title?.trim() || 'Szene',
+      lines: (sec.lines ?? []).map((l) => ({
+        id: newLineId(),
+        speaker: l.speaker?.trim() || 'Sprecher',
+        text: l.text?.trim() || '',
+        cueImage: l.cueImage?.trim() || undefined,
+        cueSound: l.cueSound?.trim() || undefined,
+        cueSpeech: l.cueSpeech?.trim() || undefined,
+      })),
     })),
-  }))
+  )
 
   if (!sections.length || sections.every((s) => s.lines.length === 0)) {
     throw new Error('Die KI hat keinen Dialog geliefert. Bitte den Prompt etwas genauer schreiben.')

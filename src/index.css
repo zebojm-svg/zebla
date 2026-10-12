@@ -3704,6 +3704,10 @@ html[dir='rtl'] .slideshow-topbar {
   margin: 0;
 }
 
+.film-board-scene-hint {
+  margin: 0.4rem 0 0.6rem;
+}
+
 .film-scene-toolbar {
   display: flex;
   flex-wrap: wrap;

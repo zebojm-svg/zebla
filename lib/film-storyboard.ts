@@ -146,7 +146,9 @@ Regeln:
 - Namen unverändert.
 - poseHint nur aus der Liste.
 - x 15–85.
-- settingHint und imageCue beim Weit-Bild: konkrete Einrichtung aus dem Text, nicht nur «Wohnzimmer».`
+- settingHint und imageCue beim Weit-Bild: konkrete Einrichtung aus dem Text, nicht nur «Wohnzimmer».
+- Nur die Dialog-Abschnitte. Keine Extra-Szenen erfinden, die nicht im Dialog stehen.
+- sectionId = die echte Abschnitts-Id aus dem Dialog.`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -158,14 +160,7 @@ function flattenDialog(dialog: Dialog, extra = ''): string {
     dialog.speechDirection ? `Sprach-Regie: ${dialog.speechDirection}` : '',
     extra,
   ]
-  const board = isFilmStoryboard(dialog.filmStoryboard)
-    ? normalizeFilmStoryboard(dialog.filmStoryboard)
-    : null
-  if (board) {
-    for (const scene of board.scenes) {
-      lines.push(`Szene ${scene.id} «${scene.title}» Notiz: ${scene.noteDe || '—'}`)
-    }
-  }
+  lines.push('Szenen nur aus diesen Dialog-Abschnitten. Keine Extra-Szenen ohne neuen Dialog.')
   for (const section of dialog.sections) {
     lines.push(`Abschnitt ${section.id} «${section.title}»`)
     for (const line of section.lines) {

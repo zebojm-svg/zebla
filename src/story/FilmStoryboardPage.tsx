@@ -19,10 +19,11 @@ import {
   boardNeedsDrawing,
   dialogNeedsNativeTranslation,
   expectedSceneShotCount,
+  filmScenesFromDialog,
   normalizeFilmStoryboard,
   panelDialogueLines,
-  sceneHasSpokenDialog,
-  sceneRepeatsEarlierDialog,
+  panelsForDialogScene,
+  repeatedDialogSectionTitles,
   sceneShotPlanDe,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
@@ -177,7 +178,6 @@ export function FilmStoryboardPage() {
   const [error, setError] = useState('')
   const [nativeBusy, setNativeBusy] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
-  const [sceneTitle, setSceneTitle] = useState('')
   const [styles, setStyles] = useState<Record<string, string>>({})
 
   const load = async () => {
@@ -252,8 +252,12 @@ export function FilmStoryboardPage() {
     }
   }
 
-  const scenes = useMemo(() => (board ? normalizeFilmStoryboard(board).scenes : []), [board])
+  const scenes = useMemo(
+    () => (board && dialog ? filmScenesFromDialog(dialog, board) : []),
+    [board, dialog],
+  )
   const missing = boardNeedsDrawing(board ?? undefined)
+  const repeatedTitles = dialog ? repeatedDialogSectionTitles(dialog) : []
 
   if (loading) {
     return (
@@ -334,6 +338,13 @@ export function FilmStoryboardPage() {
           drücken.
         </p>
       ) : null}
+      {repeatedTitles.length > 0 ? (
+        <p className="alert alert-warn">
+          {repeatedTitles.join(', ')} {repeatedTitles.length === 1 ? 'hat' : 'haben'} denselben
+          Dialog wie eine frühere Szene. Unter Text «Dialog daraus machen» drücken — Szenen
+          entstehen dort, nicht auf den Bildern.
+        </p>
+      ) : null}
 
       {board ? (
         <>
@@ -351,6 +362,10 @@ export function FilmStoryboardPage() {
 
           <details className="film-board-tools">
             <summary>Szenen anpassen</summary>
+            <p className="muted film-board-scene-hint">
+              Szenen kommen aus dem Text (Dialog daraus machen), nicht von hier. Hier nur Bilder
+              neu planen.
+            </p>
             <div className="film-scene-toolbar">
               <button
                 type="button"
@@ -360,38 +375,12 @@ export function FilmStoryboardPage() {
               >
                 Gewählte Szene(n) anpassen
               </button>
-              <input
-                className="input"
-                value={sceneTitle}
-                placeholder="Neue Szene (Titel)"
-                onChange={(e) => setSceneTitle(e.target.value)}
-                disabled={locked}
-              />
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={locked}
-                onClick={() =>
-                  void run(() =>
-                    api.ai.filmInsertScene(id, scenes.at(-1)?.id ?? null, sceneTitle.trim() || 'Neue Szene'),
-                  )
-                }
-              >
-                Szene einfügen
-              </button>
             </div>
           </details>
 
-          {scenes.map((scene, scenePos) => {
-            const panels = board.panels.filter((p) => p.sceneId === scene.id)
+          {scenes.map((scene) => {
+            const panels = panelsForDialogScene(board, dialog, scene.id)
             const checked = picked.includes(scene.id)
-            const earlier = scenes
-              .slice(0, scenePos)
-              .map((s) => board.panels.filter((p) => p.sceneId === s.id))
-            const hasTalk = sceneHasSpokenDialog(panels, dialog, scene.title)
-            const repeats = sceneRepeatsEarlierDialog(panels, dialog, scene.title, earlier)
-            const laterExist = scenePos < scenes.length - 1
-            const canRemove = scenes.length > 1
             return (
               <section key={scene.id} className="film-scene">
                 <header className="film-scene-head">
@@ -407,60 +396,9 @@ export function FilmStoryboardPage() {
                     />
                     <h2>{scene.title}</h2>
                   </label>
-                  <div className="film-scene-actions">
-                    {laterExist ? (
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={locked}
-                        onClick={() => {
-                          const ok = window.confirm(
-                            'Geschichte nach dieser Szene beenden? Die folgenden Szenen werden entfernt.',
-                          )
-                          if (!ok) return
-                          void run(() => api.ai.filmRemoveScene(id, scene.id, true))
-                        }}
-                      >
-                        Geschichte hier beenden
-                      </button>
-                    ) : null}
-                    {canRemove && scenePos > 0 ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={locked}
-                        onClick={() => {
-                          const ok = window.confirm(`Szene «${scene.title}» entfernen?`)
-                          if (!ok) return
-                          void run(() => api.ai.filmRemoveScene(id, scene.id, false))
-                        }}
-                      >
-                        Szene entfernen
-                      </button>
-                    ) : null}
-                    {scenePos > 0 && (!hasTalk || repeats) ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        disabled={locked}
-                        onClick={() => void run(() => api.ai.filmSceneDialog(id, scene.id))}
-                      >
-                        Dialog für diese Szene schreiben
-                      </button>
-                    ) : null}
-                  </div>
                 </header>
-                {!hasTalk && scenePos > 0 ? (
-                  <p className="alert alert-warn">
-                    Kein eigener Dialog in dieser Szene. Entweder die Geschichte vorher beenden
-                    oder hier einen echten Dialog schreiben lassen.
-                  </p>
-                ) : null}
-                {repeats ? (
-                  <p className="alert alert-warn">
-                    Hier steht derselbe Dialog wie in einer früheren Szene. Entweder Szene
-                    entfernen oder einen neuen Dialog schreiben.
-                  </p>
+                {panels.length === 0 ? (
+                  <p className="muted">Noch keine Bilder für diese Szene. Oben «Vom Text neu».</p>
                 ) : null}
                 <FilmScenePreviewPlayer
                   dialogId={dialog.id}

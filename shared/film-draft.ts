@@ -6,7 +6,7 @@ export const FILM_DRAFT_MODES: Array<{ id: FilmDraftMode; label: string; hint: s
   {
     id: 'embellish',
     label: 'Dialoge ausschmücken',
-    hint: 'Die KI macht aus Stichworten einen längeren Film-Dialog — so lang wie die Geschichte braucht.',
+    hint: 'Die KI teilt die Geschichte hier in Szenen mit je eigenem Dialog — so lang wie der Stoff braucht.',
   },
   {
     id: 'ask',
@@ -16,7 +16,7 @@ export const FILM_DRAFT_MODES: Array<{ id: FilmDraftMode; label: string; hint: s
   {
     id: 'lucky',
     label: 'Auf gut Glück',
-    hint: 'Kein Nachfragen. Sie nimmt den Text und legt los.',
+    hint: 'Kein Nachfragen. Sie nimmt den Text und macht daraus die Dialog-Szenen.',
   },
 ]
 
