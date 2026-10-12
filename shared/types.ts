@@ -18,6 +18,8 @@ export interface DialogLine {
   id: string
   speaker: string
   text: string
+  /** Normale Übersetzung in der Muttersprache (keine Birkenbihl-Wortfolge). */
+  nativeText?: string
   birkenbihl?: BirkenbihlWord[]
   imageUrl?: string
   imagePrompt?: string

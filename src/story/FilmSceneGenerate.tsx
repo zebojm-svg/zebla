@@ -228,7 +228,7 @@ export function FilmNativeEditor({
         value={text}
         disabled={busy}
         lang={sourceLanguage || 'de'}
-        placeholder="Deutsch hier schreiben, dann Übernehmen — die Zielsprache wird angepasst."
+        placeholder="Normale deutsche Übersetzung (nicht Wort für Wort). Namen wie Ramo, Ubai, Schöme."
         onChange={(e) => setText(e.target.value)}
       />
       <button
@@ -302,7 +302,6 @@ export function FilmBeatNotes({
   dialog?: Dialog | null
   hideCues?: boolean
 }) {
-  const voices = dialog?.storyMeta?.voicesNote?.trim()
   const look = dialog?.storyMeta?.lookNote?.trim()
   const board =
     dialog?.filmStoryboard && isFilmStoryboard(dialog.filmStoryboard)
@@ -327,11 +326,6 @@ export function FilmBeatNotes({
       {seats ? (
         <p>
           <strong>Sitzplan</strong> {seats}
-        </p>
-      ) : null}
-      {voices ? (
-        <p>
-          <strong>Stimmen</strong> {voices}
         </p>
       ) : null}
       {!hideCues && panel.speechCue ? (
@@ -371,7 +365,7 @@ export function FilmBeatColumns({
   picture: ReactNode
   underPicture?: ReactNode
   lines: FilmPanelDialogueLine[]
-  notes: ReactNode
+  notes?: ReactNode
   targetLanguage?: string
   sourceLanguage?: string
   nativeBusy?: boolean
@@ -380,6 +374,7 @@ export function FilmBeatColumns({
   const targetName = languageName(targetLanguage || '')
   const nativeName =
     !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
+  const speaker = lines[0]?.speaker
   return (
     <div className="film-beat">
       <div className="film-beat-pic">
@@ -396,6 +391,7 @@ export function FilmBeatColumns({
           which="target"
         />
         <p className="film-beat-col-label film-beat-native-label">{nativeName}</p>
+        {speaker ? <p className="film-beat-speaker">{speaker}</p> : null}
         <FilmNativeEditor
           lines={lines}
           sourceLanguage={sourceLanguage}
@@ -403,10 +399,12 @@ export function FilmBeatColumns({
           onConfirm={onConfirmNative}
         />
       </div>
-      <aside className="film-beat-notes">
-        <p className="film-beat-col-label">Ton und Bild</p>
-        {notes}
-      </aside>
+      {notes ? (
+        <details className="film-beat-regie">
+          <summary>Regie</summary>
+          {notes}
+        </details>
+      ) : null}
     </div>
   )
 }
@@ -533,7 +531,6 @@ export function FilmStillStrip({
                   panel={panel}
                   busy={Boolean(busy)}
                   onCorrect={onCorrect ? (note) => onCorrect(panel, note) : undefined}
-                  onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
                 />
               }
               lines={lines}
@@ -547,6 +544,11 @@ export function FilmStillStrip({
                     {panelBusy ? <span> · wird korrigiert …</span> : null}
                   </p>
                   <FilmBeatNotes panel={panel} dialog={dialog} />
+                  <FilmStillFixBar
+                    panel={panel}
+                    busy={Boolean(busy)}
+                    onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
+                  />
                   {panel.harvestNoteDe ? (
                     <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
                   ) : null}

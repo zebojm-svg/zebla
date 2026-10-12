@@ -881,13 +881,12 @@ export interface FilmPanelDialogueLine {
   audioUrl?: string
 }
 
-export function lineNativeDe(line: Pick<DialogLine, 'birkenbihl'>): string {
-  const words = line.birkenbihl
-  if (!words?.length) return ''
-  return words
-    .map((w) => w.translation.trim())
-    .filter(Boolean)
-    .join(' ')
+export function lineNativeDe(
+  line: Pick<DialogLine, 'nativeText' | 'birkenbihl' | 'speaker'>,
+): string {
+  const fluent = line.nativeText?.trim()
+  if (fluent) return fluent
+  return ''
 }
 
 function allDialogLines(dialog: Pick<Dialog, 'sections'>): Map<string, DialogLine> {
