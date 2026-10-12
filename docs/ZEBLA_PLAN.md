@@ -27,6 +27,23 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 
 Teure Bewegung (sprechen/laufen als Film) **erst** wenn Board und Stil stimmen.
 
+## Heute (ehrlich): Zebla denkt nicht
+
+Die Kette jetzt:
+
+1. Autor-Prompt → eine KI schreibt Dialog + Bild-/Ton-Regie (`generateFilmFromPrompt`).
+2. Jedes Standbild → Bild-KI bekommt Bildtext + ein paar Fotos (Gesicht, leerer Raum, manchmal voriges Bild **desselben** Zimmers).
+
+Es gibt **kein Inventar**. Wenn Ramo mit der Kanne ins Wohnzimmer geht, bekommt die Bild-KI nicht «dieselbe Kanne aus Küchenbild 3» — nur Ramo + Wohnzimmer. Deshalb neue Kanne, Füsse, Schloss am Boden.
+
+## Nächste Stadt (noch nicht gebaut): Drehbuch → Inventar → Vorlagen-Check
+
+Zeblas Job: Prompts von einer KI zur nächsten leiten und quercchecken. Nicht selbst malen. Noch nicht gebaut — erst festhalten.
+
+1. **Drehbuch-KI:** nicht nur Dialog — Figuren, Räume, Requisiten, welches Bild (Weit / Nah / Zwischenbild), Kontinuität (dieselbe Kanne).
+2. **Inventar (Welt):** ein gutes Bild pro Figur, Raum, wichtigem Gegenstand (nicht alle Posen). FLUX kann aus einem Standbild eine neue Pose/Lage machen.
+3. **Vorlagen-KI / Check:** für **jedes** Einzelbild: welche Vorlagen mit? Wenn ein Gegenstand wandert (Kanne Küche→Wohnzimmer), das Küchenbild anhängen und explizit sagen: SAME kettle/tray as in attached photo. Quercheck: ist jede Figur / jeder Ort / jedes Möbel / jede Requisite schon gesehen?
+
 ## Design (die «gleiche Holzart»)
 
 Schon in `src/index.css` `:root`:
@@ -52,10 +69,11 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder (vorige Küche mitschicken, Wasser vor dem Herd), Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler). Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): **Dialog daraus machen**, dann Bilder neu — sonst bleibt die alte Kanne.
 
-**In Arbeit:** —
+**In Arbeit:** Zwischenbilder auf Augenhöhe ([#62](https://github.com/zebojm-svg/zebla/pull/62)) — kein Schloss auf dem Boden, keine Füsse-only; deutsche Handlung bleibt still, Erzähler spricht nur in der Filmsprache. Nicht mergen, bis Jean-Marie ja sagt.
 
 **Nächste Baustellen (noch nicht hier):**
 
+- **Drehbuch-Kette** — die nächste echte Hilfe (Stadt oben, noch nicht gebaut): Drehbuch-KI kennt Figuren, Räume, Requisiten und Kontinuität; Inventar = ein gutes Bild je Figur / Raum / wichtigem Gegenstand; Vorlagen-Check hängt wandernde Dinge mit (Kanne Küche→Wohnzimmer: SAME kettle). Laufen und Lippen kommen danach.
 - Figur läuft / schiebt sich durchs Bild — **erst** wenn Board, Dialog und Stimmen stimmen
 - Lippenbewegung zur Stimme
 - Schatten weicher / lichtabhängig
