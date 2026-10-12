@@ -94,7 +94,7 @@ export interface FilmStoryboardPanel {
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */
   closeupSpeaker?: string
-  /** Requisiten aus dem Drehbuch-Inventar, die in diesem Bild sichtbar sind. */
+  /** Wiederkehrende Gegenstände aus dem Inventar, die in diesem Bild sichtbar sind. */
   propIds?: string[]
   /** Welche Vorlagen (Person / Ort / Requisite) dieses Bild braucht. */
   refNeeds?: FilmRefNeeds
@@ -900,17 +900,23 @@ export function applyFilmInventoryToBoard(
   const panels = board.panels.map((panel) => {
     const lines = (panel.lineIds ?? []).map((id) => byId.get(id)).filter(Boolean)
     const fromLines = lines.flatMap((line) =>
-      mergeLinePropIds({
-        text: line!.text,
-        cueImage: line!.cueImage,
-        propIds: line!.propIds,
-      }),
+      mergeLinePropIds(
+        {
+          text: line!.text,
+          cueImage: line!.cueImage,
+          propIds: line!.propIds,
+        },
+        inventory,
+      ),
     )
-    const propIds = mergeLinePropIds({
-      text: panel.caption,
-      cueImage: panel.imageCue,
-      propIds: [...fromLines, ...(panel.propIds ?? [])],
-    })
+    const propIds = mergeLinePropIds(
+      {
+        text: panel.caption,
+        cueImage: panel.imageCue,
+        propIds: [...fromLines, ...(panel.propIds ?? [])],
+      },
+      inventory,
+    )
     const people = panel.placements.map((pl) => pl.name.trim()).filter(Boolean)
     const refNeeds = deriveRefNeeds({
       people,

@@ -21,6 +21,7 @@ import {
 } from '../shared/film-stills.js'
 import { editImageWithKontext, fluxLockAvailable } from './story-stills-gen.js'
 import type { FilmScene, FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.js'
+import type { FilmInventory } from '../shared/types.js'
 import type { StoryArtStyleId } from '../shared/story-art-styles.js'
 
 function requireGeminiKey(): string {
@@ -199,12 +200,14 @@ export async function generateFilmPanelStillImage(opts: {
   speakerSitting?: boolean
   continuityEn?: string
   board?: FilmStoryboard
+  inventory?: FilmInventory | null
 }): Promise<string> {
   const pack = stillReferencePack(opts.panel, {
     previousStillUrl: opts.previousStillUrl,
     correctFromUrl: opts.correctFromUrl,
     sceneWideStillUrl: opts.sceneWideStillUrl,
     board: opts.board,
+    inventory: opts.inventory,
   })
   const refs = await loadRefs(pack.urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {

@@ -99,6 +99,7 @@ async function paintCloseupPushIn(opts: {
   continuityEn: string
   targetLanguage?: string
   beatTotal: number
+  inventory?: FilmInventory | null
 }): Promise<string> {
   return generateFilmPanelStillImage({
     panel: { ...opts.panel, stillCorrection: undefined },
@@ -113,6 +114,7 @@ async function paintCloseupPushIn(opts: {
     speakerX: opts.speakerX,
     speakerSitting: opts.speakerSitting,
     continuityEn: opts.continuityEn,
+    inventory: opts.inventory,
   })
 }
 
@@ -141,7 +143,7 @@ Schema:
       "speechCue": "wie gesprochen, leer bei Handlung",
       "settingHint": "Ort wie im Dialog, konkret",
       "expressionHint": "freut sich|traurig|schreit|überrascht|neutral|leise / flüstert",
-      "propIds": ["kanne-1"],
+      "propIds": ["blumen-1"],
       "characters": [
         { "name": "Julien", "poseHint": "sitting|standing-front|waving|look-left|look-right|walking|standing-three-quarter", "depth": "foreground|mid|background", "x": 40 }
       ]
@@ -159,7 +161,7 @@ Regeln:
 - Handlung/Erzähler-Zeilen: shot=insert (oder wide wenn es wirklich der ganze Raum ist).
 - soundCue bei Handlung IMMER das konkrete Geräusch: Wasser läuft in den Kessel, Kessel pfeift, Tee plätschert, Klopfen an der Tür — nicht nur «leise».
 - Insert mit einer Person: nur diese Person einmal, keine Zwillinge. Weit-Bild mit Gästen: die Gäste müssen sichtbar sein, kein leeres Wohnzimmer.
-- propIds: dieselben Requisiten-ids wie im Dialog (kanne-1 in der Küche UND wenn sie ins Wohnzimmer wandert).`
+- propIds: dieselben Requisiten-ids wie im Dialog. Was die Geschichte hergibt (Blumen, Kanne, Mantel, Zeitung) — dieselbe id, wenn der Gegenstand später wieder da ist.`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -776,6 +778,7 @@ export async function stillFilmPanel(
         speakerX: whoOnWide?.x,
         speakerSitting: sittingFromPlacement(whoOnWide),
         continuityEn: continuityForShot,
+        inventory: dialog.filmInventory,
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
       next = replaceStillUrl(next, grundUrl, newWideUrl, panelForGen.sceneId)
@@ -793,6 +796,7 @@ export async function stillFilmPanel(
         continuityEn,
         targetLanguage,
         beatTotal,
+        inventory: dialog.filmInventory,
       })
       next = applyPanelStill(next, panelId, closeUrl, resolvedStyle)
       const withNote = applyPanelHarvestNote(
@@ -812,6 +816,7 @@ export async function stillFilmPanel(
       correctFromUrl,
       sceneWideStillUrl: placeWideUrl,
       board: boardForGen,
+      inventory: dialog.filmInventory,
     })
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
@@ -830,6 +835,7 @@ export async function stillFilmPanel(
       speakerSitting: sittingFromPlacement(whoOnWide),
       continuityEn: continuityForShot,
       board: boardForGen,
+      inventory: dialog.filmInventory,
     })
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {

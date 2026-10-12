@@ -1,5 +1,6 @@
 /**
- * Drehbuch-Inventar: Figuren, Orte, Requisiten mit fester id.
+ * Drehbuch-Inventar: Figuren, Orte, jede wiederkehrende Sache mit fester id.
+ * Die ids kommen aus der Geschichte (Blumen, Mantel, Zeitung, Kanne, …).
  * Zebla denkt nicht — es reicht die richtigen Fotos weiter.
  */
 
@@ -7,6 +8,7 @@ import {
   inferDialogLineKind,
   isStageSpeaker,
   type Dialog,
+  type DialogSection,
   type FilmInventory,
   type FilmInventoryPlace,
   type FilmInventoryProp,
@@ -21,7 +23,10 @@ export type KnownFilmProp = {
   words: string[]
 }
 
-/** Dieselbe Kanne / dasselbe Tablett behalten dieselbe id über alle Szenen. */
+/**
+ * Wort-Hinweise, falls die KI eine id vergisst.
+ * Das Inventar selbst ist offen — keine geschlossene Kanne/Tablett-Liste.
+ */
 export const KNOWN_FILM_PROPS: KnownFilmProp[] = [
   {
     id: 'kanne-1',
@@ -75,23 +80,56 @@ export function knownPropById(id: string): KnownFilmProp | undefined {
 export function propLabelDe(id: string, inventory?: FilmInventory | null): string {
   const fromInv = inventory?.props.find((p) => slugPropId(p.id) === slugPropId(id))
   if (fromInv?.nameDe?.trim()) return fromInv.nameDe.trim()
-  return knownPropById(id)?.nameDe || id
+  const known = knownPropById(id)
+  if (known) return known.nameDe
+  const guessed = guessPropEnglish(id)
+  if (guessed?.de) return guessed.de
+  return id
 }
 
 export function propLabelEn(id: string, inventory?: FilmInventory | null): string {
   const known = knownPropById(id)
   if (known) return known.nameEn
-  const de = propLabelDe(id, inventory).toLowerCase()
-  if (/kanne|kessel/.test(de)) return 'kettle'
-  if (/tablett/.test(de)) return 'tray'
-  if (/schloss/.test(de)) return 'door lock'
-  return de || id
+  const de = propLabelDe(id, inventory)
+  const guessed = guessPropEnglish(`${id} ${de}`)
+  if (guessed?.en) return guessed.en
+  if (de && slugPropId(de) !== slugPropId(id)) return de.toLowerCase()
+  const fromId = slugPropId(id).replace(/-\d+$/, '').replace(/-/g, ' ')
+  return fromId || id
 }
 
-export function inferPropIdsFromText(text: string): string[] {
+function guessPropEnglish(raw: string): { de: string; en: string } | undefined {
+  const t = `${raw} ${slugPropId(raw)}`.toLowerCase()
+  if (/blume|flower|bouquet|strauss|tulpe/.test(t)) return { de: 'Blumen', en: 'flowers' }
+  if (/mantel|jacke|coat/.test(t)) return { de: 'Mantel', en: 'coat' }
+  if (/zeitung|newspaper/.test(t)) return { de: 'Zeitung', en: 'newspaper' }
+  if (/kanne|kessel|teapot|kettle/.test(t)) return { de: 'Kanne', en: 'kettle' }
+  if (/tablett|tray/.test(t)) return { de: 'Tablett', en: 'tray' }
+  if (/schloss|klinke|lock/.test(t)) return { de: 'Türschloss', en: 'door lock' }
+  return undefined
+}
+
+export function inferPropIdsFromText(
+  text: string,
+  inventory?: FilmInventory | null,
+): string[] {
   const t = (text || '').toLowerCase()
   if (!t.trim()) return []
-  return KNOWN_FILM_PROPS.filter((p) => p.words.some((w) => t.includes(w))).map((p) => p.id)
+  const fromKnown = KNOWN_FILM_PROPS.filter((p) => p.words.some((w) => t.includes(w))).map(
+    (p) => p.id,
+  )
+  const fromInv = (inventory?.props ?? [])
+    .filter((p) => textMentionsProp(t, p))
+    .map((p) => p.id)
+  return uniqueStable([...fromKnown, ...fromInv])
+}
+
+function textMentionsProp(textLower: string, prop: FilmInventoryProp): boolean {
+  const name = (prop.nameDe || '').trim().toLowerCase()
+  if (name.length >= 3 && textLower.includes(name)) return true
+  const stem = slugPropId(prop.id).replace(/-\d+$/, '').replace(/-/g, '')
+  if (stem.length >= 4 && textLower.includes(stem)) return true
+  return false
 }
 
 export function normalizeFilmInventory(
@@ -128,7 +166,7 @@ export function normalizeFilmInventory(
     const known = knownPropById(id)
     props.push({
       id,
-      nameDe: prop.nameDe?.trim() || known?.nameDe || id,
+      nameDe: prop.nameDe?.trim() || known?.nameDe || propLabelDe(id) || id,
       firstSeenLineHint: prop.firstSeenLineHint?.trim() || undefined,
     })
   }
@@ -159,14 +197,20 @@ export function deriveFilmInventory(dialog: Pick<Dialog, 'sections' | 'filmInven
         seenPlaces.add(placeKey)
         places.push({ key: placeKey, labelDe: placeLabelDe(placeKey) })
       }
-      const ids = uniqueStable([...(line.propIds ?? []), ...inferPropIdsFromText(blob)])
+      const growing: FilmInventory = { people, places, props }
+      const ids = uniqueStable([
+        ...(line.propIds ?? []),
+        ...inferPropIdsFromText(blob, fromAi),
+        ...inferPropIdsFromText(blob, growing),
+      ])
       for (const id of ids) {
         if (seenProps.has(id)) continue
         seenProps.add(id)
+        const fromAiProp = fromAi?.props.find((p) => p.id === id)
         const known = knownPropById(id)
         props.push({
           id,
-          nameDe: known?.nameDe || id,
+          nameDe: fromAiProp?.nameDe || known?.nameDe || propLabelDe(id) || id,
           firstSeenLineHint: (line.text || line.cueImage || '').trim().slice(0, 80) || undefined,
         })
       }
@@ -175,12 +219,62 @@ export function deriveFilmInventory(dialog: Pick<Dialog, 'sections' | 'filmInven
   return { people, places, props }
 }
 
-export function mergeLinePropIds(line: {
-  text?: string
-  cueImage?: string
-  propIds?: string[]
-}): string[] {
-  return uniqueStable([...(line.propIds ?? []), ...inferPropIdsFromText(`${line.text || ''} ${line.cueImage || ''}`)])
+export function mergeLinePropIds(
+  line: {
+    text?: string
+    cueImage?: string
+    propIds?: string[]
+  },
+  inventory?: FilmInventory | null,
+): string[] {
+  return uniqueStable([
+    ...(line.propIds ?? []),
+    ...inferPropIdsFromText(`${line.text || ''} ${line.cueImage || ''}`, inventory),
+  ])
+}
+
+export function hasSameObjectCue(cue: string): boolean {
+  return /\bsame\b.+\bas earlier\b/i.test(cue)
+}
+
+export function continuityCueForPropIds(
+  ids: string[],
+  inventory?: FilmInventory | null,
+): string {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const id of ids) {
+    const name = propLabelEn(id, inventory)
+    const key = name.toLowerCase()
+    if (!name || seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  if (!names.length) return 'SAME object as earlier'
+  if (names.length === 1) return `SAME ${names[0]} as earlier`
+  return `SAME ${names.join('/')} as earlier`
+}
+
+/** Spätere Zeilen merken: dieselbe Sache wie im ersten Foto. */
+export function applyContinuityCues(
+  sections: DialogSection[],
+  inventory?: FilmInventory | null,
+): DialogSection[] {
+  const seen = new Set<string>()
+  return sections.map((sec) => ({
+    ...sec,
+    lines: sec.lines.map((line) => {
+      const ids = mergeLinePropIds(line, inventory)
+      const repeats = ids.filter((id) => seen.has(id))
+      for (const id of ids) seen.add(id)
+      const next = { ...line, propIds: ids.length ? ids : undefined }
+      if (!repeats.length) return next
+      const cue = next.cueImage || ''
+      if (hasSameObjectCue(cue)) return next
+      const extra = continuityCueForPropIds(repeats, inventory)
+      return { ...next, cueImage: cue ? `${cue}. ${extra}` : extra }
+    }),
+  }))
 }
 
 export function deriveRefNeeds(opts: {
@@ -199,7 +293,7 @@ export function deriveRefNeeds(opts: {
   )
   const propIds = uniqueStable([
     ...(opts.propIds ?? []),
-    ...inferPropIdsFromText(blob),
+    ...inferPropIdsFromText(blob, opts.inventory),
   ]).filter((id) => {
     if (!opts.inventory?.props.length) return true
     return opts.inventory.props.some((p) => p.id === id)

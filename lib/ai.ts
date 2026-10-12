@@ -21,6 +21,7 @@ import type {
 } from '../shared/types.js'
 import { inferDialogLineKind, isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import {
+  applyContinuityCues,
   deriveFilmInventory,
   mergeLinePropIds,
   normalizeFilmInventory,
@@ -259,13 +260,13 @@ JSON:
   "filmInventory": {
     "people": [{ "name": "Ramo" }],
     "places": [{ "key": "kitchen", "labelDe": "Küche" }, { "key": "living", "labelDe": "Wohnzimmer" }],
-    "props": [{ "id": "kanne-1", "nameDe": "Kanne", "firstSeenLineHint": "Wasser in den Kessel" }, { "id": "tablett-1", "nameDe": "Tablett", "firstSeenLineHint": "Tablett mit Kanne" }]
+    "props": [{ "id": "blumen-1", "nameDe": "Blumen", "firstSeenLineHint": "Khan bringt Blumen" }, { "id": "kanne-1", "nameDe": "Kanne", "firstSeenLineHint": "Wasser in den Kessel" }]
   },
   "sections": [
     {
       "title": "Szenenname",
       "lines": [
-        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen", "cueSpeech": "optional", "propIds": ["kanne-1"] }
+        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen", "cueSpeech": "optional", "propIds": ["blumen-1"] }
       ]
     }
   ]
@@ -289,11 +290,13 @@ Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen IN ${spokenLang} 
 Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das hergibt.
 cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür auf Augenhöhe, Tee in Arbeitshöhe), niemals «ganzer Raum» bei jeder Zeile, niemals Kamerahöhe am Boden.
 INVENTAR und KONTINUITÄT:
-- filmInventory listet jede Figur, jeden Ort, jede wichtige Requisite EINMAL.
-- Dieselbe Requisite behält dieselbe id in ALLEN Szenen: «kanne-1» in der Küche UND wenn Ramo die Kanne ins Wohnzimmer trägt. «tablett-1» bleibt tablett-1.
-- Jede Zeile, in der ein Gegenstand sichtbar ist, setzt propIds auf genau diese ids.
-- Wenn ein Gegenstand schon vorkam, cueImage MUSS den englischen Satz enthalten: SAME kettle/tray as earlier.
-- Wenn Ramo Kanne und Tablett aus der Küche ins Wohnzimmer bringt: dieselben ids, SAME kettle/tray as earlier.
+- Lies die Geschichte und suche JEDE wiederkehrende Figur, jeden Ort, JEDE Sache die später wieder vorkommt. Keine feste Liste (nicht nur Kanne/Tablett).
+- filmInventory listet jede Figur, jeden Ort, jede wiederkehrende Requisite EINMAL, mit einer id aus der Geschichte (blumen-1, mantel-1, zeitung-1, kanne-1 — was der Stoff hergibt).
+- Dieselbe Sache behält dieselbe id in ALLEN Szenen.
+- Wenn Khan Blumen mitbringt und sie später auf dem Tisch stehen — dieselben Blumen. Gleiche Regel für jedes Requisit (Mantel, Zeitung, Teekanne, Tablett, Prospekt, …).
+- Jede Zeile, in der der Gegenstand sichtbar ist, setzt propIds auf genau diese ids.
+- Wenn ein Gegenstand schon vorkam, cueImage MUSS den englischen Satz enthalten: SAME <object> as earlier — z.B. SAME flowers as earlier, SAME kettle as earlier, SAME coat as earlier.
+- Beispiel Tee: Wenn Ramo Kanne und Tablett aus der Küche ins Wohnzimmer bringt: dieselben ids, SAME kettle/tray as earlier. Das ist dieselbe Regel wie bei den Blumen, nicht eine Extra-Tee-Logik.
 Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
 Teile den Prompt in Szenen, wo Ort, Zeit oder Handlung wechselt.
 Küche und Wohnzimmer sind zwei Szenen (nicht ein Bild mit Herd und Sitzkissen).
@@ -322,6 +325,8 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     }>
   }>(system, `${prompt.trim()}${extra}`)
 
+  const aiInventory = normalizeFilmInventory(result.filmInventory)
+
   const sections: DialogSection[] = dropRepeatedDialogSections(
     (result.sections ?? []).map((sec) => ({
       id: randomUUID(),
@@ -343,11 +348,14 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
             }) || (kind === 'action' ? 'Handlung' : 'Sprecher')
           const text = l.text?.trim() || (kind === 'action' ? l.cueImage?.trim() || '' : '')
           const cueImage = l.cueImage?.trim() || ''
-          const propIds = mergeLinePropIds({
-            text,
-            cueImage,
-            propIds: l.propIds,
-          })
+          const propIds = mergeLinePropIds(
+            {
+              text,
+              cueImage,
+              propIds: l.propIds,
+            },
+            aiInventory,
+          )
           return {
             id: newLineId(),
             kind,
@@ -374,11 +382,11 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     throw new Error('Die KI hat keinen Dialog geliefert. Bitte den Prompt etwas genauer schreiben.')
   }
 
-  const withContinuity = applyContinuityCues(sections)
   const filmInventory = deriveFilmInventory({
-    sections: withContinuity,
-    filmInventory: normalizeFilmInventory(result.filmInventory),
+    sections,
+    filmInventory: aiInventory,
   })
+  const withContinuity = applyContinuityCues(sections, filmInventory)
 
   return {
     title: result.title?.trim() || 'Film',
@@ -388,29 +396,6 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     speechDirection: result.speechDirection?.trim(),
     filmInventory,
   }
-}
-
-function applyContinuityCues(sections: DialogSection[]): DialogSection[] {
-  const seen = new Set<string>()
-  return sections.map((sec) => ({
-    ...sec,
-    lines: sec.lines.map((line) => {
-      const ids = line.propIds ?? []
-      const repeats = ids.filter((id) => seen.has(id))
-      for (const id of ids) seen.add(id)
-      if (!repeats.length) return line
-      const cue = line.cueImage || ''
-      if (/same kettle\/tray as earlier/i.test(cue) || /same kettle as earlier/i.test(cue)) {
-        return line
-      }
-      const extra = repeats.includes('tablett-1') || ids.includes('tablett-1')
-        ? 'SAME kettle/tray as earlier'
-        : repeats.includes('kanne-1')
-          ? 'SAME kettle as earlier'
-          : 'SAME object as earlier'
-      return { ...line, cueImage: cue ? `${cue}. ${extra}` : extra }
-    }),
-  }))
 }
 
 /** Zweite KI: nur JSON, kein Bild. Welche Vorlagen braucht jedes Standbild? */
@@ -439,10 +424,10 @@ export async function planFilmPanelRefNeeds(opts: {
 Inventar der Geschichte — nur diese Namen/Ids verwenden:
 ${JSON.stringify(inventory)}
 Für JEDES Bild: welche Personen, Orte, Requisiten aus dem Inventar müssen als Foto mit?
-Regel Requisite: wenn propId schon in einem früheren Bild vorkam, dieses Bild braucht dieselbe id (Kanne Küche→Wohnzimmer: kanne-1 bleibt kanne-1).
-Nicht raten: ein Wohnzimmer-Weit ohne Kanne ist NICHT das Kannen-Foto.
+Regel Requisite: wenn propId schon in einem früheren Bild vorkam, dieses Bild braucht dieselbe id. Wenn Khan Blumen mitbringt und sie später auf dem Tisch stehen — blumen-1 bleibt blumen-1. Gleiche Regel für jedes Requisit (Kanne, Tablett, Mantel, Zeitung).
+Nicht raten: ein Wohnzimmer-Weit ohne den Gegenstand ist NICHT das Requisiten-Foto.
 JSON:
-{ "panels": [ { "id": "panel-id", "people": ["Ramo"], "places": ["living"], "propIds": ["kanne-1", "tablett-1"] } ] }`,
+{ "panels": [ { "id": "panel-id", "people": ["Khan"], "places": ["living"], "propIds": ["blumen-1"] } ] }`,
     opts.panels
       .map((p, i) => {
         const props = (p.propIds ?? []).join(', ') || '—'

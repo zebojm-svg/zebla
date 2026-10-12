@@ -91,7 +91,7 @@ export interface DialogLine {
   cueSound?: string
   /** Regie Sprache (laut, flüstern, Pause). */
   cueSpeech?: string
-  /** Requisiten aus dem Film-Inventar, die in dieser Zeile sichtbar sind (gleiche id über Szenen). */
+  /** Wiederkehrende Gegenstände aus dem Inventar (gleiche id über Szenen: Blumen, Kanne, Mantel, …). */
   propIds?: string[]
 }
 
@@ -305,6 +305,7 @@ export interface FilmInventoryPlace {
   labelDe: string
 }
 
+/** Ein wiederkehrender Gegenstand aus der Geschichte — id und Name kommen aus dem Stoff, keine feste Liste. */
 export interface FilmInventoryProp {
   id: string
   nameDe: string
