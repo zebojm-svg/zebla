@@ -31,6 +31,7 @@ import {
   sceneShotPlanDe,
 } from '../shared/film-storyboard.ts'
 import { uniqueSpeakersInDialog } from '../shared/speakers.ts'
+import { lineShouldSpeak, spokenTextMatchesTarget } from '../shared/line-speech.ts'
 import { inferDialogLineKind, type Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
@@ -258,8 +259,8 @@ if (teaBoard.panels[2]?.settingHint === tea.filmPrompt) {
   fail('Ort ist nicht der ganze Prompt')
 }
 const teaPlay = scenePlayBeats(teaBoard.panels, tea)
-if (teaPlay[0]?.silent) fail('Einladung wird erzählt, nicht nur Handlung')
-if (teaPlay[0]?.line?.speaker !== 'Erzähler') fail('Erzähler spricht die Einladung')
+if (!teaPlay[0]?.silent) fail('Tee-Handlung bleibt still, kein deutscher Erzähler')
+if (teaPlay[0]?.line) fail('Handlung bekommt keine Sprecherzeile')
 if (!teaPlay[1]?.silent) fail('Klopfen ohne Stimme')
 if (!teaPlay[2]?.line || teaPlay[2].silent) fail('Ramo spricht nach dem Klopfen')
 if (!cueAsksNewPicture('Da klopft es an der Tür')) fail('Klopfen braucht ein neues Bild')
@@ -270,7 +271,9 @@ if (!/klopf/i.test(teaBoard.panels[1]?.soundCue || '')) fail('Klopfen braucht To
 if (!teaPlay[0]?.foley?.includes('fill')) fail('Auffüllen wird beim Abspielen gehört')
 if (!teaPlay[1]?.foley?.includes('knock')) fail('Klopfen wird beim Abspielen gehört')
 if (uniqueSpeakersInDialog(tea).includes('Handlung')) fail('Handlung bekommt keine Stimme')
-if (!uniqueSpeakersInDialog(tea).includes('Erzähler')) fail('Einladung erscheint als Erzähler unter Stimmen')
+if (uniqueSpeakersInDialog(tea).includes('Erzähler')) {
+  fail('deutsche Tee-Handlung ist kein Erzähler')
+}
 
 const told: Dialog = {
   ...dialog,
@@ -308,6 +311,42 @@ if (
   }) !== 'narrator'
 ) {
   fail('Erzähler spricht auch wenn die KI Handlung geschrieben hat')
+}
+if (
+  inferDialogLineKind({
+    speaker: 'Handlung',
+    kind: 'action',
+    text: 'Ramo bereitet Tee vor für seine Gäste',
+  }) !== 'action'
+) {
+  fail('deutsche Tee-Handlung bleibt still')
+}
+if (
+  lineShouldSpeak(
+    { speaker: 'Handlung', kind: 'action', text: 'Ramo bereitet Tee vor für seine Gäste' },
+    'fa',
+  )
+) {
+  fail('deutsche Handlung nicht an TTS')
+}
+if (
+  !lineShouldSpeak(
+    { speaker: 'Erzähler', kind: 'narrator', text: 'رامو دوستانش را به چای دعوت کرده است' },
+    'fa',
+  )
+) {
+  fail('persischer Erzähler spricht')
+}
+if (
+  lineShouldSpeak(
+    { speaker: 'Erzähler', kind: 'narrator', text: 'Ramo hat Freunde eingeladen.' },
+    'fa',
+  )
+) {
+  fail('deutscher Erzählertext nicht über persischen Film')
+}
+if (spokenTextMatchesTarget('Once upon a time Ramo invited friends', 'fa')) {
+  fail('Englisch nicht über persischen Film sprechen')
 }
 const offAsAction: Dialog = {
   ...told,
@@ -437,6 +476,15 @@ if (!aiSrc.includes('dropRepeatedDialogSections')) fail('kopierte Dialog-Szenen 
 if (!aiSrc.includes('kind')) fail('Dialog darf Handlung und Erzähler')
 if (!aiSrc.includes('Niemals die Geschichte als kind=action')) {
   fail('Prompt sagt: Geschichte ist Erzähler, nicht stille Handlung')
+}
+if (!aiSrc.includes('Niemals Englisch')) {
+  fail('Gesprochene Zeilen dürfen kein Englisch sein')
+}
+if (!aiSrc.includes('Augenhöhe eines stehenden Erwachsenen')) {
+  fail('Klopf-Bild: Kamera auf Augenhöhe, nicht den Boden')
+}
+if (!aiSrc.includes('nicht die Füsse')) {
+  fail('Küchen-Bild: nicht die Füsse')
 }
 if (!aiSrc.includes('orderTeaBeats')) fail('Tee-Reihenfolge Wasser vor Herd')
 if (!aiSrc.includes('Kessel pfeift')) fail('Prompt verlangt Pfeifen als eigene Handlung')

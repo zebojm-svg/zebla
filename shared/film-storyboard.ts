@@ -6,7 +6,7 @@
 
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
-import { lineSpeechText } from './line-speech.js'
+import { lineShouldSpeak, lineSpeechText } from './line-speech.js'
 import {
   inferDialogLineKind,
   isStageSpeaker,
@@ -482,10 +482,14 @@ export function insertCueFromText(text: string, cueImage?: string): string {
   if (fromCue && !isPlaceholderImageCue(fromCue)) return fromCue
   const t = text.toLowerCase()
   if (/klopf|klingel/.test(t)) {
-    return 'Die Tür füllt das Bild — jemand klopft von aussen.'
+    return 'Wohnungstür von innen, Schloss und Klinke auf Türhöhe (1–1,2 m), Kamera auf Augenhöhe eines stehenden Erwachsenen — nicht den Boden, nicht nur Füsse.'
   }
-  if (/tee/.test(t)) return 'Tee zubereiten: Kanne, Gläser, Hände — nicht der ganze Raum.'
-  if (/tür|tuer|door/.test(t)) return 'Die Tür, nah, derselbe Ort.'
+  if (/tee/.test(t)) {
+    return 'Kessel an der Spüle in Arbeitshöhe, Kamera auf Augenhöhe eines Stehenden — nicht die Füsse, nicht der ganze Raum.'
+  }
+  if (/tür|tuer|door/.test(t)) {
+    return 'Die Tür von innen, Schloss auf normaler Türhöhe, Kamera auf Augenhöhe — nicht den Boden.'
+  }
   if (/prospekt/.test(t)) return 'Der Prospekt in der Hand, lesbar.'
   return `Zwischenbild: ${text.trim().slice(0, 80) || 'ein Detail der Szene'}`
 }
@@ -1257,13 +1261,13 @@ export function panelDialogueLines(
 /** Zeilen für die Szenen-Vorschau (Zielsprache + gespeicherte Stimme). */
 export function panelSpeakLines(
   panel: FilmStoryboardPanel,
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: Pick<Dialog, 'sections' | 'targetLanguage'> | null,
   scenePanels?: FilmStoryboardPanel[],
   sceneTitle?: string,
 ): Array<{ id: string; speaker: string; text: string; audioUrl?: string }> {
   const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
   if (!line) return []
-  if (inferDialogLineKind(line) === 'action') return []
+  if (!lineShouldSpeak(line, dialog?.targetLanguage)) return []
   const text = lineSpeechText(line).trim() || line.text.trim()
   if (!text) return []
   const kind = inferDialogLineKind(line)
@@ -1291,7 +1295,7 @@ export interface FilmScenePreviewBeat {
 
 export function scenePreviewBeats(
   panels: FilmStoryboardPanel[],
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: Pick<Dialog, 'sections' | 'targetLanguage'> | null,
   sceneTitle?: string,
 ): FilmScenePreviewBeat[] {
   return panels.map((panel) => ({
@@ -1494,7 +1498,7 @@ export function sceneRepeatsEarlierDialog(
 
 export function scenePlayBeats(
   panels: FilmStoryboardPanel[],
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: Pick<Dialog, 'sections' | 'targetLanguage'> | null,
   sceneTitle?: string,
 ): FilmPlayBeat[] {
   const wide = panels.find((p) => p.shot === 'wide' && p.stillUrl)
@@ -1503,7 +1507,7 @@ export function scenePlayBeats(
   for (const panel of panels) {
     const line = lineForFilmPanel(panel, dialog, panels, sceneTitle)
     const kind = line ? inferDialogLineKind(line) : undefined
-    const silent = !line || kind === 'action'
+    const silent = !line || !lineShouldSpeak(line, dialog?.targetLanguage)
     const caption = line
       ? kind === 'action' || kind === 'narrator'
         ? line.text.slice(0, 140)

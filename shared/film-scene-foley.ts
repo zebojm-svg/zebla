@@ -77,10 +77,18 @@ export function teaBeatStep(text?: string, cueImage?: string, cueSound?: string)
 export function teaBeatLockEn(text?: string, cueImage?: string, cueSound?: string): string {
   const step = teaBeatStep(text, cueImage, cueSound)
   if (step === 1) {
-    return 'TEA BEAT: filling water at the sink. The SAME kettle is in hand or under the tap. FORBIDDEN: kettle already sitting on the stove.'
+    return (
+      'TEA BEAT: filling water at the sink, standing adult eye level. ' +
+      'The SAME kettle is in hand or under the tap at standing work height (waist to chest). ' +
+      'FORBIDDEN: kettle already sitting on the stove. FORBIDDEN: ground-level camera, only feet or shoes.'
+    )
   }
   if (step === 2) {
-    return 'TEA BEAT: the SAME filled kettle is placed on the SAME stove. Water is already inside. FORBIDDEN: empty kettle, a new stove type.'
+    return (
+      'TEA BEAT: the SAME filled kettle is placed on the SAME stove at standing height. ' +
+      'Camera at standing-adult eye level. Water is already inside. ' +
+      'FORBIDDEN: empty kettle, a new stove type, ground-level camera, only feet.'
+    )
   }
   if (step === 3) {
     return 'TEA BEAT: the SAME kettle on the SAME stove, steam, whistling. Already filled earlier.'

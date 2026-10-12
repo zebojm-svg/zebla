@@ -1,4 +1,4 @@
-import { inferDialogLineKind, type Dialog, type DialogLine, type DialogSection } from '../shared/types.js'
+import { type Dialog, type DialogLine, type DialogSection } from '../shared/types.js'
 import {
   lineBelongsToSpeaker,
   lookupSpeakerRecord,
@@ -6,7 +6,7 @@ import {
   spokenSpeakerName,
   uniqueSpeakersInDialog,
 } from '../shared/speakers.js'
-import { lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-speech.js'
+import { lineShouldSpeak, lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { getDialog, updateDialog } from './firestore.js'
 import { uploadLineAudio } from './audio-storage.js'
 import { synthesizeSpeech } from './tts.js'
@@ -113,7 +113,7 @@ export async function getOrCreateLineAudio(
 
   const found = findLineInDialog(dialog, lineId)
   if (!found) throw new Error('Zeile nicht gefunden.')
-  if (inferDialogLineKind(found.line) === 'action') {
+  if (!lineShouldSpeak(found.line, dialog.targetLanguage)) {
     throw new Error('Handlung bleibt still — kein Sprachton.')
   }
 
@@ -180,7 +180,7 @@ export async function ensureDialogAudio(
 
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      if (inferDialogLineKind(line) === 'action') continue
+      if (!lineShouldSpeak(line, dialog.targetLanguage)) continue
       const speechText = lineSpeechText(line)
       if (!speechText) continue
       if (!force && line.audioUrl && !speechTextDiffersFromLineText(line)) {
@@ -246,7 +246,7 @@ export async function regenerateSpeakerAudio(
   for (const section of dialog.sections) {
     for (const line of section.lines) {
       if (!lineBelongsToSpeaker(line, speaker)) continue
-      if (inferDialogLineKind(line) === 'action') continue
+      if (!lineShouldSpeak(line, dialog.targetLanguage)) continue
       const speechText = lineSpeechText(line)
       if (!speechText) continue
 
