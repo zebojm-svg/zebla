@@ -48,9 +48,9 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 ## Stand (2026-10)
 
-**Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile.
+**Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt.
 
-**In Arbeit:** KI-Musik (Lyria) statt 8-Bit-Pad; Szenen nur im Dialog aus dem Prompt, Board folgt.
+**In Arbeit:** —
 
 **Nächste Baustellen (noch nicht hier):**
 
