@@ -16,6 +16,7 @@ import {
   type DialogSection,
 } from './types.js'
 import { foleyEventsFromText, inferSoundCueDe, type FoleyKind } from './film-scene-foley.js'
+import { inferFilmPlaceKey, inferSettingHintDe } from './film-place.js'
 import type { StoryLibraryAsset } from './story-types.js'
 import {
   STILL_POSES,
@@ -353,12 +354,16 @@ export function inferExpression(text: string): string {
 }
 
 function defaultSetting(dialog: Dialog, section: DialogSection): string {
-  return (
-    dialog.filmPrompt?.trim() ||
-    dialog.imageDirection?.trim() ||
-    section.title.trim() ||
-    'Ort der Szene'
-  )
+  const fromLines = section.lines.map((l) => `${l.cueImage || ''} ${l.text}`).join(' ')
+  const image = dialog.imageDirection?.trim() || ''
+  if (image && image.length < 120 && !/\n/.test(image)) {
+    const key = inferFilmPlaceKey(image)
+    if (key === 'kitchen' || key === 'living' || key === 'door') {
+      return inferSettingHintDe(image, image)
+    }
+    return image
+  }
+  return inferSettingHintDe(`${section.title} ${fromLines}`, section.title.trim() || image)
 }
 
 function speakerFromLineText(text: string): string {
@@ -550,9 +555,26 @@ export function cueAsksNewPicture(cue?: string): boolean {
   )
 }
 
+function panelSpeakerName(
+  panel: Pick<FilmStoryboardPanel, 'closeupSpeaker' | 'placements' | 'caption'>,
+): string {
+  const close = panel.closeupSpeaker?.trim()
+  if (close) return close.toLowerCase()
+  const placed = panel.placements?.[0]?.name?.trim()
+  if (placed) return placed.toLowerCase()
+  const cap = panel.caption?.match(/^([^:]{1,40}):/)
+  return cap?.[1]?.trim().toLowerCase() || ''
+}
+
 export function panelWantsOwnStill(
-  panel: Pick<FilmStoryboardPanel, 'id' | 'stillCorrection' | 'imageCue' | 'panelIndex' | 'shot' | 'closeupSpeaker'>,
-  scenePanels: Pick<FilmStoryboardPanel, 'id' | 'panelIndex' | 'shot' | 'closeupSpeaker' | 'imageCue'>[],
+  panel: Pick<
+    FilmStoryboardPanel,
+    'id' | 'stillCorrection' | 'imageCue' | 'panelIndex' | 'shot' | 'closeupSpeaker' | 'placements' | 'caption' | 'settingHint'
+  >,
+  scenePanels: Pick<
+    FilmStoryboardPanel,
+    'id' | 'panelIndex' | 'shot' | 'closeupSpeaker' | 'imageCue' | 'placements' | 'caption' | 'settingHint'
+  >[],
 ): boolean {
   const ordered = [...scenePanels].sort((a, b) => a.panelIndex - b.panelIndex)
   const idx = ordered.findIndex((p) => p.id === panel.id)
@@ -561,8 +583,16 @@ export function panelWantsOwnStill(
   const shot = panel.shot ?? 'wide'
   if (shot === 'closeup' || shot === 'insert') return true
   const prev = ordered[idx - 1]
-  if ((prev?.shot ?? 'wide') !== shot) return true
-  if ((prev?.closeupSpeaker || '') !== (panel.closeupSpeaker || '')) return true
+  if (!prev) return true
+  if ((prev.shot ?? 'wide') !== shot) return true
+  const who = panelSpeakerName(panel)
+  const prevWho = panelSpeakerName(prev)
+  if (who && prevWho && who !== prevWho) return true
+  if (inferFilmPlaceKey(`${panel.settingHint || ''} ${panel.imageCue || ''}`) !==
+      inferFilmPlaceKey(`${prev.settingHint || ''} ${prev.imageCue || ''}`)) {
+    return true
+  }
+  if ((prev.closeupSpeaker || '') !== (panel.closeupSpeaker || '')) return true
   return cueAsksNewPicture(panel.imageCue)
 }
 
@@ -586,11 +616,11 @@ export function ensureCoverageDrafts(
   for (const section of dialog.sections) {
     const existing = bySection.get(section.id) ?? []
     const speakers = speakersInSection(section, existing)
-    const setting = existing[0]?.settingHint?.trim() || defaultSetting(dialog, section)
+    const sectionSetting = existing[0]?.settingHint?.trim() || defaultSetting(dialog, section)
     const blob = section.lines.map((l) => lineCueText(l)).join(' ')
     const poseHint = inferPoseId(blob)
     let hadWide = false
-    section.lines.forEach((line, i) => {
+    section.lines.forEach((line) => {
       const prior = existing.find((d) => d.lineIds?.includes(line.id))
       const kind = inferDialogLineKind(line)
       const speaker =
@@ -615,6 +645,10 @@ export function ensureCoverageDrafts(
           : geminiShot === 'insert' || geminiShot === 'closeup'
             ? geminiShot
             : inferred.shot
+      const setting = inferSettingHintDe(
+        `${line.text} ${lineCue} ${priorCue} ${section.title}`,
+        prior?.settingHint || sectionSetting,
+      )
       const imageCue = defaultImageCue({
         shot,
         speaker,
@@ -631,6 +665,11 @@ export function ensureCoverageDrafts(
           ? `${stageLabel(kind)}: ${line.text}`.slice(0, 140)
           : `${speaker}: ${line.text}`.slice(0, 140))
       const insertPeople = namesMentioned(`${line.text} ${lineCue} ${imageCue}`, speakers)
+      const place = inferFilmPlaceKey(setting)
+      const widePeople =
+        place === 'kitchen' || place === 'door'
+          ? namesMentioned(`${line.text} ${lineCue} ${imageCue}`, speakers)
+          : speakers
       out.push({
         sectionId: section.id,
         shot,
@@ -641,13 +680,13 @@ export function ensureCoverageDrafts(
         soundCue:
           line.cueSound?.trim() ||
           (kind === 'action' ? inferSoundCueDe(line.text, line.cueSound) : '') ||
-          (i === 0 ? dialog.soundDirection?.trim() || '' : ''),
+          '',
         speechCue: prior?.speechCue || line.cueSpeech || '',
         settingHint: setting,
         expressionHint: prior?.expressionHint || inferExpression(line.text),
         characters:
           shot === 'wide'
-            ? speakers.map((name) => ({
+            ? (widePeople.length ? widePeople : speakers).map((name) => ({
                 name,
                 poseHint,
                 depth: 'mid' as FilmDepth,

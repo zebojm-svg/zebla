@@ -42,9 +42,8 @@ import {
   previousStillUrlInScene,
   replaceStillUrl,
   sceneContinuityBlock,
-  sceneGrundbildPanel,
-  sceneWidePanel,
-  sceneWideStillUrl,
+  placeGrundbildPanel,
+  stillReferencePack,
 } from '../shared/film-stills.js'
 import {
   applyPanelLayout,
@@ -151,7 +150,8 @@ Regeln:
 - Namen unverändert.
 - poseHint nur aus der Liste. Bei insert ohne Person: characters leer [].
 - x 15–85.
-- settingHint konkret, nicht nur «Wohnzimmer».
+- settingHint EIN Ort: Küche ODER Wohnzimmer ODER Tür — niemals beides in einem Bild.
+- Weit-Bild der Gäste: Wohnzimmer. Tee auffüllen: Küche. Klopfen: Tür.
 - Nur die Dialog-Abschnitte. Keine Extra-Szenen erfinden, die nicht im Dialog stehen.
 - sectionId = die echte Abschnitts-Id aus dem Dialog.
 - Handlung/Erzähler-Zeilen: shot=insert (oder wide wenn es wirklich der ganze Raum ist).
@@ -682,13 +682,9 @@ export async function stillFilmPanel(
     if (isInsert) {
       correctFromUrl = correction ? correctFromUrl : undefined
     }
-    const grund = sceneGrundbildPanel(boardForGen, panelForGen.sceneId)
+    const grund = placeGrundbildPanel(boardForGen, panelForGen)
     const wide =
-      grund && grund.id !== panelForGen.id
-        ? grund
-        : (panelForGen.shot ?? 'wide') === 'closeup'
-          ? sceneWidePanel(boardForGen, panelForGen)
-          : panelForGen
+      grund && grund.id !== panelForGen.id ? grund : panelForGen
     const seatNames = (wide ?? panelForGen).placements.map((pl) => pl.name)
     const speaker =
       personNamedInCorrection(correction, seatNames) ||
@@ -761,6 +757,12 @@ export async function stillFilmPanel(
     if (isCloseup && !correctionIsFaceOnly(correction)) {
       correctFromUrl = undefined
     }
+    const placeWideUrl = isInsert ? undefined : grund?.stillUrl
+    const pack = stillReferencePack(panelForGen, {
+      correctFromUrl,
+      sceneWideStillUrl: placeWideUrl,
+      board: boardForGen,
+    })
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
@@ -769,9 +771,7 @@ export async function stillFilmPanel(
       correctFromUrl,
       targetLanguage,
       beatTotal,
-      sceneWideStillUrl: isInsert
-        ? undefined
-        : wide?.stillUrl ?? sceneWideStillUrl(boardForGen, panelForGen) ?? grundUrl,
+      sceneWideStillUrl: placeWideUrl,
       speakerGender:
         genderFromPictureNote(correction) ??
         speakerGender(dialog, speaker) ??
@@ -779,6 +779,7 @@ export async function stillFilmPanel(
       speakerX: whoOnWide?.x,
       speakerSitting: sittingFromPlacement(whoOnWide),
       continuityEn: continuityForShot,
+      board: boardForGen,
     })
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
@@ -787,15 +788,20 @@ export async function stillFilmPanel(
     const withNote = applyPanelHarvestNote(
       withStill,
       panelId,
-      correction
-        ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
-        : isCloseup
-          ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
-          : isInsert
-            ? `Zwischenbild: ${panelForGen.imageCue || panelForGen.caption || 'Detail'} — nicht der ganze Raum.`
-            : pieceNote
-              ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
-              : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+      [
+        pack.noteDe,
+        correction
+          ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
+          : isCloseup
+            ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
+            : isInsert
+              ? `Zwischenbild: ${panelForGen.imageCue || panelForGen.caption || 'Detail'} — nicht der ganze Raum.`
+              : pieceNote
+                ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+                : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+      ]
+        .filter(Boolean)
+        .join(' '),
     )
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }

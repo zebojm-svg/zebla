@@ -265,6 +265,7 @@ Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das he
 cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür, Tee), niemals «ganzer Raum» bei jeder Zeile.
 Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
 Teile den Prompt in Szenen, wo Ort, Zeit oder Handlung wechselt.
+Küche und Wohnzimmer sind zwei Szenen (nicht ein Bild mit Herd und Sitzkissen).
 Jede Szene hat eigenen Verlauf (Handlung + Dialog), nicht denselben Text wie zuvor.
 Niemals den Dialog der vorigen Szene kopieren. Szenen ohne neuen Inhalt weglassen.
 Wenn die Handlung nach der ersten Szene fertig ist, nur eine Szene anlegen.
