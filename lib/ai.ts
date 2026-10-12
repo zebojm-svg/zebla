@@ -409,7 +409,8 @@ export async function translateDialog(
   const result = await chatJson<{ lines: { speaker: string; text: string }[] }>(
     `Du übersetzt Dialogzeilen präzise in ${targetLanguage}.
 Antworte als JSON: { "lines": [{ "speaker": "...", "text": "..." }] }
-Behalte Sprecher-Namen bei. Gleiche Anzahl Zeilen.`,
+Sprecher-Namen bleiben in lateinischer Schrift wie angegeben (z. B. Ramo, Khan, Ubai, Schöme) — nicht umschreiben.
+Gleiche Anzahl Zeilen.`,
     JSON.stringify(lines.map((l) => ({ speaker: l.speaker, text: l.text }))),
     { temperature: 0.2 },
   )
@@ -438,10 +439,12 @@ export async function rewriteLineFromNative(
   const withText: DialogLine = {
     ...line,
     text: translated[0]?.text?.trim() || line.text,
+    nativeText: trimmed,
     audioUrl: undefined,
   }
   const withBi = await applyBirkenbihl([withText], nativeLanguage, targetLanguage)
-  return withBi[0] ?? withText
+  const next = withBi[0] ?? withText
+  return { ...next, nativeText: trimmed }
 }
 
 export async function applyBirkenbihl(
@@ -465,24 +468,32 @@ export async function applyBirkenbihl(
   const result = await chatJson<{
     lines: {
       text: string
+      nativeText?: string
       words: { text: string; translation: string; romanization?: string }[]
     }[]
   }>(
-    `Du wendest die Birkenbihl-Methode an: Unter jedem Wort oder sinnvollen Worteil
-steht die wörtliche Übersetzung in ${nativeName} (Muttersprache, Code: ${nativeLanguage}).
+    `Du machst zwei Dinge:
+
+1) nativeText: eine NORMALE Übersetzung in ${nativeName} (Code: ${nativeLanguage}) —
+natürliche Wortstellung, so wie man spricht. Kein Wort-für-Wort, keine Birkenbihl-Reihenfolge.
+Personennamen immer in lateinischer Schrift / deutscher Lesart, genau wie der Sprechername
+(z. B. Ramo, Khan, Ubai, Schöme), niemals in einer anderen Schrift.
+
+2) words: Birkenbihl darunter, wörtlich je Wort in ${nativeName}.
 Teile zusammengesetzte Wörter sinnvoll. Interpunktion bleibt am Wort.${rtlHint}${romanHint}
 Antworte als JSON:
 {
   "lines": [
     {
       "text": "Originalzeile",
+      "nativeText": "Natürliche Übersetzung",
       "words": [{ "text": "Wort", "translation": "Übersetzung"${
         wantRoman ? ', "romanization": "lautschrift"' : ''
       } }]
     }
   ]
 }`,
-    JSON.stringify(lines.map((l) => l.text)),
+    JSON.stringify(lines.map((l) => ({ speaker: l.speaker, text: l.text }))),
     { temperature: 0.2 },
   )
 
@@ -494,7 +505,8 @@ Antworte als JSON:
         translation: w.translation,
         ...(w.romanization?.trim() ? { romanization: w.romanization.trim() } : {}),
       })) ?? []
-    const updated = { ...line, birkenbihl }
+    const nativeText = line.nativeText?.trim() || row.nativeText?.trim() || undefined
+    const updated = { ...line, birkenbihl, ...(nativeText ? { nativeText } : {}) }
     if (line.audioUrl && speechTextDiffersFromLineText(updated)) {
       return { ...updated, audioUrl: undefined }
     }

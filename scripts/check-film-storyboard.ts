@@ -244,7 +244,7 @@ const needsDe: Dialog = {
     },
   ],
 }
-if (!dialogNeedsNativeTranslation(needsDe)) fail('ohne Birkenbihl fehlt Deutsch')
+if (!dialogNeedsNativeTranslation(needsDe)) fail('ohne normale Übersetzung fehlt Deutsch')
 const hasDe: Dialog = {
   ...needsDe,
   sections: [
@@ -255,12 +255,13 @@ const hasDe: Dialog = {
           id: 'z',
           speaker: 'Ramo',
           text: 'Salam.',
+          nativeText: 'Hallo.',
           birkenbihl: [{ text: 'Salam', translation: 'Hallo' }],
         },
       ],
     },
   ],
 }
-if (dialogNeedsNativeTranslation(hasDe)) fail('mit Birkenbihl ist Deutsch da')
+if (dialogNeedsNativeTranslation(hasDe)) fail('mit nativeText ist Deutsch da')
 
 console.log('OK: Storyboard nutzt Bibliothek, spiegelt, nimmt Regie an, fügt Zeilen ein')

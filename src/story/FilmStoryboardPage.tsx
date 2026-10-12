@@ -108,20 +108,8 @@ function PanelCard({
                 Bild wird neu gemalt … das dauert etwa eine Minute.
               </p>
             ) : null}
-            <FilmStillFixBar
-              panel={panel}
-              busy={busy}
-              onCorrect={onCorrect}
-              onInsert={onInsert}
-            />
-            <p className="muted film-tweak-hint">
-              Kurzer Hinweis reicht. Wer wo sitzt und der Raum gehen von der Übersicht mit.
-            </p>
-            <div className="film-tweak">
-              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
-                {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
-              </button>
-            </div>
+            <FilmStillFixBar panel={panel} busy={busy} onCorrect={onCorrect} />
+            <p className="muted film-tweak-hint">Kurzer Hinweis reicht.</p>
           </>
         }
         lines={panelDialogueLines(panel, dialog, scenePanels, sceneTitle)}
@@ -137,6 +125,12 @@ function PanelCard({
             </p>
             <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
             <FilmCueFields panel={panel} busy={busy} onSave={onCues} />
+            <FilmStillFixBar panel={panel} busy={busy} onInsert={onInsert} />
+            <div className="film-tweak">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
+                {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
+              </button>
+            </div>
             <label className="film-comment">
               <span className="muted">Kommentar zur Zeile</span>
               <textarea
@@ -323,7 +317,7 @@ export function FilmStoryboardPage() {
               className="btn btn-secondary"
               disabled={locked}
               onClick={() => void fetchGerman()}
-              title="Deutsche Zeilen unter den Dialog schreiben, damit du prüfen kannst, ob die Bilder passen"
+              title="Normale deutsche Übersetzung unter den Dialog schreiben (keine Wort-für-Wort-Zeile)"
             >
               {nativeBusy ? '…' : 'Deutsch anzeigen'}
             </button>
@@ -334,9 +328,8 @@ export function FilmStoryboardPage() {
       {error && <div className="alert alert-error">{error}</div>}
       {dialog && needsGerman ? (
         <p className="alert alert-warn">
-          In der Spalte Deutsch steht noch «—». Hier «Deutsch anzeigen» drücken — oder unter{' '}
-          <Link to={`/dialog/${dialog.id}#ki-werkzeuge`}>Text → KI-Werkzeuge</Link> «Übersetzen»
-          / Birkenbihl «Anwenden».
+          In der Spalte Deutsch fehlt noch die normale Übersetzung. Hier «Deutsch anzeigen»
+          drücken.
         </p>
       ) : null}
 
@@ -354,35 +347,38 @@ export function FilmStoryboardPage() {
             onDialogUpdated={setDialog}
           />
 
-          <div className="film-scene-toolbar">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={busy || picked.length === 0 || locked}
-              onClick={() => void run(() => api.ai.filmStoryboardRegenerate(id, picked))}
-            >
-              Gewählte Szene(n) anpassen
-            </button>
-            <input
-              className="input"
-              value={sceneTitle}
-              placeholder="Neue Szene (Titel)"
-              onChange={(e) => setSceneTitle(e.target.value)}
-              disabled={locked}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={locked}
-              onClick={() =>
-                void run(() =>
-                  api.ai.filmInsertScene(id, scenes.at(-1)?.id ?? null, sceneTitle.trim() || 'Neue Szene'),
-                )
-              }
-            >
-              Szene einfügen
-            </button>
-          </div>
+          <details className="film-board-tools">
+            <summary>Szenen anpassen</summary>
+            <div className="film-scene-toolbar">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy || picked.length === 0 || locked}
+                onClick={() => void run(() => api.ai.filmStoryboardRegenerate(id, picked))}
+              >
+                Gewählte Szene(n) anpassen
+              </button>
+              <input
+                className="input"
+                value={sceneTitle}
+                placeholder="Neue Szene (Titel)"
+                onChange={(e) => setSceneTitle(e.target.value)}
+                disabled={locked}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={locked}
+                onClick={() =>
+                  void run(() =>
+                    api.ai.filmInsertScene(id, scenes.at(-1)?.id ?? null, sceneTitle.trim() || 'Neue Szene'),
+                  )
+                }
+              >
+                Szene einfügen
+              </button>
+            </div>
+          </details>
 
           {scenes.map((scene) => {
             const panels = board.panels.filter((p) => p.sceneId === scene.id)
@@ -403,18 +399,6 @@ export function FilmStoryboardPage() {
                     <h2>{scene.title}</h2>
                   </label>
                 </header>
-                <textarea
-                  className="input"
-                  rows={2}
-                  defaultValue={scene.noteDe}
-                  placeholder="Zur ganzen Szene: Ort, Stimmung, wer dabei ist …"
-                  disabled={locked}
-                  onBlur={(e) => {
-                    if (e.target.value.trim() !== (scene.noteDe ?? '')) {
-                      void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
-                    }
-                  }}
-                />
                 <FilmScenePreviewPlayer
                   dialogId={dialog.id}
                   dialog={dialog}
@@ -422,32 +406,47 @@ export function FilmStoryboardPage() {
                   panels={panels}
                   onDialogUpdated={setDialog}
                 />
-                <FilmSceneGenerateBar
-                  dialogId={dialog.id}
-                  scene={scene}
-                  panels={panels}
-                  styleId={styles[scene.id] ?? DEFAULT_STORY_ART_STYLE}
-                  onStyleChange={(next) => setStyles((prev) => ({ ...prev, [scene.id]: next }))}
-                  busy={stills.busySceneId === scene.id}
-                  extraDisabled={locked && stills.busySceneId !== scene.id}
-                  progress={
-                    stills.progress?.sceneId === scene.id
-                      ? { current: stills.progress.current, total: stills.progress.total }
-                      : null
-                  }
-                  error={stills.errors[scene.id]}
-                  onGenerate={(force) =>
-                    void stills.generate(
-                      scene.id,
-                      panels,
-                      styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
-                      force,
-                    )
-                  }
-                  onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
-                  shotPlanDe={sceneShotPlanDe(panels)}
-                  expectedShots={expectedSceneShotCount(dialog, scene.id)}
-                />
+                <details className="film-scene-more">
+                  <summary>Bilder erzeugen</summary>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    defaultValue={scene.noteDe}
+                    placeholder="Zur ganzen Szene: Ort, wer dabei ist …"
+                    disabled={locked}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== (scene.noteDe ?? '')) {
+                        void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
+                      }
+                    }}
+                  />
+                  <FilmSceneGenerateBar
+                    dialogId={dialog.id}
+                    scene={scene}
+                    panels={panels}
+                    styleId={styles[scene.id] ?? DEFAULT_STORY_ART_STYLE}
+                    onStyleChange={(next) => setStyles((prev) => ({ ...prev, [scene.id]: next }))}
+                    busy={stills.busySceneId === scene.id}
+                    extraDisabled={locked && stills.busySceneId !== scene.id}
+                    progress={
+                      stills.progress?.sceneId === scene.id
+                        ? { current: stills.progress.current, total: stills.progress.total }
+                        : null
+                    }
+                    error={stills.errors[scene.id]}
+                    onGenerate={(force) =>
+                      void stills.generate(
+                        scene.id,
+                        panels,
+                        styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                        force,
+                      )
+                    }
+                    onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
+                    shotPlanDe={sceneShotPlanDe(panels)}
+                    expectedShots={expectedSceneShotCount(dialog, scene.id)}
+                  />
+                </details>
                 <div className="film-panel-grid">
                   {panels.map((panel) => (
                     <PanelCard

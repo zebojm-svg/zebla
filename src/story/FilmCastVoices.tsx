@@ -35,7 +35,7 @@ export function FilmCastVoices({ dialog, disabled, onDialogUpdated }: Props) {
     voiceName: string,
     gender: 'male' | 'female',
   ) => {
-    setBusy(`probe-${speaker}-${voiceName}`)
+    setBusy(`probe-${speaker}`)
     setStatus('')
     stopPreview()
     try {
@@ -91,11 +91,10 @@ export function FilmCastVoices({ dialog, disabled, onDialogUpdated }: Props) {
   }
 
   return (
-    <section className="film-cast-voices">
-      <h2>Stimmen</h2>
+    <details className="film-cast-voices">
+      <summary>Stimmen anpassen</summary>
       <p className="muted">
-        Probesatz anhören, dann eine Stimme wählen. Bekannte Jungennamen (Ramo, Khan, Ubai,
-        Schöme) bleiben männlich.
+        Jederzeit Probe hören und eine Stimme wählen. Jungennamen bleiben männlich.
       </p>
       {status ? <p className="film-cast-voices-status">{status}</p> : null}
       <div className="film-cast-voices-grid">
@@ -104,49 +103,47 @@ export function FilmCastVoices({ dialog, disabled, onDialogUpdated }: Props) {
           const gender = speakerGender(dialog, speaker) ?? assigned?.gender ?? 'male'
           const current =
             dialog.speakerProfiles?.[speaker]?.voiceName || assigned?.voiceName || ''
-          const choices =
+          const shown =
             gender === 'male' ? voices.filter((v) => v.gender === 'male') : voices
-          const shown = choices.length > 0 ? choices : voices
+          const options = shown.length > 0 ? shown : voices
+          const selected = options.find((v) => v.name === current) ?? options[0]
           return (
             <article key={speaker} className="film-cast-voice-card">
               <h3>
                 {speaker}{' '}
                 <span className="muted">{gender === 'male' ? 'männlich' : 'weiblich'}</span>
               </h3>
-              <ul className="film-cast-voice-list">
-                {shown.map((voice) => {
-                  const selected = current === voice.name
-                  const probeBusy = busy === `probe-${speaker}-${voice.name}`
-                  const saveBusy = busy === `save-${speaker}`
-                  return (
-                    <li key={voice.name} className={selected ? 'is-selected' : undefined}>
-                      <span>{voice.label}</span>
-                      <span className="film-cast-voice-actions">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          disabled={disabled || !!busy}
-                          onClick={() => void playPreview(speaker, voice.name, voice.gender)}
-                        >
-                          {probeBusy ? '…' : 'Probe'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={disabled || !!busy}
-                          onClick={() => void saveVoice(speaker, voice.name, voice.gender)}
-                        >
-                          {saveBusy && selected ? '…' : selected ? 'Gewählt' : 'Nehmen'}
-                        </button>
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="film-cast-voice-row">
+                <select
+                  className="input"
+                  value={selected?.name ?? ''}
+                  disabled={disabled || !!busy}
+                  onChange={(e) => {
+                    const voice = options.find((v) => v.name === e.target.value)
+                    if (voice) void saveVoice(speaker, voice.name, voice.gender)
+                  }}
+                >
+                  {options.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={disabled || !!busy || !selected}
+                  onClick={() =>
+                    selected && void playPreview(speaker, selected.name, selected.gender)
+                  }
+                >
+                  {busy === `probe-${speaker}` ? '…' : 'Probe'}
+                </button>
+              </div>
             </article>
           )
         })}
       </div>
-    </section>
+    </details>
   )
 }

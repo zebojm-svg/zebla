@@ -37,6 +37,7 @@ import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
   panelAddressee,
+  lineNativeDe,
   panelDialogueLines,
   panelSpeakLines,
   planBoardWithoutAi,
@@ -102,6 +103,7 @@ const dialog: Dialog = {
           speaker: 'Julien',
           text: 'Ein Geschenk!',
           cueImage: 'Julien steht im Park',
+          nativeText: 'Un cadeau !',
           birkenbihl: [{ text: 'Ein Geschenk!', translation: 'Un cadeau !' }],
         },
         { id: 'l2', speaker: 'Julien', text: 'Ich winke.', cueImage: 'Julien winkt' },
@@ -386,6 +388,23 @@ if (!talk.some((l) => l.speaker === 'Julien' && l.text.includes('Geschenk'))) {
 }
 if (!talk.some((l) => l.nativeDe?.includes('cadeau'))) {
   fail('Unter der Zielsprache die Übersetzung zeigen')
+}
+const biOnly = {
+  id: 'bx',
+  speaker: 'Ubai',
+  text: 'خسته‌ام',
+  birkenbihl: [
+    { text: 'خسته', translation: 'müde' },
+    { text: 'ام', translation: 'ich-bin' },
+  ],
+}
+if (lineNativeDe(biOnly)) {
+  fail('Board darf Birkenbihl-Wortfolge nicht als Deutsch zeigen')
+}
+if (
+  lineNativeDe({ ...biOnly, nativeText: 'Ubai ist müde.' }) !== 'Ubai ist müde.'
+) {
+  fail('Normale deutsche Übersetzung nutzen, mit lesbarem Namen')
 }
 const spoken = panelSpeakLines(s1[0]!, dialog)
 if (!spoken[0]?.text) fail('Szene abspielen braucht den gesprochenen Text')

@@ -3279,23 +3279,26 @@ html[dir='rtl'] .slideshow-topbar {
 
 @media (min-width: 720px) {
   .film-beat {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  }
-  .film-beat-notes {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(14rem, 1.1fr) minmax(16rem, 1.2fr);
   }
 }
 
-@media (min-width: 1100px) {
-  .film-beat {
-    grid-template-columns:
-      minmax(16rem, 1.15fr)
-      minmax(14rem, 1fr)
-      minmax(12rem, 0.85fr);
-  }
-  .film-beat-notes {
-    grid-column: auto;
-  }
+.film-beat-regie {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.film-beat-regie summary {
+  cursor: pointer;
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.film-beat-speaker {
+  margin: 0 0 0.25rem;
+  font-weight: 700;
+  color: var(--text-h);
 }
 
 .film-beat-col-label {
@@ -3389,16 +3392,36 @@ html[dir='rtl'] .slideshow-topbar {
   margin-top: 0.5rem;
 }
 
-.film-cast-voices {
-  margin: 0 0 1.5rem;
-  padding: 1rem;
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
+.film-cast-voices,
+.film-board-tools,
+.film-scene-more {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--surface);
+}
+
+.film-cast-voices summary,
+.film-board-tools summary,
+.film-scene-more summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #0f766e;
 }
 
 .film-cast-voices h2 {
   margin: 0 0 0.35rem;
+}
+
+.film-cast-voice-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.film-cast-voice-row select {
+  flex: 1;
 }
 
 .film-cast-voices-status {
