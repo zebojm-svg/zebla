@@ -510,6 +510,37 @@ export const api = {
         },
         FILM_PLAN_TIMEOUT_MS,
       ),
+    filmRemoveScene: (dialogId: string, sceneId: string, after = false) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-remove-scene', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, sceneId, after }),
+      }),
+    filmSceneDialog: (dialogId: string, sceneId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>(
+        '/film-scene-dialog',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, sceneId }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
+    filmSceneMusic: (dialogId: string) =>
+      request<{ cached: boolean; fallback: boolean; error?: string }>(
+        '/film-scene-music',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId }),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
+    filmSceneMusicAudio: (dialogId: string) =>
+      requestBlob(`/film-scene-music-audio?dialogId=${encodeURIComponent(dialogId)}`),
     filmSketch: (dialogId: string, panelId: string) =>
       request<{
         dialog: import('../types').Dialog

@@ -3682,8 +3682,16 @@ html[dir='rtl'] .slideshow-topbar {
 .film-scene-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.film-scene-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
 }
 
 .film-scene-pick {

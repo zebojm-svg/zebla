@@ -1,4 +1,5 @@
-import { chatJson } from './ai.js'
+import { chatJson, generateFilmSceneDialog } from './ai.js'
+import { newLineId } from './ids.js'
 import { listStoryAssets, saveStoryAsset } from './story-library.js'
 import { getDialog, updateDialog, type UserProfile } from './firestore.js'
 import type { Dialog } from '../shared/types.js'
@@ -14,6 +15,8 @@ import {
   panelWantsOwnStill,
   insertPanelAfter,
   insertSceneAfter,
+  removeScene,
+  removeScenesAfter,
   isFilmStoryboard,
   normalizeFilmStoryboard,
   panelAddressee,
@@ -404,6 +407,137 @@ export async function insertFilmScene(
   const board = insertSceneAfter(dialog.filmStoryboard, afterSceneId, title)
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board }
+}
+
+function pruneUnusedSections(
+  dialog: Dialog,
+  board: FilmStoryboard,
+  removedPanels: FilmStoryboardPanel[],
+): Dialog['sections'] {
+  const keptLineIds = new Set(board.panels.flatMap((p) => p.lineIds ?? []))
+  const removedLineIds = new Set(removedPanels.flatMap((p) => p.lineIds ?? []))
+  const removedSceneIds = new Set(removedPanels.map((p) => p.sceneId))
+  return dialog.sections.filter((section) => {
+    if (section.lines.some((l) => keptLineIds.has(l.id))) return true
+    if (removedSceneIds.has(section.id)) return false
+    if (section.lines.length > 0 && section.lines.every((l) => removedLineIds.has(l.id))) {
+      return false
+    }
+    return true
+  })
+}
+
+export async function removeFilmScene(
+  dialogId: string,
+  userId: string,
+  sceneId: string,
+  profile?: UserProfile | null,
+  opts?: { after?: boolean },
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const current = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const board = opts?.after ? removeScenesAfter(current, sceneId) : removeScene(current, sceneId)
+  if (board.scenes.length === current.scenes.length) {
+    throw new Error(
+      opts?.after
+        ? 'Danach kommt keine weitere Szene.'
+        : current.scenes.length <= 1
+          ? 'Die letzte Szene kann man nicht löschen.'
+          : 'Szene nicht gefunden.',
+    )
+  }
+  const removedPanels = current.panels.filter((p) => !board.panels.some((keep) => keep.id === p.id))
+  const sections = pruneUnusedSections(dialog, board, removedPanels)
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: normalizeFilmStoryboard(board), sections },
+    profile,
+  )
+  if (!updated) throw new Error('Szene konnte nicht entfernt werden.')
+  return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
+}
+
+export async function writeFilmSceneDialog(
+  dialogId: string,
+  userId: string,
+  sceneId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const current = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const scene = current.scenes.find((s) => s.id === sceneId)
+  if (!scene) throw new Error('Szene nicht gefunden.')
+  const sceneIdx = current.scenes.findIndex((s) => s.id === sceneId)
+  const earlier = current.scenes.slice(0, Math.max(0, sceneIdx)).map((s) => {
+    const section =
+      dialog.sections.find((sec) => sec.id === s.id) ||
+      dialog.sections[current.scenes.findIndex((x) => x.id === s.id)]
+    return {
+      title: s.title,
+      lines: (section?.lines ?? []).map((l) => ({ speaker: l.speaker, text: l.text })),
+    }
+  })
+  const speakers = [
+    ...new Set(dialog.sections.flatMap((s) => s.lines.map((l) => l.speaker.trim()).filter(Boolean))),
+  ]
+  const drafted = await generateFilmSceneDialog({
+    targetLanguage: dialog.targetLanguage,
+    sceneTitle: scene.title,
+    sceneNote: scene.noteDe,
+    filmPrompt: dialog.filmPrompt,
+    imageDirection: dialog.imageDirection,
+    earlier,
+    speakers,
+  })
+  const newLines = drafted.map((l) => ({
+    id: newLineId(),
+    speaker: l.speaker,
+    text: l.text,
+    cueImage: l.cueImage,
+  }))
+  const existingIdx = dialog.sections.findIndex((s) => s.id === sceneId)
+  const newSection = {
+    id: sceneId,
+    title: scene.title || `Szene ${sceneIdx + 1}`,
+    lines: newLines,
+  }
+  const sections =
+    existingIdx >= 0
+      ? dialog.sections.map((s, i) => (i === existingIdx ? newSection : s))
+      : [...dialog.sections, newSection]
+  const nextDialog = { ...dialog, sections }
+  const library = libraryForCompose(await listStoryAssets(userId))
+  const drafts = ensureCoverageDrafts({ ...nextDialog, sections: [newSection] }, [])
+  const rebuilt = buildBoardFromDrafts(
+    { ...nextDialog, sections: [newSection] },
+    drafts,
+    library,
+    'gemini',
+    current,
+  )
+  const oldWide = current.panels.find((p) => p.sceneId === sceneId && p.stillUrl)
+  const fresh = rebuilt.panels.map((p, i) => ({
+    ...p,
+    sceneId,
+    sceneIndex: sceneIdx,
+    stillUrl: i === 0 ? p.stillUrl || oldWide?.stillUrl : p.stillUrl,
+  }))
+  const board: FilmStoryboard = {
+    ...current,
+    panels: [...current.panels.filter((p) => p.sceneId !== sceneId), ...fresh],
+    updatedAt: new Date().toISOString(),
+  }
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: normalizeFilmStoryboard(board), sections },
+    profile,
+  )
+  if (!updated) throw new Error('Dialog der Szene konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
 }
 
 export async function sketchFilmPanel(

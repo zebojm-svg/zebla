@@ -21,6 +21,8 @@ import {
   expectedSceneShotCount,
   normalizeFilmStoryboard,
   panelDialogueLines,
+  sceneHasSpokenDialog,
+  sceneRepeatsEarlierDialog,
   sceneShotPlanDe,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
@@ -380,9 +382,16 @@ export function FilmStoryboardPage() {
             </div>
           </details>
 
-          {scenes.map((scene) => {
+          {scenes.map((scene, scenePos) => {
             const panels = board.panels.filter((p) => p.sceneId === scene.id)
             const checked = picked.includes(scene.id)
+            const earlier = scenes
+              .slice(0, scenePos)
+              .map((s) => board.panels.filter((p) => p.sceneId === s.id))
+            const hasTalk = sceneHasSpokenDialog(panels, dialog, scene.title)
+            const repeats = sceneRepeatsEarlierDialog(panels, dialog, scene.title, earlier)
+            const laterExist = scenePos < scenes.length - 1
+            const canRemove = scenes.length > 1
             return (
               <section key={scene.id} className="film-scene">
                 <header className="film-scene-head">
@@ -398,7 +407,61 @@ export function FilmStoryboardPage() {
                     />
                     <h2>{scene.title}</h2>
                   </label>
+                  <div className="film-scene-actions">
+                    {laterExist ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={locked}
+                        onClick={() => {
+                          const ok = window.confirm(
+                            'Geschichte nach dieser Szene beenden? Die folgenden Szenen werden entfernt.',
+                          )
+                          if (!ok) return
+                          void run(() => api.ai.filmRemoveScene(id, scene.id, true))
+                        }}
+                      >
+                        Geschichte hier beenden
+                      </button>
+                    ) : null}
+                    {canRemove && scenePos > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={locked}
+                        onClick={() => {
+                          const ok = window.confirm(`Szene «${scene.title}» entfernen?`)
+                          if (!ok) return
+                          void run(() => api.ai.filmRemoveScene(id, scene.id, false))
+                        }}
+                      >
+                        Szene entfernen
+                      </button>
+                    ) : null}
+                    {scenePos > 0 && (!hasTalk || repeats) ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={locked}
+                        onClick={() => void run(() => api.ai.filmSceneDialog(id, scene.id))}
+                      >
+                        Dialog für diese Szene schreiben
+                      </button>
+                    ) : null}
+                  </div>
                 </header>
+                {!hasTalk && scenePos > 0 ? (
+                  <p className="alert alert-warn">
+                    Kein eigener Dialog in dieser Szene. Entweder die Geschichte vorher beenden
+                    oder hier einen echten Dialog schreiben lassen.
+                  </p>
+                ) : null}
+                {repeats ? (
+                  <p className="alert alert-warn">
+                    Hier steht derselbe Dialog wie in einer früheren Szene. Entweder Szene
+                    entfernen oder einen neuen Dialog schreiben.
+                  </p>
+                ) : null}
                 <FilmScenePreviewPlayer
                   dialogId={dialog.id}
                   dialog={dialog}

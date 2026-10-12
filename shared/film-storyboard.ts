@@ -381,25 +381,55 @@ function speakersInSection(
   return fromDrafts
 }
 
-/** Gemini schreibt oft «1» oder den Szenentitel statt der echten Abschnitts-Id. */
-export function resolveDraftSectionId(dialog: Pick<Dialog, 'sections'>, raw?: string): string {
-  const fallback = dialog.sections[0]?.id || 'scene-1'
+function titlesOverlap(a: string, b: string): boolean {
+  const x = a.trim().toLowerCase()
+  const y = b.trim().toLowerCase()
+  if (!x || !y) return false
+  return x === y || x.includes(y) || y.includes(x)
+}
+
+/**
+ * Welcher Dialog-Abschnitt zu einem Szenen-Schlüssel gehört.
+ * Kein Fallback auf Szene 1 — sonst spricht Szene 2 denselben Text.
+ */
+export function matchDialogSection(
+  dialog: Pick<Dialog, 'sections'>,
+  raw?: string,
+  sceneIndex?: number,
+): DialogSection | undefined {
   const id = (raw ?? '').trim()
-  if (!id) return fallback
-  if (dialog.sections.some((s) => s.id === id)) return id
+  if (!id) return undefined
+  const exact = dialog.sections.find((s) => s.id === id)
+  if (exact) return exact
   const lower = id.toLowerCase()
   const byTitle = dialog.sections.find((s) => s.title.trim().toLowerCase() === lower)
-  if (byTitle) return byTitle.id
-  const byContains = dialog.sections.find((s) => {
-    const t = s.title.trim().toLowerCase()
-    return Boolean(t) && (lower.includes(t) || t.includes(lower))
-  })
-  if (byContains) return byContains.id
+  if (byTitle) return byTitle
+  if (id.length >= 4) {
+    const byContains = dialog.sections.find((s) => titlesOverlap(id, s.title))
+    if (byContains) {
+      const idx = dialog.sections.indexOf(byContains)
+      if (typeof sceneIndex === 'number' && sceneIndex > 0 && idx === 0 && sceneIndex !== idx) {
+        /* späteren Szenen nicht Szene 1 über den Titel unterschieben */
+      } else {
+        return byContains
+      }
+    }
+  }
   const n = Number(id)
   if (Number.isInteger(n) && n >= 1 && n <= dialog.sections.length) {
-    return dialog.sections[n - 1]!.id
+    if (typeof sceneIndex === 'number' && sceneIndex !== n - 1) return undefined
+    return dialog.sections[n - 1]
   }
-  return fallback
+  return undefined
+}
+
+/** Gemini schreibt oft «1» oder den Szenentitel statt der echten Abschnitts-Id. */
+export function resolveDraftSectionId(dialog: Pick<Dialog, 'sections'>, raw?: string): string {
+  const matched = matchDialogSection(dialog, raw)
+  if (matched) return matched.id
+  const id = (raw ?? '').trim()
+  if (id) return id
+  return dialog.sections[0]?.id || 'scene-1'
 }
 
 /** Bild-Notiz verlangt ein neues Standbild (sonst die vorige Zeile wiederverwenden). */
@@ -813,6 +843,34 @@ export function insertSceneAfter(
   }
 }
 
+export function removeScene(board: FilmStoryboard, sceneId: string): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  if (next.scenes.length <= 1) return next
+  const scenes = next.scenes.filter((s) => s.id !== sceneId)
+  if (scenes.length === next.scenes.length) return next
+  const panels = next.panels.filter((p) => p.sceneId !== sceneId)
+  return {
+    ...next,
+    scenes: scenes.length ? scenes : next.scenes,
+    panels,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+/** Alle Szenen nach dieser — Geschichte hier beenden. */
+export function removeScenesAfter(board: FilmStoryboard, sceneId: string): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  const idx = next.scenes.findIndex((s) => s.id === sceneId)
+  if (idx < 0 || idx >= next.scenes.length - 1) return next
+  const keep = new Set(next.scenes.slice(0, idx + 1).map((s) => s.id))
+  return {
+    ...next,
+    scenes: next.scenes.filter((s) => keep.has(s.id)),
+    panels: next.panels.filter((p) => keep.has(p.sceneId)),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 export function insertPanelAfter(
   board: FilmStoryboard,
   afterPanelId: string,
@@ -949,13 +1007,14 @@ export function lineForFilmPanel(
   sceneTitle?: string,
 ): DialogLine | undefined {
   if (!dialog?.sections.length) return undefined
+  const peers = scenePanels?.length ? scenePanels : [panel]
+  const sceneLines = dialogLinesForPanels(peers, dialog, sceneTitle)
+  const allowed = new Set(sceneLines.map((l) => l.id))
   const byId = allDialogLines(dialog)
   for (const id of panel.lineIds ?? []) {
     const line = byId.get(id)
-    if (line?.text.trim()) return line
+    if (line?.text.trim() && allowed.has(line.id)) return line
   }
-  const peers = scenePanels?.length ? scenePanels : [panel]
-  const sceneLines = dialogLinesForPanels(peers, dialog, sceneTitle)
   if (sceneLines.length === 0) return undefined
   const idx = peers.findIndex((p) => p.id === panel.id)
   if (idx >= 0 && sceneLines[idx]) return sceneLines[idx]
@@ -1032,6 +1091,41 @@ export interface FilmPlayBeat {
   lineTotal: number
 }
 
+export function dialogLineFingerprint(
+  lines: Array<Pick<DialogLine, 'speaker' | 'text'>>,
+): string {
+  return lines
+    .map((l) => `${l.speaker.trim()}\t${l.text.trim()}`)
+    .filter((row) => row.trim())
+    .join('\n')
+}
+
+function sceneLookupKeys(
+  panels: FilmStoryboardPanel[],
+  sceneTitle?: string,
+): string[] {
+  return [
+    ...new Set(
+      [...panels.map((p) => p.sectionId), ...panels.map((p) => p.sceneId), sceneTitle].filter(
+        (k): k is string => Boolean(k?.trim()),
+      ),
+    ),
+  ]
+}
+
+function claimedDialogSection(
+  panels: FilmStoryboardPanel[],
+  dialog: Pick<Dialog, 'sections'>,
+  sceneTitle?: string,
+): DialogSection | undefined {
+  const sceneIndex = panels[0]?.sceneIndex
+  for (const key of sceneLookupKeys(panels, sceneTitle)) {
+    const section = matchDialogSection(dialog, key, sceneIndex)
+    if (section) return section
+  }
+  return undefined
+}
+
 function dialogLinesForPanels(
   panels: FilmStoryboardPanel[],
   dialog?: Pick<Dialog, 'sections'> | null,
@@ -1047,44 +1141,64 @@ function dialogLinesForPanels(
     out.push(line)
   }
 
-  for (const panel of panels) {
-    for (const id of panel.lineIds ?? []) add(byId.get(id))
-  }
-  if (out.length > 0) return out
-
-  const keys = [
-    ...new Set(
-      [...panels.map((p) => p.sectionId), ...panels.map((p) => p.sceneId), sceneTitle].filter(
-        (k): k is string => Boolean(k?.trim()),
-      ),
-    ),
-  ]
-  for (const key of keys) {
-    const resolved = resolveDraftSectionId(dialog, key)
-    const section = dialog.sections.find((s) => s.id === key || s.id === resolved)
-    if (!section) continue
-    for (const line of section.lines) add(line)
-  }
-  if (out.length > 0) return out
+  const claimed = claimedDialogSection(panels, dialog, sceneTitle)
+  const sceneIndex = panels[0]?.sceneIndex ?? 0
 
   for (const panel of panels) {
-    const cap = panel.caption.trim()
-    const match = cap.match(/^([^:]{1,48}):\s+(.+)$/)
-    if (!match) continue
-    const speaker = match[1]!.trim()
-    const text = match[2]!.trim()
-    const all = dialog.sections.flatMap((s) => s.lines)
-    add(
-      all.find((l) => l.speaker.trim() === speaker && l.text.trim() === text) ||
-        all.find((l) => l.text.trim() === text),
-    )
+    for (const id of panel.lineIds ?? []) {
+      const line = byId.get(id)
+      if (!line) continue
+      if (claimed && !claimed.lines.some((l) => l.id === line.id)) continue
+      if (!claimed && sceneIndex > 0) continue
+      add(line)
+    }
   }
   if (out.length > 0) return out
 
-  const idx = Math.max(0, panels[0]?.sceneIndex ?? 0)
-  const fallback = dialog.sections[Math.min(idx, dialog.sections.length - 1)]
-  for (const line of fallback?.lines ?? []) add(line)
+  if (claimed) {
+    for (const line of claimed.lines) add(line)
+    return out
+  }
+
   return out
+}
+
+export function sceneSpokenLines(
+  panels: FilmStoryboardPanel[],
+  dialog?: Pick<Dialog, 'sections'> | null,
+  sceneTitle?: string,
+): DialogLine[] {
+  return dialogLinesForPanels(panels, dialog, sceneTitle)
+}
+
+export function sceneHasSpokenDialog(
+  panels: FilmStoryboardPanel[],
+  dialog?: Pick<Dialog, 'sections'> | null,
+  sceneTitle?: string,
+): boolean {
+  return dialogLinesForPanels(panels, dialog, sceneTitle).some((l) => l.text.trim())
+}
+
+/** Spätere Szene zeigt denselben Text wie eine frühere — kein neuer Dialog. */
+export function sceneRepeatsEarlierDialog(
+  panels: FilmStoryboardPanel[],
+  dialog?: Pick<Dialog, 'sections'> | null,
+  sceneTitle?: string,
+  earlierPanels: FilmStoryboardPanel[][] = [],
+): boolean {
+  const lines = dialogLinesForPanels(panels, dialog, sceneTitle)
+  if (lines.length === 0) return false
+  const fp = dialogLineFingerprint(lines)
+  for (const earlier of earlierPanels) {
+    const prev = dialogLinesForPanels(earlier, dialog)
+    if (prev.length > 0 && dialogLineFingerprint(prev) === fp) return true
+  }
+  const idx = panels[0]?.sceneIndex ?? 0
+  for (let i = 0; i < Math.min(idx, dialog?.sections.length ?? 0); i++) {
+    const section = dialog?.sections[i]
+    if (section && dialogLineFingerprint(section.lines) === fp) return true
+  }
+  return false
 }
 
 export function scenePlayBeats(

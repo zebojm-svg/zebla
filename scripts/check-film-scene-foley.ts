@@ -49,7 +49,16 @@ const bedSrc = readFileSync(new URL('../src/story/sceneBedMusic.ts', import.meta
 if (!bedSrc.includes('foleyBus')) fail('Knistern braucht einen eigenen Bus, nicht das leise Pad')
 if (!bedSrc.includes('SCENE_FOLEY_GAIN')) fail('Foley-Lautstärke aus der gemeinsamen Konstante')
 if (!bedSrc.includes('SCENE_VOICE_GAIN')) fail('Dialog-Lautstärke aus der gemeinsamen Konstante')
-if (!bedSrc.includes('PHRASE')) fail('Persische Figur, nicht nur eine Drohne')
+if (!bedSrc.includes('PHRASE')) fail('Persische Figur bleibt der Fallback, nicht nur eine Drohne')
+if (!bedSrc.includes('loadBed')) fail('KI-Musik-Schleife laden')
+if (!bedSrc.includes('loop')) fail('KI-Musik muss loopen, nicht einmalig piepsen')
 if (bedSrc.includes('130.81')) fail('Alte C-Dur-Drohne darf nicht die Musik sein')
+if (!previewSrc.includes('filmSceneMusic')) fail('Szene abspielen holt die KI-Musik')
+if (!previewSrc.includes('loadBed')) fail('Szene abspielen legt die KI-Musik auf den Bus')
+
+const lyriaSrc = readFileSync(new URL('../lib/scene-bed.ts', import.meta.url), 'utf8')
+if (!lyriaSrc.includes('lyria-3-clip-preview')) fail('Szenenmusik kommt von Lyria, nicht vom Oszillator')
+if (!lyriaSrc.includes('No vocals')) fail('Szenenmusik ohne Gesang')
+if (!lyriaSrc.includes('Not 8-bit')) fail('Szenenmusik darf nicht nach Game Boy klingen')
 
 console.log('OK: Szenen-Geräusche aus der Ton-Notiz')

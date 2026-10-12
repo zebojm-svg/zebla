@@ -264,7 +264,9 @@ JSON:
     }
   ]
 }
-Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.`,
+Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.
+Jede Szene braucht NEUEN gesprochenen Dialog, der die Geschichte weiterführt — niemals denselben Text der vorigen Szene wiederholen.
+Wenn die Handlung nach der ersten Szene fertig ist, keine weiteren Szenen anlegen.`
     `${prompt.trim()}${extra}`,
   )
 
@@ -292,6 +294,64 @@ Mehrere Szenen erlaubt. Figuren mit klaren Namen. Länge unbegrenzt — so viel 
     soundDirection: result.soundDirection?.trim(),
     speechDirection: result.speechDirection?.trim(),
   }
+}
+
+/** Echten Dialog für eine spätere Film-Szene — nicht den Text von Szene 1 kopieren. */
+export async function generateFilmSceneDialog(opts: {
+  targetLanguage: string
+  sceneTitle: string
+  sceneNote?: string
+  filmPrompt?: string
+  imageDirection?: string
+  earlier: Array<{ title: string; lines: Array<{ speaker: string; text: string }> }>
+  speakers: string[]
+}): Promise<Array<{ speaker: string; text: string; cueImage?: string }>> {
+  const earlierBlock = opts.earlier
+    .map((scene) => {
+      const lines = scene.lines.map((l) => `- ${l.speaker}: ${l.text}`).join('\n')
+      return `Schon gespielt — «${scene.title}»:\n${lines || '(kein Dialog)'}`
+    })
+    .join('\n\n')
+  const names = opts.speakers.filter(Boolean).join(', ') || 'die Figuren aus dem Prompt'
+  const result = await chatJson<{
+    lines?: Array<{ speaker?: string; text?: string; cueImage?: string }>
+  }>(
+    `Du schreibst den gesprochenen Dialog der NÄCHSTEN Szene eines Sprachlern-Films.
+Sprache der Zeilen: ${opts.targetLanguage}.
+Dieselben Figuren (${names}), neue Sätze. Die Geschichte geht weiter.
+Niemals den vorigen Dialog wörtlich oder fast wörtlich wiederholen.
+Originalfiguren, kein Petit Nicolas.
+6–14 kurze Zeilen, wechselnde Sprecher.
+JSON: { "lines": [ { "speaker": "Name", "text": "Satz", "cueImage": "kurz was man sieht" } ] }`,
+    [
+      opts.filmPrompt ? `Film-Prompt:\n${opts.filmPrompt.trim()}` : '',
+      opts.imageDirection ? `Bild-Regie: ${opts.imageDirection}` : '',
+      `Diese Szene: «${opts.sceneTitle}»`,
+      opts.sceneNote ? `Szenennotiz: ${opts.sceneNote}` : '',
+      earlierBlock,
+      'Schreibe nur den neuen Dialog dieser Szene.',
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+  )
+  const lines = (result.lines ?? [])
+    .map((l) => ({
+      speaker: (l.speaker ?? '').trim() || 'Sprecher',
+      text: (l.text ?? '').trim(),
+      cueImage: (l.cueImage ?? '').trim() || undefined,
+    }))
+    .filter((l) => l.text)
+  if (lines.length === 0) {
+    throw new Error('Die KI hat für diese Szene keinen Dialog geliefert.')
+  }
+  const earlierFp = new Set(
+    opts.earlier.flatMap((s) => s.lines.map((l) => `${l.speaker.trim()}\t${l.text.trim()}`)),
+  )
+  const unique = lines.filter((l) => !earlierFp.has(`${l.speaker}\t${l.text}`))
+  if (unique.length < 2) {
+    throw new Error('Die KI hat denselben Dialog wie zuvor geliefert. Bitte noch einmal versuchen.')
+  }
+  return unique
 }
 
 export async function generateDialogFromTopic(

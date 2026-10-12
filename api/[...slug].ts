@@ -126,7 +126,9 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
+import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
@@ -1872,6 +1874,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         profile,
       )
       res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-remove-scene' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, sceneId, after } = req.body as {
+        dialogId?: string
+        sceneId?: string
+        after?: boolean
+      }
+      if (!dialogId?.trim() || !sceneId?.trim()) {
+        res.status(400).json({ error: 'dialogId und sceneId fehlen.' })
+        return
+      }
+      const result = await removeFilmScene(
+        dialogId.trim(),
+        user.uid,
+        sceneId.trim(),
+        profile,
+        { after: Boolean(after) },
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-scene-dialog' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, sceneId } = req.body as { dialogId?: string; sceneId?: string }
+      if (!dialogId?.trim() || !sceneId?.trim()) {
+        res.status(400).json({ error: 'dialogId und sceneId fehlen.' })
+        return
+      }
+      const result = await writeFilmSceneDialog(
+        dialogId.trim(),
+        user.uid,
+        sceneId.trim(),
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-scene-music' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const { dialogId } = req.body as { dialogId?: string }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      if (!(await sceneBedExists(dialogId.trim()))) await gateAi(user.uid)
+      const result = await getOrCreateSceneBed(dialogId.trim(), user.uid)
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-scene-music-audio' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const dialogId = req.query.dialogId as string | undefined
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const dialog = await getDialog(dialogId.trim(), user.uid)
+      if (!dialog) {
+        res.status(404).json({ error: 'Dialog nicht gefunden.' })
+        return
+      }
+      try {
+        const buffer = await readSceneBed(dialogId.trim())
+        res.setHeader('Content-Type', 'audio/mpeg')
+        res.setHeader('Cache-Control', 'private, max-age=3600')
+        res.send(buffer)
+      } catch {
+        res.status(404).json({ error: 'Keine Szenenmusik.' })
+      }
       return
     }
 

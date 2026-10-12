@@ -47,10 +47,13 @@ export function FilmScenePreviewPlayer({
   const [waitingVoice, setWaitingVoice] = useState(false)
   const [playError, setPlayError] = useState<string | null>(null)
   const [musicOn, setMusicOn] = useState(true)
+  const [musicKind, setMusicKind] = useState<'ki' | 'einfach'>('einfach')
+  const [waitingMusic, setWaitingMusic] = useState(false)
   const runId = useRef(0)
   const cancelled = useRef(false)
   const musicOnRef = useRef(true)
   const musicRef = useRef<ReturnType<typeof createSceneBedMusic> | null>(null)
+  const bedReady = useRef(false)
 
   musicOnRef.current = musicOn
 
@@ -103,6 +106,7 @@ export function FilmScenePreviewPlayer({
     stop()
     musicRef.current?.pause()
     setWaitingVoice(false)
+    setWaitingMusic(false)
     setPlaying(false)
   }
 
@@ -146,6 +150,27 @@ export function FilmScenePreviewPlayer({
     await speakFrom([speakLine], buildSpeakerIndexMap([speakLine]), 0, 0.95, false)
   }
 
+  const ensureKiBed = async () => {
+    if (bedReady.current) return
+    const bed = getMusic()
+    setWaitingMusic(true)
+    try {
+      const result = await api.ai.filmSceneMusic(dialogId)
+      if (result.fallback) {
+        setMusicKind('einfach')
+        return
+      }
+      const blob = await api.ai.filmSceneMusicAudio(dialogId)
+      const ok = await bed.loadBed(await blob.arrayBuffer())
+      bedReady.current = ok
+      setMusicKind(ok ? 'ki' : 'einfach')
+    } catch {
+      setMusicKind('einfach')
+    } finally {
+      setWaitingMusic(false)
+    }
+  }
+
   const play = async (from: number) => {
     const id = ++runId.current
     cancelled.current = false
@@ -154,6 +179,8 @@ export function FilmScenePreviewPlayer({
     setPlaying(true)
     const bed = getMusic()
     await bed.prepare()
+    if (musicOnRef.current) await ensureKiBed()
+    if (cancelled.current || id !== runId.current) return
     const foley = foleyFlagsFromNote(soundNote)
     if (musicOnRef.current) await bed.start(foley)
     for (let i = from; i < beats.length; i++) {
@@ -215,7 +242,12 @@ export function FilmScenePreviewPlayer({
     const next = !musicOn
     setMusicOn(next)
     if (playing || speaking) {
-      if (next) void getMusic().start(foleyFlagsFromNote(soundNote))
+      if (next) {
+        void (async () => {
+          await ensureKiBed()
+          await getMusic().start(foleyFlagsFromNote(soundNote))
+        })()
+      }
       else musicRef.current?.pauseBed()
     }
   }
@@ -230,11 +262,16 @@ export function FilmScenePreviewPlayer({
       </p>
       <p className="muted film-scene-player-voice">
         {voiceLabel}
-        {musicOn ? ' · Musik an' : ' · Musik aus'}
+        {musicOn ? (musicKind === 'ki' ? ' · KI-Musik an' : ' · Musik an') : ' · Musik aus'}
         {soundNote ? ` · ${soundNote}` : ''}
       </p>
       {ttsError ? <div className="alert alert-error">{ttsError}</div> : null}
       {playError ? <div className="alert alert-warn">{playError}</div> : null}
+      {waitingMusic ? (
+        <p className="film-scene-player-wait">
+          Musik wird vorbereitet — beim ersten Mal etwa eine Minute, dann kommt die Szene.
+        </p>
+      ) : null}
       {waitingVoice ? (
         <p className="film-scene-player-wait">Stimme wird vorbereitet — bitte warten, dann kommt der Dialog.</p>
       ) : null}

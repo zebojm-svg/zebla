@@ -20,6 +20,7 @@ function audioContextCtor(): (new () => AudioContext) | null {
 
 export type SceneBedMusic = {
   prepare: () => Promise<boolean>
+  loadBed: (data: ArrayBuffer) => Promise<boolean>
   start: (opts?: { crackle?: boolean; city?: boolean }) => Promise<void>
   decodeVoice: (data: ArrayBuffer) => Promise<AudioBuffer>
   playVoice: (buffer: AudioBuffer, rate?: number) => Promise<void>
@@ -47,6 +48,8 @@ export function createSceneBedMusic(): SceneBedMusic {
   let voiceGen = 0
   let voiceSrc: AudioBufferSourceNode | null = null
   let keepAlive: OscillatorNode | null = null
+  let loopBuf: AudioBuffer | null = null
+  let loopSrc: AudioBufferSourceNode | null = null
 
   function ensure(): boolean {
     if (ctx && ctx.state !== 'closed') return true
@@ -232,8 +235,34 @@ export function createSceneBedMusic(): SceneBedMusic {
     musicTimer = window.setTimeout(schedulePhrase, 7200 + Math.random() * 2200)
   }
 
+  function stopLoop() {
+    if (loopSrc) {
+      try {
+        loopSrc.stop()
+      } catch {
+        /* already stopped */
+      }
+      loopSrc = null
+    }
+  }
+
+  function spawnLoop() {
+    if (!ctx || !master || padOn || !loopBuf) return
+    const src = ctx.createBufferSource()
+    src.buffer = loopBuf
+    src.loop = true
+    src.connect(master)
+    src.start()
+    loopSrc = src
+    padOn = true
+  }
+
   function spawnPad() {
     if (!ctx || !master || padOn) return
+    if (loopBuf) {
+      spawnLoop()
+      return
+    }
     for (const voice of DRONE) {
       const osc = ctx.createOscillator()
       osc.type = 'sine'
@@ -267,6 +296,17 @@ export function createSceneBedMusic(): SceneBedMusic {
     return ctx.state !== 'closed'
   }
 
+  async function loadBed(data: ArrayBuffer): Promise<boolean> {
+    if (!(await prepare()) || !ctx) return false
+    try {
+      loopBuf = await ctx.decodeAudioData(data.slice(0))
+      return Boolean(loopBuf && loopBuf.duration > 0.4)
+    } catch {
+      loopBuf = null
+      return false
+    }
+  }
+
   async function start(opts?: { crackle?: boolean; city?: boolean }) {
     wantCrackle = Boolean(opts?.crackle)
     wantCity = Boolean(opts?.city)
@@ -277,7 +317,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     audible = true
     clearCrackleTimer()
     clearMusicTimer()
-    schedulePhrase()
+    if (!loopBuf) schedulePhrase()
     if (wantCrackle) scheduleCrackle()
     fadeGain(master, SCENE_PAD_GAIN, 0.7)
     fadeGain(foleyBus, wantCity || wantCrackle ? SCENE_FOLEY_GAIN : 0, 0.12)
@@ -344,6 +384,8 @@ export function createSceneBedMusic(): SceneBedMusic {
     clearCrackleTimer()
     clearMusicTimer()
     stopCity()
+    stopLoop()
+    padOn = false
   }
 
   function pause() {
@@ -363,6 +405,8 @@ export function createSceneBedMusic(): SceneBedMusic {
     clearCrackleTimer()
     clearMusicTimer()
     stopCity()
+    stopLoop()
+    loopBuf = null
     stopList(padNodes)
     if (keepAlive) {
       try {
@@ -390,5 +434,5 @@ export function createSceneBedMusic(): SceneBedMusic {
     foleyBus = null
   }
 
-  return { prepare, start, decodeVoice, playVoice, stopVoice, pauseBed, pause, stop, dispose }
+  return { prepare, loadBed, start, decodeVoice, playVoice, stopVoice, pauseBed, pause, stop, dispose }
 }

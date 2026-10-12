@@ -13,10 +13,17 @@ import {
   inferExpression,
   inferPoseId,
   insertPanelAfter,
+  insertSceneAfter,
   matchBackground,
   matchCharacterPose,
+  matchDialogSection,
   planBoardWithoutAi,
+  removeScene,
+  removeScenesAfter,
   resolveDraftSectionId,
+  sceneHasSpokenDialog,
+  scenePlayBeats,
+  sceneRepeatsEarlierDialog,
   sceneShotPlanDe,
 } from '../shared/film-storyboard.ts'
 import type { Dialog } from '../shared/types.ts'
@@ -215,6 +222,47 @@ if (resolveDraftSectionId(four, 'Ankunft und Begrüßung') !== 'ankunft') {
 if (resolveDraftSectionId(four, 'Szene 1: Ankunft und Begrüßung') !== 'ankunft') {
   fail('«Szene 1: …» trifft denselben Abschnitt')
 }
+if (matchDialogSection(four, 'scene-xyz')) fail('unbekannte Szene darf nicht Abschnitt 1 klauen')
+if (resolveDraftSectionId(four, 'scene-xyz') === 'ankunft') {
+  fail('unpassende Id bleibt eigen, kein Fallback auf Szene 1')
+}
+if (matchDialogSection(four, '2', 1)) fail('Szene 2 ohne zweiten Abschnitt hat keinen Dialog')
+if (matchDialogSection(four, '1', 1)) fail('Zahl 1 gilt nicht für die zweite Szene')
+
+const extraBoard = insertSceneAfter(fourBoard, fourBoard.scenes[0]!.id, 'Szene 2')
+const extraId = extraBoard.scenes[1]?.id
+if (!extraId) fail('zweite Szene einfügen')
+const extraPanels = extraBoard.panels.filter((p) => p.sceneId === extraId)
+if (sceneHasSpokenDialog(extraPanels, four, 'Szene 2')) {
+  fail('neue Szene spricht nicht den Dialog von Szene 1')
+}
+if (scenePlayBeats(extraPanels, four, 'Szene 2').some((b) => b.line)) {
+  fail('Abspielen der leeren Szene bleibt stumm')
+}
+const stolen = extraPanels.map((p) => ({ ...p, lineIds: ['a', 'b'], sceneIndex: 1 }))
+if (sceneHasSpokenDialog(stolen, four, 'Szene 2')) {
+  fail('Zeilen-Ids von Szene 1 gehören nicht in Szene 2')
+}
+const dupFour: Dialog = {
+  ...four,
+  sections: [
+    four.sections[0]!,
+    {
+      id: extraId,
+      title: 'Szene 2',
+      lines: four.sections[0]!.lines.map((l, i) => ({ ...l, id: `copy-${i}` })),
+    },
+  ],
+}
+const dupPanels = extraPanels.map((p) => ({ ...p, sectionId: extraId, sceneId: extraId, sceneIndex: 1 }))
+if (!sceneRepeatsEarlierDialog(dupPanels, dupFour, 'Szene 2', [fourBoard.panels])) {
+  fail('kopierter Dialog gilt als Wiederholung')
+}
+const trimmed = removeScene(extraBoard, extraId)
+if (trimmed.scenes.length !== 1) fail('Szene entfernen lässt Szene 1')
+const withThird = insertSceneAfter(extraBoard, extraId, 'Szene 3')
+const ended = removeScenesAfter(withThird, fourBoard.scenes[0]!.id)
+if (ended.scenes.length !== 1) fail('Geschichte hier beenden entfernt die folgenden Szenen')
 
 const unnamed: Dialog = {
   ...dialog,

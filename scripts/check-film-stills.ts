@@ -680,6 +680,26 @@ if (fromLineIds.filter((b) => !b.establishing).map((b) => b.line?.lineId).join()
   fail('Abspielen nimmt die Zeilen-Ids am Bild, nicht nur die Abschnitts-Id')
 }
 
+const laterStolen = s1.map((p) => ({
+  ...p,
+  id: `later-${p.id}`,
+  sceneId: 'scene-extra',
+  sectionId: 'scene-extra',
+  sceneIndex: 1,
+  stillUrl: undefined,
+}))
+const laterPlay = scenePlayBeats(laterStolen, dialog, 'Noch auf der Strasse')
+if (laterPlay.some((b) => b.line)) {
+  fail('Eine Extra-Szene darf den Dialog von Szene 1 nicht nochmal sprechen')
+}
+const scene2 = dialog.sections[1]
+if (!scene2) fail('Testdialog braucht Szene 2')
+const scene2Panels = panelsForScene(board, board.scenes[1]!.id)
+const scene2Play = scenePlayBeats(scene2Panels, dialog, scene2.title)
+if (!scene2Play.some((b) => b.line?.text === 'Hallo')) {
+  fail('Eigener Dialog von Szene 2 bleibt erhalten')
+}
+
 const noteOnly = {
   ...s1[0]!,
   caption: 'Ubai ist müde, aber erleichtert angekommen zu sein',
