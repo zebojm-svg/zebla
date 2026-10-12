@@ -202,6 +202,9 @@ if (geminiWrongId.length !== 4) fail('Gemini-Id 1 wird auf den Abschnitt gemappt
 if (resolveDraftSectionId(four, 'Ankunft und Begrüßung') !== 'ankunft') {
   fail('Szenentitel auf Abschnitts-Id')
 }
+if (resolveDraftSectionId(four, 'Szene 1: Ankunft und Begrüßung') !== 'ankunft') {
+  fail('«Szene 1: …» trifft denselben Abschnitt')
+}
 
 const unnamed: Dialog = {
   ...dialog,

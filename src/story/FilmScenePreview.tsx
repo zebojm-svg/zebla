@@ -28,7 +28,7 @@ export function FilmScenePreviewPlayer({
   panels,
   onDialogUpdated,
 }: Props) {
-  const beats = scenePlayBeats(panels, dialog)
+  const beats = scenePlayBeats(panels, dialog, scene.title)
   const hasPicture = beats.some((b) => Boolean(b.stillUrl))
   const {
     speakFrom,
