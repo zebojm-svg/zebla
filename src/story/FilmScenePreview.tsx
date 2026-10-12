@@ -84,10 +84,14 @@ export function FilmScenePreviewPlayer({
     panels.find((p) => p.stillUrl && p.stillUrl === current?.stillUrl)
   const spokenBeats = beats.filter((b) => !b.establishing)
   const nowLine = current?.establishing ? undefined : current?.line
-  const soundNote =
-    panels.map((p) => p.soundCue?.trim()).find(Boolean) ||
-    dialog.soundDirection?.trim() ||
-    ''
+  const soundNote = [
+    dialog.soundDirection,
+    scene.noteDe,
+    ...panels.map((p) => p.soundCue),
+  ]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(' · ')
   const nativeName =
     !dialog.sourceLanguage || dialog.sourceLanguage === 'de'
       ? 'Deutsch'
@@ -226,7 +230,7 @@ export function FilmScenePreviewPlayer({
       </p>
       <p className="muted film-scene-player-voice">
         {voiceLabel}
-        {musicOn ? ' · Hintergrund an' : ' · Hintergrund aus'}
+        {musicOn ? ' · Musik an' : ' · Musik aus'}
         {soundNote ? ` · ${soundNote}` : ''}
       </p>
       {ttsError ? <div className="alert alert-error">{ttsError}</div> : null}
@@ -318,10 +322,10 @@ export function FilmScenePreviewPlayer({
           type="button"
           className="btn btn-secondary"
           aria-pressed={musicOn}
-          title="Leise Hintergrundmusik"
+          title="Leise persische Musik"
           onClick={onMusicToggle}
         >
-          {musicOn ? 'Hintergrund aus' : 'Hintergrund an'}
+          {musicOn ? 'Musik aus' : 'Musik an'}
         </button>
       </div>
     </div>

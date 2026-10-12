@@ -1,4 +1,4 @@
-/** Leise Hintergrundmusik, Foley und Dialogstimme in der Szenen-Vorschau (Web Audio). */
+/** Leise persische Figur (Santur-artig), Foley und Dialogstimme in der Szenen-Vorschau. */
 
 import {
   SCENE_FOLEY_GAIN,
@@ -6,21 +6,12 @@ import {
   SCENE_VOICE_GAIN,
 } from '../../shared/film-scene-foley'
 
-type PadVoice = {
-  freq: number
-  type: OscillatorType
-  gain: number
-  detune: number
-}
-
-const PAD: PadVoice[] = [
-  { freq: 130.81, type: 'triangle', gain: 0.5, detune: -7 },
-  { freq: 130.81, type: 'sine', gain: 0.38, detune: 9 },
-  { freq: 196.0, type: 'sine', gain: 0.32, detune: -5 },
-  { freq: 164.81, type: 'sine', gain: 0.16, detune: 4 },
-  { freq: 261.63, type: 'triangle', gain: 0.1, detune: 0 },
-  { freq: 392.0, type: 'sine', gain: 0.05, detune: 2 },
+/** D-Schur, angenähert — keine westliche C-Dur-Drohne. */
+const DRONE = [
+  { freq: 146.83, gain: 0.18 },
+  { freq: 220.0, gain: 0.1 },
 ]
+const PHRASE = [293.66, 349.23, 392.0, 466.16, 392.0, 349.23, 311.13, 293.66]
 
 function audioContextCtor(): (new () => AudioContext) | null {
   const w = window as typeof window & { webkitAudioContext?: typeof AudioContext }
@@ -46,8 +37,10 @@ export function createSceneBedMusic(): SceneBedMusic {
   let padOn = false
   let audible = false
   const padNodes: OscillatorNode[] = []
+  const cityNodes: AudioNode[] = []
   const foleyNodes: AudioNode[] = []
   let crackleTimer: number | null = null
+  let musicTimer: number | null = null
   let wantCrackle = false
   let wantCity = false
   let cityOn = false
@@ -89,6 +82,13 @@ export function createSceneBedMusic(): SceneBedMusic {
     if (crackleTimer != null) {
       window.clearTimeout(crackleTimer)
       crackleTimer = null
+    }
+  }
+
+  function clearMusicTimer() {
+    if (musicTimer != null) {
+      window.clearTimeout(musicTimer)
+      musicTimer = null
     }
   }
 
@@ -158,8 +158,22 @@ export function createSceneBedMusic(): SceneBedMusic {
     lp.connect(g)
     g.connect(foleyBus)
     src.start()
-    foleyNodes.push(src, lp, g)
+    cityNodes.push(src, lp, g)
     cityOn = true
+  }
+
+  function stopCity() {
+    for (const n of cityNodes) {
+      try {
+        if ('stop' in n && typeof (n as AudioBufferSourceNode).stop === 'function') {
+          ;(n as AudioBufferSourceNode).stop()
+        }
+      } catch {
+        /* already stopped */
+      }
+    }
+    cityNodes.length = 0
+    cityOn = false
   }
 
   function stopList(list: OscillatorNode[], when?: number) {
@@ -174,33 +188,60 @@ export function createSceneBedMusic(): SceneBedMusic {
     list.length = 0
   }
 
+  function pluck(freq: number, when: number, amp: number) {
+    if (!ctx || !master || !audible) return
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = freq
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, when)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.002, amp), when + 0.012)
+    g.gain.exponentialRampToValueAtTime(0.0001, when + 1.4)
+    osc.connect(g)
+    g.connect(master)
+    osc.start(when)
+    osc.stop(when + 1.45)
+    padNodes.push(osc)
+    osc.onended = () => {
+      const i = padNodes.indexOf(osc)
+      if (i >= 0) padNodes.splice(i, 1)
+    }
+
+    const harm = ctx.createOscillator()
+    harm.type = 'sine'
+    harm.frequency.value = freq * 2.002
+    const hg = ctx.createGain()
+    hg.gain.setValueAtTime(0.0001, when)
+    hg.gain.exponentialRampToValueAtTime(amp * 0.2, when + 0.01)
+    hg.gain.exponentialRampToValueAtTime(0.0001, when + 0.55)
+    harm.connect(hg)
+    hg.connect(master)
+    harm.start(when)
+    harm.stop(when + 0.6)
+    padNodes.push(harm)
+    harm.onended = () => {
+      const i = padNodes.indexOf(harm)
+      if (i >= 0) padNodes.splice(i, 1)
+    }
+  }
+
+  function schedulePhrase() {
+    if (!ctx || !audible) return
+    const t0 = ctx.currentTime + 0.04
+    PHRASE.forEach((freq, i) => pluck(freq, t0 + i * 0.68, 0.55))
+    musicTimer = window.setTimeout(schedulePhrase, 7200 + Math.random() * 2200)
+  }
+
   function spawnPad() {
     if (!ctx || !master || padOn) return
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = 400
-    filter.Q.value = 0.65
-    filter.connect(master)
-
-    const lfo = ctx.createOscillator()
-    lfo.type = 'sine'
-    lfo.frequency.value = 0.06
-    const lfoGain = ctx.createGain()
-    lfoGain.gain.value = 80
-    lfo.connect(lfoGain)
-    lfoGain.connect(filter.frequency)
-    lfo.start()
-    padNodes.push(lfo)
-
-    for (const voice of PAD) {
+    for (const voice of DRONE) {
       const osc = ctx.createOscillator()
-      osc.type = voice.type
+      osc.type = 'sine'
       osc.frequency.value = voice.freq
-      osc.detune.value = voice.detune
       const g = ctx.createGain()
       g.gain.value = voice.gain
       osc.connect(g)
-      g.connect(filter)
+      g.connect(master)
       osc.start()
       padNodes.push(osc)
     }
@@ -231,12 +272,15 @@ export function createSceneBedMusic(): SceneBedMusic {
     wantCity = Boolean(opts?.city)
     if (!(await prepare()) || !ctx || !master || !foleyBus) return
     spawnPad()
-    spawnCity()
+    if (wantCity) spawnCity()
+    else stopCity()
     audible = true
     clearCrackleTimer()
+    clearMusicTimer()
+    schedulePhrase()
     if (wantCrackle) scheduleCrackle()
     fadeGain(master, SCENE_PAD_GAIN, 0.7)
-    fadeGain(foleyBus, SCENE_FOLEY_GAIN, 0.12)
+    fadeGain(foleyBus, wantCity || wantCrackle ? SCENE_FOLEY_GAIN : 0, 0.12)
   }
 
   async function decodeVoice(data: ArrayBuffer): Promise<AudioBuffer> {
@@ -298,6 +342,8 @@ export function createSceneBedMusic(): SceneBedMusic {
     fadeGain(master, 0, 0.28)
     fadeGain(foleyBus, 0, 0.28)
     clearCrackleTimer()
+    clearMusicTimer()
+    stopCity()
   }
 
   function pause() {
@@ -315,6 +361,8 @@ export function createSceneBedMusic(): SceneBedMusic {
     cityOn = false
     stopVoice()
     clearCrackleTimer()
+    clearMusicTimer()
+    stopCity()
     stopList(padNodes)
     if (keepAlive) {
       try {
