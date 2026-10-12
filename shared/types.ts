@@ -18,21 +18,43 @@ export interface BirkenbihlWord {
 export type DialogLineKind = 'speech' | 'action' | 'narrator'
 
 const STAGE_SPEAKER_RE =
-  /^(handlung|action|regie|bild|erzähler|erzaehler|narrator|off|zwischenbild)$/i
+  /^(handlung|action|regie|bild|erzähler|erzaehler|erzahler|narrator|off|zwischenbild)$/i
+
+const NARRATOR_SPEAKER_RE = /^(erzähler|erzaehler|erzahler|narrator|off)$/i
 
 /** Handlung / Erzähler — keine Figur mit Stimme. */
 export function isStageSpeaker(name?: string): boolean {
   return STAGE_SPEAKER_RE.test((name || '').trim())
 }
 
+/** Off / Erzähler — wird gesprochen, auch wenn die KI «Handlung» geschrieben hat. */
+export function isNarratorName(name?: string): boolean {
+  return NARRATOR_SPEAKER_RE.test((name || '').trim())
+}
+
+/** Geschichte zum Vorlesen — nicht nur Wasser/Pfeifen/Klopfen. */
+export function looksLikeSpokenNarration(text?: string): boolean {
+  const t = (text || '').replace(/\s+/g, ' ').trim().toLowerCase()
+  if (!t) return false
+  if (
+    /^(wasser läuft|kessel pfeift|der teekessel pfeift|tee plätschert|da klopft|klopfen an)/.test(t)
+  ) {
+    return false
+  }
+  if (/eingeladen|freunde zum tee|hat ein paar freunde|eines tages/.test(t)) return true
+  if (/bereitet tee vor für/.test(t)) return true
+  return false
+}
+
 export function inferDialogLineKind(
   line: Pick<DialogLine, 'kind' | 'speaker' | 'text' | 'cueImage'>,
 ): DialogLineKind {
-  if (line.kind === 'action' || line.kind === 'narrator' || line.kind === 'speech') {
-    return line.kind
-  }
   const speaker = (line.speaker || '').trim()
-  if (/^(erzähler|erzaehler|narrator|off)$/i.test(speaker)) return 'narrator'
+  if (isNarratorName(speaker)) return 'narrator'
+  if (line.kind === 'narrator') return 'narrator'
+  if (line.kind === 'speech') return 'speech'
+  if (looksLikeSpokenNarration(line.text)) return 'narrator'
+  if (line.kind === 'action') return 'action'
   if (isStageSpeaker(speaker)) return 'action'
   const blob = `${line.text} ${line.cueImage || ''}`.toLowerCase()
   if (

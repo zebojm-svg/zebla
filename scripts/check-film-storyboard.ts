@@ -31,7 +31,7 @@ import {
   sceneShotPlanDe,
 } from '../shared/film-storyboard.ts'
 import { uniqueSpeakersInDialog } from '../shared/speakers.ts'
-import type { Dialog } from '../shared/types.ts'
+import { inferDialogLineKind, type Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
 function fail(msg: string): never {
@@ -297,6 +297,38 @@ if (erzBeat?.silent) fail('Erzähler spricht, Handlung bleibt still')
 if (erzBeat?.line?.speaker !== 'Erzähler') fail('Erzähler-Stimme heißt Erzähler')
 if (!uniqueSpeakersInDialog(told).includes('Erzähler')) {
   fail('Stimmen anpassen zeigt den Erzähler')
+}
+if (
+  inferDialogLineKind({
+    speaker: 'Erzähler',
+    kind: 'action',
+    text: 'Ramo hat Freunde eingeladen.',
+  }) !== 'narrator'
+) {
+  fail('Erzähler spricht auch wenn die KI Handlung geschrieben hat')
+}
+const offAsAction: Dialog = {
+  ...told,
+  id: 'd-off',
+  sections: [
+    {
+      id: 'off',
+      title: 'Anfang',
+      lines: [
+        { id: 'o1', speaker: 'Off', kind: 'action', text: 'Ramo hat Gäste.' },
+        { id: 'o2', speaker: 'Ramo', text: 'Salam.' },
+      ],
+    },
+  ],
+}
+const offPlay = scenePlayBeats(planBoardWithoutAi(offAsAction, []).panels, offAsAction)
+const offBeat = offPlay.find((b) => !b.establishing)
+if (offBeat?.silent) fail('Off/Erzähler spricht, bleibt nicht still')
+if (!uniqueSpeakersInDialog(offAsAction).includes('Erzähler')) {
+  fail('Off erscheint als Erzähler unter Stimmen anpassen')
+}
+if (uniqueSpeakersInDialog(offAsAction).filter((n) => n === 'Erzähler').length !== 1) {
+  fail('Off und Erzähler sind dieselbe Stimme')
 }
 
 const geminiWrongId = ensureCoverageDrafts(four, [

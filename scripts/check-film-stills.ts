@@ -33,7 +33,11 @@ import {
   speakerIdentityUrl,
 } from '../shared/film-stills.ts'
 import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
-import { getSpeakerVoice, resolveSpeakerGender } from '../lib/speaker-voice.ts'
+import {
+  buildSpeakerVoiceProfiles,
+  getSpeakerVoice,
+  resolveSpeakerGender,
+} from '../lib/speaker-voice.ts'
 import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
@@ -451,6 +455,55 @@ if (/kore|aoede|leda/i.test(ubaiVoice.voiceName)) fail('Ubai darf keine Frauenst
 if (guessSpeakerGenderFromName('Shome', 0) !== 'male') fail('Shome = Schöme, männlich')
 if (guessSpeakerGenderFromName('Khan', 0) !== 'male') fail('Khan ist männlich')
 if (genderFromKnownName('Schöme') !== 'male') fail('Schöme ohne Index ist männlich')
+const schomeDialog: Dialog = {
+  ...dialog,
+  targetLanguage: 'fa',
+  sections: [
+    {
+      id: 's',
+      title: 'x',
+      lines: [
+        { id: 'h1', speaker: 'Handlung', kind: 'action', text: 'Ramo füllt Wasser.' },
+        { id: 's1', speaker: 'Schoeme', text: 'سلام' },
+      ],
+    },
+  ],
+  speakerProfiles: { Schöme: { gender: 'male', voiceName: 'Puck' } },
+}
+const schomeVoice = getSpeakerVoice(schomeDialog, 'Schoeme')
+if (schomeVoice.voiceName !== 'Puck') fail('Zugeordnete Stimme gilt auch bei anderer Schreibweise')
+const voicesBuilt = buildSpeakerVoiceProfiles({
+  ...schomeDialog,
+  speakerProfiles: undefined,
+  sections: [
+    {
+      id: 's',
+      title: 'x',
+      lines: [
+        { id: 'h1', speaker: 'Handlung', kind: 'action', text: 'Ramo füllt Wasser.' },
+        { id: 'r1', speaker: 'Ramo', text: 'سلام' },
+        { id: 'k1', speaker: 'Khan', text: 'سلام' },
+      ],
+    },
+  ],
+})
+if (voicesBuilt.Handlung) fail('Handlung bekommt keine Stimme und keinen Slot')
+if (!voicesBuilt.Ramo?.voiceName) fail('Ramo bekommt die erste Männerstimme')
+const erzDialog: Dialog = {
+  ...dialog,
+  targetLanguage: 'fa',
+  sections: [
+    {
+      id: 's',
+      title: 'x',
+      lines: [{ id: 'n1', speaker: 'Off', kind: 'action', text: 'Ramo hat Gäste.' }],
+    },
+  ],
+  speakerProfiles: { Erzähler: { gender: 'male', voiceName: 'Charon' } },
+}
+if (getSpeakerVoice(erzDialog, 'Off').voiceName !== 'Charon') {
+  fail('Erzähler-Stimme gilt auch für Off')
+}
 if (genderFromKnownName('Xyzzy') !== undefined) fail('Unbekannter Name: Geschlecht nicht raten')
 if (!lookForCharacterName('Schöme')?.identityLock.toLowerCase().includes('boy')) {
   fail('Schöme-Look sperrt den Jungen')

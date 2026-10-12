@@ -1,11 +1,50 @@
-import { inferDialogLineKind, isStageSpeaker, type Dialog } from './types.js'
+import {
+  inferDialogLineKind,
+  isNarratorName,
+  isStageSpeaker,
+  type Dialog,
+} from './types.js'
 
-function foldSpeakerName(speaker: string): string {
+/** Schöme = Schoeme, Erzähler = Erzaehler — für Stimmen und Bilder. */
+export function foldSpeakerName(speaker: string): string {
   return speaker
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .replace(/ß/g, 'ss')
+    .replace(/ae/g, 'a')
+    .replace(/oe/g, 'o')
+    .replace(/ue/g, 'u')
+}
+
+export function canonicalSpeakerName(speaker: string): string {
+  const t = speaker.trim()
+  if (!t) return ''
+  if (isNarratorName(t)) return 'Erzähler'
+  return t
+}
+
+export function matchSpeakerName(a: string, b: string): boolean {
+  return foldSpeakerName(canonicalSpeakerName(a)) === foldSpeakerName(canonicalSpeakerName(b))
+}
+
+export function matchSpeakerKey(
+  records: Record<string, unknown> | undefined,
+  speaker: string,
+): string | undefined {
+  if (!records) return undefined
+  if (Object.prototype.hasOwnProperty.call(records, speaker)) return speaker
+  const want = foldSpeakerName(canonicalSpeakerName(speaker))
+  if (!want) return undefined
+  return Object.keys(records).find((k) => foldSpeakerName(canonicalSpeakerName(k)) === want)
+}
+
+export function lookupSpeakerRecord<T>(
+  records: Record<string, T> | undefined,
+  speaker: string,
+): T | undefined {
+  const key = matchSpeakerKey(records, speaker)
+  return key ? records?.[key] : undefined
 }
 
 const MALE_NAMES =
@@ -28,21 +67,38 @@ export function guessSpeakerGenderFromName(
   return genderFromKnownName(speaker) ?? 'male'
 }
 
+export function spokenSpeakerName(
+  line: Pick<Dialog['sections'][number]['lines'][number], 'kind' | 'speaker' | 'text' | 'cueImage'>,
+): string | undefined {
+  const kind = inferDialogLineKind(line)
+  if (kind === 'action') return undefined
+  if (kind === 'narrator') {
+    const name = canonicalSpeakerName(line.speaker)
+    return name && !isStageSpeaker(name) ? name : 'Erzähler'
+  }
+  const name = canonicalSpeakerName(line.speaker)
+  if (!name || isStageSpeaker(name)) return undefined
+  return name
+}
+
+export function lineBelongsToSpeaker(
+  line: Pick<Dialog['sections'][number]['lines'][number], 'kind' | 'speaker' | 'text' | 'cueImage'>,
+  speaker: string,
+): boolean {
+  const name = spokenSpeakerName(line)
+  return Boolean(name && matchSpeakerName(name, speaker))
+}
+
 export function uniqueSpeakersInDialog(dialog: Dialog): string[] {
   const order: string[] = []
   const seen = new Set<string>()
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      const kind = inferDialogLineKind(line)
-      if (kind === 'action') continue
-      let name = line.speaker.trim()
-      if (kind === 'narrator') {
-        name = name && !isStageSpeaker(name) ? name : 'Erzähler'
-      } else if (!name || isStageSpeaker(name)) {
-        continue
-      }
-      if (!seen.has(name)) {
-        seen.add(name)
+      const name = spokenSpeakerName(line)
+      if (!name) continue
+      const fold = foldSpeakerName(name)
+      if (!seen.has(fold)) {
+        seen.add(fold)
         order.push(name)
       }
     }
@@ -57,8 +113,8 @@ export function speakerGender(
   const known = genderFromKnownName(speaker)
   if (known) return known
   return (
-    dialog.speakerProfiles?.[speaker]?.gender ??
-    dialog.characterBible?.find((c) => c.name === speaker)?.gender ??
-    dialog.speakerVoices?.[speaker]?.gender
+    lookupSpeakerRecord(dialog.speakerProfiles, speaker)?.gender ??
+    dialog.characterBible?.find((c) => matchSpeakerName(c.name, speaker))?.gender ??
+    lookupSpeakerRecord(dialog.speakerVoices, speaker)?.gender
   )
 }

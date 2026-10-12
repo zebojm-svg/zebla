@@ -1,4 +1,9 @@
-import type { CharacterVisual, Dialog } from '../shared/types.js'
+import { isNarratorName, type CharacterVisual, type Dialog } from '../shared/types.js'
+import {
+  lookupSpeakerRecord,
+  matchSpeakerName,
+  uniqueSpeakersInDialog,
+} from '../shared/speakers.js'
 import { genderFromKnownName, guessSpeakerGenderFromName } from './speaker-gender.js'
 import {
   GEMINI_TTS_VOICE_NAMES,
@@ -76,6 +81,12 @@ export function ttsDeliveryForSpeaker(
   dialog: Dialog,
   speaker: string,
 ): { pitch: number; stylePrompt: string } {
+  if (isNarratorName(speaker) || /erzähler|erzaehler|narrator/i.test(speaker)) {
+    return {
+      pitch: -1,
+      stylePrompt: 'warm storyteller, clear and calm, not a child, not a newsreader',
+    }
+  }
   const age = (dialog.visualBrief?.ageEn ?? '').toLowerCase()
   const adult = isAdultSpeakerName(speaker)
   const hasParents = dialog.sections.some((s) =>
@@ -118,27 +129,17 @@ export function resolveSpeakerGender(
   speakerProfiles?: Record<string, { gender?: 'male' | 'female' }>,
 ): 'male' | 'female' {
   const known = genderFromKnownName(speaker)
-  const fromProfile = speakerProfiles?.[speaker]?.gender
+  const fromProfile = lookupSpeakerRecord(speakerProfiles, speaker)?.gender
   // Bekannte Jungennamen bleiben männlich, auch wenn eine alte Stimme «female» gespeichert hat.
   if (known === 'male') return 'male'
   if (fromProfile === 'male' || fromProfile === 'female') return fromProfile
-  const fromBible = characterBible?.find((c) => c.name === speaker)?.gender
+  const fromBible = characterBible?.find((c) => matchSpeakerName(c.name, speaker))?.gender
   if (fromBible === 'male' || fromBible === 'female') return fromBible
   return guessSpeakerGenderFromName(speaker, speakerIndex)
 }
 
 function orderedSpeakers(dialog: Dialog): string[] {
-  const order: string[] = []
-  const seen = new Set<string>()
-  for (const section of dialog.sections) {
-    for (const line of section.lines) {
-      if (!seen.has(line.speaker)) {
-        seen.add(line.speaker)
-        order.push(line.speaker)
-      }
-    }
-  }
-  return order
+  return uniqueSpeakersInDialog(dialog)
 }
 
 function speakerIndexMap(dialog: Dialog): Map<string, number> {
@@ -173,8 +174,8 @@ export function buildSpeakerVoiceProfiles(dialog: Dialog): Record<string, Speake
   const gemini = usesGeminiTts(dialog.targetLanguage)
 
   for (const speaker of orderedSpeakers(dialog)) {
-    const userProfile = dialog.speakerProfiles?.[speaker]
-    const fromBible = bible?.find((c) => c.name === speaker)
+    const userProfile = lookupSpeakerRecord(dialog.speakerProfiles, speaker)
+    const fromBible = bible?.find((c) => matchSpeakerName(c.name, speaker))
     if (fromBible?.voiceName && fromBible.gender && !userProfile?.voiceName) {
       if (!(genderFromKnownName(speaker) === 'male' && fromBible.gender === 'female')) {
         profiles[speaker] = {
@@ -218,9 +219,11 @@ export function getSpeakerVoice(
   speaker: string,
 ): SpeakerVoiceProfile {
   const profiles = dialog.speakerVoices ?? buildSpeakerVoiceProfiles(dialog)
-  const base = profiles[speaker]
-  const user = dialog.speakerProfiles?.[speaker]
-  const idx = speakerIndexMap(dialog).get(speaker) ?? 0
+  const base = lookupSpeakerRecord(profiles, speaker)
+  const user = lookupSpeakerRecord(dialog.speakerProfiles, speaker)
+  const canonical =
+    uniqueSpeakersInDialog(dialog).find((n) => matchSpeakerName(n, speaker)) ?? speaker
+  const idx = speakerIndexMap(dialog).get(canonical) ?? 0
   const gender = resolveSpeakerGender(
     speaker,
     idx,
@@ -249,7 +252,7 @@ export function mergeVoiceProfilesIntoDialog(
   profiles: Record<string, SpeakerVoiceProfile>,
 ): { speakerVoices: Record<string, SpeakerVoiceProfile>; characterBible?: CharacterVisual[] } {
   const characterBible = dialog.characterBible?.map((c) => {
-    const p = profiles[c.name]
+    const p = lookupSpeakerRecord(profiles, c.name)
     if (!p) return c
     return { ...c, gender: p.gender, voiceName: p.voiceName }
   })
