@@ -19,17 +19,23 @@ const nuts = foleyFlagsFromNote(
   'Leises Knistern von Nüssen, gedämpfte Stadtgeräusche, sanfte persische Instrumentalmusik.',
 )
 if (!nuts.crackle) fail('Nuss-Knistern aus der Notiz')
-if (!nuts.city) fail('Stadtgeräusch aus der Notiz')
+if (nuts.city) fail('Mit persischer Musik kein Stadtbrummen, auch wenn die KI Stadtgeräusche mitgeschrieben hat')
+
+const street = foleyFlagsFromNote('Stadtrauschen, kein Dialog')
+if (!street.city) fail('Nur Stadtrauschen → Stadtgeräusch')
+
+const music = foleyFlagsFromNote('leise persische Musik, ab und zu eine Nuss knacken')
+if (music.city) fail('Persische Musik ist kein Stadtlärm')
+if (!music.crackle) fail('Nuss in der Musik-Notiz')
 
 const quiet = foleyFlagsFromNote('nur Stimmen')
 if (quiet.crackle || quiet.city) fail('Ohne Hinweis keine Extra-Geräusche')
 
-if (SCENE_FOLEY_GAIN <= SCENE_PAD_GAIN * 4) {
-  fail('Foley muss deutlich lauter sein als das Pad — sonst hört man die Nüsse nicht')
-}
-if (SCENE_VOICE_GAIN <= SCENE_PAD_GAIN * 10) {
+if (SCENE_PAD_GAIN < 0.06) fail('Musik muss hörbar sein, nicht nur ein Brummen')
+if (SCENE_VOICE_GAIN <= SCENE_PAD_GAIN * 6) {
   fail('Dialogstimme muss über der Hintergrundmusik liegen')
 }
+if (SCENE_VOICE_GAIN <= SCENE_FOLEY_GAIN) fail('Dialog über dem Nuss-Knacken')
 
 const previewSrc = readFileSync(new URL('../src/story/FilmScenePreview.tsx', import.meta.url), 'utf8')
 if (!previewSrc.includes('playVoice')) fail('Szene abspielen muss die Stimme über Web Audio spielen')
@@ -43,5 +49,7 @@ const bedSrc = readFileSync(new URL('../src/story/sceneBedMusic.ts', import.meta
 if (!bedSrc.includes('foleyBus')) fail('Knistern braucht einen eigenen Bus, nicht das leise Pad')
 if (!bedSrc.includes('SCENE_FOLEY_GAIN')) fail('Foley-Lautstärke aus der gemeinsamen Konstante')
 if (!bedSrc.includes('SCENE_VOICE_GAIN')) fail('Dialog-Lautstärke aus der gemeinsamen Konstante')
+if (!bedSrc.includes('PHRASE')) fail('Persische Figur, nicht nur eine Drohne')
+if (bedSrc.includes('130.81')) fail('Alte C-Dur-Drohne darf nicht die Musik sein')
 
 console.log('OK: Szenen-Geräusche aus der Ton-Notiz')
