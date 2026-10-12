@@ -14,9 +14,41 @@ export interface BirkenbihlWord {
   romanization?: string
 }
 
+/** Gesprochene Zeile, stille Handlung, oder Erzähler dazwischen. */
+export type DialogLineKind = 'speech' | 'action' | 'narrator'
+
+const STAGE_SPEAKER_RE =
+  /^(handlung|action|regie|bild|erzähler|erzaehler|narrator|off|zwischenbild)$/i
+
+/** Handlung / Erzähler — keine Figur mit Stimme. */
+export function isStageSpeaker(name?: string): boolean {
+  return STAGE_SPEAKER_RE.test((name || '').trim())
+}
+
+export function inferDialogLineKind(
+  line: Pick<DialogLine, 'kind' | 'speaker' | 'text' | 'cueImage'>,
+): DialogLineKind {
+  if (line.kind === 'action' || line.kind === 'narrator' || line.kind === 'speech') {
+    return line.kind
+  }
+  const speaker = (line.speaker || '').trim()
+  if (/^(erzähler|erzaehler|narrator|off)$/i.test(speaker)) return 'narrator'
+  if (isStageSpeaker(speaker)) return 'action'
+  const blob = `${line.text} ${line.cueImage || ''}`.toLowerCase()
+  if (
+    !speaker &&
+    /bereitet|klopft|klingelt|öffnet|steht auf|setzt sich|eingeladen|zwischenbild/.test(blob)
+  ) {
+    return 'action'
+  }
+  return 'speech'
+}
+
 export interface DialogLine {
   id: string
   speaker: string
+  /** speech = Dialog, action = stilles Zwischenbild, narrator = Erzähler. */
+  kind?: DialogLineKind
   text: string
   /** Normale Übersetzung in der Muttersprache (keine Birkenbihl-Wortfolge). */
   nativeText?: string

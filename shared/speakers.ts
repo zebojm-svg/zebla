@@ -1,4 +1,4 @@
-import type { Dialog } from './types.js'
+import { inferDialogLineKind, isStageSpeaker, type Dialog } from './types.js'
 
 function foldSpeakerName(speaker: string): string {
   return speaker
@@ -33,9 +33,11 @@ export function uniqueSpeakersInDialog(dialog: Dialog): string[] {
   const seen = new Set<string>()
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      if (!seen.has(line.speaker)) {
-        seen.add(line.speaker)
-        order.push(line.speaker)
+      const name = line.speaker.trim()
+      if (!name || isStageSpeaker(name) || inferDialogLineKind(line) !== 'speech') continue
+      if (!seen.has(name)) {
+        seen.add(name)
+        order.push(name)
       }
     }
   }

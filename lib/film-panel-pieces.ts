@@ -38,7 +38,8 @@ export async function ensurePanelPieces(opts: {
   const jobs: Array<Promise<void>> = []
 
   const isCloseup = (opts.panel.shot ?? 'wide') === 'closeup'
-  if (!isCloseup && !shouldSkipBackground(compose, roomHint)) {
+  const isInsert = (opts.panel.shot ?? 'wide') === 'insert'
+  if (!isCloseup && !isInsert && !shouldSkipBackground(compose, roomHint)) {
     jobs.push(
       (async () => {
         const env = await generateStoryEnvironment(

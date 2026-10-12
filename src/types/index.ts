@@ -4,6 +4,7 @@ export type {
   FilmDraftMode,
   BirkenbihlWord,
   DialogLine,
+  DialogLineKind,
   LineImageBeat,
   SpeakerPortrait,
   SpeakerMood,
@@ -28,6 +29,8 @@ export type {
 } from '../../shared/types'
 
 export {
+  inferDialogLineKind,
+  isStageSpeaker,
   LENGTH_LABELS,
   LANGUAGES,
   languageName,

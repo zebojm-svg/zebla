@@ -317,6 +317,10 @@ export function FilmBeatNotes({
         <p>
           <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''} — Kamera wechselt den Platz, man schaut der Person ins Gesicht (nicht nur Kopf drehen)
         </p>
+      ) : panel.shot === 'insert' ? (
+        <p>
+          <strong>Kamera</strong> Zwischenbild — {panel.imageCue || 'Detail, nicht der ganze Raum'}
+        </p>
       ) : (
         <p>
           <strong>Kamera</strong> Weit — ganzer Raum (Grundbild)

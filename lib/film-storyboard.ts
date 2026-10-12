@@ -116,24 +116,29 @@ async function paintCloseupPushIn(opts: {
   })
 }
 
-const PLAN_SYSTEM = `Du planst ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
+const PLAN_SYSTEM = `Du führst Regie für ein Bilderbuch-Storyboard (Standbilder). Keine fertigen Film-Bilder.
 Nur JSON.
-Genau EIN Bild je Dialogzeile (lineIds: eine id).
-Erstes Bild einer Szene shot="wide": ganzer Raum, ALLE Personen, Einrichtung wie der Dialog.
-Weitere Zeilen: dasselbe Bild (imageCue z.B. «Wie das vorige Bild. Khan spricht.»), ausser die Zeile eine neue Aktion braucht (aufstehen, zur Tür, Nahaufnahme). Dann shot="closeup" nur wenn wirklich Nahaufnahme.
+Genau EIN Bild je Dialogzeile (lineIds: eine id). Die Kamera darf NICHT immer denselben ganzen Raum zeigen.
+
+Kamerawahl (shot) — intelligente Regie:
+- shot="wide": EINMAL pro Szene das Grundbild, wenn Leute zusammenkommen oder der Raum zum ersten Mal da ist. Ganzer Raum, wer wo sitzt.
+- shot="closeup" + closeupSpeaker: sobald jemand SPRICHT. Kamera auf das Gesicht dieser Person, nicht den ganzen Raum.
+- shot="insert": Zwischenbild / Detail, wenn etwas PASSIERT ohne dass jemand spricht, oder ein Gegenstand wichtig ist. Beispiele: Tee zubereiten → Kanne und Hände; es klopft → die Tür füllt das Bild; Prospekt, Klingel, Blick aus dem Fenster.
+Niemals «Wie das vorige Bild» für eine Sprechzeile oder eine Handlung. Jede Sprechzeile und jedes Zwischenbild braucht ein eigenes imageCue, das sagt was man SIEHT.
+
 Schema:
 {
   "summaryDe": "ein Satz",
   "panels": [
     {
       "sectionId": "id",
-      "shot": "wide|closeup",
+      "shot": "wide|closeup|insert",
       "closeupSpeaker": "Name nur bei closeup",
       "lineIds": ["eine-zeilen-id"],
       "caption": "kurz",
-      "imageCue": "was man sieht, oder Wie das vorige Bild",
+      "imageCue": "was man in DIESEM Bild sieht (Tür, Gesicht, Tee — nicht «wie zuvor»)",
       "soundCue": "Ton oder leer",
-      "speechCue": "wie gesprochen",
+      "speechCue": "wie gesprochen, leer bei Handlung",
       "settingHint": "Ort wie im Dialog, konkret",
       "expressionHint": "freut sich|traurig|schreit|überrascht|neutral|leise / flüstert",
       "characters": [
@@ -144,11 +149,12 @@ Schema:
 }
 Regeln:
 - Namen unverändert.
-- poseHint nur aus der Liste.
+- poseHint nur aus der Liste. Bei insert ohne Person: characters leer [].
 - x 15–85.
-- settingHint und imageCue beim Weit-Bild: konkrete Einrichtung aus dem Text, nicht nur «Wohnzimmer».
+- settingHint konkret, nicht nur «Wohnzimmer».
 - Nur die Dialog-Abschnitte. Keine Extra-Szenen erfinden, die nicht im Dialog stehen.
-- sectionId = die echte Abschnitts-Id aus dem Dialog.`
+- sectionId = die echte Abschnitts-Id aus dem Dialog.
+- Handlung/Erzähler-Zeilen: shot=insert (oder wide wenn es wirklich der ganze Raum ist).`
 
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
@@ -165,7 +171,7 @@ function flattenDialog(dialog: Dialog, extra = ''): string {
     lines.push(`Abschnitt ${section.id} «${section.title}»`)
     for (const line of section.lines) {
       lines.push(
-        `- ${line.id} | ${line.speaker}: ${line.text}` +
+        `- ${line.id} | ${line.kind || 'speech'} | ${line.speaker}: ${line.text}` +
           (line.cueImage ? ` [Bild: ${line.cueImage}]` : '') +
           (line.cueSound ? ` [Ton: ${line.cueSound}]` : '') +
           (line.cueSpeech ? ` [Sprache: ${line.cueSpeech}]` : ''),
@@ -489,6 +495,7 @@ export async function writeFilmSceneDialog(
   })
   const newLines = drafted.map((l) => ({
     id: newLineId(),
+    kind: l.kind,
     speaker: l.speaker,
     text: l.text,
     cueImage: l.cueImage,
@@ -640,7 +647,7 @@ export async function stillFilmPanel(
         const withNote = applyPanelHarvestNote(
           withStill,
           panelId,
-          'Dasselbe Bild wie die vorige Zeile — bis du etwas änderst.',
+          'Dasselbe Bild wie die vorige Zeile — bis die Kamera wechselt.',
         )
         const updated = await persist(withNote)
         return { dialog: updated, board: withNote }
@@ -664,9 +671,9 @@ export async function stillFilmPanel(
       }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
-    if (!correctFromUrl && (panelForGen.shot ?? 'wide') !== 'closeup') {
-      const prevUrl = previousStillUrlInScene(boardForGen, panelForGen)
-      if (prevUrl) correctFromUrl = prevUrl
+    const isInsert = (panelForGen.shot ?? 'wide') === 'insert'
+    if (isInsert) {
+      correctFromUrl = correction ? correctFromUrl : undefined
     }
     const grund = sceneGrundbildPanel(boardForGen, panelForGen.sceneId)
     const wide =
@@ -688,6 +695,10 @@ export async function stillFilmPanel(
     const rewrite = Boolean(correction && correctionRewritesPerson(correction))
     const isCloseup = (panelForGen.shot ?? 'wide') === 'closeup'
     const grundUrl = grund?.stillUrl
+    const continuityForShot =
+      isInsert
+        ? 'INSERT: same house/location as this scene. Do not show the whole gathering unless the cue names it. Fill the frame with the named detail.'
+        : continuityEn
 
     if (rewrite && isCloseup && grundUrl && grund) {
       const wideForGen: FilmStoryboardPanel = {
@@ -711,7 +722,7 @@ export async function stillFilmPanel(
           genderFromKnownName(speaker),
         speakerX: whoOnWide?.x,
         speakerSitting: sittingFromPlacement(whoOnWide),
-        continuityEn,
+        continuityEn: continuityForShot,
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
       next = replaceStillUrl(next, grundUrl, newWideUrl, panelForGen.sceneId)
@@ -758,10 +769,10 @@ export async function stillFilmPanel(
         genderFromKnownName(speaker),
       speakerX: whoOnWide?.x,
       speakerSitting: sittingFromPlacement(whoOnWide),
-      continuityEn,
+      continuityEn: continuityForShot,
     })
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
-    if (rewrite && !isCloseup && panelForGen.stillUrl) {
+    if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
       withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
     }
     const withNote = applyPanelHarvestNote(
@@ -771,9 +782,11 @@ export async function stillFilmPanel(
         ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
         : isCloseup
           ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
-          : pieceNote
-            ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
-            : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
+          : isInsert
+            ? `Zwischenbild: ${panelForGen.imageCue || panelForGen.caption || 'Detail'} — nicht der ganze Raum.`
+            : pieceNote
+              ? `${pieceNote} Die KI hat sie in dieses Bild gemalt — nicht ausgeschnitten.`
+              : 'Die KI hat Raum und Figuren in dieses Bild gemalt.',
     )
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }

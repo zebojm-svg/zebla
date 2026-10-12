@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { BirkenbihlLine } from '../components/BirkenbihlLine'
 import { LanguageFlag } from '../components/LanguageFlag'
-import { LANGUAGES, languageName, needsRomanization } from '../types'
+import { inferDialogLineKind, LANGUAGES, languageName, needsRomanization } from '../types'
 import { getIncludeRomanization, setIncludeRomanization, getAskVisualQuestions, setAskVisualQuestions } from '../lib/preferences'
 import { CostConfirmDialog } from '../components/CostConfirmDialog'
 import { useCostConfirm } from '../hooks/useCostConfirm'
@@ -27,7 +27,7 @@ import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraf
 import { repeatedDialogSectionTitles } from '../../shared/film-storyboard'
 import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
-import type { Dialog, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
+import type { Dialog, DialogLineKind, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
 
 export function DialogEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -318,6 +318,30 @@ export function DialogEditorPage() {
           },
     )
     await runAction(`cue-${lineId}-${field}`, async () => {
+      const { dialog: d } = await api.dialogs.update(dialog.id, { sections })
+      setDialog(d)
+    })
+  }
+
+  const saveLineKind = async (sectionId: string, lineId: string, kind: DialogLineKind) => {
+    const sections = dialog.sections.map((sec) =>
+      sec.id !== sectionId
+        ? sec
+        : {
+            ...sec,
+            lines: sec.lines.map((ln) => {
+              if (ln.id !== lineId) return ln
+              const speaker =
+                kind === 'action' && (!ln.speaker.trim() || inferDialogLineKind(ln) === 'speech')
+                  ? ln.speaker.trim() || 'Handlung'
+                  : kind === 'narrator' && inferDialogLineKind(ln) !== 'narrator'
+                    ? ln.speaker.trim() || 'Erzähler'
+                    : ln.speaker
+              return { ...ln, kind, speaker }
+            }),
+          },
+    )
+    await runAction(`kind-${lineId}`, async () => {
       const { dialog: d } = await api.dialogs.update(dialog.id, { sections })
       setDialog(d)
     })
@@ -925,7 +949,25 @@ export function DialogEditorPage() {
             {section.lines.map((line) => (
               <div key={line.id} className="dialog-line">
                 <div className="dialog-line-body">
-                  <strong className="speaker">{line.speaker}</strong>
+                  <div className="dialog-line-head">
+                    <strong className="speaker">{line.speaker}</strong>
+                    <select
+                      className="input dialog-line-kind"
+                      value={inferDialogLineKind(line)}
+                      disabled={!!busy}
+                      aria-label="Zeilenart"
+                      onChange={(e) => {
+                        const kind = e.target.value as DialogLineKind
+                        if (kind !== inferDialogLineKind(line)) {
+                          void saveLineKind(section.id, line.id, kind)
+                        }
+                      }}
+                    >
+                      <option value="speech">Dialog</option>
+                      <option value="action">Handlung</option>
+                      <option value="narrator">Erzähler</option>
+                    </select>
+                  </div>
                   <BirkenbihlLine
                     line={line}
                     targetLanguage={dialog.targetLanguage}
