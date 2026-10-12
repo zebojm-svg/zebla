@@ -1,5 +1,6 @@
 import { HttpError } from './api-utils.js'
 import { meterAiProfile } from './ai-usage-ledger.js'
+import { assertAiAllowedFor } from './ai-authorize.js'
 import { getUserProfile, type UserProfile } from './firestore.js'
 import type { UsageQuota, UserRole } from '../shared/types.js'
 import {
@@ -41,13 +42,13 @@ export async function requireRole(
   return profile
 }
 
-export function assertCanUseAi(profile: UserProfile): void {
+export async function assertCanUseAi(profile: UserProfile): Promise<void> {
   meterAiProfile(profile)
-  if (profile.role === 'master' || profile.role === 'student') return
-  if (!isProActive(profile.role, profile.subscriptionStatus)) {
+  if (profile.role !== 'master' && profile.role !== 'student' && !isProActive(profile.role, profile.subscriptionStatus)) {
     throw new HttpError(
       'KI ist in der kostenlosen Lehrer-Version deaktiviert. Bitte Pro abonnieren.',
       402,
     )
   }
+  await assertAiAllowedFor(profile)
 }

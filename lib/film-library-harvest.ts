@@ -1,4 +1,5 @@
 import { recordGeminiResponse } from './ai-usage-ledger.js'
+import { assertAiAllowed } from './ai-authorize.js'
 /**
  * Standbild zerlegen und sofort in die Bibliothek legen.
  * Pro Figur eine Maske (auch bei Überlappung), Hintergrund ohne Leute.
@@ -91,6 +92,7 @@ async function generateGeminiPng(
   fallback: string,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
+  await assertAiAllowed()
   let lastError = fallback
   for (const model of geminiImageModelCandidates()) {
     try {

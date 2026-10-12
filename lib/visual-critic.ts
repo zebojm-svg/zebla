@@ -1,3 +1,4 @@
+import { assertAiAllowed } from './ai-authorize.js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { Dialog } from '../shared/types.js'
 import { downloadImageByUrl } from './image-storage.js'
@@ -89,6 +90,7 @@ export async function reviewRecentBeats(
     return { ok: true, notes: 'Bilder nicht prüfbar.', extraConstraintsEn: '', retryBeatIndexes: [] }
   }
 
+  await assertAiAllowed()
   const model = new GoogleGenerativeAI(requireGeminiKey()).getGenerativeModel({
     model: TEXT_MODEL,
     generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },

@@ -149,7 +149,7 @@ function getRoute(req: VercelRequest): string {
 
 async function gateAi(uid: string) {
   const profile = await requireProfile(uid)
-  assertCanUseAi(profile)
+  await assertCanUseAi(profile)
   await consumeQuota(profile, 'aiCalls')
   return profile
 }

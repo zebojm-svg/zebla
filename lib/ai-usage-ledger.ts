@@ -13,14 +13,14 @@ import type { UserProfile } from './firestore.js'
  */
 const DEFAULT_ENDPOINT = 'https://zebotools.ch/api/ai-usage'
 
-type AiUsageContext = { feature: string; profile: UserProfile | null }
+type AiUsageContext = { feature: string; profile: UserProfile | null; uid: string | null }
 
 const store = new AsyncLocalStorage<AiUsageContext>()
 
 /** Zu Beginn eines API-Requests: Funktion (API-Route) für alle folgenden Gemini-Aufrufe. */
 export function meterAiRequest(feature: string): void {
   try {
-    store.enterWith({ feature: feature.slice(0, 50) || 'unknown', profile: null })
+    store.enterWith({ feature: feature.slice(0, 50) || 'unknown', profile: null, uid: null })
   } catch {
     // Verbrauchsbuch ist optional.
   }
@@ -32,6 +32,16 @@ export function meterAiProfile(profile: UserProfile): void {
   if (ctx) ctx.profile = profile
 }
 
+/** Nach der Anmeldung: UID für die KI-Freischaltung, falls die Route kein Profil lädt. */
+export function meterAiUser(uid: string): void {
+  const ctx = store.getStore()
+  if (ctx && !ctx.uid) ctx.uid = uid
+}
+
+export function currentAiContext(): Readonly<AiUsageContext> | undefined {
+  return store.getStore()
+}
+
 function num(v: unknown): number {
   const n = Number(v)
   return Number.isFinite(n) && n > 0 ? n : 0
@@ -41,7 +51,7 @@ type Teacher = { email: string | null; appUserId: string | null }
 
 const teacherByClass = new Map<string, Teacher | null>()
 
-async function teacherForProfile(profile: UserProfile | null): Promise<Teacher | null> {
+export async function teacherForProfile(profile: UserProfile | null): Promise<Teacher | null> {
   if (!profile) return null
   if (profile.role !== 'student') {
     return { email: profile.email?.trim().toLowerCase() || null, appUserId: profile.id }

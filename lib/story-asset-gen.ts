@@ -1,3 +1,4 @@
+import { assertAiAllowed } from './ai-authorize.js'
 import { recordGeminiResponse } from './ai-usage-ledger.js'
 import { getStoryStylePrompt, getStoryArtStyle, type StoryArtStyleId } from '../shared/story-art-styles.js'
 import {
@@ -61,6 +62,7 @@ function requireGeminiKey(): string {
 }
 
 async function googleApiPost(url: string, body: object, timeoutMs = 50_000): Promise<Response> {
+  await assertAiAllowed()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {

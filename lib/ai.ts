@@ -1,3 +1,4 @@
+import { assertAiAllowed } from './ai-authorize.js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { randomUUID } from 'crypto'
 import type {
@@ -46,6 +47,7 @@ const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
 const IMAGE_MODEL = IMAGE_MODEL_CANDIDATES[0] ?? 'gemini-3.1-flash-image'
 
 async function googleApiPost(url: string, body: object, timeoutMs = 45_000): Promise<Response> {
+  await assertAiAllowed()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -154,6 +156,7 @@ export async function chatJsonWithImages<T>(
   images: Array<{ mimeType: string; data: string }> = [],
   opts?: { temperature?: number },
 ): Promise<T> {
+  await assertAiAllowed()
   try {
     const model = getTextModel(opts?.temperature ?? 0.7)
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
@@ -477,6 +480,7 @@ export async function chatForDialog(
   targetLanguage: string,
   length: DialogLength,
 ): Promise<{ reply: string; dialog?: { title: string; sections: DialogSection[] } }> {
+  await assertAiAllowed()
   const genAI = new GoogleGenerativeAI(requireGeminiKey())
   const model = genAI.getGenerativeModel({
     model: TEXT_MODEL,

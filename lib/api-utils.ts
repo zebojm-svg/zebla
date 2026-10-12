@@ -1,5 +1,6 @@
 import type { VercelRequest } from '@vercel/node'
 import { adminAuth } from './firebase-admin.js'
+import { meterAiUser } from './ai-usage-ledger.js'
 
 export interface AuthUser {
   uid: string
@@ -25,6 +26,7 @@ export async function requireAuth(req: VercelRequest): Promise<AuthUser> {
   const token = header.slice(7)
   try {
     const decoded = await adminAuth().verifyIdToken(token)
+    meterAiUser(decoded.uid)
     return {
       uid: decoded.uid,
       email: decoded.email,

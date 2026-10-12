@@ -1,4 +1,5 @@
 import { recordGeminiResponse } from './ai-usage-ledger.js'
+import { assertAiAllowed } from './ai-authorize.js'
 /**
  * Fertiges Standbild für eine Storyboard-Zeile.
  * Gemini mit Bibliotheks-Fotos als Lock — kein Blinken, kein Film.
@@ -87,6 +88,7 @@ async function generateStillPng(
   packInstruction = '',
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
+  await assertAiAllowed()
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
   if (refs.length) {
     for (const img of refs) {

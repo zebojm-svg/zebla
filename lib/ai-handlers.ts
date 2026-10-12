@@ -42,7 +42,7 @@ export async function handleGenerateTopic(req: VercelRequest, res: VercelRespons
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const { topic, targetLanguage, length } = req.body as {
       topic?: string
@@ -64,7 +64,7 @@ export async function handleGenerateSentences(req: VercelRequest, res: VercelRes
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const { sentences, targetLanguage, length } = req.body as {
       sentences?: string[]
@@ -86,7 +86,7 @@ export async function handleGenerateChat(req: VercelRequest, res: VercelResponse
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const { messages, targetLanguage, length } = req.body as {
       messages?: ChatMessage[]
@@ -179,7 +179,7 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     const body = req.body as { dialogId?: string; targetLanguage?: string }
     const dialogId = dialogIdFromRequest(req, body)
     const { targetLanguage } = body
@@ -220,7 +220,7 @@ export async function handleBirkenbihl(req: VercelRequest, res: VercelResponse) 
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as {
       dialogId?: string
@@ -265,7 +265,7 @@ export async function handleSplit(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string }
     const dialogId = dialogIdFromRequest(req, body)
@@ -296,7 +296,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as {
       dialogId?: string
@@ -529,7 +529,7 @@ export async function handleImageAll(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string; sectionId?: string }
     if (!body.sectionId) {
@@ -571,7 +571,7 @@ export async function handleImage(req: VercelRequest, res: VercelResponse) {
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as { dialogId?: string; sectionId?: string }
     const dialogId = dialogIdFromRequest(req, body)
@@ -606,7 +606,7 @@ export async function handleVisualBrief(req: VercelRequest, res: VercelResponse)
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     const body = req.body as {
       dialogId?: string
       answers?: Record<string, string>
@@ -654,7 +654,7 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as {
       dialogId?: string
@@ -738,7 +738,7 @@ export async function handleVisualCritic(req: VercelRequest, res: VercelResponse
   try {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
-    assertCanUseAi(profile)
+    await assertCanUseAi(profile)
     await consumeQuota(profile, 'aiCalls')
     const body = req.body as {
       dialogId?: string

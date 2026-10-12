@@ -1,4 +1,5 @@
 import { recordGeminiResponse } from './ai-usage-ledger.js'
+import { assertAiAllowed } from './ai-authorize.js'
 import { randomUUID } from 'crypto'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
 
@@ -34,6 +35,7 @@ export async function generateCheapStoryboardSketch(opts: {
   names?: string[]
 }): Promise<string> {
   const apiKey = requireGeminiKey()
+  await assertAiAllowed()
   const names = (opts.names ?? []).filter(Boolean).join(', ')
   const prompt =
     `Rough cheap STORYBOARD SKETCH thumbnail, pencil and ink, NOT a finished painting. ` +

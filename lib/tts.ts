@@ -1,3 +1,4 @@
+import { assertAiAllowed } from './ai-authorize.js'
 import { getGoogleAccessToken, isGoogleCloudConfigured } from './google-auth-token.js'
 import { resolveClassicVoiceName, resolveGeminiVoiceName } from './speaker-voice.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
@@ -224,7 +225,20 @@ export function isTtsConfigured(): boolean {
   return isGoogleCloudConfigured()
 }
 
+/** Der Statuscheck ist ohne Anmeldung erreichbar und erzeugt echte (kostenpflichtige) Sprachproben. */
+const HEALTH_CACHE_MS = 30 * 60_000
+const healthCache = new Map<boolean, { health: TtsHealth; until: number }>()
+
 export async function checkTtsHealth(languageCode?: string): Promise<TtsHealth> {
+  const needsGemini = languageCode ? usesGeminiTts(languageCode) : true
+  const hit = healthCache.get(needsGemini)
+  if (hit && hit.until > Date.now()) return hit.health
+  const health = await probeTtsHealth(needsGemini)
+  healthCache.set(needsGemini, { health, until: Date.now() + HEALTH_CACHE_MS })
+  return health
+}
+
+async function probeTtsHealth(needsGemini: boolean): Promise<TtsHealth> {
   if (!isTtsConfigured()) {
     return { configured: false, working: false, provider: 'google-cloud-tts' }
   }
@@ -239,8 +253,6 @@ export async function checkTtsHealth(languageCode?: string): Promise<TtsHealth> 
         error: 'Firebase-Zugangsdaten liefern kein Google-Token.',
       }
     }
-
-    const needsGemini = languageCode ? usesGeminiTts(languageCode) : true
 
     if (!needsGemini) {
       await callClassicSynthesize(
@@ -322,6 +334,7 @@ function toLivelySsml(text: string): string {
 }
 
 export async function synthesizeSpeech(req: TtsRequest): Promise<TtsResult> {
+  await assertAiAllowed()
   const text = req.text.trim()
   if (!text) throw new Error('Text fehlt.')
 
