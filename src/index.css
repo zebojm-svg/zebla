@@ -1310,7 +1310,19 @@ html[dir='rtl'] .slideshow-topbar {
 }
 
 .dialog-lines { display: flex; flex-direction: column; gap: 1rem; }
-.speaker { display: block; margin-bottom: 0.35rem; color: var(--accent); font-size: 0.875rem; }
+.dialog-line-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.speaker { display: block; color: var(--accent); font-size: 0.875rem; }
+.dialog-line-kind {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  max-width: 8.5rem;
+  width: auto;
+}
 
 .birkenbihl-line { overflow-x: auto; }
 

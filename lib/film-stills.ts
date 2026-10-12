@@ -83,6 +83,7 @@ async function generateStillPng(
   correctingExisting = false,
   closeup = false,
   rewritePerson = false,
+  insert = false,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
@@ -94,6 +95,7 @@ async function generateStillPng(
       text: stillAttachmentInstruction({
         correctingExisting,
         closeup,
+        insert,
         rewritePerson,
       }),
     })
@@ -212,6 +214,7 @@ export async function generateFilmPanelStillImage(opts: {
   })
   const rewritePerson = correctionRewritesPerson(opts.panel.stillCorrection)
   const isCloseup = opts.panel.shot === 'closeup'
+  const isInsert = opts.panel.shot === 'insert'
   const faceOnly = correctionIsFaceOnly(opts.panel.stillCorrection)
   if (
     isCloseup &&
@@ -240,6 +243,7 @@ export async function generateFilmPanelStillImage(opts: {
     Boolean(opts.correctFromUrl),
     isCloseup,
     rewritePerson,
+    isInsert,
   )
   const shouldCatchCrop =
     isCloseup && Boolean(opts.sceneWideStillUrl) && !faceOnly
@@ -259,6 +263,7 @@ export async function generateFilmPanelStillImage(opts: {
             Boolean(opts.correctFromUrl),
             true,
             rewritePerson,
+            false,
           )
         }
       } catch {

@@ -16,7 +16,7 @@ import type {
   PortraitGaze,
   VisualBrief,
 } from '../shared/types.js'
-import { isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
+import { inferDialogLineKind, isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
@@ -239,6 +239,7 @@ Originalfiguren, kein Petit Nicolas.`,
       title: string
       lines: Array<{
         speaker: string
+        kind?: 'speech' | 'action' | 'narrator'
         text: string
         cueImage?: string
         cueSound?: string
@@ -246,9 +247,10 @@ Originalfiguren, kein Petit Nicolas.`,
       }>
     }>
   }>(
-    `Du planst einen Kurzfilm als Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
-Sprache der gesprochenen Zeilen: ${targetLanguage}.
-Lies den Prompt selbst: was Dialog/Diktat ist, was Bild-Regie, was Ton/Sprache.
+    `Du planst einen Kurzfilm als Bilderbuch-Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
+Sprache der GESPROCHENEN Zeilen (kind=speech und kind=narrator): ${targetLanguage}.
+Handlung (kind=action) darf auf Deutsch beschreiben, was man sieht — die wird nicht gesprochen.
+Lies den Prompt selbst: was Dialog ist, was dazwischen passiert, was Erzähler, was Bild-Regie, was Ton/Sprache.
 ${modeHint}
 JSON:
 {
@@ -260,15 +262,22 @@ JSON:
     {
       "title": "Szenenname",
       "lines": [
-        { "speaker": "Name", "text": "Satz", "cueImage": "Pose/Ort", "cueSound": "optional", "cueSpeech": "optional" }
+        { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz oder was passiert", "cueImage": "was die Kamera ZEIGT", "cueSound": "optional", "cueSpeech": "optional" }
       ]
     }
   ]
 }
+kind:
+- speech = jemand spricht (speaker = Figurenname, text in ${targetLanguage})
+- action = stilles Zwischenbild, niemand spricht. Beispiel: speaker "Handlung", text "Ramo bereitet Tee vor für seine Gäste.", cueImage "Ramo an der Teekanne, Gläser, Dampf — nicht der ganze Raum"
+- narrator = Erzähler-Stimme (speaker "Erzähler")
+Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das hergibt.
+Beispiel-Regie: «Da klopft es an der Tür» → kind=action, cueImage "Die Wohnungstür von innen, jemand klopft — die Tür füllt das Bild".
+cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür, Tee), niemals «ganzer Raum» bei jeder Zeile.
 Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
 Teile den Prompt in Szenen, wo Ort, Zeit oder Handlung wechselt.
-Jede Szene = ein Abschnitt mit NEUEM gesprochenem Dialog (nicht Bildnotizen, nicht denselben Text).
-Niemals den Dialog der vorigen Szene kopieren. Szenen ohne neuen Dialog weglassen.
+Jede Szene hat eigenen Verlauf (Handlung + Dialog), nicht denselben Text wie zuvor.
+Niemals den Dialog der vorigen Szene kopieren. Szenen ohne neuen Inhalt weglassen.
 Wenn die Handlung nach der ersten Szene fertig ist, nur eine Szene anlegen.
 Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.`
     `${prompt.trim()}${extra}`,
@@ -278,14 +287,28 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     (result.sections ?? []).map((sec) => ({
       id: randomUUID(),
       title: sec.title?.trim() || 'Szene',
-      lines: (sec.lines ?? []).map((l) => ({
-        id: newLineId(),
-        speaker: l.speaker?.trim() || 'Sprecher',
-        text: l.text?.trim() || '',
-        cueImage: l.cueImage?.trim() || undefined,
-        cueSound: l.cueSound?.trim() || undefined,
-        cueSpeech: l.cueSpeech?.trim() || undefined,
-      })),
+      lines: (sec.lines ?? [])
+        .map((l) => {
+          const kind = inferDialogLineKind({
+            kind: l.kind,
+            speaker: l.speaker ?? '',
+            text: l.text ?? '',
+            cueImage: l.cueImage,
+          })
+          const speaker =
+            l.speaker?.trim() ||
+            (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher')
+          return {
+            id: newLineId(),
+            kind,
+            speaker,
+            text: l.text?.trim() || l.cueImage?.trim() || '',
+            cueImage: l.cueImage?.trim() || undefined,
+            cueSound: l.cueSound?.trim() || undefined,
+            cueSpeech: l.cueSpeech?.trim() || undefined,
+          }
+        })
+        .filter((l) => l.text),
     })),
   )
 
@@ -311,7 +334,7 @@ export async function generateFilmSceneDialog(opts: {
   imageDirection?: string
   earlier: Array<{ title: string; lines: Array<{ speaker: string; text: string }> }>
   speakers: string[]
-}): Promise<Array<{ speaker: string; text: string; cueImage?: string }>> {
+}): Promise<Array<{ speaker: string; text: string; cueImage?: string; kind?: 'speech' | 'action' | 'narrator' }>> {
   const earlierBlock = opts.earlier
     .map((scene) => {
       const lines = scene.lines.map((l) => `- ${l.speaker}: ${l.text}`).join('\n')
@@ -320,15 +343,16 @@ export async function generateFilmSceneDialog(opts: {
     .join('\n\n')
   const names = opts.speakers.filter(Boolean).join(', ') || 'die Figuren aus dem Prompt'
   const result = await chatJson<{
-    lines?: Array<{ speaker?: string; text?: string; cueImage?: string }>
+    lines?: Array<{ speaker?: string; text?: string; cueImage?: string; kind?: 'speech' | 'action' | 'narrator' }>
   }>(
-    `Du schreibst den gesprochenen Dialog der NÄCHSTEN Szene eines Sprachlern-Films.
-Sprache der Zeilen: ${opts.targetLanguage}.
+    `Du schreibst die NÄCHSTE Szene eines Sprachlern-Films (Dialog plus Handlung dazwischen).
+Gesprochene Zeilen (kind=speech/narrator): ${opts.targetLanguage}.
+kind=action auf Deutsch, wird nicht gesprochen (Tee, Klopfen, Tür).
 Dieselben Figuren (${names}), neue Sätze. Die Geschichte geht weiter.
 Niemals den vorigen Dialog wörtlich oder fast wörtlich wiederholen.
 Originalfiguren, kein Petit Nicolas.
-6–14 kurze Zeilen, wechselnde Sprecher.
-JSON: { "lines": [ { "speaker": "Name", "text": "Satz", "cueImage": "kurz was man sieht" } ] }`,
+6–14 kurze Zeilen, wechselnde Sprecher, Handlung wo die Kamera ein Detail braucht.
+JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Handlung oder Erzähler", "text": "Satz", "cueImage": "was die Kamera zeigt" } ] }`,
     [
       opts.filmPrompt ? `Film-Prompt:\n${opts.filmPrompt.trim()}` : '',
       opts.imageDirection ? `Bild-Regie: ${opts.imageDirection}` : '',
@@ -341,11 +365,22 @@ JSON: { "lines": [ { "speaker": "Name", "text": "Satz", "cueImage": "kurz was ma
       .join('\n\n'),
   )
   const lines = (result.lines ?? [])
-    .map((l) => ({
-      speaker: (l.speaker ?? '').trim() || 'Sprecher',
-      text: (l.text ?? '').trim(),
-      cueImage: (l.cueImage ?? '').trim() || undefined,
-    }))
+    .map((l) => {
+      const kind = inferDialogLineKind({
+        kind: l.kind,
+        speaker: l.speaker ?? '',
+        text: l.text ?? '',
+        cueImage: l.cueImage,
+      })
+      return {
+        kind,
+        speaker:
+          (l.speaker ?? '').trim() ||
+          (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher'),
+        text: (l.text ?? '').trim(),
+        cueImage: (l.cueImage ?? '').trim() || undefined,
+      }
+    })
     .filter((l) => l.text)
   if (lines.length === 0) {
     throw new Error('Die KI hat für diese Szene keinen Dialog geliefert.')

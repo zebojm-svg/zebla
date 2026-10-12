@@ -85,8 +85,9 @@ export function FilmScenePreviewPlayer({
   const shownPanel =
     (currentPanel?.stillUrl ? currentPanel : undefined) ||
     panels.find((p) => p.stillUrl && p.stillUrl === current?.stillUrl)
-  const spokenBeats = beats.filter((b) => !b.establishing)
-  const nowLine = current?.establishing ? undefined : current?.line
+  const pictureBeats = beats.filter((b) => !b.establishing)
+  const spokenBeats = beats.filter((b) => !b.silent && !b.establishing && b.line)
+  const nowLine = current?.silent || current?.establishing ? undefined : current?.line
   const soundNote = [
     dialog.soundDirection,
     scene.noteDe,
@@ -187,8 +188,8 @@ export function FilmScenePreviewPlayer({
       if (cancelled.current || id !== runId.current) break
       setIndex(i)
       const beat = beats[i]!
-      if (beat.establishing || !beat.line) {
-        const next = beats.slice(i + 1).find((b) => b.line)
+      if (beat.establishing || beat.silent || !beat.line) {
+        const next = beats.slice(i + 1).find((b) => b.line && !b.silent)
         if (next?.line?.lineId) {
           setWaitingVoice(true)
           void warmLine(next.line.lineId).catch((err) => {
@@ -199,7 +200,7 @@ export function FilmScenePreviewPlayer({
         continue
       }
       const lineId = beat.line.lineId || beat.panelId
-      const nextSpoken = beats.slice(i + 1).find((b) => b.line)
+      const nextSpoken = beats.slice(i + 1).find((b) => b.line && !b.silent)
       if (nextSpoken?.line?.lineId) void warmLine(nextSpoken.line.lineId).catch(() => undefined)
       setWaitingVoice(true)
       let blob: Blob
@@ -257,8 +258,8 @@ export function FilmScenePreviewPlayer({
   return (
     <div className="film-scene-player">
       <p className="muted film-scene-player-note">
-        <strong>Szene anhören:</strong> erst den Raum, dann jedes gemalte Bild zur gesprochenen
-        Zeile. Deutsch steht unter der Zeile.
+        <strong>Szene anhören:</strong> jedes gemalte Bild der Reihe nach — Zwischenbilder still,
+        dann wer spricht. Deutsch steht unter der Zeile.
       </p>
       <p className="muted film-scene-player-voice">
         {voiceLabel}
@@ -287,9 +288,9 @@ export function FilmScenePreviewPlayer({
           <div className="film-still-placeholder">Noch kein gemaltes Bild</div>
         )}
       </div>
-      {spokenBeats.some((b) => b.stillUrl) ? (
+      {pictureBeats.some((b) => b.stillUrl) ? (
         <ol className="film-play-stills">
-          {spokenBeats.map((beat) => (
+          {pictureBeats.map((beat) => (
             <li
               key={beat.panelId}
               className={current?.panelId === beat.panelId ? 'is-now' : undefined}
@@ -306,11 +307,17 @@ export function FilmScenePreviewPlayer({
       <p className="film-scene-player-count">
         {current?.establishing
           ? `Raum anschauen${scene.title ? ` · ${scene.title}` : ''}`
-          : `Zeile ${(current?.lineIndex ?? 0) + 1} von ${current?.lineTotal || spokenBeats.length}${
-              scene.title ? ` · ${scene.title}` : ''
-            }`}
+          : current?.silent
+            ? `${current.caption || 'Zwischenbild'}${scene.title ? ` · ${scene.title}` : ''}`
+            : `Zeile ${(current?.lineIndex ?? 0) + 1} von ${current?.lineTotal || spokenBeats.length}${
+                scene.title ? ` · ${scene.title}` : ''
+              }`}
       </p>
-      {nowLine ? (
+      {current?.silent && current.caption ? (
+        <div className="film-play-now">
+          <p className="film-play-now-speaker">{current.caption}</p>
+        </div>
+      ) : nowLine ? (
         <div className="film-play-now">
           <p className="film-play-now-speaker">Jetzt: {nowLine.speaker}</p>
           <p
@@ -332,7 +339,7 @@ export function FilmScenePreviewPlayer({
           )}
         </div>
       ) : (
-        <p className="muted film-play-now">Erst den ganzen Raum, dann spricht jemand.</p>
+        <p className="muted film-play-now">Erst das Bild, dann spricht jemand.</p>
       )}
       {spokenBeats.length > 0 ? (
         <ol className="film-play-list">

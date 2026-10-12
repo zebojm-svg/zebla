@@ -111,12 +111,12 @@ export function sceneWidePanel(
   board: FilmStoryboard,
   panel: FilmStoryboardPanel,
 ): FilmStoryboardPanel | undefined {
-  return board.panels.find(
-    (p) =>
-      p.sceneId === panel.sceneId &&
-      p.id !== panel.id &&
-      (p.shot ?? 'wide') !== 'closeup' &&
-      Boolean(p.stillUrl?.startsWith('http')),
+  const same = board.panels.filter(
+    (p) => p.sceneId === panel.sceneId && p.id !== panel.id && Boolean(p.stillUrl?.startsWith('http')),
+  )
+  return (
+    same.find((p) => p.shot === 'wide') ||
+    same.find((p) => (p.shot ?? 'wide') !== 'closeup')
   )
 }
 
@@ -132,8 +132,10 @@ export function sceneGrundbildPanel(
   board: FilmStoryboard,
   sceneId: string,
 ): FilmStoryboardPanel | undefined {
-  return panelsForScene(board, sceneId).find(
-    (p) => (p.shot ?? 'wide') !== 'closeup' && Boolean(p.stillUrl?.startsWith('http')),
+  const same = panelsForScene(board, sceneId).filter((p) => Boolean(p.stillUrl?.startsWith('http')))
+  return (
+    same.find((p) => p.shot === 'wide') ||
+    same.find((p) => (p.shot ?? 'wide') !== 'closeup')
   )
 }
 
@@ -295,6 +297,7 @@ export function referenceUrlsForPanel(
       ? panel.background.imageUrl
       : undefined
   const closeup = panel.shot === 'closeup'
+  const insert = panel.shot === 'insert'
   const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
   const speakerId = closeup ? speakerIdentityUrl(panel) : undefined
   const ordered = (
@@ -302,7 +305,9 @@ export function referenceUrlsForPanel(
       ? [correctFromUrl, sceneWideStillUrl, speakerId]
       : closeup
         ? [sceneWideStillUrl, speakerId]
-        : [bg, ...people]
+        : insert
+          ? [sceneWideStillUrl, bg]
+          : [bg, ...people]
   ).filter(http)
   return [...new Set(ordered)].slice(0, closeup ? 3 : 4)
 }
@@ -400,8 +405,12 @@ export function correctFromUrlForPanel(
 export function stillAttachmentInstruction(opts: {
   correctingExisting: boolean
   closeup: boolean
+  insert?: boolean
   rewritePerson?: boolean
 }): string {
+  if (opts.insert && !opts.correctingExisting) {
+    return 'Attached photos are LOCATION LOCK only (same house). Paint a NEW insert/cutaway of the named object or small action. Do NOT copy the wide group photo. Do NOT show the whole room again. Fill the frame with the detail.'
+  }
   if (opts.rewritePerson && opts.closeup) {
     return 'Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.'
   }
@@ -422,6 +431,18 @@ export function correctionIsFaceOnly(note?: string): boolean {
   const t = (note || '').toLowerCase()
   if (!t || correctionRewritesPerson(t)) return false
   return /mund|lächel|mimik|augenbrau|lid|facial|weint|freut|zorn|überrascht/.test(t)
+}
+
+/** Zwischenbild = Detail, nicht der ganze Raum. */
+export function insertCameraLine(cue?: string): string {
+  const what = (cue || 'the named detail').trim()
+  return (
+    `INSERT / cutaway: fill the frame with this detail — ${what}. ` +
+    `Not a wide of the whole room, not a talking-head close-up. ` +
+    `Same house and lighting as this scene. Camera close to the object or small action. ` +
+    `FORBIDDEN: copying the previous living-room photo. ` +
+    `FORBIDDEN: everyone sitting around the table unless the cue names that gathering.`
+  )
 }
 
 /** Nahaufnahme = Kamera näher, kein zerschnittener Weit-Shot. */
@@ -468,7 +489,7 @@ export function buildFilmStillPrompt(opts: {
   spokenLine?: string
   beatIndex?: number
   beatTotal?: number
-  shot?: 'wide' | 'closeup'
+  shot?: 'wide' | 'closeup' | 'insert'
   closeupSpeaker?: string
   speakerGender?: 'male' | 'female'
   speakerX?: number
@@ -480,6 +501,7 @@ export function buildFilmStillPrompt(opts: {
   const poses = (opts.poseHints ?? []).filter(Boolean).join('; ')
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const isCloseup = opts.shot === 'closeup'
+  const isInsert = opts.shot === 'insert'
   const rewritePerson = correctionRewritesPerson(opts.stillCorrection)
   const closeEyes =
     'Eyes fully drawn and opaque: white sclera, colored iris, dark pupil — never translucent, glassy, hollow, see-through, or empty-white.'
@@ -488,10 +510,14 @@ export function buildFilmStillPrompt(opts: {
     : opts.hasLibraryRefs
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
-      : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
+      : isInsert
+        ? `${STORY_STILLS_LOCK_PROMPT} If a room photo is attached, use it only as location lock. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
+        : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
-      : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
+      : isInsert
+        ? 'Paint a cinematic insert: the named object or small action fills the frame. Same house, not a wide of the whole room.'
+        : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
       ? `Never write German on signs, stalls, posters or paper (no Bratwurst, Glühwein, German menus). Use ${langEn} instead (e.g. French: saucisse, vin chaud).`
@@ -511,14 +537,18 @@ export function buildFilmStillPrompt(opts: {
             ? 'New correct face and sex. Do not keep a wrong-gender face from the attached photo.'
             : 'Same face as in the wide gathering.'
         }`
-      : rewritePerson
+      : isInsert
+        ? insertCameraLine(opts.imageCue || opts.caption)
+        : rewritePerson
         ? `WIDE shot of the SAME gathering. Keep this camera, this table and these seats. Apply the director fix to the named person only. Everyone else stays where they are. Sitting people stay sitting, hips on the seat.`
         : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people.`,
     opts.correctingExisting
       ? ''
       : isCloseup
         ? `${moment} Same gathering and clothes as the wide still. Only the camera is closer — do not invent a new room or a new person.`
-        : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
+        : isInsert
+          ? `${moment} New camera on the named detail. Never copy the previous wide frame.`
+          : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     opts.continuityEn || '',
     lock,
@@ -529,7 +559,9 @@ export function buildFilmStillPrompt(opts: {
           speakerX: opts.speakerX,
           poseHint: poses,
         })
-      : '',
+      : isInsert
+        ? 'Do not keep the seating chart of the wide shot. Show only what the insert names.'
+        : '',
     opts.correctingExisting
       ? correctionRewritesPerson(opts.stillCorrection)
         ? 'An attached photo is the CURRENT GROUNDBILD. Keep the SAME room, furniture, camera and seats. The named person stays at this table. Redraw that speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not stand them up.'
@@ -551,7 +583,9 @@ export function buildFilmStillPrompt(opts: {
       : '',
     isCloseup
       ? `Widescreen 16:9. Close-up crop of the same gathering. Face large. Hair not cut off at the top. Opaque eyes with iris and pupil. No legs, no floating torso, no studio cut-out, no second person, no glassy see-through eyes.`
-      : `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent. Furniture belongs to the room. Same body scale. No extra limbs.`,
+      : isInsert
+        ? `Widescreen 16:9. Insert/cutaway. The named detail fills most of the frame. Not a group wide. Not a portrait.`
+        : `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent. Furniture belongs to the room. Same body scale. No extra limbs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,
     `Ignore any earlier "NO text" rule for shop signs, stall labels, posters, flyers and prospectus.`,

@@ -6,6 +6,7 @@ import {
   applyPanelStill,
   buildFilmStillPrompt,
   closeupCameraLine,
+  insertCameraLine,
   closeupGenderLine,
   correctionIsFaceOnly,
   correctFromUrlForPanel,
@@ -639,13 +640,16 @@ if (panelAddressee({ ...s1[0]!, closeupSpeaker: 'Julien', lineIds: ['l1'] }, dia
 }
 
 const playQuiet = scenePlayBeats(s1, dialog)
-if (playQuiet.some((b) => b.establishing)) fail('Ohne Weit-Bild keine stille Raumaufnahme')
-if (playQuiet.filter((b) => !b.establishing).length !== 2) {
+if (playQuiet.some((b) => b.establishing)) fail('Ohne Weit-Bild keine extra Raumaufnahme')
+if (playQuiet.filter((b) => !b.establishing && b.line).length !== 2) {
   fail('Abspielen: eine Takt pro Dialogzeile, nicht den ganzen Block')
 }
 const playWithRoom = scenePlayBeats(panelsForScene(withStill, scene1.id), dialog)
-if (!playWithRoom[0]?.establishing) fail('Zuerst den Raum anschauen')
-if (playWithRoom.filter((b) => !b.establishing).length !== 2) fail('dann die Zeilen nacheinander')
+if (playWithRoom[0]?.establishing) fail('erste Zeile ist schon das Weit-Bild — nicht zweimal den Raum')
+if (playWithRoom.filter((b) => b.line).length !== 2) fail('dann die Zeilen nacheinander')
+if (playWithRoom[0]?.stillUrl !== 'https://example.com/still1.png') {
+  fail('erstes Bild beim Abspielen ist das gemalte Weit-Bild')
+}
 
 const geminiIds: typeof s1 = s1.map((p) => ({
   ...p,
@@ -654,7 +658,7 @@ const geminiIds: typeof s1 = s1.map((p) => ({
   lineIds: [],
 }))
 const fromTitle = scenePlayBeats(geminiIds, dialog, 'Szene 1: La Chasse aux Cadeaux')
-if (fromTitle.filter((b) => !b.establishing).length !== 2) {
+if (fromTitle.filter((b) => b.line).length !== 2) {
   fail('Abspielen findet den Dialog auch wenn Gemini «1» statt der Abschnitts-Id schreibt')
 }
 
@@ -676,7 +680,7 @@ const byLineId: typeof s1 = [
   },
 ]
 const fromLineIds = scenePlayBeats(byLineId, dialog)
-if (fromLineIds.filter((b) => !b.establishing).map((b) => b.line?.lineId).join() !== 'l1,l2') {
+if (fromLineIds.filter((b) => b.line).map((b) => b.line?.lineId).join() !== 'l1,l2') {
   fail('Abspielen nimmt die Zeilen-Ids am Bild, nicht nur die Abschnitts-Id')
 }
 
@@ -726,12 +730,32 @@ const painted = s1.map((p, i) => ({
   lineIds: i === 0 ? ['l1'] : ['l2'],
 }))
 const playPainted = scenePlayBeats(painted, dialog)
-const spokenPainted = playPainted.filter((b) => !b.establishing)
+const spokenPainted = playPainted.filter((b) => b.line)
 if (spokenPainted[0]?.stillUrl !== 'https://example.com/row-1.png') {
   fail('Abspielen zeigt das Standbild der ersten Zeile')
 }
 if (spokenPainted[1]?.stillUrl !== 'https://example.com/row-2.png') {
   fail('Abspielen wechselt zum Standbild der zweiten Zeile')
+}
+
+const insertPrompt = buildFilmStillPrompt({
+  caption: 'Da klopft es an der Tür',
+  imageCue: 'Die Tür füllt das Bild',
+  hasLibraryRefs: true,
+  shot: 'insert',
+  settingHint: 'Wohnzimmer',
+})
+if (!insertPrompt.toLowerCase().includes('insert')) fail('Zwischenbild muss Insert verlangen')
+if (!insertCameraLine('Die Tür').toLowerCase().includes('whole room')) {
+  fail('Zwischenbild darf nicht der ganze Raum sein')
+}
+const insertAttach = stillAttachmentInstruction({
+  correctingExisting: false,
+  closeup: false,
+  insert: true,
+})
+if (!insertAttach.toLowerCase().includes('not copy the wide')) {
+  fail('Zwischenbild kopiert nicht das Weit-Bild')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

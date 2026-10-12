@@ -7,7 +7,14 @@
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
-import type { Dialog, DialogLine, DialogSection } from './types.js'
+import {
+  inferDialogLineKind,
+  isStageSpeaker,
+  type Dialog,
+  type DialogLine,
+  type DialogLineKind,
+  type DialogSection,
+} from './types.js'
 import type { StoryLibraryAsset } from './story-types.js'
 import {
   STILL_POSES,
@@ -18,8 +25,8 @@ import {
 export type FilmMatchKind = 'reuse' | 'transform' | 'missing'
 export type FilmDepth = 'foreground' | 'mid' | 'background'
 export type FilmBoardSource = 'rules' | 'gemini'
-/** Weit = ganzer Raum. Nahaufnahme = sprechendes Gesicht, wiederverwendbar. */
-export type FilmShot = 'wide' | 'closeup'
+/** Weit = ganzer Raum. Nahaufnahme = wer spricht. Zwischenbild = Tür, Tee, Detail. */
+export type FilmShot = 'wide' | 'closeup' | 'insert'
 
 export interface FilmPlacement {
   name: string
@@ -78,7 +85,7 @@ export interface FilmStoryboardPanel {
   stillCorrection?: string
   /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
   harvestNoteDe?: string
-  /** Weit (Raum) oder Nahaufnahme (Gesicht). */
+  /** Weit (Raum), Nahaufnahme (Gesicht) oder Zwischenbild (Tür, Tee). */
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */
   closeupSpeaker?: string
@@ -363,7 +370,12 @@ function speakersInSection(
   existing: FilmDraftPanel[] = [],
 ): string[] {
   const fromLines = [
-    ...new Set(section.lines.map((l) => l.speaker.trim()).filter(Boolean)),
+    ...new Set(
+      section.lines
+        .filter((l) => inferDialogLineKind(l) === 'speech')
+        .map((l) => l.speaker.trim())
+        .filter((name) => name && !isStageSpeaker(name)),
+    ),
   ]
   if (fromLines.length > 0) return fromLines
   const fromText = [
@@ -432,29 +444,131 @@ export function resolveDraftSectionId(dialog: Pick<Dialog, 'sections'>, raw?: st
   return dialog.sections[0]?.id || 'scene-1'
 }
 
+export function parseFilmShot(raw?: string): FilmShot | undefined {
+  const t = (raw || '').trim().toLowerCase()
+  if (t === 'closeup' || t === 'close-up' || t === 'nahaufnahme') return 'closeup'
+  if (t === 'insert' || t === 'zwischenbild' || t === 'cutaway') return 'insert'
+  if (t === 'wide' || t === 'weit' || t === 'grundbild') return 'wide'
+  return undefined
+}
+
+function shotFromCueText(cue?: string): FilmShot | undefined {
+  const t = (cue || '').trim().toLowerCase()
+  if (!t) return undefined
+  if (/nahaufnahme|close-?up/.test(t)) return 'closeup'
+  if (/zwischenbild|insert|cutaway/.test(t)) return 'insert'
+  if (/ganzer raum|weit-?bild|grundbild/.test(t)) return 'wide'
+  return undefined
+}
+
+const INSERT_HINT =
+  /klopft|klingelt|tür|tuer|\bdoor\b|teekanne|bereitet tee|an der tür|die tür|prospekt|zwischenbild|\binsert\b|öffnet die|kommt herein/
+
+export function isPlaceholderImageCue(cue?: string): boolean {
+  const t = (cue || '').trim().toLowerCase()
+  if (!t) return true
+  return /wie zuvor|wie das vorige|gleiches bild|wie vorher/.test(t)
+}
+
+export function insertCueFromText(text: string, cueImage?: string): string {
+  const fromCue = (cueImage || '').trim()
+  if (fromCue && !isPlaceholderImageCue(fromCue)) return fromCue
+  const t = text.toLowerCase()
+  if (/klopf|klingel/.test(t)) {
+    return 'Die Tür füllt das Bild — jemand klopft von aussen.'
+  }
+  if (/tee/.test(t)) return 'Tee zubereiten: Kanne, Gläser, Hände — nicht der ganze Raum.'
+  if (/tür|tuer|door/.test(t)) return 'Die Tür, nah, derselbe Ort.'
+  if (/prospekt/.test(t)) return 'Der Prospekt in der Hand, lesbar.'
+  return `Zwischenbild: ${text.trim().slice(0, 80) || 'ein Detail der Szene'}`
+}
+
+export function inferShotForLine(opts: {
+  kind: DialogLineKind
+  speaker: string
+  text: string
+  cueImage?: string
+  hadWide: boolean
+}): { shot: FilmShot; closeupSpeaker?: string } {
+  const fromCue = shotFromCueText(opts.cueImage)
+  if (fromCue === 'closeup') {
+    return { shot: 'closeup', closeupSpeaker: opts.speaker }
+  }
+  if (fromCue === 'insert') return { shot: 'insert' }
+  const blob = `${opts.cueImage || ''} ${opts.text}`.toLowerCase()
+  const insertish = INSERT_HINT.test(blob)
+  if (opts.kind === 'action' || (opts.kind !== 'speech' && insertish)) {
+    return { shot: 'insert' }
+  }
+  if (opts.kind === 'speech' && insertish && /tür|tuer|klopft|klingelt|tee|prospekt/.test(blob)) {
+    return { shot: 'insert' }
+  }
+  if (opts.kind === 'narrator') {
+    if (insertish) return { shot: 'insert' }
+    if (!opts.hadWide) return { shot: 'wide' }
+    return { shot: 'insert' }
+  }
+  if (!opts.hadWide) return { shot: 'wide' }
+  return { shot: 'closeup', closeupSpeaker: opts.speaker }
+}
+
+function defaultImageCue(opts: {
+  shot: FilmShot
+  speaker: string
+  setting: string
+  speakers: string[]
+  text: string
+  cueImage?: string
+}): string {
+  if (opts.cueImage?.trim() && !isPlaceholderImageCue(opts.cueImage)) return opts.cueImage.trim()
+  if (opts.shot === 'insert') return insertCueFromText(opts.text, opts.cueImage)
+  if (opts.shot === 'closeup') {
+    return `Nahaufnahme ${opts.speaker}. ${opts.speaker} spricht — Kamera auf das Gesicht, nicht den ganzen Raum.`
+  }
+  return `Ganzer Raum: ${opts.setting}. Alle: ${opts.speakers.join(', ') || 'die Figuren'}.`
+}
+
+function namesMentioned(text: string, speakers: string[]): string[] {
+  const hay = text.toLowerCase()
+  return speakers.filter((name) => name.trim() && hay.includes(name.trim().toLowerCase()))
+}
+
+function stageLabel(kind: DialogLineKind): string {
+  if (kind === 'action') return 'Handlung'
+  if (kind === 'narrator') return 'Erzähler'
+  return ''
+}
+
 /** Bild-Notiz verlangt ein neues Standbild (sonst die vorige Zeile wiederverwenden). */
 export function cueAsksNewPicture(cue?: string): boolean {
   const t = (cue || '').trim().toLowerCase()
   if (!t) return false
-  if (/wie zuvor|wie das vorige|gleiches bild|wie vorher/.test(t)) return false
-  return /nahaufnahme|close-?up|steht auf|aufstehen|geht |laufen|läuft |klingelt|zoom|tür|tuer|prospekt|winkt|setzt sich/.test(
+  if (isPlaceholderImageCue(t)) return false
+  return /nahaufnahme|close-?up|zwischenbild|insert|steht auf|aufstehen|geht |laufen|läuft |klingelt|klopft|zoom|tür|tuer|tee|prospekt|winkt|setzt sich|bereitet/.test(
     t,
   )
 }
 
 export function panelWantsOwnStill(
-  panel: Pick<FilmStoryboardPanel, 'id' | 'stillCorrection' | 'imageCue' | 'panelIndex'>,
-  scenePanels: Pick<FilmStoryboardPanel, 'id' | 'panelIndex'>[],
+  panel: Pick<FilmStoryboardPanel, 'id' | 'stillCorrection' | 'imageCue' | 'panelIndex' | 'shot' | 'closeupSpeaker'>,
+  scenePanels: Pick<FilmStoryboardPanel, 'id' | 'panelIndex' | 'shot' | 'closeupSpeaker' | 'imageCue'>[],
 ): boolean {
   const ordered = [...scenePanels].sort((a, b) => a.panelIndex - b.panelIndex)
-  if (ordered[0]?.id === panel.id) return true
+  const idx = ordered.findIndex((p) => p.id === panel.id)
+  if (idx <= 0) return true
   if (panel.stillCorrection?.trim()) return true
+  const shot = panel.shot ?? 'wide'
+  if (shot === 'closeup' || shot === 'insert') return true
+  const prev = ordered[idx - 1]
+  if ((prev?.shot ?? 'wide') !== shot) return true
+  if ((prev?.closeupSpeaker || '') !== (panel.closeupSpeaker || '')) return true
   return cueAsksNewPicture(panel.imageCue)
 }
 
 /**
- * Pro Dialogzeile ein Bild. Die erste Zeile einer Szene ist die Übersicht;
- * die nächsten Zeilen nehmen dasselbe Bild, bis eine Bild-Notiz etwas Neues verlangt.
+ * Pro Dialogzeile ein Bild. Die Kamera folgt der Regie:
+ * erstes Sprechen = Grundbild, später wer spricht = Nahaufnahme,
+ * Handlung (Tür, Tee) = Zwischenbild — nicht immer der ganze Raum.
  */
 export function ensureCoverageDrafts(
   dialog: Dialog,
@@ -474,39 +588,75 @@ export function ensureCoverageDrafts(
     const setting = existing[0]?.settingHint?.trim() || defaultSetting(dialog, section)
     const blob = section.lines.map((l) => lineCueText(l)).join(' ')
     const poseHint = inferPoseId(blob)
+    let hadWide = false
     section.lines.forEach((line, i) => {
-      const prior =
-        existing.find((d) => d.lineIds?.includes(line.id)) ||
-        (i === 0 ? existing.find((d) => (d.shot ?? 'wide') !== 'closeup') : undefined)
-      const speaker = line.speaker.trim() || speakers[0] || 'Figur'
+      const prior = existing.find((d) => d.lineIds?.includes(line.id))
+      const kind = inferDialogLineKind(line)
+      const speaker =
+        line.speaker.trim() ||
+        (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : speakers[0] || 'Figur')
       const lineCue = line.cueImage?.trim() || ''
-      const imageCue =
-        prior?.imageCue?.trim() ||
-        lineCue ||
-        (i === 0
-          ? `Ganzer Raum: ${setting}. Alle: ${speakers.join(', ') || 'die Figuren'}.`
-          : `Wie das vorige Bild. ${speaker} spricht.`)
-      const close = i > 0 && /nahaufnahme|close-?up/.test(imageCue.toLowerCase())
+      const priorCue =
+        prior?.imageCue?.trim() && !isPlaceholderImageCue(prior.imageCue) ? prior.imageCue.trim() : ''
+      const inferred = inferShotForLine({
+        kind,
+        speaker,
+        text: line.text,
+        cueImage: lineCue || priorCue,
+        hadWide,
+      })
+      const geminiShot = parseFilmShot(prior?.shot)
+      const shot: FilmShot =
+        !hadWide && kind === 'speech'
+          ? geminiShot === 'insert'
+            ? 'insert'
+            : 'wide'
+          : geminiShot === 'insert' || geminiShot === 'closeup'
+            ? geminiShot
+            : inferred.shot
+      const imageCue = defaultImageCue({
+        shot,
+        speaker,
+        setting,
+        speakers,
+        text: line.text,
+        cueImage: lineCue || priorCue,
+      })
+      const closeupSpeaker =
+        shot === 'closeup' ? prior?.closeupSpeaker?.trim() || inferred.closeupSpeaker || speaker : undefined
+      const caption =
+        prior?.caption?.trim() ||
+        (kind === 'action' || kind === 'narrator'
+          ? `${stageLabel(kind)}: ${line.text}`.slice(0, 140)
+          : `${speaker}: ${line.text}`.slice(0, 140))
+      const insertPeople = namesMentioned(`${line.text} ${lineCue} ${imageCue}`, speakers)
       out.push({
         sectionId: section.id,
-        shot: i === 0 || !close ? 'wide' : 'closeup',
-        closeupSpeaker: close ? speaker : undefined,
+        shot,
+        closeupSpeaker,
         lineIds: [line.id],
-        caption: prior?.caption?.trim() || `${speaker}: ${line.text}`.slice(0, 140),
+        caption,
         imageCue,
         soundCue: prior?.soundCue || (i === 0 ? dialog.soundDirection?.trim() || '' : ''),
         speechCue: prior?.speechCue || line.cueSpeech || '',
         settingHint: setting,
         expressionHint: prior?.expressionHint || inferExpression(line.text),
         characters:
-          i === 0
+          shot === 'wide'
             ? speakers.map((name) => ({
                 name,
                 poseHint,
                 depth: 'mid' as FilmDepth,
               }))
-            : [{ name: speaker, poseHint, depth: 'foreground' as FilmDepth }],
+            : shot === 'insert'
+              ? insertPeople.map((name) => ({
+                  name,
+                  poseHint,
+                  depth: 'mid' as FilmDepth,
+                }))
+              : [{ name: closeupSpeaker || speaker, poseHint, depth: 'foreground' as FilmDepth }],
       })
+      if (shot === 'wide') hadWide = true
     })
   }
   return out
@@ -525,7 +675,7 @@ export function expectedSceneShotCount(dialog: Dialog, sectionId: string): numbe
 
 export function sceneShotPlanDe(panels: FilmStoryboardPanel[]): string {
   const n = panels.length
-  return `Geplant: ${n} Bild${n === 1 ? '' : 'er'} — eines je Dialogzeile. Gleiches Bild bis du etwas änderst.`
+  return `Geplant: ${n} Bild${n === 1 ? '' : 'er'} — eines je Dialogzeile. Kamera: Weit, Nahaufnahme oder Zwischenbild.`
 }
 
 export function dialogNeedsNativeTranslation(dialog: Pick<Dialog, 'sections'>): boolean {
@@ -587,7 +737,9 @@ export function buildBoardFromDrafts(
     const blob = [draft.imageCue, draft.caption, draft.settingHint].filter(Boolean).join(' ')
     const placements = (draft.characters?.length
       ? draft.characters
-      : [{ name: 'Figur', poseHint: 'standing-front' }]
+      : draft.shot === 'insert'
+        ? []
+        : [{ name: 'Figur', poseHint: 'standing-front' }]
     ).map((ch, ci, all) => {
       const poseId = inferPoseId(`${ch.poseHint ?? ''} ${blob}`)
       const pose = getStillPose(poseId)
@@ -632,7 +784,7 @@ export function buildBoardFromDrafts(
       speechCue: draft.speechCue?.trim() || '',
       settingHint,
       expressionHint: draft.expressionHint?.trim() || inferExpression(blob),
-      shot: draft.shot === 'closeup' ? 'closeup' : 'wide',
+      shot: parseFilmShot(draft.shot) ?? 'wide',
       closeupSpeaker: draft.closeupSpeaker,
       placements,
       background: opts?.freshPlaces
@@ -747,7 +899,7 @@ export function normalizeFilmStoryboard(board: FilmStoryboard): FilmStoryboard {
     ...p,
     sceneId: p.sceneId || `scene-${(p.sceneIndex ?? 0) + 1}`,
     panelIndex: p.panelIndex || i + 1,
-    shot: p.shot === 'closeup' ? 'closeup' : 'wide',
+    shot: parseFilmShot(p.shot) ?? 'wide',
     closeupSpeaker: p.closeupSpeaker,
     placements: (p.placements ?? []).map((pl) => ({
       ...pl,
@@ -882,10 +1034,22 @@ export function insertPanelAfter(
   if (!after) return insertSceneAfter(next, null, 'Szene 1')
   const poseId = inferPoseId(text)
   const pose = getStillPose(poseId)
+  const inferred = inferShotForLine({
+    kind: inferDialogLineKind({ speaker: '', text, cueImage: text }),
+    speaker: after.closeupSpeaker || after.placements[0]?.name || '',
+    text,
+    cueImage: text,
+    hadWide: next.panels.some((p) => p.sceneId === after.sceneId && p.shot === 'wide'),
+  })
   const names = Array.from(
     new Set(after.placements.map((p) => p.name).concat(guessNames(text))),
   ).filter(Boolean)
-  const people = names.length ? names : ['Figur']
+  const people =
+    inferred.shot === 'insert'
+      ? names.filter((n) => text.toLowerCase().includes(n.toLowerCase()))
+      : names.length
+        ? names
+        : ['Figur']
   const placements: FilmPlacement[] = people.map((name, ci, all) => {
     const matched = matchCharacterPose(name, poseId, library)
     return {
@@ -916,6 +1080,8 @@ export function insertPanelAfter(
     speechCue: '',
     settingHint: after.settingHint,
     expressionHint: inferExpression(text),
+    shot: inferred.shot,
+    closeupSpeaker: inferred.closeupSpeaker,
     placements,
     background: matchBackground(after.settingHint || text, library),
   }
@@ -1046,6 +1212,7 @@ export function panelSpeakLines(
 ): Array<{ id: string; speaker: string; text: string; audioUrl?: string }> {
   const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
   if (!line) return []
+  if (inferDialogLineKind(line) === 'action') return []
   const text = lineSpeechText(line).trim() || line.text.trim()
   if (!text) return []
   return [
@@ -1086,6 +1253,8 @@ export interface FilmPlayBeat {
   stillUrl?: string
   caption: string
   establishing?: boolean
+  /** Stilles Zwischenbild — Bild und Pause, keine Stimme. */
+  silent?: boolean
   line?: FilmPanelDialogueLine
   lineIndex: number
   lineTotal: number
@@ -1261,35 +1430,47 @@ export function scenePlayBeats(
   dialog?: Pick<Dialog, 'sections'> | null,
   sceneTitle?: string,
 ): FilmPlayBeat[] {
-  const wide = panels.find((p) => (p.shot ?? 'wide') !== 'closeup')
-  const spoken: FilmPlayBeat[] = []
+  const wide = panels.find((p) => p.shot === 'wide' && p.stillUrl)
+  const beats: FilmPlayBeat[] = []
+  let spoken = 0
   for (const panel of panels) {
     const line = lineForFilmPanel(panel, dialog, panels, sceneTitle)
-    if (!line) continue
-    spoken.push({
+    const kind = line ? inferDialogLineKind(line) : undefined
+    const silent = !line || kind === 'action'
+    const caption = line
+      ? kind === 'action' || kind === 'narrator'
+        ? line.text.slice(0, 140)
+        : `${line.speaker}: ${line.text}`.slice(0, 140)
+      : panel.caption
+    beats.push({
       panelId: panel.id,
-      stillUrl: panel.stillUrl || wide?.stillUrl,
-      caption: `${line.speaker}: ${line.text}`.slice(0, 140),
-      line: toFilmDialogueLine(line),
-      lineIndex: spoken.length,
+      stillUrl:
+        panel.stillUrl ||
+        ((panel.shot ?? 'wide') === 'closeup' ? wide?.stillUrl : undefined),
+      caption,
+      silent,
+      line: silent || !line ? undefined : toFilmDialogueLine(line),
+      lineIndex: silent ? -1 : spoken++,
       lineTotal: 0,
     })
   }
-  for (const beat of spoken) beat.lineTotal = spoken.length
+  for (const beat of beats) beat.lineTotal = spoken
+  const firstIsCloseup = (panels[0]?.shot ?? 'wide') === 'closeup'
   const intro: FilmPlayBeat[] =
-    wide?.stillUrl
+    firstIsCloseup && wide?.stillUrl
       ? [
           {
             panelId: wide.id,
             stillUrl: wide.stillUrl,
             caption: wide.caption,
             establishing: true,
+            silent: true,
             lineIndex: -1,
-            lineTotal: spoken.length,
+            lineTotal: spoken,
           },
         ]
       : []
-  return [...intro, ...spoken]
+  return [...intro, ...beats]
 }
 
 export function boardNeedsDrawing(board: FilmStoryboard | undefined): number {

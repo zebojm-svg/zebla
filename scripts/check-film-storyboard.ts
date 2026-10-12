@@ -205,10 +205,54 @@ const four: Dialog = {
 const fourBoard = planBoardWithoutAi(four, [])
 if (fourBoard.panels.length !== 4) fail('Vier Dialogzeilen → vier Bilder')
 if (expectedSceneShotCount(four, 'ankunft') !== 4) fail('erwartet 4 Bilder')
-if (fourBoard.panels.filter((p) => (p.shot ?? 'wide') === 'wide').length !== 4) {
-  fail('ohne Bild-Notiz bleiben alle beim Weit-Bild')
+if (fourBoard.panels[0]?.shot !== 'wide') fail('erster Salam ist das Weit-Bild / Grundbild')
+if (fourBoard.panels.slice(1).some((p) => p.shot !== 'closeup')) {
+  fail('wer spricht danach = Nahaufnahme, nicht der ganze Raum')
 }
+if (fourBoard.panels[1]?.closeupSpeaker !== 'Khan') fail('Kamera auf Khan wenn Khan spricht')
 if (!sceneShotPlanDe(fourBoard.panels).includes('Dialogzeile')) fail('Plan sagt ein Bild je Zeile')
+
+const tea: Dialog = {
+  ...dialog,
+  id: 'd-tea',
+  title: 'Tee',
+  sections: [
+    {
+      id: 'gaeste',
+      title: 'Gäste',
+      lines: [
+        {
+          id: 'tea1',
+          speaker: 'Handlung',
+          kind: 'action',
+          text: 'Ramo bereitet Tee vor für seine Gäste. Er hat ein paar Freunde eingeladen.',
+        },
+        {
+          id: 'tea2',
+          speaker: 'Handlung',
+          kind: 'action',
+          text: 'Da klopft es an der Tür.',
+          cueImage: 'Die Tür',
+        },
+        { id: 'tea3', speaker: 'Ramo', text: 'Salam.' },
+        { id: 'tea4', speaker: 'Khan', text: 'Salam.' },
+      ],
+    },
+  ],
+}
+const teaBoard = planBoardWithoutAi(tea, [])
+if (teaBoard.panels[0]?.shot !== 'insert') fail('Tee zubereiten ist Zwischenbild')
+if (teaBoard.panels[1]?.shot !== 'insert') fail('Klopfen ist Zwischenbild')
+if (!/tür/i.test(teaBoard.panels[1]?.imageCue || '')) fail('Kamera zeigt die Tür')
+if (teaBoard.panels[2]?.shot !== 'wide') fail('erster Sprecher nach der Handlung ist Grundbild')
+if (teaBoard.panels[3]?.shot !== 'closeup' || teaBoard.panels[3]?.closeupSpeaker !== 'Khan') {
+  fail('Khan spricht → Nahaufnahme Khan')
+}
+const teaPlay = scenePlayBeats(teaBoard.panels, tea)
+if (!teaPlay[0]?.silent) fail('Tee ohne Stimme')
+if (!teaPlay[1]?.silent) fail('Klopfen ohne Stimme')
+if (!teaPlay[2]?.line || teaPlay[2].silent) fail('Ramo spricht nach dem Klopfen')
+if (!cueAsksNewPicture('Da klopft es an der Tür')) fail('Klopfen braucht ein neues Bild')
 
 const geminiWrongId = ensureCoverageDrafts(four, [
   {
@@ -290,6 +334,10 @@ if (!pageSrc.includes('filmScenesFromDialog')) fail('Board folgt den Dialog-Szen
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
 if (!aiSrc.includes('dropRepeatedDialogSections')) fail('kopierte Dialog-Szenen fallen weg')
+if (!aiSrc.includes('kind')) fail('Dialog darf Handlung und Erzähler')
+const planSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
+if (!planSrc.includes('shot="insert"')) fail('Regie darf Zwischenbilder planen')
+if (!planSrc.includes('closeup')) fail('Regie zeigt wer spricht')
 
 const unnamed: Dialog = {
   ...dialog,
