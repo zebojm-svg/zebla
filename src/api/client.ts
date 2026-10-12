@@ -319,6 +319,20 @@ export const api = {
       requestBlob(
         `/dialog-audio-line?dialogId=${encodeURIComponent(dialogId)}&lineId=${encodeURIComponent(lineId)}`,
       ),
+    preview: (data: {
+      dialogId: string
+      speaker: string
+      voiceName?: string
+      gender?: 'male' | 'female'
+    }) =>
+      request<{ audioBase64: string; mimeType: string }>(
+        '/tts-preview',
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        },
+        FILM_PLAN_TIMEOUT_MS,
+      ),
     exportZip: (dialogId: string) =>
       requestBlob(
         `/dialog-audio-export?dialogId=${encodeURIComponent(dialogId)}&format=zip`,
@@ -452,6 +466,18 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId, panelId, comment }),
       }),
+    filmStoryboardCues: (
+      dialogId: string,
+      panelId: string,
+      cues: { soundCue?: string; imageCue?: string; speechCue?: string },
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-cues', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId, ...cues }),
+      }),
     filmSceneNote: (dialogId: string, sceneId: string, noteDe: string) =>
       request<{
         dialog: import('../types').Dialog
@@ -537,6 +563,15 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ dialogId, plan }),
       }),
+    rewriteLine: (dialogId: string, lineId: string, nativeText: string) =>
+      request<{ dialog: import('../types').Dialog; line: import('../types').DialogLine }>(
+        '/line-native',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, lineId, nativeText }),
+        },
+        TEXT_AI_TIMEOUT_MS,
+      ),
     birkenbihl: (
       dialogId: string,
       nativeLanguage: string,

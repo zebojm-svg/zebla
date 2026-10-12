@@ -422,6 +422,28 @@ Behalte Sprecher-Namen bei. Gleiche Anzahl Zeilen.`,
   }))
 }
 
+/** Deutsch (Muttersprache) ändern → Zielsprache und Birkenbihl nachziehen. */
+export async function rewriteLineFromNative(
+  line: DialogLine,
+  nativeText: string,
+  targetLanguage: string,
+  nativeLanguage: string,
+): Promise<DialogLine> {
+  const trimmed = nativeText.trim()
+  if (!trimmed) throw new Error('Deutscher Text fehlt.')
+  const translated = await translateDialog(
+    [{ ...line, text: trimmed }],
+    targetLanguage,
+  )
+  const withText: DialogLine = {
+    ...line,
+    text: translated[0]?.text?.trim() || line.text,
+    audioUrl: undefined,
+  }
+  const withBi = await applyBirkenbihl([withText], nativeLanguage, targetLanguage)
+  return withBi[0] ?? withText
+}
+
 export async function applyBirkenbihl(
   lines: DialogLine[],
   nativeLanguage: string,

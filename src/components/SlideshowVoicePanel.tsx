@@ -80,7 +80,7 @@ export function SlideshowVoicePanel({ dialog, setDialog, disabled, onStatus }: P
         {speakers.map((speaker) => {
           const profile = dialog.speakerProfiles?.[speaker]
           const assigned = dialog.speakerVoices?.[speaker]
-          const gender = speakerGender(dialog, speaker) ?? assigned?.gender ?? 'female'
+          const gender = speakerGender(dialog, speaker) ?? assigned?.gender ?? 'male'
           return (
             <div key={speaker} className="slideshow-voice-card">
               <div className="slideshow-voice-card-head">

@@ -79,6 +79,9 @@ export function FilmScenePreviewPlayer({
   const currentPanel = current
     ? panels.find((p) => p.id === current.panelId)
     : undefined
+  const shownPanel =
+    (currentPanel?.stillUrl ? currentPanel : undefined) ||
+    panels.find((p) => p.stillUrl && p.stillUrl === current?.stillUrl)
   const spokenBeats = beats.filter((b) => !b.establishing)
   const nowLine = current?.establishing ? undefined : current?.line
   const soundNote =
@@ -218,8 +221,8 @@ export function FilmScenePreviewPlayer({
   return (
     <div className="film-scene-player">
       <p className="muted film-scene-player-note">
-        <strong>Szene anhören:</strong> erst den Raum, dann eine Zeile nach der anderen —
-        Bild wechselt zum Sprecher. Deutsch steht unter der Zeile.
+        <strong>Szene anhören:</strong> erst den Raum, dann jedes gemalte Bild zur gesprochenen
+        Zeile. Deutsch steht unter der Zeile.
       </p>
       <p className="muted film-scene-player-voice">
         {voiceLabel}
@@ -235,12 +238,30 @@ export function FilmScenePreviewPlayer({
         <p className="alert alert-warn">Kein Dialog in dieser Szene — deshalb spricht niemand.</p>
       ) : null}
       <div className="film-scene-player-frame">
-        {currentPanel?.stillUrl ? (
-          <FilmStillPicture dialogId={dialogId} panel={currentPanel} interactive={false} />
+        {shownPanel?.stillUrl ? (
+          <FilmStillPicture dialogId={dialogId} panel={shownPanel} interactive={false} />
+        ) : current?.stillUrl ? (
+          <img src={current.stillUrl} alt={current.caption || 'Standbild'} />
         ) : (
           <div className="film-still-placeholder">Noch kein gemaltes Bild</div>
         )}
       </div>
+      {spokenBeats.some((b) => b.stillUrl) ? (
+        <ol className="film-play-stills">
+          {spokenBeats.map((beat) => (
+            <li
+              key={beat.panelId}
+              className={current?.panelId === beat.panelId ? 'is-now' : undefined}
+            >
+              {beat.stillUrl ? (
+                <img src={beat.stillUrl} alt={beat.caption || 'Standbild'} />
+              ) : (
+                <span className="film-still-placeholder">–</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       <p className="film-scene-player-count">
         {current?.establishing
           ? `Raum anschauen${scene.title ? ` · ${scene.title}` : ''}`

@@ -4,6 +4,7 @@
  */
 import {
   applyDirectorNote,
+  applyPanelCues,
   dialogNeedsNativeTranslation,
   ensureCoverageDrafts,
   cueAsksNewPicture,
@@ -150,6 +151,15 @@ const reusedOtherMood = findReusableCloseup(
 if (reusedOtherMood !== 'https://example.com/julien-cu.png') {
   fail('Dieselbe Nahaufnahme auch bei anderer Mimik — nur Augenbrauen/Mund ändern')
 }
+
+const cued = applyPanelCues(board, panel.id, {
+  soundCue: 'leise persische Musik, ab und zu eine Nuss knacken',
+  imageCue: 'Ubai schaut müde',
+})
+if (cued.panels[0]?.soundCue !== 'leise persische Musik, ab und zu eine Nuss knacken') {
+  fail('Ton-Regie speichern')
+}
+if (cued.panels[0]?.imageCue !== 'Ubai schaut müde') fail('Bild-Regie speichern')
 
 const tweaked = applyDirectorNote(board, panel.id, 'Julien eher im Hintergrund')
 const after = tweaked.panels[0]?.placements[0]

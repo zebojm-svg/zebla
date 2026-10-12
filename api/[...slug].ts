@@ -66,6 +66,7 @@ import {
   handleGenerateChat,
   handleTranslate,
   handleBirkenbihl,
+  handleRewriteLine,
   handleSplit,
   handleImage,
   handleImageAll,
@@ -74,7 +75,7 @@ import {
   handleVisualTest,
   handleVisualCritic,
 } from '../lib/ai-handlers.js'
-import { checkTtsHealth } from '../lib/tts.js'
+import { checkTtsHealth, synthesizeSpeech } from '../lib/tts.js'
 import { meterAiRequest } from '../lib/ai-usage-ledger.js'
 import {
   ensureDialogAudio,
@@ -125,7 +126,7 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
@@ -1430,6 +1431,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (route === 'tts-preview' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      await gateAi(user.uid)
+      const { dialogId, speaker, voiceName, gender } = req.body as {
+        dialogId?: string
+        speaker?: string
+        voiceName?: string
+        gender?: 'male' | 'female'
+      }
+      if (!dialogId || !speaker) {
+        res.status(400).json({ error: 'dialogId und Sprecher fehlen.' })
+        return
+      }
+      try {
+        const dialog = await getDialog(dialogId, user.uid)
+        if (!dialog) {
+          res.status(404).json({ error: 'Dialog nicht gefunden.' })
+          return
+        }
+        const sample =
+          dialog.sections
+            .flatMap((s) => s.lines)
+            .find((l) => l.speaker.trim() === speaker.trim() && l.text.trim())?.text.trim() || 'سلام.'
+        const { getSpeakerVoice } = await import('../lib/speaker-voice.js')
+        const base = getSpeakerVoice(dialog, speaker)
+        const tts = await synthesizeSpeech({
+          text: sample,
+          languageCode: dialog.targetLanguage,
+          gender: gender ?? base.gender,
+          voiceName: voiceName || base.voiceName,
+          voicePrompt: base.voicePrompt,
+          speakerIndex: 0,
+        })
+        res.json({ audioBase64: tts.audioBase64, mimeType: tts.mimeType })
+      } catch (err) {
+        sendError(res, err)
+      }
+      return
+    }
+
     if (route === 'dialog-audio-export' && req.method === 'GET') {
       const user = await requireAuth(req)
       const dialogId = req.query.dialogId as string | undefined
@@ -1605,6 +1646,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ) {
       return handleBirkenbihl(req, res)
     }
+
+    if ((route === 'line-native' || route === 'ai/line-native') && req.method === 'POST') {
+      return handleRewriteLine(req, res)
+    }
     if ((route === 'split' || route === 'ai/split') && req.method === 'POST') {
       return handleSplit(req, res)
     }
@@ -1730,6 +1775,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         user.uid,
         panelId.trim(),
         comment ?? '',
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-cues' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId, soundCue, imageCue, speechCue } = req.body as {
+        dialogId?: string
+        panelId?: string
+        soundCue?: string
+        imageCue?: string
+        speechCue?: string
+      }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await cueFilmPanel(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        { soundCue, imageCue, speechCue },
         profile,
       )
       res.json(result)

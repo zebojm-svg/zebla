@@ -22,8 +22,6 @@ const PAD: PadVoice[] = [
   { freq: 392.0, type: 'sine', gain: 0.05, detune: 2 },
 ]
 
-const BELL_HZ = [523.25, 587.33, 659.25, 783.99, 880.0]
-
 function audioContextCtor(): (new () => AudioContext) | null {
   const w = window as typeof window & { webkitAudioContext?: typeof AudioContext }
   return w.AudioContext ?? w.webkitAudioContext ?? null
@@ -48,9 +46,7 @@ export function createSceneBedMusic(): SceneBedMusic {
   let padOn = false
   let audible = false
   const padNodes: OscillatorNode[] = []
-  const bellNodes: OscillatorNode[] = []
   const foleyNodes: AudioNode[] = []
-  let bellTimer: number | null = null
   let crackleTimer: number | null = null
   let wantCrackle = false
   let wantCity = false
@@ -89,13 +85,6 @@ export function createSceneBedMusic(): SceneBedMusic {
     return true
   }
 
-  function clearBellTimer() {
-    if (bellTimer != null) {
-      window.clearTimeout(bellTimer)
-      bellTimer = null
-    }
-  }
-
   function clearCrackleTimer() {
     if (crackleTimer != null) {
       window.clearTimeout(crackleTimer)
@@ -114,23 +103,23 @@ export function createSceneBedMusic(): SceneBedMusic {
 
   function playCrackle() {
     if (!ctx || !foleyBus || !audible || !wantCrackle) return
-    const dur = 0.05 + Math.random() * 0.07
+    const dur = 0.018 + Math.random() * 0.02
     const buf = noiseBuffer(dur)
     if (!buf) return
     const src = ctx.createBufferSource()
     src.buffer = buf
     const bp = ctx.createBiquadFilter()
     bp.type = 'bandpass'
-    bp.frequency.value = 1800 + Math.random() * 1400
-    bp.Q.value = 1.1
+    bp.frequency.value = 2200 + Math.random() * 900
+    bp.Q.value = 3.2
     const hp = ctx.createBiquadFilter()
     hp.type = 'highpass'
-    hp.frequency.value = 700
+    hp.frequency.value = 1100
     const g = ctx.createGain()
     const now = ctx.currentTime
-    const peak = 0.45 + Math.random() * 0.25
+    const peak = 0.55 + Math.random() * 0.2
     g.gain.setValueAtTime(0.0001, now)
-    g.gain.linearRampToValueAtTime(peak, now + 0.006)
+    g.gain.linearRampToValueAtTime(peak, now + 0.003)
     g.gain.exponentialRampToValueAtTime(0.0001, now + dur)
     src.connect(hp)
     hp.connect(bp)
@@ -149,11 +138,8 @@ export function createSceneBedMusic(): SceneBedMusic {
 
   function scheduleCrackle() {
     if (!audible || !wantCrackle) return
-    const pops = 2 + Math.floor(Math.random() * 3)
-    for (let i = 0; i < pops; i++) {
-      window.setTimeout(playCrackle, i * (35 + Math.random() * 55))
-    }
-    crackleTimer = window.setTimeout(scheduleCrackle, 180 + Math.random() * 520)
+    playCrackle()
+    crackleTimer = window.setTimeout(scheduleCrackle, 8000 + Math.random() * 10000)
   }
 
   function spawnCity() {
@@ -186,51 +172,6 @@ export function createSceneBedMusic(): SceneBedMusic {
       }
     }
     list.length = 0
-  }
-
-  function playBell() {
-    if (!ctx || !master || !audible) return
-    const freq = BELL_HZ[Math.floor(Math.random() * BELL_HZ.length)] ?? 659.25
-    const now = ctx.currentTime
-    const osc = ctx.createOscillator()
-    osc.type = 'sine'
-    osc.frequency.value = freq
-    const g = ctx.createGain()
-    g.gain.setValueAtTime(0.0001, now)
-    g.gain.linearRampToValueAtTime(0.035, now + 0.02)
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.8)
-    osc.connect(g)
-    g.connect(master)
-    osc.start(now)
-    osc.stop(now + 2)
-    bellNodes.push(osc)
-    osc.onended = () => {
-      const i = bellNodes.indexOf(osc)
-      if (i >= 0) bellNodes.splice(i, 1)
-    }
-
-    const harm = ctx.createOscillator()
-    harm.type = 'sine'
-    harm.frequency.value = freq * 2.005
-    const hg = ctx.createGain()
-    hg.gain.setValueAtTime(0.0001, now)
-    hg.gain.linearRampToValueAtTime(0.01, now + 0.015)
-    hg.gain.exponentialRampToValueAtTime(0.0001, now + 0.7)
-    harm.connect(hg)
-    hg.connect(master)
-    harm.start(now)
-    harm.stop(now + 0.85)
-    bellNodes.push(harm)
-    harm.onended = () => {
-      const i = bellNodes.indexOf(harm)
-      if (i >= 0) bellNodes.splice(i, 1)
-    }
-  }
-
-  function scheduleBells() {
-    if (!audible) return
-    playBell()
-    bellTimer = window.setTimeout(scheduleBells, 2600 + Math.random() * 2000)
   }
 
   function spawnPad() {
@@ -292,9 +233,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     spawnPad()
     spawnCity()
     audible = true
-    clearBellTimer()
     clearCrackleTimer()
-    scheduleBells()
     if (wantCrackle) scheduleCrackle()
     fadeGain(master, SCENE_PAD_GAIN, 0.7)
     fadeGain(foleyBus, SCENE_FOLEY_GAIN, 0.12)
@@ -358,9 +297,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     audible = false
     fadeGain(master, 0, 0.28)
     fadeGain(foleyBus, 0, 0.28)
-    clearBellTimer()
     clearCrackleTimer()
-    stopList(bellNodes, ctx ? ctx.currentTime + 0.3 : undefined)
   }
 
   function pause() {
@@ -377,9 +314,7 @@ export function createSceneBedMusic(): SceneBedMusic {
     padOn = false
     cityOn = false
     stopVoice()
-    clearBellTimer()
     clearCrackleTimer()
-    stopList(bellNodes)
     stopList(padNodes)
     if (keepAlive) {
       try {
