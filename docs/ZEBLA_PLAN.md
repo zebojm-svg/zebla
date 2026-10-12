@@ -15,7 +15,8 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 1. **Geschichte = Ordner.** Dialog, Skript (Film-Prompt), Storyboard, Film und Diashow liegen zusammen. Neue Geschichte legt den Ordner selbst an.
 2. **Welt-Regal** (`/library`): Figuren, Räume, Möbel, Skizzen — über allen Geschichten. Zeichnen nur, wenn etwas fehlt. Gleiche Person (Ramo 1 / Ramo 2) bleibt getrennt; Ernten aus einem Standbild ist kein zweites Gesicht.
 3. **Meta-Blatt** auf der Dialog-Seite: wer spielt, Stimmen, Räume, Licht/Blick. Gilt für die ganze Geschichte.
-4. **Standbilder zuerst.** Ein Bild je Dialogzeile. Die erste Zeile einer Szene ist das **Grundbild** (ganzer Raum, wer wo sitzt, wer wen anschaut). Die nächsten Zeilen nehmen dasselbe Bild, bis man unter «Bild ändern» etwas **neu malt**. Das Tool schickt der KI immer dieses Foto plus Sitzplan, Blick und wer-wer-ist — Jean-Marie schreibt nur den kurzen Hinweis («Schöme ist ein Mann»). Nahaufnahme = **Kamera wechselt den Platz** (FLUX Kontext auf das Grundbild): man schaut der Person ins Gesicht, Hintergrund ist die Wand hinter ihr. Gemini dreht nur den Kopf und bleibt stehen — deshalb nicht für Nahaufnahmen. Gleiche Kleider, gleiches Gesicht. Weit-Bilder bleiben Gemini. Zwischenbilder (Klingeln, zur Tür) kann man einfügen. Laufen durchs Bild kommt später. Beim Abspielen: erst den Raum, dann eine Zeile nach der anderen mit Deutsch darunter. Die Zeilen kommen vom Bild (lineIds) oder vom Szenentitel, nicht nur von einer Abschnitts-Id (Gemini schreibt oft «1»). Stimme als lokale Datei auf dem schon entsperrten Audio. Nuss-Knistern/Stadtbrummen deutlich, leise Pad-Musik.
+4. **Standbilder zuerst.** Ein Bild je Dialogzeile. Die erste Zeile einer Szene ist das **Grundbild** (ganzer Raum, wer wo sitzt, wer wen anschaut). Die nächsten Zeilen nehmen dasselbe Bild, bis man unter dem Bild («wie ändern?» + **Bild ändern**) etwas **neu malt**. Das Tool schickt der KI immer dieses Foto plus Sitzplan, Blick und wer-wer-ist — Jean-Marie schreibt nur den kurzen Hinweis («Schöme ist ein Mann»). Nahaufnahme = **Kamera wechselt den Platz** (FLUX Kontext auf das Grundbild): man schaut der Person ins Gesicht, Hintergrund ist die Wand hinter ihr. Gemini dreht nur den Kopf und bleibt stehen — deshalb nicht für Nahaufnahmen. Gleiche Kleider, gleiches Gesicht. Weit-Bilder bleiben Gemini. Zwischenbilder (Klingeln, zur Tür) kann man einfügen. Laufen durchs Bild kommt später.
+   **Board-Zeile:** Bild | Zielsprache (echter Dialog, nicht die Bildnotiz) mit Deutsch/Birkenbihl direkt darunter (editierbar — Übernehmen passt die Zielsprache an) | Regie Ton und Bild (editierbar). Beim Abspielen: erst den Raum, dann jedes gemalte Standbild zur gesprochenen Zeile. Die Zeilen kommen vom Bild (lineIds) oder vom Szenentitel, nicht nur von einer Abschnitts-Id (Gemini schreibt oft «1»). Stimme als lokale Datei; Probesatz und Stimme wählen pro Figur. Bekannte Jungennamen bleiben männlich. Hintergrund: leise Pad-Musik, ab und zu ein Nuss-Knacken, keine Stimmungsglocken.
 5. **Diashow** bleibt die Lernansicht derselben Geschichte, kein zweites Produkt.
 6. **Figuren stellen ohne KI.** Nach dem Ernten: ziehen und zoomen auf Film/Storyboard. Die Lage bleibt gespeichert.
 7. **Freisteller sitzen im Raum.** Kontakt-Schatten unter den Figuren. In der Vorschau leichtes Atmen und Blinzeln (noch keine Lippen).
@@ -46,14 +47,13 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 ## Stand (2026-10)
 
-**Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen.
+**Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme.
 
-**In Arbeit:** Nahaufnahme mit FLUX: Kamera versetzen wie im Probebild (von der Seite ins Gesicht), nicht Kopf zur Linse drehen.
+**In Arbeit:** Board-Zeile (Bild + Dialog + Deutsch editierbar + Ton/Bild-Regie), echte Dialogspalten statt Bildnotizen, Stimmen-Probe, gelegentliches Nuss-Knacken.
 
 **Nächste Baustellen (noch nicht hier):**
 
-- Klingeln und Schritte im Ton (Nuss-Knistern und Stadtbrummen in der Szene-Vorschau: eigene Lautstärke, nicht im leisen Pad)
-- Figur läuft / schiebt sich durchs Bild
+- Figur läuft / schiebt sich durchs Bild — **erst** wenn Board, Dialog und Stimmen stimmen
 - Lippenbewegung zur Stimme
 - Schatten weicher / lichtabhängig
 - Möbel in der Szene selbst verschieben wie Figuren

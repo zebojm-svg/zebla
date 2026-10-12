@@ -9,6 +9,7 @@ import {
   generateDialogFromSentences,
   chatForDialog,
   translateDialog,
+  rewriteLineFromNative,
   applyBirkenbihlDialog,
   remapLinesToSections,
   splitIntoSections,
@@ -31,6 +32,7 @@ import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
 import { languageName } from '../shared/types.js'
+import { findLineInDialog } from './dialog-audio.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
   res.json({ configured: isAiConfigured() })
@@ -777,6 +779,49 @@ export async function handleVisualCritic(req: VercelRequest, res: VercelResponse
       notes: critic.notes,
       retryBeatIndexes: critic.retryBeatIndexes,
     })
+  } catch (err) {
+    sendError(res, err)
+  }
+}
+
+export async function handleRewriteLine(req: VercelRequest, res: VercelResponse) {
+  try {
+    const user = await requireAuth(req)
+    const profile = await requireProfile(user.uid)
+    assertCanUseAi(profile)
+    await consumeQuota(profile, 'aiCalls')
+    const body = req.body as { dialogId?: string; lineId?: string; nativeText?: string }
+    const dialogId = dialogIdFromRequest(req, body)
+    if (!dialogId || !body.lineId || !body.nativeText?.trim()) {
+      res.status(400).json({ error: 'dialogId, lineId und deutscher Text fehlen.' })
+      return
+    }
+    const dialog = await getDialog(dialogId, user.uid, profile)
+    if (!dialog) {
+      res.status(404).json({ error: 'Dialog nicht gefunden.' })
+      return
+    }
+    const found = findLineInDialog(dialog, body.lineId)
+    if (!found) {
+      res.status(404).json({ error: 'Zeile nicht gefunden.' })
+      return
+    }
+    const nextLine = await rewriteLineFromNative(
+      found.line,
+      body.nativeText.trim(),
+      dialog.targetLanguage,
+      dialog.sourceLanguage || 'de',
+    )
+    const sections = dialog.sections.map((section, si) =>
+      si === found.sectionIndex
+        ? {
+            ...section,
+            lines: section.lines.map((line, li) => (li === found.lineIndex ? nextLine : line)),
+          }
+        : section,
+    )
+    const updated = await updateDialog(dialog.id, user.uid, { sections }, profile)
+    res.json({ dialog: updated ?? { ...dialog, sections }, line: nextLine })
   } catch (err) {
     sendError(res, err)
   }

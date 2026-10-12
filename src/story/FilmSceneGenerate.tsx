@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   STORY_ART_STYLES,
@@ -146,13 +146,11 @@ export function FilmSceneGenerateBar({
 
 export function FilmBeatText({
   lines,
-  fallback,
   targetLanguage,
   sourceLanguage,
   which = 'both',
 }: {
   lines: FilmPanelDialogueLine[]
-  fallback?: string
   targetLanguage?: string
   sourceLanguage?: string
   which?: 'target' | 'native' | 'both'
@@ -160,8 +158,7 @@ export function FilmBeatText({
   const nativeName =
     !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
   if (lines.length === 0) {
-    if (which === 'native') return <p className="muted">Keine Übersetzung</p>
-    return fallback ? <p className="film-beat-target">{fallback}</p> : <p className="muted">Kein Text</p>
+    return <p className="muted">Kein Dialog zu diesem Bild</p>
   }
   return (
     <div className="film-beat-lines">
@@ -187,13 +184,7 @@ export function FilmBeatText({
                 {line.nativeDe}
               </p>
             ) : which === 'native' ? (
-              <p className="muted film-beat-de">
-                {line.speaker ? <strong>{line.speaker}: </strong> : null}
-                {'— '}
-                <span className="film-beat-de-hint">
-                  oben Deutsch anzeigen oder unter Text, KI-Werkzeuge
-                </span>
-              </p>
+              <p className="muted film-beat-de">Noch keine Übersetzung — unten Deutsch schreiben.</p>
             ) : null
           ) : null}
         </div>
@@ -202,12 +193,114 @@ export function FilmBeatText({
   )
 }
 
+export function FilmNativeEditor({
+  lines,
+  sourceLanguage,
+  busy,
+  onConfirm,
+}: {
+  lines: FilmPanelDialogueLine[]
+  sourceLanguage?: string
+  busy?: boolean
+  onConfirm?: (lineId: string, nativeText: string) => void
+}) {
+  const line = lines[0]
+  const [text, setText] = useState(line?.nativeDe ?? '')
+  useEffect(() => {
+    setText(line?.nativeDe ?? '')
+  }, [line?.lineId, line?.nativeDe])
+  if (!line) return <p className="muted">Kein Dialog zu diesem Bild</p>
+  if (!onConfirm || !line.lineId) {
+    return line.nativeDe ? (
+      <p className="film-beat-de" lang={sourceLanguage || 'de'}>
+        {line.nativeDe}
+      </p>
+    ) : (
+      <p className="muted">Keine Übersetzung</p>
+    )
+  }
+  const dirty = text.trim() !== (line.nativeDe ?? '').trim()
+  return (
+    <div className="film-native-edit">
+      <textarea
+        className="input"
+        rows={3}
+        value={text}
+        disabled={busy}
+        lang={sourceLanguage || 'de'}
+        placeholder="Deutsch hier schreiben, dann Übernehmen — die Zielsprache wird angepasst."
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={busy || !text.trim() || !dirty}
+        onClick={() => onConfirm(line.lineId!, text.trim())}
+      >
+        {busy ? 'Passt an …' : 'Übernehmen'}
+      </button>
+    </div>
+  )
+}
+
+export function FilmCueFields({
+  panel,
+  busy,
+  onSave,
+}: {
+  panel: FilmStoryboardPanel
+  busy?: boolean
+  onSave?: (cues: { soundCue?: string; imageCue?: string; speechCue?: string }) => void
+}) {
+  const [soundCue, setSoundCue] = useState(panel.soundCue ?? '')
+  const [imageCue, setImageCue] = useState(panel.imageCue ?? '')
+  useEffect(() => {
+    setSoundCue(panel.soundCue ?? '')
+    setImageCue(panel.imageCue ?? '')
+  }, [panel.id, panel.soundCue, panel.imageCue])
+  if (!onSave) return null
+  return (
+    <div className="film-cue-fields">
+      <label>
+        <span>Ton</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={soundCue}
+          disabled={busy}
+          placeholder="z.B. leise persische Musik, ab und zu eine Nuss knacken"
+          onChange={(e) => setSoundCue(e.target.value)}
+          onBlur={() => {
+            if (soundCue.trim() !== (panel.soundCue ?? '').trim()) onSave({ soundCue })
+          }}
+        />
+      </label>
+      <label>
+        <span>Bild</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={imageCue}
+          disabled={busy}
+          placeholder="z.B. Ubai schaut müde, aber erleichtert"
+          onChange={(e) => setImageCue(e.target.value)}
+          onBlur={() => {
+            if (imageCue.trim() !== (panel.imageCue ?? '').trim()) onSave({ imageCue })
+          }}
+        />
+      </label>
+    </div>
+  )
+}
+
 export function FilmBeatNotes({
   panel,
   dialog,
+  hideCues,
 }: {
   panel: FilmStoryboardPanel
   dialog?: Dialog | null
+  hideCues?: boolean
 }) {
   const voices = dialog?.storyMeta?.voicesNote?.trim()
   const look = dialog?.storyMeta?.lookNote?.trim()
@@ -230,7 +323,7 @@ export function FilmBeatNotes({
           <strong>Kamera</strong> Weit — ganzer Raum (Grundbild)
         </p>
       )}
-      {panel.imageCue ? <p>{panel.imageCue}</p> : null}
+      {!hideCues && panel.imageCue ? <p>{panel.imageCue}</p> : null}
       {seats ? (
         <p>
           <strong>Sitzplan</strong> {seats}
@@ -241,12 +334,12 @@ export function FilmBeatNotes({
           <strong>Stimmen</strong> {voices}
         </p>
       ) : null}
-      {panel.speechCue ? (
+      {!hideCues && panel.speechCue ? (
         <p>
           <strong>Sprache</strong> {panel.speechCue}
         </p>
       ) : null}
-      {panel.soundCue ? (
+      {!hideCues && panel.soundCue ? (
         <p>
           <strong>Ton</strong> {panel.soundCue}
         </p>
@@ -267,18 +360,22 @@ export function FilmBeatNotes({
 
 export function FilmBeatColumns({
   picture,
+  underPicture,
   lines,
-  fallback,
   notes,
   targetLanguage,
   sourceLanguage,
+  nativeBusy,
+  onConfirmNative,
 }: {
   picture: ReactNode
+  underPicture?: ReactNode
   lines: FilmPanelDialogueLine[]
-  fallback?: string
   notes: ReactNode
   targetLanguage?: string
   sourceLanguage?: string
+  nativeBusy?: boolean
+  onConfirmNative?: (lineId: string, nativeText: string) => void
 }) {
   const targetName = languageName(targetLanguage || '')
   const nativeName =
@@ -288,29 +385,26 @@ export function FilmBeatColumns({
       <div className="film-beat-pic">
         <p className="film-beat-col-label">Bild</p>
         {picture}
+        {underPicture}
       </div>
       <div className="film-beat-text">
         <p className="film-beat-col-label">{targetLanguage ? targetName : 'Text'}</p>
         <FilmBeatText
           lines={lines}
-          fallback={fallback}
           targetLanguage={targetLanguage}
           sourceLanguage={sourceLanguage}
           which="target"
         />
-      </div>
-      <div className="film-beat-native">
-        <p className="film-beat-col-label">{nativeName}</p>
-        <FilmBeatText
+        <p className="film-beat-col-label film-beat-native-label">{nativeName}</p>
+        <FilmNativeEditor
           lines={lines}
-          fallback={fallback}
-          targetLanguage={targetLanguage}
           sourceLanguage={sourceLanguage}
-          which="native"
+          busy={nativeBusy}
+          onConfirm={onConfirmNative}
         />
       </div>
       <aside className="film-beat-notes">
-        <p className="film-beat-col-label">Ablauf</p>
+        <p className="film-beat-col-label">Ton und Bild</p>
         {notes}
       </aside>
     </div>
@@ -328,7 +422,6 @@ export function FilmPanelDialogue({
   return (
     <FilmBeatText
       lines={lines}
-      fallback={panel.caption}
       targetLanguage={dialog?.targetLanguage}
       sourceLanguage={dialog?.sourceLanguage}
     />
@@ -366,7 +459,7 @@ export function FilmStillFixBar({
             disabled={busy || !note.trim()}
             onClick={() => onCorrect(note.trim())}
           >
-            Bild korrigieren
+            Bild ändern
           </button>
         </div>
       ) : null}
@@ -400,6 +493,7 @@ export function FilmStillStrip({
   dialogId,
   panels,
   dialog,
+  sceneTitle,
   busy,
   busyPanelId,
   onCorrect,
@@ -409,6 +503,7 @@ export function FilmStillStrip({
   dialogId: string
   panels: FilmStoryboardPanel[]
   dialog?: Dialog | null
+  sceneTitle?: string
   busy?: boolean
   busyPanelId?: string | null
   onCorrect?: (panel: FilmStoryboardPanel, note: string) => void
@@ -420,7 +515,7 @@ export function FilmStillStrip({
     <div className="film-still-strip">
       {panels.map((panel) => {
         const panelBusy = Boolean(busy && busyPanelId === panel.id)
-        const lines = panelDialogueLines(panel, dialog)
+        const lines = panelDialogueLines(panel, dialog, panels, sceneTitle)
         return (
           <article key={panel.id} className="film-panel">
             <FilmBeatColumns
@@ -433,8 +528,15 @@ export function FilmStillStrip({
                   </div>
                 )
               }
+              underPicture={
+                <FilmStillFixBar
+                  panel={panel}
+                  busy={Boolean(busy)}
+                  onCorrect={onCorrect ? (note) => onCorrect(panel, note) : undefined}
+                  onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
+                />
+              }
               lines={lines}
-              fallback={panel.caption}
               targetLanguage={dialog?.targetLanguage}
               sourceLanguage={dialog?.sourceLanguage}
               notes={
@@ -450,12 +552,6 @@ export function FilmStillStrip({
                   ) : null}
                 </>
               }
-            />
-            <FilmStillFixBar
-              panel={panel}
-              busy={Boolean(busy)}
-              onCorrect={onCorrect ? (note) => onCorrect(panel, note) : undefined}
-              onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
             />
           </article>
         )

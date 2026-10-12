@@ -200,6 +200,7 @@ export function FilmExportPage() {
                   dialogId={dialog.id}
                   panels={panels}
                   dialog={dialog}
+                  sceneTitle={scene.title}
                   busy={sceneBusy || busy}
                   busyPanelId={stills.busyPanelId}
                   onCorrect={(panel, note) => void correctStill(scene.id, panel, note)}

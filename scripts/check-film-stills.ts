@@ -32,6 +32,7 @@ import {
   speakerIdentityUrl,
 } from '../shared/film-stills.ts'
 import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
+import { getSpeakerVoice, resolveSpeakerGender } from '../lib/speaker-voice.ts'
 import {
   buildBoardFromDrafts,
   draftPanelsFromDialog,
@@ -411,6 +412,22 @@ if (replayedPanel?.stillCorrection !== 'Stand auf Französisch') {
 }
 
 if (guessSpeakerGenderFromName('Schöme', 2) !== 'male') fail('Schöme ist ein Junge, kein Mädchen')
+if (guessSpeakerGenderFromName('Ubai', 1) !== 'male') fail('Ubai ist männlich')
+if (resolveSpeakerGender('Ubai', 1, undefined, { Ubai: { gender: 'female' } }) !== 'male') {
+  fail('Ubai bleibt männlich, auch wenn eine alte Stimme weiblich gespeichert ist')
+}
+const ubaiDialog: Dialog = {
+  ...dialog,
+  targetLanguage: 'fa',
+  sections: [
+    { id: 's', title: 'x', lines: [{ id: 'u1', speaker: 'Ubai', text: 'سلام' }] },
+  ],
+  speakerVoices: { Ubai: { gender: 'female', voiceName: 'Kore' } },
+  speakerProfiles: { Ubai: { gender: 'female', voiceName: 'Kore' } },
+}
+const ubaiVoice = getSpeakerVoice(ubaiDialog, 'Ubai')
+if (ubaiVoice.gender !== 'male') fail('getSpeakerVoice: Ubai männlich')
+if (/kore|aoede|leda/i.test(ubaiVoice.voiceName)) fail('Ubai darf keine Frauenstimme bekommen')
 if (guessSpeakerGenderFromName('Shome', 0) !== 'male') fail('Shome = Schöme, männlich')
 if (guessSpeakerGenderFromName('Khan', 0) !== 'male') fail('Khan ist männlich')
 if (genderFromKnownName('Schöme') !== 'male') fail('Schöme ohne Index ist männlich')
@@ -642,6 +659,40 @@ const byLineId: typeof s1 = [
 const fromLineIds = scenePlayBeats(byLineId, dialog)
 if (fromLineIds.filter((b) => !b.establishing).map((b) => b.line?.lineId).join() !== 'l1,l2') {
   fail('Abspielen nimmt die Zeilen-Ids am Bild, nicht nur die Abschnitts-Id')
+}
+
+const noteOnly = {
+  ...s1[0]!,
+  caption: 'Ubai ist müde, aber erleichtert angekommen zu sein',
+  lineIds: ['l1'],
+}
+const talkNote = panelDialogueLines(noteOnly, dialog)
+if (talkNote.some((l) => /müde|erleichtert/.test(l.text))) {
+  fail('Bildnotiz darf nicht in der Zielsprache stehen')
+}
+if (!talkNote.some((l) => l.speaker === 'Julien' && l.text.includes('Geschenk'))) {
+  fail('Zielsprache muss die Dialogzeile sein, nicht die Bildnotiz')
+}
+
+const noIds = { ...noteOnly, lineIds: [] as string[] }
+const viaScene = panelDialogueLines(noIds, dialog, s1, scene1.title)
+if (viaScene.some((l) => /müde/.test(l.text))) fail('Ohne lineIds nicht die Bildnotiz zeigen')
+if (!viaScene.some((l) => l.text.includes('Geschenk'))) {
+  fail('Dialog über die Szene finden, nicht über die Bildnotiz')
+}
+
+const painted = s1.map((p, i) => ({
+  ...p,
+  stillUrl: `https://example.com/row-${i + 1}.png`,
+  lineIds: i === 0 ? ['l1'] : ['l2'],
+}))
+const playPainted = scenePlayBeats(painted, dialog)
+const spokenPainted = playPainted.filter((b) => !b.establishing)
+if (spokenPainted[0]?.stillUrl !== 'https://example.com/row-1.png') {
+  fail('Abspielen zeigt das Standbild der ersten Zeile')
+}
+if (spokenPainted[1]?.stillUrl !== 'https://example.com/row-2.png') {
+  fail('Abspielen wechselt zum Standbild der zweiten Zeile')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

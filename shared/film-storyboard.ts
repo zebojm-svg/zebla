@@ -748,6 +748,27 @@ export function applyPanelComment(
   }
 }
 
+export function applyPanelCues(
+  board: FilmStoryboard,
+  panelId: string,
+  cues: { soundCue?: string; imageCue?: string; speechCue?: string },
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  return {
+    ...next,
+    panels: next.panels.map((p) => {
+      if (p.id !== panelId) return p
+      return {
+        ...p,
+        soundCue: cues.soundCue !== undefined ? cues.soundCue.trim() : p.soundCue,
+        imageCue: cues.imageCue !== undefined ? cues.imageCue.trim() : p.imageCue,
+        speechCue: cues.speechCue !== undefined ? cues.speechCue.trim() : p.speechCue,
+      }
+    }),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 export function applySceneNote(board: FilmStoryboard, sceneId: string, noteDe: string): FilmStoryboard {
   const next = normalizeFilmStoryboard(board)
   return {
@@ -911,61 +932,72 @@ export function panelAddressee(
   return undefined
 }
 
+function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
+  return {
+    speaker: line.speaker,
+    text: line.text.trim(),
+    nativeDe: lineNativeDe(line),
+    lineId: line.id,
+    audioUrl: line.audioUrl,
+  }
+}
+
+/** Welche Dialogzeile zu diesem Bild gehört — nicht die Bildnotiz. */
+export function lineForFilmPanel(
+  panel: FilmStoryboardPanel,
+  dialog?: Pick<Dialog, 'sections'> | null,
+  scenePanels?: FilmStoryboardPanel[],
+  sceneTitle?: string,
+): DialogLine | undefined {
+  if (!dialog?.sections.length) return undefined
+  const byId = allDialogLines(dialog)
+  for (const id of panel.lineIds ?? []) {
+    const line = byId.get(id)
+    if (line?.text.trim()) return line
+  }
+  const peers = scenePanels?.length ? scenePanels : [panel]
+  const sceneLines = dialogLinesForPanels(peers, dialog, sceneTitle)
+  if (sceneLines.length === 0) return undefined
+  const idx = peers.findIndex((p) => p.id === panel.id)
+  if (idx >= 0 && sceneLines[idx]) return sceneLines[idx]
+  const closeSpeaker = (panel.closeupSpeaker || '').trim()
+  if (closeSpeaker) {
+    const bySpeaker = sceneLines.find((l) => l.speaker.trim() === closeSpeaker)
+    if (bySpeaker) return bySpeaker
+  }
+  return undefined
+}
+
 /** Sprecher + Text unter dem Standbild, zum Vergleichen. */
 export function panelDialogueLines(
   panel: FilmStoryboardPanel,
   dialog?: Pick<Dialog, 'sections'> | null,
+  scenePanels?: FilmStoryboardPanel[],
+  sceneTitle?: string,
 ): FilmPanelDialogueLine[] {
-  if (dialog) {
-    const byId = allDialogLines(dialog)
-    const fromIds = panel.lineIds
-      .map((id) => byId.get(id))
-      .filter((line): line is DialogLine => Boolean(line?.text.trim()))
-    if (fromIds.length > 0) {
-      return fromIds.map((line) => ({
-        speaker: line.speaker,
-        text: line.text.trim(),
-        nativeDe: lineNativeDe(line),
-        lineId: line.id,
-        audioUrl: line.audioUrl,
-      }))
-    }
-  }
-  const cap = panel.caption.trim()
-  const match = cap.match(/^([^:]{1,48}):\s+(.+)$/)
-  if (match) return [{ speaker: match[1]!.trim(), text: match[2]!.trim() }]
-  if (cap) return [{ speaker: '', text: cap }]
-  return []
+  const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
+  return line ? [toFilmDialogueLine(line)] : []
 }
 
 /** Zeilen für die Szenen-Vorschau (Zielsprache + gespeicherte Stimme). */
 export function panelSpeakLines(
   panel: FilmStoryboardPanel,
   dialog?: Pick<Dialog, 'sections'> | null,
+  scenePanels?: FilmStoryboardPanel[],
+  sceneTitle?: string,
 ): Array<{ id: string; speaker: string; text: string; audioUrl?: string }> {
-  if (dialog) {
-    const byId = allDialogLines(dialog)
-    const fromIds = panel.lineIds
-      .map((id) => byId.get(id))
-      .filter((line): line is DialogLine => Boolean(line))
-    const spoken = fromIds
-      .map((line) => ({
-        id: line.id,
-        speaker: line.speaker || 'Sprecher',
-        text: lineSpeechText(line).trim(),
-        audioUrl: line.audioUrl,
-      }))
-      .filter((line) => line.text)
-    if (spoken.length > 0) return spoken
-  }
-  return panelDialogueLines(panel, dialog)
-    .map((line) => ({
-      id: line.lineId ?? panel.id,
+  const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
+  if (!line) return []
+  const text = lineSpeechText(line).trim() || line.text.trim()
+  if (!text) return []
+  return [
+    {
+      id: line.id,
       speaker: line.speaker || 'Sprecher',
-      text: line.text.trim(),
+      text,
       audioUrl: line.audioUrl,
-    }))
-    .filter((line) => line.text)
+    },
+  ]
 }
 
 export interface FilmScenePreviewBeat {
@@ -979,13 +1011,14 @@ export interface FilmScenePreviewBeat {
 export function scenePreviewBeats(
   panels: FilmStoryboardPanel[],
   dialog?: Pick<Dialog, 'sections'> | null,
+  sceneTitle?: string,
 ): FilmScenePreviewBeat[] {
   return panels.map((panel) => ({
     panelId: panel.id,
     panelIndex: panel.panelIndex,
     stillUrl: panel.stillUrl,
     caption: panel.caption,
-    lines: panelSpeakLines(panel, dialog),
+    lines: panelSpeakLines(panel, dialog, panels, sceneTitle),
   }))
 }
 
@@ -1055,44 +1088,26 @@ function dialogLinesForPanels(
   return out
 }
 
-function panelForSpeaker(
-  panels: FilmStoryboardPanel[],
-  speaker: string,
-): FilmStoryboardPanel | undefined {
-  const close = panels.find(
-    (p) =>
-      p.shot === 'closeup' &&
-      (p.closeupSpeaker || p.placements[0]?.name || '').trim() === speaker.trim() &&
-      Boolean(p.stillUrl),
-  )
-  if (close) return close
-  return panels.find((p) => (p.shot ?? 'wide') !== 'closeup') ?? panels[0]
-}
-
 export function scenePlayBeats(
   panels: FilmStoryboardPanel[],
   dialog?: Pick<Dialog, 'sections'> | null,
   sceneTitle?: string,
 ): FilmPlayBeat[] {
   const wide = panels.find((p) => (p.shot ?? 'wide') !== 'closeup')
-  const lines = dialogLinesForPanels(panels, dialog, sceneTitle)
-  const spoken: FilmPlayBeat[] = lines.map((line, i) => {
-    const panel = panelForSpeaker(panels, line.speaker)
-    return {
-      panelId: panel?.id || '',
-      stillUrl: panel?.stillUrl,
+  const spoken: FilmPlayBeat[] = []
+  for (const panel of panels) {
+    const line = lineForFilmPanel(panel, dialog, panels, sceneTitle)
+    if (!line) continue
+    spoken.push({
+      panelId: panel.id,
+      stillUrl: panel.stillUrl || wide?.stillUrl,
       caption: `${line.speaker}: ${line.text}`.slice(0, 140),
-      line: {
-        speaker: line.speaker,
-        text: line.text.trim(),
-        nativeDe: lineNativeDe(line),
-        lineId: line.id,
-        audioUrl: line.audioUrl,
-      },
-      lineIndex: i,
-      lineTotal: lines.length,
-    }
-  })
+      line: toFilmDialogueLine(line),
+      lineIndex: spoken.length,
+      lineTotal: 0,
+    })
+  }
+  for (const beat of spoken) beat.lineTotal = spoken.length
   const intro: FilmPlayBeat[] =
     wide?.stillUrl
       ? [
@@ -1102,7 +1117,7 @@ export function scenePlayBeats(
             caption: wide.caption,
             establishing: true,
             lineIndex: -1,
-            lineTotal: lines.length,
+            lineTotal: spoken.length,
           },
         ]
       : []

@@ -5,9 +5,11 @@ import { FilmProjectNav } from './FilmProjectNav'
 import {
   FilmBeatColumns,
   FilmBeatNotes,
+  FilmCueFields,
   FilmSceneGenerateBar,
   FilmStillFixBar,
 } from './FilmSceneGenerate'
+import { FilmCastVoices } from './FilmCastVoices'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { FilmStillPicture } from './FilmStillArrange'
 import { useSceneStills } from './generateSceneStills'
@@ -32,34 +34,50 @@ function matchClass(kind: string) {
 function PanelCard({
   panel,
   dialog,
+  sceneTitle,
+  scenePanels,
   busy,
   painting,
   onComment,
   onInsert,
   onCorrect,
+  onCues,
+  onRewrite,
   onSketch,
   onLayout,
 }: {
   panel: FilmStoryboardPanel
   dialog: Dialog
+  sceneTitle: string
+  scenePanels: FilmStoryboardPanel[]
   busy: boolean
   painting?: boolean
   onComment: (comment: string) => void
   onInsert: (text: string) => void
   onCorrect: (note: string) => void
+  onCues: (cues: { soundCue?: string; imageCue?: string; speechCue?: string }) => void
+  onRewrite: (lineId: string, nativeText: string) => Promise<void>
   onSketch: () => void
   onLayout: (dialog: Dialog, board: FilmStoryboard) => void
 }) {
-  const [note, setNote] = useState(panel.stillCorrection || panel.directorNote || '')
   const [comment, setComment] = useState(panel.comment ?? '')
+  const [nativeBusy, setNativeBusy] = useState(false)
   const bg = panel.background
 
   useEffect(() => {
-    setNote(panel.stillCorrection || panel.directorNote || '')
-  }, [panel.id, panel.stillCorrection, panel.directorNote])
-  useEffect(() => {
     setComment(panel.comment ?? '')
   }, [panel.id, panel.comment])
+
+  const confirmNative = async (lineId: string, nativeText: string) => {
+    setNativeBusy(true)
+    try {
+      await onRewrite(lineId, nativeText)
+    } catch {
+      /* Fehler steht oben auf der Seite */
+    } finally {
+      setNativeBusy(false)
+    }
+  }
 
   return (
     <article className="film-panel">
@@ -83,17 +101,56 @@ function PanelCard({
             </div>
           )
         }
-        lines={panelDialogueLines(panel, dialog)}
-        fallback={panel.caption}
+        underPicture={
+          <>
+            {painting ? (
+              <p className="film-panel-painting" aria-live="polite">
+                Bild wird neu gemalt … das dauert etwa eine Minute.
+              </p>
+            ) : null}
+            <FilmStillFixBar
+              panel={panel}
+              busy={busy}
+              onCorrect={onCorrect}
+              onInsert={onInsert}
+            />
+            <p className="muted film-tweak-hint">
+              Kurzer Hinweis reicht. Wer wo sitzt und der Raum gehen von der Übersicht mit.
+            </p>
+            <div className="film-tweak">
+              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
+                {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
+              </button>
+            </div>
+          </>
+        }
+        lines={panelDialogueLines(panel, dialog, scenePanels, sceneTitle)}
         targetLanguage={dialog.targetLanguage}
         sourceLanguage={dialog.sourceLanguage}
+        nativeBusy={nativeBusy}
+        onConfirmNative={(lineId, nativeText) => void confirmNative(lineId, nativeText)}
         notes={
           <>
             <p className="film-beat-count">
               Bild {panel.panelIndex}
               {painting ? <span> · wird neu gemalt …</span> : null}
             </p>
-            <FilmBeatNotes panel={panel} dialog={dialog} />
+            <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
+            <FilmCueFields panel={panel} busy={busy} onSave={onCues} />
+            <label className="film-comment">
+              <span className="muted">Kommentar zur Zeile</span>
+              <textarea
+                className="input"
+                rows={2}
+                value={comment}
+                disabled={busy}
+                placeholder="Notiz nur für dich …"
+                onChange={(e) => setComment(e.target.value)}
+                onBlur={() => {
+                  if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
+                }}
+              />
+            </label>
             <div className="film-matches">
               {panel.placements.map((pl) => (
                 <span
@@ -111,54 +168,6 @@ function PanelCard({
           </>
         }
       />
-      <details className="film-panel-more">
-        <summary>Bild ändern</summary>
-        {painting ? (
-          <p className="film-panel-painting" aria-live="polite">
-            Bild wird neu gemalt … das dauert etwa eine Minute.
-          </p>
-        ) : null}
-        <div className="film-tweak">
-          <input
-            className="input"
-            value={note}
-            disabled={busy}
-            placeholder="z.B. Schöme ist ein Mann"
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={busy || !note.trim()}
-            onClick={() => onCorrect(note.trim())}
-          >
-            {painting ? 'Malt …' : 'Bild neu malen'}
-          </button>
-        </div>
-        <p className="muted film-tweak-hint">
-          Kurzer Hinweis reicht. Wer wo sitzt und der Raum gehen von der Übersicht mit.
-        </p>
-        <label className="film-comment">
-          <span className="muted">Kommentar zur Zeile</span>
-          <textarea
-            className="input"
-            rows={2}
-            value={comment}
-            disabled={busy}
-            placeholder="Notiz nur für dich …"
-            onChange={(e) => setComment(e.target.value)}
-            onBlur={() => {
-              if (comment.trim() !== (panel.comment ?? '')) onComment(comment)
-            }}
-          />
-        </label>
-        <FilmStillFixBar panel={panel} busy={busy} onInsert={onInsert} />
-        <div className="film-tweak">
-          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
-            {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
-          </button>
-        </div>
-      </details>
     </article>
   )
 }
@@ -339,6 +348,12 @@ export function FilmStoryboardPage() {
             </p>
           ) : null}
 
+          <FilmCastVoices
+            dialog={dialog}
+            disabled={locked}
+            onDialogUpdated={setDialog}
+          />
+
           <div className="film-scene-toolbar">
             <button
               type="button"
@@ -439,12 +454,27 @@ export function FilmStoryboardPage() {
                       key={panel.id}
                       panel={panel}
                       dialog={dialog}
+                      sceneTitle={scene.title}
+                      scenePanels={panels}
                       busy={locked}
                       onLayout={apply}
                       painting={stills.busyPanelId === panel.id}
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
                       }
+                      onCues={(cues) =>
+                        void run(() => api.ai.filmStoryboardCues(id, panel.id, cues))
+                      }
+                      onRewrite={async (lineId, nativeText) => {
+                        setError('')
+                        try {
+                          const { dialog: next } = await api.ai.rewriteLine(id, lineId, nativeText)
+                          setDialog(next)
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Text konnte nicht angepasst werden.')
+                          throw err
+                        }
+                      }}
                       onCorrect={(note) =>
                         void stills.generateOne(
                           scene.id,

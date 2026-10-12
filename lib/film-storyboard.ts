@@ -5,6 +5,7 @@ import type { Dialog } from '../shared/types.js'
 import {
   applyDirectorNote,
   applyPanelComment,
+  applyPanelCues,
   applySceneNote,
   buildBoardFromDrafts,
   draftPanelsFromDialog,
@@ -330,6 +331,20 @@ export async function tweakFilmPanel(
     throw new Error('Noch kein Storyboard. Erst aus dem Dialog erzeugen.')
   }
   const board = applyDirectorNote(normalizeFilmStoryboard(dialog.filmStoryboard), panelId, note)
+  const updated = await saveBoard(dialogId, userId, board, profile)
+  return { dialog: updated, board }
+}
+
+export async function cueFilmPanel(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  cues: { soundCue?: string; imageCue?: string; speechCue?: string },
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = applyPanelCues(dialog.filmStoryboard, panelId, cues)
   const updated = await saveBoard(dialogId, userId, board, profile)
   return { dialog: updated, board }
 }

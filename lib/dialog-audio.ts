@@ -7,6 +7,7 @@ import {
   buildSpeakerVoiceProfiles,
   getSpeakerVoice,
   mergeVoiceProfilesIntoDialog,
+  resolveSpeakerGender,
   ttsDeliveryForSpeaker,
 } from './speaker-voice.js'
 import { TTS_STORAGE_SPEAKING_RATE } from './tts-storage.js'
@@ -49,14 +50,44 @@ async function ensureSpeakerVoicesOnDialog(
     gemini &&
     dialog.speakerVoices &&
     speakers.some((s) => !isGeminiTtsVoiceName(dialog.speakerVoices?.[s]?.voiceName))
+  const needsMaleFix = speakers.some((s) => {
+    const stored = dialog.speakerVoices?.[s]
+    return (
+      stored &&
+      resolveSpeakerGender(s, 0, dialog.characterBible, dialog.speakerProfiles) === 'male' &&
+      (stored.gender === 'female' || /kore|aoede|leda/i.test(stored.voiceName || ''))
+    )
+  })
 
-  if (hasAll && !needsGeminiRemap) {
+  if (hasAll && !needsGeminiRemap && !needsMaleFix) {
     return dialog
   }
+  const remapped = needsMaleFix
+    ? speakers.filter((s) => {
+        const stored = dialog.speakerVoices?.[s]
+        return (
+          stored &&
+          resolveSpeakerGender(s, 0, dialog.characterBible, dialog.speakerProfiles) === 'male' &&
+          (stored.gender === 'female' || /kore|aoede|leda/i.test(stored.voiceName || ''))
+        )
+      })
+    : []
   const profiles = buildSpeakerVoiceProfiles(dialog)
   const merged = mergeVoiceProfilesIntoDialog(dialog, profiles)
-  const updated = await updateDialog(dialogId, userId, merged)
-  return updated ?? { ...dialog, ...merged }
+  const patch =
+    remapped.length > 0
+      ? {
+          ...merged,
+          sections: dialog.sections.map((section) => ({
+            ...section,
+            lines: section.lines.map((line) =>
+              remapped.includes(line.speaker) ? { ...line, audioUrl: undefined } : line,
+            ),
+          })),
+        }
+      : merged
+  const updated = await updateDialog(dialogId, userId, patch)
+  return updated ?? { ...dialog, ...patch }
 }
 
 export async function getOrCreateLineAudio(
