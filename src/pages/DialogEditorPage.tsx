@@ -508,6 +508,8 @@ export function DialogEditorPage() {
                     imageDirection: result.imageDirection,
                     soundDirection: result.soundDirection,
                     speechDirection: result.speechDirection,
+                    filmStoryboard: null,
+                    filmPlan: null,
                   })
                   setDialog(d)
                   if (result.imageDirection) setImageDirectionDraft(result.imageDirection)

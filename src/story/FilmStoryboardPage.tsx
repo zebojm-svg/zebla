@@ -19,6 +19,7 @@ import {
   boardNeedsDrawing,
   dialogNeedsNativeTranslation,
   expectedSceneShotCount,
+  boardFollowsDialog,
   filmScenesFromDialog,
   normalizeFilmStoryboard,
   panelDialogueLines,
@@ -256,7 +257,8 @@ export function FilmStoryboardPage() {
     () => (board && dialog ? filmScenesFromDialog(dialog, board) : []),
     [board, dialog],
   )
-  const missing = boardNeedsDrawing(board ?? undefined)
+  const boardFitsDialog = Boolean(board && dialog && boardFollowsDialog(board, dialog))
+  const missing = boardFitsDialog ? boardNeedsDrawing(board ?? undefined) : 0
   const repeatedTitles = dialog ? repeatedDialogSectionTitles(dialog) : []
 
   if (loading) {
@@ -343,6 +345,12 @@ export function FilmStoryboardPage() {
           {repeatedTitles.join(', ')} {repeatedTitles.length === 1 ? 'hat' : 'haben'} denselben
           Dialog wie eine frühere Szene. Unter Text «Dialog daraus machen» drücken — Szenen
           entstehen dort, nicht auf den Bildern.
+        </p>
+      ) : null}
+      {board && dialog && !boardFitsDialog ? (
+        <p className="alert alert-warn">
+          Der Dialog ist neu — die alten Bilder passen nicht mehr. Oben «Vom Text neu» drücken,
+          dann entstehen die Bilder zur neuen Regie (Nahaufnahme, Zwischenbild).
         </p>
       ) : null}
 

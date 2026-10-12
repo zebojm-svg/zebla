@@ -11,6 +11,7 @@ import {
   ensureCoverageDrafts,
   cueAsksNewPicture,
   expectedSceneShotCount,
+  boardFollowsDialog,
   filmScenesFromDialog,
   findReusableCloseup,
   inferExpression,
@@ -323,6 +324,20 @@ const boardOnly = filmScenesFromDialog(four, extraBoard)
 if (boardOnly.length !== 1 || boardOnly[0]?.id !== 'ankunft') {
   fail('Board zeigt nur Dialog-Szenen, keine eingefügte Extra-Szene')
 }
+if (!boardFollowsDialog(fourBoard, four)) fail('Board folgt dem Dialog')
+const remade: Dialog = {
+  ...four,
+  sections: [
+    {
+      id: 'neu-aus-prompt',
+      title: 'Vorbereitung',
+      lines: [{ id: 'n1', speaker: 'Ramo', text: 'Bia.' }],
+    },
+  ],
+}
+if (boardFollowsDialog(fourBoard, remade)) {
+  fail('nach neuem Dialog gehören die alten Bilder nicht mehr dazu')
+}
 
 const pageSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
 if (pageSrc.includes('Szene einfügen')) fail('Szenen entstehen nicht auf dem Board')
@@ -330,6 +345,11 @@ if (pageSrc.includes('Dialog für diese Szene schreiben')) {
   fail('Dialog wird im Text-Teil geschrieben, nicht auf den Bildern')
 }
 if (!pageSrc.includes('filmScenesFromDialog')) fail('Board folgt den Dialog-Szenen')
+if (!pageSrc.includes('boardFollowsDialog')) fail('Board merkt wenn der Dialog neu ist')
+const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', import.meta.url), 'utf8')
+if (!editorSrc.includes('filmStoryboard: null')) {
+  fail('Dialog daraus machen löscht den alten Bildplan')
+}
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
