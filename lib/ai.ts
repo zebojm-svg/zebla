@@ -230,24 +230,7 @@ Originalfiguren, kein Petit Nicolas.`,
     ? `\nAntworten des Autors auf Rückfragen:\n${answers.trim()}`
     : ''
 
-  const result = await chatJson<{
-    title: string
-    imageDirection?: string
-    soundDirection?: string
-    speechDirection?: string
-    sections: Array<{
-      title: string
-      lines: Array<{
-        speaker: string
-        kind?: 'speech' | 'action' | 'narrator'
-        text: string
-        cueImage?: string
-        cueSound?: string
-        cueSpeech?: string
-      }>
-    }>
-  }>(
-    `Du planst einen Kurzfilm als Bilderbuch-Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
+  const system = `Du planst einen Kurzfilm als Bilderbuch-Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
 Sprache der GESPROCHENEN Zeilen (kind=speech und kind=narrator): ${targetLanguage}.
 Handlung (kind=action) darf auf Deutsch beschreiben, was man sieht — die wird nicht gesprochen.
 Lies den Prompt selbst: was Dialog ist, was dazwischen passiert, was Erzähler, was Bild-Regie, was Ton/Sprache.
@@ -280,8 +263,24 @@ Jede Szene hat eigenen Verlauf (Handlung + Dialog), nicht denselben Text wie zuv
 Niemals den Dialog der vorigen Szene kopieren. Szenen ohne neuen Inhalt weglassen.
 Wenn die Handlung nach der ersten Szene fertig ist, nur eine Szene anlegen.
 Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte braucht.`
-    `${prompt.trim()}${extra}`,
-  )
+
+  const result = await chatJson<{
+    title: string
+    imageDirection?: string
+    soundDirection?: string
+    speechDirection?: string
+    sections: Array<{
+      title: string
+      lines: Array<{
+        speaker: string
+        kind?: 'speech' | 'action' | 'narrator'
+        text: string
+        cueImage?: string
+        cueSound?: string
+        cueSpeech?: string
+      }>
+    }>
+  }>(system, `${prompt.trim()}${extra}`)
 
   const sections: DialogSection[] = dropRepeatedDialogSections(
     (result.sections ?? []).map((sec) => ({

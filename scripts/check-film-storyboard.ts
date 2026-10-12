@@ -335,6 +335,10 @@ const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
 if (!aiSrc.includes('dropRepeatedDialogSections')) fail('kopierte Dialog-Szenen fallen weg')
 if (!aiSrc.includes('kind')) fail('Dialog darf Handlung und Erzähler')
+if (!aiSrc.includes('const system =')) fail('Dialog-Prompt ist ein Text, keine verschmolzenen Templates')
+if (/braucht\.`\s*`\$\{prompt/.test(aiSrc)) {
+  fail('Zwei Template-Strings hintereinander — Dialog daraus machen stürzt ab')
+}
 const planSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 if (!planSrc.includes('shot="insert"')) fail('Regie darf Zwischenbilder planen')
 if (!planSrc.includes('closeup')) fail('Regie zeigt wer spricht')
