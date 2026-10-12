@@ -49,9 +49,9 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 ## Stand (2026-10)
 
-**Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog).
+**Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen. Nach dem Update: Dialog daraus machen + Bilder neu, sonst bleiben die alten Standbilder (zwei Ramos, leeres Wohnzimmer).
 
-**In Arbeit:** Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen) in der Ton-Regie und beim Abspielen; Erzählerstimme unter Stimmen anpassen; Zwischenbilder ohne Zwillings-Ramo; Weit-Bild mit Gästen, nicht das leere Wohnzimmer aus dem Küchen-Insert. Nach dem Merge: Dialog daraus machen + Bilder neu, sonst bleiben die alten Standbilder.
+**In Arbeit:** —
 
 **Nächste Baustellen (noch nicht hier):**
 
