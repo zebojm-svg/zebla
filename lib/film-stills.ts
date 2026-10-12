@@ -15,11 +15,11 @@ import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
   correctionRewritesPerson,
-  referenceUrlsForPanel,
   stillAttachmentInstruction,
+  stillReferencePack,
 } from '../shared/film-stills.js'
 import { editImageWithKontext, fluxLockAvailable } from './story-stills-gen.js'
-import type { FilmScene, FilmStoryboardPanel } from '../shared/film-storyboard.js'
+import type { FilmScene, FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.js'
 import type { StoryArtStyleId } from '../shared/story-art-styles.js'
 
 function requireGeminiKey(): string {
@@ -84,6 +84,7 @@ async function generateStillPng(
   closeup = false,
   rewritePerson = false,
   insert = false,
+  packInstruction = '',
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
@@ -97,6 +98,7 @@ async function generateStillPng(
         closeup,
         insert,
         rewritePerson,
+        packInstruction,
       }),
     })
   }
@@ -194,14 +196,15 @@ export async function generateFilmPanelStillImage(opts: {
   speakerX?: number
   speakerSitting?: boolean
   continuityEn?: string
+  board?: FilmStoryboard
 }): Promise<string> {
-  const urls = referenceUrlsForPanel(
-    opts.panel,
-    opts.previousStillUrl,
-    opts.correctFromUrl,
-    opts.sceneWideStillUrl,
-  )
-  const refs = await loadRefs(urls)
+  const pack = stillReferencePack(opts.panel, {
+    previousStillUrl: opts.previousStillUrl,
+    correctFromUrl: opts.correctFromUrl,
+    sceneWideStillUrl: opts.sceneWideStillUrl,
+    board: opts.board,
+  })
+  const refs = await loadRefs(pack.urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
     hasLibraryRefs: refs.length > 0,
     targetLanguage: opts.targetLanguage,
@@ -244,6 +247,7 @@ export async function generateFilmPanelStillImage(opts: {
     isCloseup,
     rewritePerson,
     isInsert,
+    pack.instruction,
   )
   const shouldCatchCrop =
     isCloseup && Boolean(opts.sceneWideStillUrl) && !faceOnly
@@ -264,6 +268,7 @@ export async function generateFilmPanelStillImage(opts: {
             true,
             rewritePerson,
             false,
+            pack.instruction,
           )
         }
       } catch {

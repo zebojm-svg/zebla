@@ -4,6 +4,13 @@
  */
 
 import { closeupSpaceLine, seatSideFromX } from './film-closeup-space.js'
+import {
+  inferFilmPlaceKey,
+  placeLabelDe,
+  placeLabelEn,
+  placeLockEn,
+  type FilmPlaceKey,
+} from './film-place.js'
 import { getStoryArtStyle, getStoryStylePrompt } from './story-art-styles.js'
 import { STORY_STILLS_LOCK_PROMPT } from './story-stills.js'
 import { lookForCharacterName } from './story-character-looks.js'
@@ -131,6 +138,35 @@ export function sceneGrundbildPanel(
 ): FilmStoryboardPanel | undefined {
   const same = panelsForScene(board, sceneId).filter((p) => Boolean(p.stillUrl?.startsWith('http')))
   return same.find((p) => p.shot === 'wide')
+}
+
+export function panelPlaceKey(
+  panel: Pick<FilmStoryboardPanel, 'settingHint' | 'imageCue' | 'caption'>,
+): FilmPlaceKey {
+  const hint = (panel.settingHint || '').trim()
+  if (hint.startsWith('Küche')) return 'kitchen'
+  if (hint.startsWith('Wohnzimmer')) return 'living'
+  if (hint.startsWith('Wohnungstür') || hint.startsWith('Tür')) return 'door'
+  if (hint.startsWith('Draussen')) return 'street'
+  return inferFilmPlaceKey(`${panel.imageCue || ''} ${panel.caption || ''} ${hint}`)
+}
+
+/**
+ * Grundbild DIESES Ortes — Küchen-Weit nicht fürs Wohnzimmer,
+ * Wohnzimmer-Weit nicht für die Küche.
+ */
+export function placeGrundbildPanel(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+): FilmStoryboardPanel | undefined {
+  const key = panelPlaceKey(panel)
+  const wides = board.panels.filter(
+    (p) => p.shot === 'wide' && Boolean(p.stillUrl?.startsWith('http')) && panelPlaceKey(p) === key,
+  )
+  return (
+    wides.find((p) => p.sceneId === panel.sceneId && p.id !== panel.id) ||
+    wides.find((p) => p.id !== panel.id)
+  )
 }
 
 export function replaceStillUrl(
@@ -306,6 +342,95 @@ export function referenceUrlsForPanel(
   return [...new Set(ordered)].slice(0, closeup ? 3 : 4)
 }
 
+export type StillRefRole = 'grundbild' | 'place' | 'person' | 'identity'
+
+export type StillRefItem = { role: StillRefRole; name: string; url: string }
+
+/**
+ * Welche Vorlagen die Bild-KI bekommt: Raum dieses Ortes, Stammbilder der Figuren,
+ * Grundbild nur wenn es derselbe Ort ist.
+ */
+export function stillReferencePack(
+  panel: FilmStoryboardPanel,
+  opts?: {
+    previousStillUrl?: string
+    correctFromUrl?: string
+    sceneWideStillUrl?: string
+    board?: FilmStoryboard
+  },
+): { urls: string[]; items: StillRefItem[]; instruction: string; noteDe: string } {
+  const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
+  const place = panelPlaceKey(panel)
+  const closeup = panel.shot === 'closeup'
+  const insert = panel.shot === 'insert'
+  const placeWide =
+    opts?.board ? placeGrundbildPanel(opts.board, panel)?.stillUrl : undefined
+  const wideUrl = placeWide || opts?.sceneWideStillUrl
+  const widePlaceOk =
+    !wideUrl ||
+    !opts?.board ||
+    panelPlaceKey(
+      opts.board.panels.find((p) => p.stillUrl === wideUrl) ?? panel,
+    ) === place ||
+    place === 'other'
+  const safeWide = widePlaceOk ? wideUrl : undefined
+  const bg =
+    panel.background.imageUrl && panel.background.match !== 'missing'
+      ? panel.background.imageUrl
+      : undefined
+  const items: StillRefItem[] = []
+  const add = (item: StillRefItem) => {
+    if (!http(item.url) || items.some((x) => x.url === item.url)) return
+    items.push(item)
+  }
+  if (opts?.correctFromUrl) {
+    add({ role: 'grundbild', name: 'aktuelles Bild', url: opts.correctFromUrl })
+  }
+  if (closeup && safeWide) {
+    add({ role: 'grundbild', name: placeLabelDe(place), url: safeWide })
+  }
+  if (!closeup && !insert && bg) {
+    add({ role: 'place', name: placeLabelDe(place), url: bg })
+  }
+  if (insert && bg && !opts?.correctFromUrl) {
+    add({ role: 'place', name: placeLabelDe(place), url: bg })
+  }
+  const speakerId = closeup ? speakerIdentityUrl(panel) : undefined
+  if (speakerId) {
+    add({
+      role: 'identity',
+      name: panel.closeupSpeaker?.trim() || 'Sprecher',
+      url: speakerId,
+    })
+  }
+  if (!closeup) {
+    for (const pl of panel.placements) {
+      if (pl.imageUrl) add({ role: 'person', name: pl.name.trim() || 'Figur', url: pl.imageUrl })
+    }
+  }
+  const max = closeup ? 3 : 4
+  const clipped = items.slice(0, max)
+  const labels = clipped.map((it, i) => {
+    if (it.role === 'grundbild') {
+      return `${i + 1}. GROUNDBILD of the ${placeLabelEn(place)} only — same furniture, same people. NOT a different room.`
+    }
+    if (it.role === 'place') {
+      return `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room. Kitchen photos only for kitchen, living-room photos only for living room.`
+    }
+    if (it.role === 'identity') {
+      return `${i + 1}. IDENTITY plate of ${it.name} — this exact face and clothes, same sex.`
+    }
+    return `${i + 1}. PERSON identity of ${it.name} — this exact face and clothes, same sex. Never swap with another guest.`
+  })
+  const instruction = labels.length
+    ? `Attached photos in order: ${labels.join(' | ')} Use each photo only for that role. Do not mix rooms.`
+    : ''
+  const noteDe = clipped.length
+    ? `Mitgeschickt: ${clipped.map((it) => it.name).join(', ')}.`
+    : 'Keine Vorlage mitgeschickt.'
+  return { urls: clipped.map((it) => it.url), items: clipped, instruction, noteDe }
+}
+
 /** Stammbild der sprechenden Person — Gesicht und Kleidung der Nahaufnahme. */
 export function speakerIdentityUrl(panel: FilmStoryboardPanel): string | undefined {
   const who = panel.closeupSpeaker?.trim().toLowerCase()
@@ -401,23 +526,25 @@ export function stillAttachmentInstruction(opts: {
   closeup: boolean
   insert?: boolean
   rewritePerson?: boolean
+  packInstruction?: string
 }): string {
+  const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
   if (opts.insert && !opts.correctingExisting) {
-    return 'Attached photos are identity plates of the named people only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT show the whole room again. Fill the frame with the named detail.'
+    return `${pack}Attached photos are identity plates of the named people only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT show the whole room again. Fill the frame with the named detail.`
   }
   if (opts.rewritePerson && opts.closeup) {
-    return 'Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.'
+    return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.`
   }
   if (opts.rewritePerson) {
-    return 'Attached photos: first the GROUNDBILD of this room. Keep that same room, furniture, camera and seating. Everyone stays at this table. Redraw only the named person as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl. Do not invent a new location.'
+    return `${pack}Attached photos: first the GROUNDBILD of this room. Keep that same room, furniture, camera and seating. Everyone stays at this table. Redraw only the named person as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl. Do not invent a new location.`
   }
   if (opts.correctingExisting) {
-    return 'Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.'
+    return `${pack}Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.`
   }
   if (opts.closeup) {
-    return 'Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate (this speaker’s face and clothes). Output a TIGHT head-and-shoulders of that same person still sitting in that gathering. Neighbours may be cut by the frame edge. Do NOT empty the room into a vacant set. Do NOT paste a giant bust over the group photo. Do NOT copy a cropped screenshot. Same clothes as the wide.'
+    return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of THIS same room. Optional second photo: identity plate (this speaker’s face and clothes). Output a TIGHT head-and-shoulders of that same person still sitting in that gathering. Neighbours may be cut by the frame edge. Do NOT empty the room into a vacant set. Do NOT paste a giant bust over the group photo. Do NOT copy a cropped screenshot. Same clothes as the wide. The speaker stays this person — never use another guest’s close-up.`
   }
-  return 'Attached photos: first the EMPTY ROOM matching THIS scene (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO a room that matches the dialogue place — not a leftover generic living room. One coherent picture.'
+  return `${pack}Attached photos: first the EMPTY ROOM matching THIS place only (complete furniture, no people). Then COMPLETE people as full studio figures. Paint them INTO that one room — kitchen photos stay kitchen, living-room photos stay living room. Never collage both rooms. One coherent picture.`
 }
 
 /** Nur Mimik auf einer bestehenden Nahaufnahme — sonst neu filmen, nicht den Ausschnitt behalten. */
@@ -547,6 +674,7 @@ export function buildFilmStillPrompt(opts: {
           ? `${moment} New camera on the named detail. Never copy the previous wide frame.`
           : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
+    placeLockEn(inferFilmPlaceKey(`${opts.settingHint || ''} ${opts.imageCue || ''} ${opts.caption || ''}`)),
     opts.continuityEn || '',
     lock,
     isCloseup
@@ -575,7 +703,7 @@ export function buildFilmStillPrompt(opts: {
     people
       ? isInsert
         ? `People in frame (exactly these, each ONCE, no twins): ${people}.`
-        : `People in frame — they MUST be visible, not an empty room: ${people}.`
+        : `People in frame — they MUST be visible, not an empty room: ${people}. Only these people. Do not invent a girl or an extra guest.`
       : isInsert
         ? 'No extra people in this insert unless the cue names them.'
         : '',
@@ -592,7 +720,7 @@ export function buildFilmStillPrompt(opts: {
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,
     `Ignore any earlier "NO text" rule for shop signs, stall labels, posters, flyers and prospectus.`,
-    `NO speech bubbles, NO subtitles, NO captions, NO UI overlays. In-world print is allowed and must be in ${langEn}.`,
+    `NO speech bubbles, NO subtitles, NO captions, NO UI overlays, NO sound-cue lists, NO German stage directions painted on the picture (never write Wasser läuft / Kessel pfeift / Klopfen on the image). In-world print is allowed and must be in ${langEn}.`,
   ]
     .filter(Boolean)
     .join(' ')

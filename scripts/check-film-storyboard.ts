@@ -250,6 +250,13 @@ if (teaBoard.panels[2]?.shot !== 'wide') fail('erster Sprecher nach der Handlung
 if (teaBoard.panels[3]?.shot !== 'closeup' || teaBoard.panels[3]?.closeupSpeaker !== 'Khan') {
   fail('Khan spricht → Nahaufnahme Khan')
 }
+if (!/küche/i.test(teaBoard.panels[0]?.settingHint || '')) fail('Tee-Bild ist in der Küche')
+if (!/wohnzimmer/i.test(teaBoard.panels[2]?.settingHint || '')) {
+  fail('Begrüßung ist im Wohnzimmer, nicht in der Küche')
+}
+if (teaBoard.panels[2]?.settingHint === tea.filmPrompt) {
+  fail('Ort ist nicht der ganze Prompt')
+}
 const teaPlay = scenePlayBeats(teaBoard.panels, tea)
 if (!teaPlay[0]?.silent) fail('Tee ohne Stimme')
 if (!teaPlay[1]?.silent) fail('Klopfen ohne Stimme')
