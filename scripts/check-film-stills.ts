@@ -809,6 +809,22 @@ if (!insertPrompt.toLowerCase().includes('insert')) fail('Zwischenbild muss Inse
 if (!insertCameraLine('Die Tür').toLowerCase().includes('whole room')) {
   fail('Zwischenbild darf nicht der ganze Raum sein')
 }
+const doorCam = insertCameraLine('Die Wohnungstür von innen, Schloss').toLowerCase()
+if (!doorCam.includes('eye level') && !doorCam.includes('standing adult')) {
+  fail('Tür-Insert: Kamera auf Augenhöhe eines Stehenden')
+}
+if (!doorCam.includes('1.0') && !doorCam.includes('1.2') && !doorCam.includes('door height')) {
+  fail('Tür-Insert: Schloss auf normaler Türhöhe, nicht auf dem Boden')
+}
+if (!doorCam.includes('feet') || !doorCam.includes('floor')) {
+  fail('Tür-Insert verbietet Bodenkamera und nur Füsse')
+}
+const sinkCam = insertCameraLine('EIN Ramo füllt denselben Kessel an der Spüle').toLowerCase()
+if (!sinkCam.includes('standing') || !sinkCam.includes('eye level')) {
+  fail('Spüle-Insert: Kamera stehend auf Augenhöhe')
+}
+if (!sinkCam.includes('feet')) fail('Spüle-Insert verbietet ein Bild nur von Füssen')
+if (!sinkCam.includes('ground-level')) fail('Insert verbietet Bodenkamera')
 const insertAttach = stillAttachmentInstruction({
   correctingExisting: false,
   closeup: false,
@@ -816,6 +832,9 @@ const insertAttach = stillAttachmentInstruction({
 })
 if (!insertAttach.toLowerCase().includes('not copy the wide')) {
   fail('Zwischenbild kopiert nicht das Weit-Bild')
+}
+if (!insertAttach.toLowerCase().includes('feet') || !insertAttach.toLowerCase().includes('floor')) {
+  fail('Zwischenbild-Anhang verbietet Bodenkamera und nur Füsse')
 }
 if (!insertCameraLine('Tee').includes('ONCE') && !insertCameraLine('Tee').toLowerCase().includes('once')) {
   fail('Zwischenbild: jede Person nur einmal')

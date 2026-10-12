@@ -557,7 +557,7 @@ export function stillAttachmentInstruction(opts: {
 }): string {
   const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
   if (opts.insert && !opts.correctingExisting) {
-    return `${pack}If a GROUNDBILD / previous still of this place is attached, keep that SAME room, SAME kettle, SAME stove type (gas stays gas, induction stays induction). Paint the NEW named action in that kitchen. Identity plates are faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a new kettle or a new hob. Fill the frame with the named detail.`
+    return `${pack}If a GROUNDBILD / previous still of this place is attached, keep that SAME room, SAME kettle, SAME stove type (gas stays gas, induction stays induction). Paint the NEW named action in that kitchen. Identity plates are faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a new kettle or a new hob. Fill the frame with the named detail at standing-adult eye level. FORBIDDEN: ground-level camera, only feet or shoes, an object lying on the floor unless the cue names the floor.`
   }
   if (opts.rewritePerson && opts.closeup) {
     return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.`
@@ -581,20 +581,53 @@ export function correctionIsFaceOnly(note?: string): boolean {
   return /mund|lächel|mimik|augenbrau|lid|facial|weint|freut|zorn|überrascht/.test(t)
 }
 
-/** Zwischenbild = Detail, nicht der ganze Raum. */
+function insertCameraHeightEn(cue: string): string {
+  const blob = cue.toLowerCase()
+  const place = inferFilmPlaceKey(cue)
+  const kitchenish =
+    place === 'kitchen' ||
+    /kessel|spüle|spuele|herd|sink|stove|kettle|kanne|tee|wasserhahn/.test(blob)
+  const doorish =
+    place === 'door' || /tür|tuer|door|klopf|klingel|schloss|lock|riegel|klinke/.test(blob)
+  if (doorish) {
+    return (
+      `CAMERA: standing adult at eye level, from INSIDE the apartment looking at the door. ` +
+      `The door fills the frame at HAND and FACE height. ` +
+      `Lock, handle and peephole sit at normal door height about 1.0–1.2 metres from the floor. ` +
+      `Never a lock lying on the floor. Never a shot of only feet or shoes.`
+    )
+  }
+  if (kitchenish) {
+    return (
+      `CAMERA: standing adult at eye level in the kitchen. ` +
+      `Kettle, sink, stove and tap at standing work height (waist to chest). ` +
+      `Never a shot of feet or shoes under the counter.`
+    )
+  }
+  return (
+    `CAMERA: standing adult at eye level. ` +
+    `Named objects at their normal height in the room (door hardware at door height, kitchen tools at the counter).`
+  )
+}
+
+/** Zwischenbild = Detail auf Augenhöhe, nicht der ganze Raum und nicht der Boden. */
 export function insertCameraLine(cue?: string): string {
   const what = (cue || 'the named detail').trim()
   return (
     `INSERT / cutaway: fill the frame with this detail — ${what}. ` +
     `Not a wide of the whole room, not a talking-head close-up. ` +
-    `Same house and lighting as this scene. Camera close to the object or small action. ` +
+    `Same house and lighting as this scene. ${insertCameraHeightEn(what)} ` +
+    `Camera close to the named detail but still at standing-adult eye level — never a ground-level or worm's-eye camera. ` +
     `Paint each named person ONCE. Never twins, never two copies of the same face. ` +
     `If one person fills a kettle or pours tea, paint exactly that one person — not two copies doing the same action. ` +
     `If a previous kitchen still is attached: SAME kettle, SAME stove (gas stays gas, induction stays induction). ` +
     `Water goes into the kettle at the sink BEFORE the kettle sits on the stove. ` +
     `FORBIDDEN: copying the previous living-room photo. ` +
     `FORBIDDEN: everyone sitting around the table unless the cue names that gathering. ` +
-    `FORBIDDEN: an extra guest who is not named in this frame.`
+    `FORBIDDEN: an extra guest who is not named in this frame. ` +
+    `FORBIDDEN: ground-level camera. ` +
+    `FORBIDDEN: only feet or shoes in frame. ` +
+    `FORBIDDEN: the named object lying on the floor unless the cue names the floor.`
   )
 }
 
@@ -669,7 +702,7 @@ export function buildFilmStillPrompt(opts: {
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
       : isInsert
-        ? 'Paint a cinematic insert: the named object or small action fills the frame. Same house, not a wide of the whole room.'
+        ? 'Paint a cinematic insert: the named object or small action fills the frame at standing-adult eye level. Same house, not a wide of the whole room, not a ground-level shot of feet.'
         : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
@@ -745,7 +778,7 @@ export function buildFilmStillPrompt(opts: {
     isCloseup
       ? `Widescreen 16:9. Close-up crop of the same gathering. Face large. Hair not cut off at the top. Opaque eyes with iris and pupil. No legs, no floating torso, no studio cut-out, no second person, no glassy see-through eyes.`
       : isInsert
-        ? `Widescreen 16:9. Insert/cutaway. The named detail fills most of the frame. Not a group wide. Not a portrait.`
+        ? `Widescreen 16:9. Insert/cutaway. The named detail fills most of the frame at standing-adult eye level. Not a group wide. Not a portrait. Not feet only. Not an object lying on the floor unless the cue names the floor.`
         : `Widescreen 16:9. Standing people: full body, both legs and shoes on the floor. Sitting people: hips on the seat, back against the backrest, knees bent. Furniture belongs to the room. Same body scale. No extra limbs.`,
     `VISIBLE IN-WORLD TEXT (shop signs, stall labels, posters, menus, flyers, prospectus, packaging, newspapers) MUST be written in ${langEn} only.`,
     notGerman,

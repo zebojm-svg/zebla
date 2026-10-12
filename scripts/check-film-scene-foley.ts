@@ -75,6 +75,11 @@ if (teaOrder[1] !== 'Kessel auf den Herd') fail('Herd vor dem Pfeifen')
 if (!teaBeatLockEn('Wasser läuft in den Kessel').toLowerCase().includes('sink')) {
   fail('Auffüll-Bild sagt: an der Spüle, nicht auf dem Herd')
 }
+const fillLock = teaBeatLockEn('Wasser läuft in den Kessel').toLowerCase()
+if (!fillLock.includes('standing') || !fillLock.includes('eye level')) {
+  fail('Auffüll-Bild: stehend an der Spüle, nicht die Füsse')
+}
+if (!fillLock.includes('feet')) fail('Auffüll-Bild verbietet Füsse-only')
 if (foleyDurationMs(['whistle']) < 2000) fail('Pfeifen braucht Zeit im Bild')
 if (foleyDurationMs(['fill', 'pour']) < 2100) fail('Wasser braucht Zeit')
 

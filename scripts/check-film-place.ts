@@ -48,6 +48,13 @@ if (!placeLockEn('kitchen').toLowerCase().includes('induction')) {
 if (!placeLockEn('kitchen').toLowerCase().includes('before')) {
   fail('Küchen-Lock: Wasser vor dem Herd')
 }
+const doorLock = placeLockEn('door').toLowerCase()
+if (!doorLock.includes('1.0') && !doorLock.includes('1.2') && !doorLock.includes('door height')) {
+  fail('Tür-Lock: Schloss auf Türhöhe, nicht auf dem Boden')
+}
+if (!doorLock.includes('feet') || !doorLock.includes('floor')) {
+  fail('Tür-Lock verbietet Schloss auf dem Boden und nur Füsse')
+}
 
 const filmPrompt =
   'Ramo macht Tee in der Küche, dann sitzen die Gäste im Wohnzimmer auf dem Boden.'

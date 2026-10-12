@@ -32,7 +32,7 @@ export function isNarratorName(name?: string): boolean {
   return NARRATOR_SPEAKER_RE.test((name || '').trim())
 }
 
-/** Geschichte zum Vorlesen — nicht nur Wasser/Pfeifen/Klopfen. */
+/** Geschichte zum Vorlesen — nicht Tee/Klopfen und nicht deutsche Handlungsnotizen. */
 export function looksLikeSpokenNarration(text?: string): boolean {
   const t = (text || '').replace(/\s+/g, ' ').trim().toLowerCase()
   if (!t) return false
@@ -41,8 +41,8 @@ export function looksLikeSpokenNarration(text?: string): boolean {
   ) {
     return false
   }
+  if (/bereitet tee|füllt wasser|stellt den kessel|an der spüle|da klopft/.test(t)) return false
   if (/eingeladen|freunde zum tee|hat ein paar freunde|eines tages/.test(t)) return true
-  if (/bereitet tee vor für/.test(t)) return true
   return false
 }
 
@@ -53,9 +53,9 @@ export function inferDialogLineKind(
   if (isNarratorName(speaker)) return 'narrator'
   if (line.kind === 'narrator') return 'narrator'
   if (line.kind === 'speech') return 'speech'
+  if (isStageSpeaker(speaker)) return 'action'
   if (looksLikeSpokenNarration(line.text)) return 'narrator'
   if (line.kind === 'action') return 'action'
-  if (isStageSpeaker(speaker)) return 'action'
   const blob = `${line.text} ${line.cueImage || ''}`.toLowerCase()
   if (
     !speaker &&

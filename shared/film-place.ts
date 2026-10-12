@@ -106,7 +106,12 @@ export function placeLockEn(key: FilmPlaceKey): string {
     return 'PLACE LOCK: THIS frame is the LIVING ROOM only (cushions, rug, low table, seated guests). FORBIDDEN: kitchen cabinets, stove, sink, mixing both rooms.'
   }
   if (key === 'door') {
-    return 'PLACE LOCK: THIS frame is the DOOR / hall. FORBIDDEN: the kitchen, the seated gathering.'
+    return (
+      'PLACE LOCK: THIS frame is the DOOR / hall from INSIDE the apartment. ' +
+      'CAMERA: standing adult at eye level. The door is at HAND and FACE height. ' +
+      'Lock, handle and peephole at normal door height about 1.0–1.2 metres from the floor. ' +
+      'FORBIDDEN: the kitchen, the seated gathering, a lock lying on the floor, a shot of only feet or shoes, ground-level camera.'
+    )
   }
   if (key === 'street') {
     return 'PLACE LOCK: THIS frame is OUTSIDE. FORBIDDEN: kitchen or living room furniture.'
