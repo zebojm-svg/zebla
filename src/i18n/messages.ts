@@ -50,7 +50,7 @@ const de = {
   'slideshow.tools': 'Einstellungen, Stimmen & Export',
   'slideshow.cloudTts': '☁️ Cloud-Sprachausgabe',
   'slideshow.cloudTtsHint':
-    '(kostenpflichtig, ca. 1 Cent / 5 Zeilen; wird einmal gespeichert)',
+    '(kostenpflichtig, ca. 1 KI-Punkt / 5 Zeilen; wird einmal gespeichert)',
   'slideshow.windowsTts':
     '🖥️ Windows-Sprachausgabe (gratis). Bei Persisch/Arabisch ggf. Sprachpaket in den Windows-Einstellungen installieren.',
   'slideshow.showTarget': 'Zielschrift ({lang})',

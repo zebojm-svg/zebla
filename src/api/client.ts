@@ -109,7 +109,15 @@ async function requestBlob(path: string, timeoutMs = 120_000): Promise<Blob> {
   return res.blob()
 }
 
+export type AiPoints = {
+  allowed: boolean
+  balance: number | null
+  unlimited: boolean
+  message: string | null
+}
+
 export const api = {
+  aiPoints: () => request<AiPoints>('/ai-points'),
   auth: {
     student: (code: string, name?: string, classCode?: string) =>
       request<{ customToken: string; user: import('../types').User }>('/student-login', {

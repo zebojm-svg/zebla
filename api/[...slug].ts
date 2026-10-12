@@ -77,7 +77,7 @@ import {
 } from '../lib/ai-handlers.js'
 import { checkTtsHealth, synthesizeSpeech } from '../lib/tts.js'
 import { meterAiRequest } from '../lib/ai-usage-ledger.js'
-import { settleAiRequest } from '../lib/ai-authorize.js'
+import { quoteAiFor, settleAiRequest } from '../lib/ai-authorize.js'
 import {
   ensureDialogAudio,
   getOrCreateLineAudio,
@@ -2274,6 +2274,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         rig: isCharacterRig(rig) ? rig : undefined,
       })
       res.json({ asset })
+      return
+    }
+
+    if (route === 'ai-points' && req.method === 'GET') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const quote = await quoteAiFor(profile, ['tts'])
+      if (!quote) {
+        res.status(503).json({ error: 'KI-Punkte nicht erreichbar.' })
+        return
+      }
+      res.json({
+        allowed: quote.allowed === true,
+        balance: quote.balance ?? null,
+        unlimited: quote.unlimited === true,
+        message: quote.message ?? null,
+      })
       return
     }
 

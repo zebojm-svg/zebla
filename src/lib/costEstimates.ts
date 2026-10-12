@@ -33,9 +33,9 @@ export function estimateRegenerateTts(dialog: {
     description: `Alle ${total} Zeile${total !== 1 ? 'n' : ''} werden erneut mit Cloud-TTS erzeugt (bestehende MP3s werden ersetzt).`,
     items: [
       { label: 'Zeilen', amount: String(total) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents} Cent`,
+    totalHint: `ca. ${cents} KI-Punkte`,
     note: 'Nur nötig nach Textänderung, Birkenbihl, Sprachmodell-Upgrade (z. B. Koreanisch → Gemini-TTS) oder wenn die falsche Sprache gesprochen wurde.',
   }
 }
@@ -53,9 +53,9 @@ export function estimateMissingTts(dialog: {
     description: `${missing} Zeile${missing !== 1 ? 'n' : ''} ohne gespeichertes Audio.`,
     items: [
       { label: 'Neue TTS-Zeilen', amount: String(missing) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents} Cent (einmalig; danach Wiedergabe gratis)`,
+    totalHint: `ca. ${cents} KI-Punkte (einmalig; danach Wiedergabe gratis)`,
     note: 'Bereits gespeicherte Zeilen (z. B. 18/18) kosten beim Abspielen nichts mehr.',
   }
 }
@@ -67,9 +67,9 @@ export function estimateBirkenbihl(lineCount: number): CostEstimate {
     description: 'KI ordnet jedem Wort eine Übersetzung zu (Text-KI).',
     items: [
       { label: 'Dialogzeilen', amount: String(lineCount) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents} Cent`,
+    totalHint: `ca. ${cents} KI-Punkte`,
   }
 }
 
@@ -80,9 +80,9 @@ export function estimateTranslate(lineCount: number): CostEstimate {
     description: 'KI übersetzt alle Zeilen (Text-KI).',
     items: [
       { label: 'Dialogzeilen', amount: String(lineCount) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents} Cent`,
+    totalHint: `ca. ${cents} KI-Punkte`,
   }
 }
 
@@ -90,8 +90,8 @@ export function estimateSectionImage(): CostEstimate {
   return {
     title: 'Titelbild generieren',
     description: 'Ein KI-Bild für den Abschnitt (inkl. Figuren-Planung beim ersten Mal).',
-    items: [{ label: 'Bilder', amount: '1' }, { label: 'Geschätzte Kosten', amount: 'ca. 2–5 Cent' }],
-    totalHint: 'ca. 2–5 Cent',
+    items: [{ label: 'Bilder', amount: '1' }, { label: 'Geschätzte Kosten', amount: 'ca. 2–5 KI-Punkte' }],
+    totalHint: 'ca. 2–5 KI-Punkte',
     note: 'Beim ersten Mal wird der ganze Dialog für feste Figuren gelesen (+ wenig Text-KI).',
   }
 }
@@ -103,9 +103,9 @@ export function estimateSceneImages(portraitCount = 2): CostEstimate {
     description: `Zuerst Figuren-Portraits + Gruppen-Referenz, dann ${portraitCount} konsistente Szenenbilder abgeleitet vom Original.`,
     items: [
       { label: 'Portraits + Szenen', amount: String(portraitCount + 2) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 6} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + 6} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents}–${cents + 6} Cent`,
+    totalHint: `ca. ${cents}–${cents + 6} KI-Punkte`,
     note: 'Zuerst Bild-Regie + Testbild. Dann Portraits/Szenen. Alle 3 Bilder prüft eine zweite KI die Logik.',
   }
 }
@@ -116,9 +116,9 @@ export function estimateVisualTest(): CostEstimate {
     description: 'Ein Bild zum Prüfen von Stil, Alter und Szene, bevor alle Dialogbilder erzeugt werden.',
     items: [
       { label: 'Bilder', amount: '1' },
-      { label: 'Geschätzte Kosten', amount: 'ca. 2–5 Cent' },
+      { label: 'Geschätzte Kosten', amount: 'ca. 2–5 KI-Punkte' },
     ],
-    totalHint: 'ca. 2–5 Cent',
+    totalHint: 'ca. 2–5 KI-Punkte',
     note: 'Klein angezeigt, aber intern ein normales Bild – so spart man vor allem die 20 weiteren Bilder, falls der Stil nicht stimmt.',
   }
 }
@@ -130,9 +130,9 @@ export function estimateAllSectionImages(sectionCount: number): CostEstimate {
     description: `${sectionCount} Titelbilder für alle Abschnitte.`,
     items: [
       { label: 'Abschnitte', amount: String(sectionCount) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + sectionCount * 2} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + sectionCount * 2} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents}–${cents + sectionCount * 2} Cent`,
+    totalHint: `ca. ${cents}–${cents + sectionCount * 2} KI-Punkte`,
   }
 }
 
@@ -151,9 +151,9 @@ export function estimateAllSceneImages(
       `(${sectionCount} Abschnitte).`,
     items: [
       { label: 'Bilder gesamt (ca.)', amount: String(total) },
-      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + sectionCount * 4} Cent` },
+      { label: 'Geschätzte Kosten', amount: `ca. ${cents}–${cents + sectionCount * 4} KI-Punkte` },
     ],
-    totalHint: `ca. ${cents}–${cents + sectionCount * 4} Cent`,
+    totalHint: `ca. ${cents}–${cents + sectionCount * 4} KI-Punkte`,
     note: 'Bestehende Szenenbilder werden ersetzt. Danach ggf. „Audio neu erstellen“ für bessere Stimmen.',
   }
 }
