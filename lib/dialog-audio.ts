@@ -2,6 +2,8 @@ import { inferDialogLineKind, type Dialog, type DialogLine, type DialogSection }
 import {
   lineBelongsToSpeaker,
   lookupSpeakerRecord,
+  matchSpeakerName,
+  spokenSpeakerName,
   uniqueSpeakersInDialog,
 } from '../shared/speakers.js'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-speech.js'
@@ -34,6 +36,12 @@ function speakerSlot(dialog: Dialog, speaker: string): number {
   const names = uniqueSpeakersInDialog(dialog)
   const i = names.findIndex((n) => matchSpeakerName(n, speaker))
   return i >= 0 ? i : 0
+}
+
+function voiceSpeaker(
+  line: Pick<DialogLine, 'kind' | 'speaker' | 'text' | 'cueImage'>,
+): string {
+  return spokenSpeakerName(line) || line.speaker
 }
 
 async function ensureSpeakerVoicesOnDialog(
@@ -113,9 +121,10 @@ export async function getOrCreateLineAudio(
     return { audioUrl: found.line.audioUrl, cached: true, dialog }
   }
 
-  const speakerIdx = speakerSlot(dialog, found.line.speaker)
-  const voice = getSpeakerVoice(dialog, found.line.speaker)
-  const delivery = ttsDeliveryForSpeaker(dialog, found.line.speaker)
+  const who = voiceSpeaker(found.line)
+  const speakerIdx = speakerSlot(dialog, who)
+  const voice = getSpeakerVoice(dialog, who)
+  const delivery = ttsDeliveryForSpeaker(dialog, who)
 
   const tts = await synthesizeSpeech({
     text: lineSpeechText(found.line),
@@ -190,9 +199,10 @@ export async function ensureDialogAudio(
         if (cleared) dialog = cleared
       }
 
-      const speakerIdx = speakerSlot(dialog, line.speaker)
-      const voice = getSpeakerVoice(dialog, line.speaker)
-      const delivery = ttsDeliveryForSpeaker(dialog, line.speaker)
+      const who = voiceSpeaker(line)
+      const speakerIdx = speakerSlot(dialog, who)
+      const voice = getSpeakerVoice(dialog, who)
+      const delivery = ttsDeliveryForSpeaker(dialog, who)
       const tts = await synthesizeSpeech({
         text: speechText,
         languageCode: dialog.targetLanguage,

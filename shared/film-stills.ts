@@ -13,6 +13,7 @@ import {
 } from './film-place.js'
 import { getStoryArtStyle, getStoryStylePrompt } from './story-art-styles.js'
 import { STORY_STILLS_LOCK_PROMPT } from './story-stills.js'
+import { teaBeatLockEn } from './film-scene-foley.js'
 import { lookForCharacterName } from './story-character-looks.js'
 import {
   normalizeFilmStoryboard,
@@ -663,7 +664,7 @@ export function buildFilmStillPrompt(opts: {
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
       : isInsert
-        ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
+        ? `${STORY_STILLS_LOCK_PROMPT} If a previous still of THIS place is attached, keep that SAME kettle and SAME stove type. Identity plates are faces only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
         : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
@@ -703,6 +704,7 @@ export function buildFilmStillPrompt(opts: {
           : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     placeLockEn(inferFilmPlaceKey(`${opts.settingHint || ''} ${opts.imageCue || ''} ${opts.caption || ''}`)),
+    teaBeatLockEn(opts.caption, opts.imageCue),
     opts.continuityEn || '',
     lock,
     isCloseup

@@ -37,6 +37,7 @@ import {
   buildSpeakerVoiceProfiles,
   getSpeakerVoice,
   resolveSpeakerGender,
+  ttsDeliveryForSpeaker,
 } from '../lib/speaker-voice.ts'
 import {
   buildBoardFromDrafts,
@@ -503,6 +504,12 @@ const erzDialog: Dialog = {
 }
 if (getSpeakerVoice(erzDialog, 'Off').voiceName !== 'Charon') {
   fail('Erzähler-Stimme gilt auch für Off')
+}
+if (getSpeakerVoice(erzDialog, 'Narrator').voiceName !== 'Charon') {
+  fail('Erzähler-Stimme gilt auch unter dem Namen Narrator')
+}
+if (/teenager|lively teenager|jugend/i.test(ttsDeliveryForSpeaker(erzDialog, 'Erzähler').stylePrompt)) {
+  fail('Erzähler klingt nicht wie ein Kind')
 }
 if (genderFromKnownName('Xyzzy') !== undefined) fail('Unbekannter Name: Geschlecht nicht raten')
 if (!lookForCharacterName('Schöme')?.identityLock.toLowerCase().includes('boy')) {

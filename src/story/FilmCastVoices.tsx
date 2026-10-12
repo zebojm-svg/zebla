@@ -1,7 +1,12 @@
 import { useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { Dialog } from '../types'
-import { speakerGender, uniqueSpeakersInDialog } from '../../shared/speakers'
+import {
+  lookupSpeakerRecord,
+  matchSpeakerName,
+  speakerGender,
+  uniqueSpeakersInDialog,
+} from '../../shared/speakers'
 import { voiceChoicesForLanguage } from '../../shared/voice-options'
 
 type Props = {
@@ -74,11 +79,20 @@ export function FilmCastVoices({ dialog, disabled, onDialogUpdated }: Props) {
         voiceName,
       }
       const characterBible = dialog.characterBible?.map((c) =>
-        c.name === speaker ? { ...c, gender, voiceName } : c,
+        matchSpeakerName(c.name, speaker) ? { ...c, gender, voiceName } : c,
       )
+      const speakerVoices = {
+        ...(dialog.speakerVoices ?? {}),
+        [speaker]: {
+          ...(lookupSpeakerRecord(dialog.speakerVoices, speaker) ?? {}),
+          gender,
+          voiceName,
+        },
+      }
       const { dialog: next } = await api.dialogs.update(dialog.id, {
         speakerProfiles: profiles,
         characterBible,
+        speakerVoices,
       })
       const { dialog: spoken } = await api.tts.regenerateSpeaker(dialog.id, speaker)
       onDialogUpdated(spoken ?? next)
@@ -100,10 +114,10 @@ export function FilmCastVoices({ dialog, disabled, onDialogUpdated }: Props) {
       {status ? <p className="film-cast-voices-status">{status}</p> : null}
       <div className="film-cast-voices-grid">
         {speakers.map((speaker) => {
-          const assigned = dialog.speakerVoices?.[speaker]
+          const assigned = lookupSpeakerRecord(dialog.speakerVoices, speaker)
+          const chosen = lookupSpeakerRecord(dialog.speakerProfiles, speaker)
           const gender = speakerGender(dialog, speaker) ?? assigned?.gender ?? 'male'
-          const current =
-            dialog.speakerProfiles?.[speaker]?.voiceName || assigned?.voiceName || ''
+          const current = chosen?.voiceName || assigned?.voiceName || ''
           const shown =
             gender === 'male' ? voices.filter((v) => v.gender === 'male') : voices
           const options = shown.length > 0 ? shown : voices

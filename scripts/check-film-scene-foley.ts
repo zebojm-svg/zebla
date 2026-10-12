@@ -8,6 +8,9 @@ import {
   foleyEventsFromText,
   foleyFlagsFromNote,
   inferSoundCueDe,
+  orderTeaBeats,
+  teaBeatLockEn,
+  teaBeatStep,
   SCENE_FOLEY_GAIN,
   SCENE_PAD_GAIN,
   SCENE_VOICE_GAIN,
@@ -60,6 +63,17 @@ if (!inferSoundCueDe('Ramo gießt den Tee in eine Kanne').toLowerCase().includes
 }
 if (inferSoundCueDe('egal', 'Kessel pfeift') !== 'Kessel pfeift') {
   fail('geschriebene Ton-Regie bleibt stehen')
+}
+if (teaBeatStep('Ramo stellt den Kessel auf den Herd') !== 2) fail('Kessel auf den Herd ist Schritt 2')
+if (teaBeatStep('Wasser läuft in den Kessel') !== 1) fail('Auffüllen ist Schritt 1')
+const teaOrder = orderTeaBeats(
+  ['Kessel auf den Herd', 'Wasser läuft in den Kessel', 'Kessel pfeift'],
+  (t) => t,
+)
+if (teaOrder[0] !== 'Wasser läuft in den Kessel') fail('Wasser vor dem Herd')
+if (teaOrder[1] !== 'Kessel auf den Herd') fail('Herd vor dem Pfeifen')
+if (!teaBeatLockEn('Wasser läuft in den Kessel').toLowerCase().includes('sink')) {
+  fail('Auffüll-Bild sagt: an der Spüle, nicht auf dem Herd')
 }
 if (foleyDurationMs(['whistle']) < 2000) fail('Pfeifen braucht Zeit im Bild')
 if (foleyDurationMs(['fill', 'pour']) < 2100) fail('Wasser braucht Zeit')

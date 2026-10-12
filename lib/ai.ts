@@ -17,7 +17,8 @@ import type {
   VisualBrief,
 } from '../shared/types.js'
 import { inferDialogLineKind, isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
-import { inferSoundCueDe } from '../shared/film-scene-foley.js'
+import { spokenSpeakerName } from '../shared/speakers.js'
+import { inferSoundCueDe, orderTeaBeats } from '../shared/film-scene-foley.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
@@ -253,8 +254,9 @@ JSON:
 }
 kind:
 - speech = jemand spricht (speaker = Figurenname, text in ${targetLanguage})
-- action = stilles Zwischenbild, niemand spricht. Beispiel: speaker "Handlung", text "Ramo füllt Wasser in den Kessel.", cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kessel noch nicht auf dem Herd", cueSound "Wasser läuft in den Kessel"
-- narrator = Erzähler-Stimme (speaker "Erzähler") — wird gesprochen, niemals kind=action, eigene Stimme unter Stimmen anpassen
+- narrator = Erzähler erzählt (speaker "Erzähler", text in ${targetLanguage}). Beispiel: speaker "Erzähler", text "Ramo hat Freunde zum Tee eingeladen."
+- action = stilles Zwischenbild, niemand spricht. Nur kurze Geräusch-Handlung. Beispiel: speaker "Handlung", text "Ramo füllt Wasser in den Kessel.", cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kessel noch nicht auf dem Herd", cueSound "Wasser läuft in den Kessel"
+Niemals die Geschichte als kind=action schreiben — sonst erzählt der Erzähler nichts.
 Bei Handlung cueSound immer konkret, und jede Geräusch-Handlung ist eine EIGENE Zeile (nicht auffüllen + pfeifen + eingießen in einem Satz):
 Dieselbe Kanne und derselbe Herd in ALLEN Küchenzeilen (nicht mal Gasherd, mal Induktion; nicht jede Zeile eine neue Kanne).
 Reihenfolge beim Tee (nicht umdrehen):
@@ -306,8 +308,12 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
             cueImage: l.cueImage,
           })
           const speaker =
-            l.speaker?.trim() ||
-            (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher')
+            spokenSpeakerName({
+              kind,
+              speaker: l.speaker ?? '',
+              text: l.text ?? '',
+              cueImage: l.cueImage,
+            }) || (kind === 'action' ? 'Handlung' : 'Sprecher')
           return {
             id: newLineId(),
             kind,
@@ -322,6 +328,10 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
           }
         })
         .filter((l) => l.text),
+    }))
+    .map((sec) => ({
+      ...sec,
+      lines: orderTeaBeats(sec.lines, (line) => `${line.text} ${line.cueImage || ''} ${line.cueSound || ''}`),
     })),
   )
 
@@ -404,8 +414,12 @@ JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Han
       return {
         kind,
         speaker:
-          (l.speaker ?? '').trim() ||
-          (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher'),
+          spokenSpeakerName({
+            kind,
+            speaker: l.speaker ?? '',
+            text: l.text ?? '',
+            cueImage: l.cueImage,
+          }) || (kind === 'action' ? 'Handlung' : 'Sprecher'),
         text: (l.text ?? '').trim(),
         cueImage: (l.cueImage ?? '').trim() || undefined,
         cueSound:
@@ -415,13 +429,17 @@ JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Han
       }
     })
     .filter((l) => l.text)
-  if (lines.length === 0) {
+  const ordered = orderTeaBeats(
+    lines,
+    (line) => `${line.text} ${line.cueImage || ''} ${line.cueSound || ''}`,
+  )
+  if (ordered.length === 0) {
     throw new Error('Die KI hat für diese Szene keinen Dialog geliefert.')
   }
   const earlierFp = new Set(
     opts.earlier.flatMap((s) => s.lines.map((l) => `${l.speaker.trim()}\t${l.text.trim()}`)),
   )
-  const unique = lines.filter((l) => !earlierFp.has(`${l.speaker}\t${l.text}`))
+  const unique = ordered.filter((l) => !earlierFp.has(`${l.speaker}\t${l.text}`))
   if (unique.length < 2) {
     throw new Error('Die KI hat denselben Dialog wie zuvor geliefert. Bitte noch einmal versuchen.')
   }
