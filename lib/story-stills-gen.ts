@@ -10,6 +10,8 @@ import {
   type StillPoseId,
   type StillsEngineId,
 } from '../shared/story-stills.js'
+import { assertAiAllowed } from './ai-authorize.js'
+import { recordGeminiUsage } from './ai-usage-ledger.js'
 
 export { stillsEngineFromEnv }
 
@@ -91,7 +93,7 @@ function replicateErrorText(err: ReplicatePrediction['error']): string {
   return err.message ?? ''
 }
 
-async function generateWithReplicate(opts: {
+async function runReplicate(opts: {
   prompt: string
   imageUrl: string
   imagePng?: Buffer | null
@@ -172,7 +174,7 @@ type FalResponse = {
   error?: string
 }
 
-async function generateWithFal(opts: {
+async function runFal(opts: {
   prompt: string
   imageUrl: string
   imagePng?: Buffer | null
@@ -226,6 +228,29 @@ async function generateWithFal(opts: {
     return Buffer.from(b64, 'base64')
   }
   return downloadPng(url)
+}
+
+type KontextOpts = { prompt: string; imageUrl: string; imagePng?: Buffer | null; aspectRatio?: '16:9' | '9:16' }
+
+/** Name für das Hub-Verbrauchsbuch (Preis pro Bild: flux-kontext-pro / flux-kontext-max). */
+function ledgerFluxModel(modelId: string): string {
+  return /max/i.test(modelId) ? 'flux-kontext-max' : 'flux-kontext-pro'
+}
+
+/** FLUX kostet pro Bild wie Gemini: gleiche KI-Punkte-Prüfung, danach ins Verbrauchsbuch. */
+async function billedFlux(modelId: string, run: () => Promise<Buffer>): Promise<Buffer> {
+  await assertAiAllowed()
+  const buffer = await run()
+  recordGeminiUsage('flux', ledgerFluxModel(modelId), null, { units: 1, unitType: 'image' })
+  return buffer
+}
+
+function generateWithReplicate(opts: KontextOpts): Promise<Buffer> {
+  return billedFlux(replicateModelId(), () => runReplicate(opts))
+}
+
+function generateWithFal(opts: KontextOpts): Promise<Buffer> {
+  return billedFlux(falModelId(), () => runFal(opts))
 }
 
 export async function generateLockedStillPng(opts: {

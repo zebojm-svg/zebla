@@ -77,6 +77,7 @@ import {
 } from '../lib/ai-handlers.js'
 import { checkTtsHealth, synthesizeSpeech } from '../lib/tts.js'
 import { meterAiRequest } from '../lib/ai-usage-ledger.js'
+import { settleAiRequest } from '../lib/ai-authorize.js'
 import {
   ensureDialogAudio,
   getOrCreateLineAudio,
@@ -2289,5 +2290,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     sendError(res, err)
+  } finally {
+    settleAiRequest()
   }
 }

@@ -13,7 +13,15 @@ import type { UserProfile } from './firestore.js'
  */
 const DEFAULT_ENDPOINT = 'https://zebotools.ch/api/ai-usage'
 
-type AiUsageContext = { feature: string; profile: UserProfile | null; uid: string | null }
+type AiUsageContext = {
+  feature: string
+  profile: UserProfile | null
+  uid: string | null
+  /** KI-Punkte: einmal pro Request (= Klick) beim Hub reserviert, danach alle KI-Aufrufe darauf. */
+  authorized?: boolean
+  reservationId?: string | null
+  settled?: boolean
+}
 
 const store = new AsyncLocalStorage<AiUsageContext>()
 
@@ -38,7 +46,7 @@ export function meterAiUser(uid: string): void {
   if (ctx && !ctx.uid) ctx.uid = uid
 }
 
-export function currentAiContext(): Readonly<AiUsageContext> | undefined {
+export function currentAiContext(): AiUsageContext | undefined {
   return store.getStore()
 }
 
@@ -91,6 +99,7 @@ async function send(ctx: AiUsageContext | undefined, rec: Record<string, unknown
         ...rec,
         teacherEmail: teacher?.email ?? null,
         appUserId: teacher?.appUserId ?? null,
+        ...(ctx?.reservationId ? { reservationId: ctx.reservationId } : {}),
         eventId: randomUUID(),
         at: new Date().toISOString(),
       }),
@@ -105,7 +114,7 @@ async function send(ctx: AiUsageContext | undefined, rec: Record<string, unknown
 }
 
 /** Vercel hält die Funktion für diese Promise am Leben, ohne die Antwort zu verzögern. */
-function waitUntil(p: Promise<unknown>): void {
+export function waitUntil(p: Promise<unknown>): void {
   const ctx = (
     globalThis as { [k: symbol]: { get?: () => { waitUntil?: (p: Promise<unknown>) => void } } | undefined }
   )[Symbol.for('@vercel/request-context')]?.get?.()
