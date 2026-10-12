@@ -10,6 +10,7 @@ import {
 import {
   panelPlaceKey,
   placeGrundbildPanel,
+  previousPlaceStillUrl,
   stillReferencePack,
 } from '../shared/film-stills.ts'
 import {
@@ -37,6 +38,15 @@ if (!inferSettingHintDe('Salam.').startsWith('Wohnzimmer')) {
 }
 if (!placeLockEn('kitchen').toLowerCase().includes('cushions')) {
   fail('Küchen-Lock verbietet Sitzkissen')
+}
+if (!placeLockEn('kitchen').toLowerCase().includes('kettle')) {
+  fail('Küchen-Lock hält die Kanne')
+}
+if (!placeLockEn('kitchen').toLowerCase().includes('induction')) {
+  fail('Küchen-Lock hält Gas- oder Induktionsherd')
+}
+if (!placeLockEn('kitchen').toLowerCase().includes('before')) {
+  fail('Küchen-Lock: Wasser vor dem Herd')
 }
 
 const filmPrompt =
@@ -135,6 +145,47 @@ if (!packKitchen.urls.includes('https://example.com/ramo.png')) {
 if (!packKitchen.noteDe.includes('Ramo')) fail('Notiz sagt, wer mitgeschickt wurde')
 if (!packKitchen.instruction.toLowerCase().includes('kitchen')) {
   fail('Anweisung an die Bild-KI nennt die Küche')
+}
+
+const kitchenFill = {
+  ...kitchenInsert,
+  id: 'k-fill',
+  stillUrl: 'https://example.com/kettle-fill.png',
+  caption: 'Ramo füllt Wasser in den Kessel',
+  imageCue: 'Kessel an der Spüle',
+}
+const kitchenStove = {
+  ...kitchenInsert,
+  id: 'k-stove',
+  stillUrl: undefined,
+  caption: 'Ramo stellt den Kessel auf den Herd',
+  imageCue: 'Kessel auf den Herd',
+}
+const kitchenSeq: FilmStoryboard = {
+  ...board,
+  panels: [kitchenFill, kitchenStove, livingWide],
+}
+if (previousPlaceStillUrl(kitchenSeq, kitchenStove) !== 'https://example.com/kettle-fill.png') {
+  fail('Herd-Bild nimmt die vorige Küche, nicht das Wohnzimmer')
+}
+if (previousPlaceStillUrl(kitchenSeq, kitchenFill)) {
+  fail('Erstes Küchenbild hat noch keine vorige Kanne')
+}
+const packStove = stillReferencePack(kitchenStove, { board: kitchenSeq })
+if (!packStove.urls.includes('https://example.com/kettle-fill.png')) {
+  fail('Herd-Bild bekommt die vorige Kanne mitgeschickt')
+}
+if (packStove.urls.includes('https://example.com/kitchen-empty.png')) {
+  fail('Leere Bibliotheks-Küche nicht statt der vorigen Kanne')
+}
+if (packStove.urls.includes('https://example.com/living.png')) {
+  fail('Herd-Bild bekommt nicht das Wohnzimmer mitgeschickt')
+}
+if (!packStove.instruction.toLowerCase().includes('kettle')) {
+  fail('Anweisung hält die Kanne fest')
+}
+if (!packStove.instruction.toLowerCase().includes('induction')) {
+  fail('Anweisung hält den Herd fest')
 }
 
 console.log('OK: Ort, Grundbild und Vorlagen für die Bild-KI')

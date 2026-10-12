@@ -15,6 +15,7 @@ import {
   type DialogLineKind,
   type DialogSection,
 } from './types.js'
+import { spokenSpeakerName } from './speakers.js'
 import { foleyEventsFromText, inferSoundCueDe, type FoleyKind } from './film-scene-foley.js'
 import { inferFilmPlaceKey, inferSettingHintDe } from './film-place.js'
 import type { StoryLibraryAsset } from './story-types.js'
@@ -679,7 +680,9 @@ export function ensureCoverageDrafts(
         imageCue,
         soundCue:
           line.cueSound?.trim() ||
-          (kind === 'action' ? inferSoundCueDe(line.text, line.cueSound) : '') ||
+          (kind === 'action' || kind === 'narrator'
+            ? inferSoundCueDe(line.text, line.cueSound)
+            : '') ||
           '',
         speechCue: prior?.speechCue || line.cueSpeech || '',
         settingHint: setting,
@@ -1202,9 +1205,7 @@ function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
   const kind = inferDialogLineKind(line)
   const speaker =
     kind === 'narrator'
-      ? line.speaker.trim() && !isStageSpeaker(line.speaker)
-        ? line.speaker.trim()
-        : 'Erzähler'
+      ? spokenSpeakerName(line) || 'Erzähler'
       : line.speaker
   return {
     speaker,
@@ -1268,9 +1269,7 @@ export function panelSpeakLines(
   const kind = inferDialogLineKind(line)
   const speaker =
     kind === 'narrator'
-      ? line.speaker.trim() && !isStageSpeaker(line.speaker)
-        ? line.speaker.trim()
-        : 'Erzähler'
+      ? spokenSpeakerName(line) || 'Erzähler'
       : line.speaker || 'Sprecher'
   return [
     {

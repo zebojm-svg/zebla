@@ -18,7 +18,8 @@ import type {
   VisualBrief,
 } from '../shared/types.js'
 import { inferDialogLineKind, isRtlLanguage, languageName, needsRomanization } from '../shared/types.js'
-import { inferSoundCueDe } from '../shared/film-scene-foley.js'
+import { spokenSpeakerName } from '../shared/speakers.js'
+import { inferSoundCueDe, orderTeaBeats } from '../shared/film-scene-foley.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
@@ -256,14 +257,19 @@ JSON:
 }
 kind:
 - speech = jemand spricht (speaker = Figurenname, text in ${targetLanguage})
-- action = stilles Zwischenbild, niemand spricht. Beispiel: speaker "Handlung", text "Ramo bereitet Tee vor für seine Gäste.", cueImage "EIN Ramo an der Teekanne, nicht zwei Personen", cueSound "Wasser läuft in den Kessel"
-- narrator = Erzähler-Stimme (speaker "Erzähler") — wird gesprochen, eigene Stimme unter Stimmen anpassen
+- narrator = Erzähler erzählt (speaker "Erzähler", text in ${targetLanguage}). Beispiel: speaker "Erzähler", text "Ramo hat Freunde zum Tee eingeladen."
+- action = stilles Zwischenbild, niemand spricht. Nur kurze Geräusch-Handlung. Beispiel: speaker "Handlung", text "Ramo füllt Wasser in den Kessel.", cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kessel noch nicht auf dem Herd", cueSound "Wasser läuft in den Kessel"
+Niemals die Geschichte als kind=action schreiben — sonst erzählt der Erzähler nichts.
 Bei Handlung cueSound immer konkret, und jede Geräusch-Handlung ist eine EIGENE Zeile (nicht auffüllen + pfeifen + eingießen in einem Satz):
-- Wasser in den Kessel: cueImage "EIN Ramo füllt den Kessel, nicht zwei Personen", cueSound "Wasser läuft in den Kessel"
-- Kessel pfeift: cueImage "Teekessel mit Dampf, nah", cueSound "Der Teekessel pfeift"
-- Tee eingießen: cueImage "Einschenken, Wasser plätschert", cueSound "Tee plätschert in die Kanne"
+Dieselbe Kanne und derselbe Herd in ALLEN Küchenzeilen (nicht mal Gasherd, mal Induktion; nicht jede Zeile eine neue Kanne).
+Reihenfolge beim Tee (nicht umdrehen):
+1. Wasser in den Kessel an der Spüle — Kessel ist noch NICHT auf dem Herd. cueImage "EIN Ramo füllt denselben Kessel an der Spüle", cueSound "Wasser läuft in den Kessel"
+2. denselben vollen Kessel auf denselben Herd setzen
+3. Kessel pfeift: cueImage "derselbe Teekessel mit Dampf auf demselben Herd", cueSound "Der Teekessel pfeift"
+4. Tee eingießen: cueImage "Einschenken aus derselben Kanne", cueSound "Tee plätschert in die Kanne"
+Niemals den leeren Kessel auf den Herd stellen, bevor Wasser drin ist.
 - Klopfen: cueImage "Die Wohnungstür von innen, die Tür füllt das Bild", cueSound "Klopfen an der Tür"
-Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen — eigene Stimme unter Stimmen anpassen. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt.
+Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen — niemals kind=action. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt.
 Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das hergibt.
 cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür, Tee), niemals «ganzer Raum» bei jeder Zeile.
 Die Szenen entstehen HIER im Dialog, nicht später auf dem Bild-Board.
@@ -305,8 +311,12 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
             cueImage: l.cueImage,
           })
           const speaker =
-            l.speaker?.trim() ||
-            (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher')
+            spokenSpeakerName({
+              kind,
+              speaker: l.speaker ?? '',
+              text: l.text ?? '',
+              cueImage: l.cueImage,
+            }) || (kind === 'action' ? 'Handlung' : 'Sprecher')
           return {
             id: newLineId(),
             kind,
@@ -321,6 +331,10 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
           }
         })
         .filter((l) => l.text),
+    }))
+    .map((sec) => ({
+      ...sec,
+      lines: orderTeaBeats(sec.lines, (line) => `${line.text} ${line.cueImage || ''} ${line.cueSound || ''}`),
     })),
   )
 
@@ -374,8 +388,8 @@ export async function generateFilmSceneDialog(opts: {
     `Du schreibst die NÄCHSTE Szene eines Sprachlern-Films (Dialog plus Handlung dazwischen).
 Gesprochene Zeilen (kind=speech/narrator): ${opts.targetLanguage}.
 kind=action auf Deutsch, wird nicht gesprochen (Tee, Klopfen, Tür) — cueSound ist das Geräusch.
-kind=narrator (speaker Erzähler) wird gesprochen.
-Jede Geräusch-Handlung eigene Zeile: Wasser läuft / Kessel pfeift / Tee plätschert / Klopfen.
+kind=narrator (speaker Erzähler) wird gesprochen — niemals kind=action für den Erzähler.
+Jede Geräusch-Handlung eigene Zeile, Tee in dieser Reihenfolge: Wasser in den Kessel an der Spüle (noch nicht auf dem Herd) / denselben Kessel auf denselben Herd / Kessel pfeift / Tee plätschert. Dieselbe Kanne, derselbe Herd (nicht mal Gas, mal Induktion).
 Dieselben Figuren (${names}), neue Sätze. Die Geschichte geht weiter.
 Niemals den vorigen Dialog wörtlich oder fast wörtlich wiederholen.
 Originalfiguren, kein Petit Nicolas.
@@ -403,8 +417,12 @@ JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Han
       return {
         kind,
         speaker:
-          (l.speaker ?? '').trim() ||
-          (kind === 'action' ? 'Handlung' : kind === 'narrator' ? 'Erzähler' : 'Sprecher'),
+          spokenSpeakerName({
+            kind,
+            speaker: l.speaker ?? '',
+            text: l.text ?? '',
+            cueImage: l.cueImage,
+          }) || (kind === 'action' ? 'Handlung' : 'Sprecher'),
         text: (l.text ?? '').trim(),
         cueImage: (l.cueImage ?? '').trim() || undefined,
         cueSound:
@@ -414,13 +432,17 @@ JSON: { "lines": [ { "kind": "speech|action|narrator", "speaker": "Name oder Han
       }
     })
     .filter((l) => l.text)
-  if (lines.length === 0) {
+  const ordered = orderTeaBeats(
+    lines,
+    (line) => `${line.text} ${line.cueImage || ''} ${line.cueSound || ''}`,
+  )
+  if (ordered.length === 0) {
     throw new Error('Die KI hat für diese Szene keinen Dialog geliefert.')
   }
   const earlierFp = new Set(
     opts.earlier.flatMap((s) => s.lines.map((l) => `${l.speaker.trim()}\t${l.text.trim()}`)),
   )
-  const unique = lines.filter((l) => !earlierFp.has(`${l.speaker}\t${l.text}`))
+  const unique = ordered.filter((l) => !earlierFp.has(`${l.speaker}\t${l.text}`))
   if (unique.length < 2) {
     throw new Error('Die KI hat denselben Dialog wie zuvor geliefert. Bitte noch einmal versuchen.')
   }

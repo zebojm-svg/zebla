@@ -13,6 +13,7 @@ import {
 } from './film-place.js'
 import { getStoryArtStyle, getStoryStylePrompt } from './story-art-styles.js'
 import { STORY_STILLS_LOCK_PROMPT } from './story-stills.js'
+import { teaBeatLockEn } from './film-scene-foley.js'
 import { lookForCharacterName } from './story-character-looks.js'
 import {
   normalizeFilmStoryboard,
@@ -389,10 +390,14 @@ export function stillReferencePack(
   if (closeup && safeWide) {
     add({ role: 'grundbild', name: placeLabelDe(place), url: safeWide })
   }
+  const prevPlace = opts?.board ? previousPlaceStillUrl(opts.board, panel) : undefined
+  if (insert && prevPlace && !opts?.correctFromUrl) {
+    add({ role: 'grundbild', name: `vorige ${placeLabelDe(place)}`, url: prevPlace })
+  }
   if (!closeup && !insert && bg) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
   }
-  if (insert && bg && !opts?.correctFromUrl) {
+  if (insert && bg && !opts?.correctFromUrl && !prevPlace) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
   }
   const speakerId = closeup ? speakerIdentityUrl(panel) : undefined
@@ -412,7 +417,9 @@ export function stillReferencePack(
   const clipped = items.slice(0, max)
   const labels = clipped.map((it, i) => {
     if (it.role === 'grundbild') {
-      return `${i + 1}. GROUNDBILD of the ${placeLabelEn(place)} only — same furniture, same people. NOT a different room.`
+      return insert
+        ? `${i + 1}. PREVIOUS still of the SAME ${placeLabelEn(place)} — same kettle, same stove type (gas stays gas, induction stays induction). New action only. NOT a different room.`
+        : `${i + 1}. GROUNDBILD of the ${placeLabelEn(place)} only — same furniture, same people. NOT a different room.`
     }
     if (it.role === 'place') {
       return `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room. Kitchen photos only for kitchen, living-room photos only for living room.`
@@ -449,6 +456,26 @@ export function previousStillUrlInScene(
   const idx = same.findIndex((p) => p.id === panel.id)
   for (let i = idx - 1; i >= 0; i--) {
     if (same[i]?.stillUrl) return same[i]!.stillUrl
+  }
+  return undefined
+}
+
+/**
+ * Letztes gemaltes Bild DIESES Ortes — Küchen-Insert bekommt die vorige Kanne,
+ * nicht das Wohnzimmer und nicht die leere Bibliotheks-Küche.
+ */
+export function previousPlaceStillUrl(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+): string | undefined {
+  const key = panelPlaceKey(panel)
+  const all = normalizeFilmStoryboard(board).panels
+  const idx = all.findIndex((p) => p.id === panel.id)
+  const search = idx >= 0 ? all.slice(0, idx) : all.filter((p) => p.id !== panel.id)
+  for (let i = search.length - 1; i >= 0; i--) {
+    const prev = search[i]
+    if (!prev?.stillUrl?.startsWith('http')) continue
+    if (panelPlaceKey(prev) === key) return prev.stillUrl
   }
   return undefined
 }
@@ -530,7 +557,7 @@ export function stillAttachmentInstruction(opts: {
 }): string {
   const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
   if (opts.insert && !opts.correctingExisting) {
-    return `${pack}Attached photos are identity plates of the named people only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT show the whole room again. Fill the frame with the named detail.`
+    return `${pack}If a GROUNDBILD / previous still of this place is attached, keep that SAME room, SAME kettle, SAME stove type (gas stays gas, induction stays induction). Paint the NEW named action in that kitchen. Identity plates are faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a new kettle or a new hob. Fill the frame with the named detail.`
   }
   if (opts.rewritePerson && opts.closeup) {
     return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.`
@@ -563,6 +590,8 @@ export function insertCameraLine(cue?: string): string {
     `Same house and lighting as this scene. Camera close to the object or small action. ` +
     `Paint each named person ONCE. Never twins, never two copies of the same face. ` +
     `If one person fills a kettle or pours tea, paint exactly that one person — not two copies doing the same action. ` +
+    `If a previous kitchen still is attached: SAME kettle, SAME stove (gas stays gas, induction stays induction). ` +
+    `Water goes into the kettle at the sink BEFORE the kettle sits on the stove. ` +
     `FORBIDDEN: copying the previous living-room photo. ` +
     `FORBIDDEN: everyone sitting around the table unless the cue names that gathering. ` +
     `FORBIDDEN: an extra guest who is not named in this frame.`
@@ -635,7 +664,7 @@ export function buildFilmStillPrompt(opts: {
     ? isCloseup
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
       : isInsert
-        ? `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
+        ? `${STORY_STILLS_LOCK_PROMPT} If a previous still of THIS place is attached, keep that SAME kettle and SAME stove type. Identity plates are faces only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
         : `${STORY_STILLS_LOCK_PROMPT} Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`
@@ -675,6 +704,7 @@ export function buildFilmStillPrompt(opts: {
           : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
     placeLockEn(inferFilmPlaceKey(`${opts.settingHint || ''} ${opts.imageCue || ''} ${opts.caption || ''}`)),
+    teaBeatLockEn(opts.caption, opts.imageCue),
     opts.continuityEn || '',
     lock,
     isCloseup

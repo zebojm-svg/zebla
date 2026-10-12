@@ -1,4 +1,11 @@
 import { inferDialogLineKind, type Dialog, type DialogLine, type DialogSection } from '../shared/types.js'
+import {
+  lineBelongsToSpeaker,
+  lookupSpeakerRecord,
+  matchSpeakerName,
+  spokenSpeakerName,
+  uniqueSpeakersInDialog,
+} from '../shared/speakers.js'
 import { lineSpeechText, speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { getDialog, updateDialog } from './firestore.js'
 import { uploadLineAudio } from './audio-storage.js'
@@ -25,18 +32,16 @@ export function findLineInDialog(
   return null
 }
 
-function speakerIndexMap(dialog: Dialog): Map<string, number> {
-  const map = new Map<string, number>()
-  let idx = 0
-  for (const section of dialog.sections) {
-    for (const line of section.lines) {
-      if (inferDialogLineKind(line) === 'action') continue
-      if (!map.has(line.speaker)) {
-        map.set(line.speaker, idx++)
-      }
-    }
-  }
-  return map
+function speakerSlot(dialog: Dialog, speaker: string): number {
+  const names = uniqueSpeakersInDialog(dialog)
+  const i = names.findIndex((n) => matchSpeakerName(n, speaker))
+  return i >= 0 ? i : 0
+}
+
+function voiceSpeaker(
+  line: Pick<DialogLine, 'kind' | 'speaker' | 'text' | 'cueImage'>,
+): string {
+  return spokenSpeakerName(line) || line.speaker
 }
 
 async function ensureSpeakerVoicesOnDialog(
@@ -44,15 +49,17 @@ async function ensureSpeakerVoicesOnDialog(
   userId: string,
   dialog: Dialog,
 ): Promise<Dialog> {
-  const speakers = [...speakerIndexMap(dialog).keys()]
+  const speakers = uniqueSpeakersInDialog(dialog)
   const gemini = usesGeminiTts(dialog.targetLanguage)
-  const hasAll = dialog.speakerVoices && speakers.every((s) => dialog.speakerVoices?.[s]?.voiceName)
+  const hasAll =
+    dialog.speakerVoices &&
+    speakers.every((s) => lookupSpeakerRecord(dialog.speakerVoices, s)?.voiceName)
   const needsGeminiRemap =
     gemini &&
     dialog.speakerVoices &&
-    speakers.some((s) => !isGeminiTtsVoiceName(dialog.speakerVoices?.[s]?.voiceName))
+    speakers.some((s) => !isGeminiTtsVoiceName(lookupSpeakerRecord(dialog.speakerVoices, s)?.voiceName))
   const needsMaleFix = speakers.some((s) => {
-    const stored = dialog.speakerVoices?.[s]
+    const stored = lookupSpeakerRecord(dialog.speakerVoices, s)
     return (
       stored &&
       resolveSpeakerGender(s, 0, dialog.characterBible, dialog.speakerProfiles) === 'male' &&
@@ -65,7 +72,7 @@ async function ensureSpeakerVoicesOnDialog(
   }
   const remapped = needsMaleFix
     ? speakers.filter((s) => {
-        const stored = dialog.speakerVoices?.[s]
+        const stored = lookupSpeakerRecord(dialog.speakerVoices, s)
         return (
           stored &&
           resolveSpeakerGender(s, 0, dialog.characterBible, dialog.speakerProfiles) === 'male' &&
@@ -82,7 +89,9 @@ async function ensureSpeakerVoicesOnDialog(
           sections: dialog.sections.map((section) => ({
             ...section,
             lines: section.lines.map((line) =>
-              remapped.includes(line.speaker) ? { ...line, audioUrl: undefined } : line,
+              remapped.some((s) => matchSpeakerName(s, line.speaker))
+                ? { ...line, audioUrl: undefined }
+                : line,
             ),
           })),
         }
@@ -112,10 +121,10 @@ export async function getOrCreateLineAudio(
     return { audioUrl: found.line.audioUrl, cached: true, dialog }
   }
 
-  const speakers = speakerIndexMap(dialog)
-  const speakerIdx = speakers.get(found.line.speaker) ?? 0
-  const voice = getSpeakerVoice(dialog, found.line.speaker)
-  const delivery = ttsDeliveryForSpeaker(dialog, found.line.speaker)
+  const who = voiceSpeaker(found.line)
+  const speakerIdx = speakerSlot(dialog, who)
+  const voice = getSpeakerVoice(dialog, who)
+  const delivery = ttsDeliveryForSpeaker(dialog, who)
 
   const tts = await synthesizeSpeech({
     text: lineSpeechText(found.line),
@@ -166,7 +175,6 @@ export async function ensureDialogAudio(
 
   dialog = await ensureSpeakerVoicesOnDialog(dialogId, userId, dialog)
 
-  const speakers = speakerIndexMap(dialog)
   let generated = 0
   let skipped = 0
 
@@ -191,9 +199,10 @@ export async function ensureDialogAudio(
         if (cleared) dialog = cleared
       }
 
-      const speakerIdx = speakers.get(line.speaker) ?? 0
-      const voice = getSpeakerVoice(dialog, line.speaker)
-      const delivery = ttsDeliveryForSpeaker(dialog, line.speaker)
+      const who = voiceSpeaker(line)
+      const speakerIdx = speakerSlot(dialog, who)
+      const voice = getSpeakerVoice(dialog, who)
+      const delivery = ttsDeliveryForSpeaker(dialog, who)
       const tts = await synthesizeSpeech({
         text: speechText,
         languageCode: dialog.targetLanguage,
@@ -229,15 +238,14 @@ export async function regenerateSpeakerAudio(
   if (!dialog) throw new Error('Dialog nicht gefunden.')
 
   dialog = await ensureSpeakerVoicesOnDialog(dialogId, userId, dialog)
-  const speakers = speakerIndexMap(dialog)
-  const speakerIdx = speakers.get(speaker) ?? 0
+  const speakerIdx = speakerSlot(dialog, speaker)
   const voice = getSpeakerVoice(dialog, speaker)
   const delivery = ttsDeliveryForSpeaker(dialog, speaker)
 
   let generated = 0
   for (const section of dialog.sections) {
     for (const line of section.lines) {
-      if (line.speaker !== speaker) continue
+      if (!lineBelongsToSpeaker(line, speaker)) continue
       if (inferDialogLineKind(line) === 'action') continue
       const speechText = lineSpeechText(line)
       if (!speechText) continue

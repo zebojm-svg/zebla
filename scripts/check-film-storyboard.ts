@@ -31,7 +31,7 @@ import {
   sceneShotPlanDe,
 } from '../shared/film-storyboard.ts'
 import { uniqueSpeakersInDialog } from '../shared/speakers.ts'
-import type { Dialog } from '../shared/types.ts'
+import { inferDialogLineKind, type Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
 function fail(msg: string): never {
@@ -258,7 +258,8 @@ if (teaBoard.panels[2]?.settingHint === tea.filmPrompt) {
   fail('Ort ist nicht der ganze Prompt')
 }
 const teaPlay = scenePlayBeats(teaBoard.panels, tea)
-if (!teaPlay[0]?.silent) fail('Tee ohne Stimme')
+if (teaPlay[0]?.silent) fail('Einladung wird erzählt, nicht nur Handlung')
+if (teaPlay[0]?.line?.speaker !== 'Erzähler') fail('Erzähler spricht die Einladung')
 if (!teaPlay[1]?.silent) fail('Klopfen ohne Stimme')
 if (!teaPlay[2]?.line || teaPlay[2].silent) fail('Ramo spricht nach dem Klopfen')
 if (!cueAsksNewPicture('Da klopft es an der Tür')) fail('Klopfen braucht ein neues Bild')
@@ -269,6 +270,7 @@ if (!/klopf/i.test(teaBoard.panels[1]?.soundCue || '')) fail('Klopfen braucht To
 if (!teaPlay[0]?.foley?.includes('fill')) fail('Auffüllen wird beim Abspielen gehört')
 if (!teaPlay[1]?.foley?.includes('knock')) fail('Klopfen wird beim Abspielen gehört')
 if (uniqueSpeakersInDialog(tea).includes('Handlung')) fail('Handlung bekommt keine Stimme')
+if (!uniqueSpeakersInDialog(tea).includes('Erzähler')) fail('Einladung erscheint als Erzähler unter Stimmen')
 
 const told: Dialog = {
   ...dialog,
@@ -297,6 +299,38 @@ if (erzBeat?.silent) fail('Erzähler spricht, Handlung bleibt still')
 if (erzBeat?.line?.speaker !== 'Erzähler') fail('Erzähler-Stimme heißt Erzähler')
 if (!uniqueSpeakersInDialog(told).includes('Erzähler')) {
   fail('Stimmen anpassen zeigt den Erzähler')
+}
+if (
+  inferDialogLineKind({
+    speaker: 'Erzähler',
+    kind: 'action',
+    text: 'Ramo hat Freunde eingeladen.',
+  }) !== 'narrator'
+) {
+  fail('Erzähler spricht auch wenn die KI Handlung geschrieben hat')
+}
+const offAsAction: Dialog = {
+  ...told,
+  id: 'd-off',
+  sections: [
+    {
+      id: 'off',
+      title: 'Anfang',
+      lines: [
+        { id: 'o1', speaker: 'Off', kind: 'action', text: 'Ramo hat Gäste.' },
+        { id: 'o2', speaker: 'Ramo', text: 'Salam.' },
+      ],
+    },
+  ],
+}
+const offPlay = scenePlayBeats(planBoardWithoutAi(offAsAction, []).panels, offAsAction)
+const offBeat = offPlay.find((b) => !b.establishing)
+if (offBeat?.silent) fail('Off/Erzähler spricht, bleibt nicht still')
+if (!uniqueSpeakersInDialog(offAsAction).includes('Erzähler')) {
+  fail('Off erscheint als Erzähler unter Stimmen anpassen')
+}
+if (uniqueSpeakersInDialog(offAsAction).filter((n) => n === 'Erzähler').length !== 1) {
+  fail('Off und Erzähler sind dieselbe Stimme')
 }
 
 const geminiWrongId = ensureCoverageDrafts(four, [
@@ -401,6 +435,10 @@ const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
 if (!aiSrc.includes('dropRepeatedDialogSections')) fail('kopierte Dialog-Szenen fallen weg')
 if (!aiSrc.includes('kind')) fail('Dialog darf Handlung und Erzähler')
+if (!aiSrc.includes('Niemals die Geschichte als kind=action')) {
+  fail('Prompt sagt: Geschichte ist Erzähler, nicht stille Handlung')
+}
+if (!aiSrc.includes('orderTeaBeats')) fail('Tee-Reihenfolge Wasser vor Herd')
 if (!aiSrc.includes('Kessel pfeift')) fail('Prompt verlangt Pfeifen als eigene Handlung')
 if (!aiSrc.includes('plätschert')) fail('Prompt verlangt Eingießen als Geräusch')
 if (!aiSrc.includes('inferSoundCueDe')) fail('fehlende Ton-Regie wird aus der Handlung ergänzt')

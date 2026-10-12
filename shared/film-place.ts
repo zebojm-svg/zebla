@@ -95,7 +95,12 @@ export function inferSettingHintDe(text: string, fallback?: string): string {
 
 export function placeLockEn(key: FilmPlaceKey): string {
   if (key === 'kitchen') {
-    return 'PLACE LOCK: THIS frame is the KITCHEN only (stove, kettle, sink). FORBIDDEN: living-room cushions, guests sitting on the floor, mixing both rooms.'
+    return (
+      'PLACE LOCK: THIS frame is the KITCHEN only (stove, kettle, sink). ' +
+      'PROP LOCK: the SAME kettle (shape, color, handle) and the SAME stove type as in the attached previous kitchen photo — gas stays gas, induction stays induction. ' +
+      'Fill the kettle with water at the sink BEFORE it sits on the stove. Never put an empty kettle on the hob. ' +
+      'FORBIDDEN: a new kettle every frame, swapping gas for induction, living-room cushions, guests sitting on the floor, mixing both rooms.'
+    )
   }
   if (key === 'living') {
     return 'PLACE LOCK: THIS frame is the LIVING ROOM only (cushions, rug, low table, seated guests). FORBIDDEN: kitchen cabinets, stove, sink, mixing both rooms.'

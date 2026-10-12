@@ -30,7 +30,9 @@ export type {
 
 export {
   inferDialogLineKind,
+  isNarratorName,
   isStageSpeaker,
+  looksLikeSpokenNarration,
   LENGTH_LABELS,
   LANGUAGES,
   languageName,
