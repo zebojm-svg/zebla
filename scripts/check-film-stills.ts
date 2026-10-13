@@ -427,9 +427,11 @@ if (talk.some((l) => l.nativeDe && l.birkenbihl?.map((w) => w.text).join(' ') ==
   fail('Deutsch-Schicht darf nicht die Zielwörter der Birkenbihl sein')
 }
 const layersUi = readFileSync(new URL('../src/components/LineLanguageLayers.tsx', import.meta.url), 'utf8')
-if (!layersUi.includes('Deutsch (normale Sprache)')) fail('Board/Editor: Schild Deutsch')
+if (layersUi.includes('(normale Sprache)')) fail('Board/Editor: Schild Deutsch, nicht Erklärung')
+if (layersUi.includes('Zielsprache (')) fail('Board/Editor: Schild Zielsprache')
+if (!/return 'Deutsch'\s*$/m.test(layersUi)) fail('Board/Editor: Schild Deutsch')
 if (!layersUi.includes('>Birkenbihl<')) fail('Board/Editor: Schild Birkenbihl')
-if (!layersUi.includes('Zielsprache')) fail('Board/Editor: Schild Zielsprache')
+if (!/return 'Zielsprache'\s*$/m.test(layersUi)) fail('Board/Editor: Schild Zielsprache')
 if (!layersUi.includes('>Lautschrift<')) fail('Board/Editor: Schild Lautschrift')
 const spoken = panelSpeakLines(s1[0]!, dialog)
 if (!spoken[0]?.text) fail('Szene abspielen braucht den gesprochenen Text')
