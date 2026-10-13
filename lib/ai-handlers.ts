@@ -10,6 +10,7 @@ import {
   chatForDialog,
   translateDialog,
   rewriteLineFromNative,
+  translateNativeDialogToTarget,
   applyBirkenbihlDialog,
   remapLinesToSections,
   splitIntoSections,
@@ -32,6 +33,7 @@ import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
 import { languageName } from '../shared/types.js'
+import { dialogNeedsTargetTranslation } from '../shared/film-dialog-native.js'
 import { findLineInDialog } from './dialog-audio.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
@@ -180,9 +182,14 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
     const user = await requireAuth(req)
     const profile = await requireProfile(user.uid)
     await assertCanUseAi(profile)
-    const body = req.body as { dialogId?: string; targetLanguage?: string }
+    const body = req.body as {
+      dialogId?: string
+      targetLanguage?: string
+      fromNative?: boolean
+      includeRomanization?: boolean
+    }
     const dialogId = dialogIdFromRequest(req, body)
-    const { targetLanguage } = body
+    const { targetLanguage, fromNative, includeRomanization } = body
     if (!dialogId || !targetLanguage) {
       res.status(400).json({ error: 'dialogId und Zielsprache fehlen.' })
       return
@@ -192,7 +199,8 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
-    if (dialog.targetLanguage === targetLanguage) {
+    const fillFromNative = Boolean(fromNative) || dialogNeedsTargetTranslation(dialog)
+    if (!fillFromNative && dialog.targetLanguage === targetLanguage) {
       res.json({
         dialog,
         unchanged: true,
@@ -202,6 +210,23 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
     }
     await consumeQuota(profile, 'aiCalls')
     const allLines = dialog.sections.flatMap((s) => s.lines)
+    if (fillFromNative) {
+      const processed = await translateNativeDialogToTarget(
+        allLines,
+        targetLanguage,
+        dialog.sourceLanguage || 'de',
+        includeRomanization !== false,
+      )
+      const sections = remapLinesToSections(dialog.sections, processed)
+      const updated = await updateDialog(
+        dialog.id,
+        user.uid,
+        { targetLanguage, sections },
+        profile,
+      )
+      res.json({ dialog: updated })
+      return
+    }
     const translated = await translateDialog(allLines, targetLanguage)
     const sections = remapLinesToSections(dialog.sections, translated)
     const updated = await updateDialog(

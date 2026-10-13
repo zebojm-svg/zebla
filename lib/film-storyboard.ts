@@ -5,6 +5,12 @@ import { getDialog, updateDialog, type UserProfile } from './firestore.js'
 import { isStageSpeaker, type Dialog, type FilmInventory } from '../shared/types.js'
 import { deriveFilmInventory, mergeRefNeeds } from '../shared/film-inventory.js'
 import {
+  alignCueImageWithStillFix,
+  alignDialogLineCueAfterStill,
+  applyNativeFirstDraftLine,
+  lineStoryText,
+} from '../shared/film-dialog-native.js'
+import {
   applyDirectorNote,
   applyPanelComment,
   applyPanelCues,
@@ -39,7 +45,9 @@ import {
   correctionRewritesPerson,
   correctFromUrlForPanel,
   genderFromPictureNote,
+  markLaterPanelsStaleAfterCorrection,
   personNamedInCorrection,
+  previousPlaceStillUrl,
   previousStillUrlInScene,
   replaceStillUrl,
   sceneContinuityBlock,
@@ -166,6 +174,7 @@ Regeln:
 function flattenDialog(dialog: Dialog, extra = ''): string {
   const lines: string[] = [
     `Titel: ${dialog.title}`,
+    `Muttersprache: ${dialog.sourceLanguage || 'de'}`,
     `Zielsprache: ${dialog.targetLanguage}`,
     dialog.filmPrompt ? `Film-Prompt:\n${dialog.filmPrompt}` : '',
     dialog.imageDirection ? `Bild-Regie: ${dialog.imageDirection}` : '',
@@ -181,7 +190,7 @@ function flattenDialog(dialog: Dialog, extra = ''): string {
     lines.push(`Abschnitt ${section.id} «${section.title}»`)
     for (const line of section.lines) {
       lines.push(
-        `- ${line.id} | ${line.kind || 'speech'} | ${line.speaker}: ${line.text}` +
+        `- ${line.id} | ${line.kind || 'speech'} | ${line.speaker}: ${lineStoryText(line)}` +
           (line.cueImage ? ` [Bild: ${line.cueImage}]` : '') +
           (line.cueSound ? ` [Ton: ${line.cueSound}]` : '') +
           (line.cueSpeech ? ` [Sprache: ${line.cueSpeech}]` : ''),
@@ -543,6 +552,7 @@ export async function writeFilmSceneDialog(
     ),
   ]
   const drafted = await generateFilmSceneDialog({
+    sourceLanguage: dialog.sourceLanguage || 'de',
     targetLanguage: dialog.targetLanguage,
     sceneTitle: scene.title,
     sceneNote: scene.noteDe,
@@ -551,14 +561,16 @@ export async function writeFilmSceneDialog(
     earlier,
     speakers,
   })
-  const newLines = drafted.map((l) => ({
-    id: newLineId(),
-    kind: l.kind,
-    speaker: l.speaker,
-    text: l.text,
-    cueImage: l.cueImage,
-    cueSound: l.cueSound,
-  }))
+  const newLines = drafted.map((l) =>
+    applyNativeFirstDraftLine({
+      id: newLineId(),
+      kind: l.kind,
+      speaker: l.speaker,
+      text: l.text,
+      cueImage: l.cueImage,
+      cueSound: l.cueSound,
+    }),
+  )
   const existingIdx = dialog.sections.findIndex((s) => s.id === sceneId)
   const newSection = {
     id: sceneId,
@@ -683,15 +695,29 @@ export async function stillFilmPanel(
     updatedAt: new Date().toISOString(),
   }
 
+  let nextSections = dialog.sections
   const persist = async (nextBoard: FilmStoryboard) => {
     const updated = await updateDialog(
       dialogId,
       userId,
-      { filmStoryboard: normalizeFilmStoryboard(nextBoard), filmPlan },
+      {
+        filmStoryboard: normalizeFilmStoryboard(nextBoard),
+        filmPlan,
+        ...(correction ? { sections: nextSections } : {}),
+      },
       profile,
     )
     if (!updated) throw new Error('Standbild konnte nicht gespeichert werden.')
     return updated
+  }
+  const finishAfterCorrection = (nextBoard: FilmStoryboard, panelNow: FilmStoryboardPanel) => {
+    if (!correction) return nextBoard
+    let next = applyPanelCues(nextBoard, panelId, {
+      imageCue: alignCueImageWithStillFix(panelNow.imageCue, correction),
+    })
+    next = markLaterPanelsStaleAfterCorrection(next, panelId)
+    nextSections = alignDialogLineCueAfterStill(nextSections, panelNow.lineIds[0], correction)
+    return next
   }
 
   try {
@@ -727,6 +753,43 @@ export async function stillFilmPanel(
         panelForGen = boardForGen.panels.find((p) => p.id === panelId) ?? panel
       } catch {
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
+      }
+    }
+    if (correction) {
+      try {
+        const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
+        const planned = await planFilmPanelRefNeeds({
+          inventory,
+          panels: [
+            {
+              id: panelForGen.id,
+              caption: panelForGen.caption,
+              imageCue: panelForGen.imageCue,
+              settingHint: panelForGen.settingHint,
+              shot: panelForGen.shot,
+              people: panelForGen.placements.map((pl) => pl.name.trim()).filter(Boolean),
+              propIds: panelForGen.propIds,
+            },
+          ],
+        })
+        const extra = planned[panelForGen.id]
+        if (extra) {
+          const merged = mergeRefNeeds(panelForGen.refNeeds, extra)
+          panelForGen = {
+            ...panelForGen,
+            refNeeds: merged,
+            propIds: mergeRefNeeds(
+              { people: [], places: [], propIds: panelForGen.propIds ?? [] },
+              extra,
+            ).propIds,
+          }
+          boardForGen = {
+            ...boardForGen,
+            panels: boardForGen.panels.map((p) => (p.id === panelId ? panelForGen : p)),
+          }
+        }
+      } catch {
+        /* Vorlagen-Check fehlgeschlagen: vorhandene Vorlagen nehmen. */
       }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
@@ -800,7 +863,7 @@ export async function stillFilmPanel(
       })
       next = applyPanelStill(next, panelId, closeUrl, resolvedStyle)
       const withNote = applyPanelHarvestNote(
-        next,
+        finishAfterCorrection(next, panelForGen),
         panelId,
         `Neu gemalt: ${correction} — Kamera wechselt den Platz, nicht nur den Kopf.`,
       )
@@ -812,7 +875,9 @@ export async function stillFilmPanel(
       correctFromUrl = undefined
     }
     const placeWideUrl = isInsert ? undefined : grund?.stillUrl
+    const prevPlaceUrl = previousPlaceStillUrl(boardForGen, panelForGen)
     const pack = stillReferencePack(panelForGen, {
+      previousStillUrl: prevPlaceUrl,
       correctFromUrl,
       sceneWideStillUrl: placeWideUrl,
       board: boardForGen,
@@ -822,7 +887,7 @@ export async function stillFilmPanel(
       panel: panelForGen,
       scene,
       styleId: resolvedStyle,
-      previousStillUrl: undefined,
+      previousStillUrl: prevPlaceUrl,
       correctFromUrl,
       targetLanguage,
       beatTotal,
@@ -841,8 +906,9 @@ export async function stillFilmPanel(
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
       withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
     }
+    const notedBoard = correction ? finishAfterCorrection(withStill, panelForGen) : withStill
     const withNote = applyPanelHarvestNote(
-      withStill,
+      notedBoard,
       panelId,
       [
         pack.noteDe,

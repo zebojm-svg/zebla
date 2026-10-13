@@ -24,7 +24,7 @@ import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
 import { StoryMetaSheet } from '../story/StoryMetaSheet'
 import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
-import { repeatedDialogSectionTitles } from '../../shared/film-storyboard'
+import { dialogNeedsTargetTranslation, repeatedDialogSectionTitles } from '../../shared/film-storyboard'
 import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
 import type { Dialog, DialogLineKind, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
@@ -481,7 +481,9 @@ export function DialogEditorPage() {
                   const placeholder = dialog.sections.every((s) => isPlaceholderDraftSection(s))
                   if (
                     !placeholder &&
-                    dialog.sections.some((s) => s.lines.some((l) => l.text.trim())) &&
+                    dialog.sections.some((s) =>
+                      s.lines.some((l) => (l.nativeText || l.text || '').trim()),
+                    ) &&
                     !window.confirm('Den bisherigen Dialog ersetzen? Dein Text oben bleibt gespeichert.')
                   ) {
                     return
@@ -491,6 +493,8 @@ export function DialogEditorPage() {
                     filmPromptDraft.trim(),
                     dialog.targetLanguage,
                     asking ? 'ask' : draftMode,
+                    undefined,
+                    dialog.sourceLanguage || 'de',
                   )
                   if (result.questions?.length) {
                     setStatus(
@@ -518,12 +522,33 @@ export function DialogEditorPage() {
                   if (result.speechDirection) setSpeechDirectionDraft(result.speechDirection)
                   const n = d.sections.length
                   setStatus(
-                    `${n} Szene${n === 1 ? '' : 'n'} mit Dialog. Dein Text oben ist geblieben. Als Nächstes: Bilder → Vom Text neu.`,
+                    `${n} Szene${n === 1 ? '' : 'n'} auf Deutsch. Dein Text oben ist geblieben. Danach «Zielsprache machen», dann Bilder → Vom Text neu.`,
                   )
                 })
               }
             >
               {busy === 'film-from-prompt' ? 'Denke nach …' : 'Dialog daraus machen'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!!busy || !dialogNeedsTargetTranslation(dialog)}
+              onClick={async () => {
+                if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
+                await runAction('target-lang', async () => {
+                  const { dialog: d } = await api.ai.translate(
+                    dialog.id,
+                    dialog.targetLanguage,
+                    true,
+                  )
+                  setDialog(d)
+                  setStatus(
+                    `${languageName(dialog.targetLanguage)} steht jetzt unter dem deutschen Dialog. Die Regie bleibt Deutsch.`,
+                  )
+                })
+              }}
+            >
+              {busy === 'target-lang' ? 'Bitte warten …' : 'Zielsprache machen'}
             </button>
             <button
               type="button"
@@ -549,8 +574,8 @@ export function DialogEditorPage() {
             <FilmSaveStatusText status={saveStatus} />
           </div>
           <p className="muted dialog-meta-hint">
-            Titel und Text werden laufend gespeichert. Pro Zeile kannst du unten noch Bild / Ton / Sprache
-            ergänzen. Das Storyboard klebt vorhandene Posen und Hintergründe, statt alles neu zu malen.
+            Titel und Text werden laufend gespeichert. «Dialog daraus machen» schreibt alles auf Deutsch.
+            Danach «Zielsprache machen». Pro Zeile kannst du unten noch Bild / Ton / Sprache ergänzen.
           </p>
         </div>
 
@@ -642,9 +667,10 @@ export function DialogEditorPage() {
         <h2>KI-Werkzeuge</h2>
         <div className="toolbar-grid">
           <div className="tool-group">
-            <span className="tool-label">Dialog umschreiben</span>
+            <span className="tool-label">Zielsprache machen</span>
             <p className="tool-hint muted">
-              Nur wenn der Text noch nicht {languageName(translateLang)} ist. Ersetzt den Dialog.
+              Der Dialog bleibt auf Deutsch. Die KI schreibt {languageName(dialog.targetLanguage)}{' '}
+              dazu — und bei Bedarf Lautschrift. Regie-Notizen bleiben Deutsch.
             </p>
             <div className="tool-controls">
               <span className="lang-select-row">
@@ -667,17 +693,18 @@ export function DialogEditorPage() {
                     const { dialog: d, unchanged, message } = await api.ai.translate(
                       dialog.id,
                       translateLang,
+                      true,
                     )
                     setDialog(d)
                     setStatus(
                       unchanged && message
                         ? message
-                        : `Dialog steht jetzt auf ${languageName(translateLang)}.`,
+                        : `${languageName(translateLang)} steht unter dem deutschen Dialog.`,
                     )
                   })
                 }}
               >
-                {busy === 'translate' ? 'Bitte warten …' : 'Umschreiben'}
+                {busy === 'translate' ? 'Bitte warten …' : 'Zielsprache machen'}
               </button>
             </div>
           </div>

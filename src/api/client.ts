@@ -385,7 +385,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ messages, targetLanguage, length }),
       }),
-    translate: (dialogId: string, targetLanguage: string) =>
+    translate: (dialogId: string, targetLanguage: string, fromNative?: boolean) =>
       request<{
         dialog: import('../types').Dialog
         unchanged?: boolean
@@ -394,7 +394,7 @@ export const api = {
         '/translate',
         {
           method: 'POST',
-          body: JSON.stringify({ dialogId, targetLanguage }),
+          body: JSON.stringify({ dialogId, targetLanguage, fromNative }),
         },
         TEXT_AI_TIMEOUT_MS,
       ),
@@ -439,6 +439,7 @@ export const api = {
       targetLanguage: string,
       mode: import('../types').FilmDraftMode,
       answers?: string,
+      sourceLanguage?: string,
     ) =>
       request<{
         title?: string
@@ -452,7 +453,7 @@ export const api = {
         '/film-from-prompt',
         {
           method: 'POST',
-          body: JSON.stringify({ prompt, targetLanguage, mode, answers }),
+          body: JSON.stringify({ prompt, targetLanguage, mode, answers, sourceLanguage }),
         },
         FILM_PLAN_TIMEOUT_MS,
       ),

@@ -29,6 +29,13 @@ import {
 } from '../shared/film-inventory.js'
 import { spokenSpeakerName } from '../shared/speakers.js'
 import { inferSoundCueDe, orderTeaBeats } from '../shared/film-scene-foley.js'
+import {
+  applyNativeFirstDraftLine,
+  applyNativeFirstDraftSections,
+  applyTargetTranslationToLine,
+  lineHasTargetSpeech,
+  lineStoryText,
+} from '../shared/film-dialog-native.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
@@ -213,6 +220,7 @@ export async function generateFilmFromPrompt(
   targetLanguage: string,
   mode: FilmDraftMode,
   answers?: string,
+  sourceLanguage = 'de',
 ): Promise<{
   title?: string
   sections?: DialogSection[]
@@ -245,18 +253,19 @@ Originalfiguren, kein Petit Nicolas.`,
     ? `\nAntworten des Autors auf Rückfragen:\n${answers.trim()}`
     : ''
 
-  const spokenLang = languageName(targetLanguage)
+  const nativeLang = languageName(sourceLanguage)
   const system = `Du planst einen Kurzfilm als Bilderbuch-Dialog. Beliebig viele Figuren (nicht nur zwei). Originalfiguren, kein Petit Nicolas.
-Sprache der GESPROCHENEN Zeilen (kind=speech und kind=narrator): NUR ${spokenLang} (${targetLanguage}). Niemals Englisch, niemals Deutsch in diesen Zeilen (kein Once upon a time, kein The guests arrive, kein Ramo hat Freunde eingeladen als gesprochener Text).
-Handlung (kind=action) darf auf Deutsch beschreiben, was man sieht — die wird NICHT gesprochen, nicht an TTS schicken.
+Sprache ALLER gesprochenen Zeilen (kind=speech und kind=narrator): NUR ${nativeLang} (${sourceLanguage}) — die Muttersprache, meist Deutsch. Noch KEINE Zielsprache (${targetLanguage}). Kein Persisch, kein Arabisch, kein Englisch in diesen Zeilen.
+Handlung (kind=action) bleibt auf Deutsch — die wird NICHT gesprochen, nicht an TTS schicken.
+ALLE Regie auf Deutsch: imageDirection, soundDirection, speechDirection, cueImage, cueSound, cueSpeech, captions.
 Lies den Prompt selbst: was Dialog ist, was dazwischen passiert, was Erzähler, was Bild-Regie, was Ton/Sprache.
 ${modeHint}
 JSON:
 {
-  "title": "Kurzer Titel",
-  "imageDirection": "Ort, Licht, wer wo steht (aus dem Prompt gezogen)",
-  "soundDirection": "Geräusche und Musik",
-  "speechDirection": "laut, flüstern, Tempo",
+  "title": "Kurzer Titel auf Deutsch",
+  "imageDirection": "Ort, Licht, wer wo steht — auf Deutsch",
+  "soundDirection": "Geräusche und Musik — auf Deutsch",
+  "speechDirection": "laut, flüstern, Tempo — auf Deutsch",
   "filmInventory": {
     "people": [{ "name": "Ramo" }],
     "places": [{ "key": "kitchen", "labelDe": "Küche" }, { "key": "living", "labelDe": "Wohnzimmer" }],
@@ -272,8 +281,8 @@ JSON:
   ]
 }
 kind:
-- speech = jemand spricht (speaker = Figurenname, text NUR in ${spokenLang})
-- narrator = Erzähler erzählt (speaker "Erzähler", text NUR in ${spokenLang}, niemals Englisch, niemals Deutsch). Die Einladung / Geschichte gehört hierher — in ${spokenLang}.
+- speech = jemand spricht (speaker = Figurenname, text NUR in ${nativeLang})
+- narrator = Erzähler erzählt (speaker "Erzähler", text NUR in ${nativeLang}). Die Einladung / Geschichte gehört hierher — in ${nativeLang}.
 - action = stilles Zwischenbild, niemand spricht. Nur kurze Geräusch-Handlung auf Deutsch. Beispiel: speaker "Handlung", text "Ramo füllt Wasser in den Kessel.", cueImage "EIN Ramo füllt denselben Kessel an der Spüle, Kamera auf Augenhöhe eines Stehenden, Kessel und Hahn in Arbeitshöhe, nicht die Füsse, Kessel noch nicht auf dem Herd", cueSound "Wasser läuft in den Kessel"
 Niemals die Geschichte als kind=action schreiben — sonst erzählt der Erzähler nichts.
 Niemals deutsche Handlungsnotizen (bereitet Tee vor, füllt Wasser, trägt die Kanne) als kind=narrator oder kind=speech — die bleiben still. Tee-Zubereitung ist Handlung, nicht Erzähler.
@@ -286,7 +295,7 @@ Reihenfolge beim Tee (nicht umdrehen):
 4. Tee eingießen: cueImage "Einschenken aus derselben Kanne, Arbeitshöhe, nicht die Füsse", cueSound "Tee plätschert in die Kanne"
 Niemals den leeren Kessel auf den Herd stellen, bevor Wasser drin ist.
 - Klopfen: cueImage "Die Wohnungstür von innen, Schloss und Klinke auf Türhöhe (etwa 1–1,2 m), Kamera auf Augenhöhe eines stehenden Erwachsenen, nicht den Boden und nicht nur Füsse", cueSound "Klopfen an der Tür"
-Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen IN ${spokenLang} — niemals kind=action, niemals Deutsch oder Englisch als Erzählertext. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt.
+Erzähler (kind=narrator, speaker "Erzähler") wird gesprochen IN ${nativeLang} — niemals kind=action. Handlung bleibt still, aber cueSound wird als Geräusch abgespielt. Zielsprache kommt erst später, nicht in diesem Entwurf.
 Zwischen den gesprochenen Sätzen Handlung einfügen, wenn die Geschichte das hergibt.
 cueImage sagt der Kamera wohin sie zeigt (Gesicht wer spricht, Tür auf Augenhöhe, Tee in Arbeitshöhe), niemals «ganzer Raum» bei jeder Zeile, niemals Kamerahöhe am Boden.
 INVENTAR und KONTINUITÄT:
@@ -387,10 +396,11 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     filmInventory: aiInventory,
   })
   const withContinuity = applyContinuityCues(sections, filmInventory)
+  const nativeFirst = applyNativeFirstDraftSections(withContinuity)
 
   return {
     title: result.title?.trim() || 'Film',
-    sections: withContinuity,
+    sections: nativeFirst,
     imageDirection: result.imageDirection?.trim(),
     soundDirection: result.soundDirection?.trim(),
     speechDirection: result.speechDirection?.trim(),
@@ -452,6 +462,7 @@ JSON:
 
 /** Echten Dialog für eine spätere Film-Szene — nicht den Text von Szene 1 kopieren. */
 export async function generateFilmSceneDialog(opts: {
+  sourceLanguage?: string
   targetLanguage: string
   sceneTitle: string
   sceneNote?: string
@@ -459,7 +470,7 @@ export async function generateFilmSceneDialog(opts: {
   imageDirection?: string
   earlier: Array<{ title: string; lines: Array<{ speaker: string; text: string }> }>
   speakers: string[]
-}): Promise<
+}): Promise<{
   Array<{
     speaker: string
     text: string
@@ -485,7 +496,8 @@ export async function generateFilmSceneDialog(opts: {
     }>
   }>(
     `Du schreibst die NÄCHSTE Szene eines Sprachlern-Films (Dialog plus Handlung dazwischen).
-Gesprochene Zeilen (kind=speech/narrator): ${opts.targetLanguage}.
+Gesprochene Zeilen (kind=speech/narrator): ${languageName(opts.sourceLanguage || 'de')} (${opts.sourceLanguage || 'de'}) — Muttersprache, noch KEINE Zielsprache (${opts.targetLanguage}).
+ALLE Regie (cueImage, cueSound) auf Deutsch.
 kind=action auf Deutsch, wird nicht gesprochen (Tee, Klopfen, Tür) — cueSound ist das Geräusch.
 kind=narrator (speaker Erzähler) wird gesprochen — niemals kind=action für den Erzähler.
 Jede Geräusch-Handlung eigene Zeile, Tee in dieser Reihenfolge: Wasser in den Kessel an der Spüle (noch nicht auf dem Herd) / denselben Kessel auf denselben Herd / Kessel pfeift / Tee plätschert. Dieselbe Kanne, derselbe Herd (nicht mal Gas, mal Induktion).
@@ -678,7 +690,7 @@ Gleiche Anzahl Zeilen.`,
   }))
 }
 
-/** Deutsch (Muttersprache) ändern → Zielsprache und Birkenbihl nachziehen. */
+/** Deutsch (Muttersprache) ändern → Zielsprache nachziehen, falls sie schon da ist. */
 export async function rewriteLineFromNative(
   line: DialogLine,
   nativeText: string,
@@ -687,19 +699,73 @@ export async function rewriteLineFromNative(
 ): Promise<DialogLine> {
   const trimmed = nativeText.trim()
   if (!trimmed) throw new Error('Deutscher Text fehlt.')
+  if (!lineHasTargetSpeech(line)) {
+    return applyNativeFirstDraftLine({
+      ...line,
+      nativeText: trimmed,
+      text: trimmed,
+      audioUrl: undefined,
+    })
+  }
   const translated = await translateDialog(
     [{ ...line, text: trimmed }],
     targetLanguage,
   )
-  const withText: DialogLine = {
-    ...line,
-    text: translated[0]?.text?.trim() || line.text,
-    nativeText: trimmed,
-    audioUrl: undefined,
-  }
+  const withText = applyTargetTranslationToLine(
+    { ...line, nativeText: trimmed },
+    translated[0]?.text?.trim() || line.text,
+  )
   const withBi = await applyBirkenbihl([withText], nativeLanguage, targetLanguage)
   const next = withBi[0] ?? withText
-  return { ...next, nativeText: trimmed }
+  return { ...next, nativeText: trimmed, cueImage: line.cueImage, cueSound: line.cueSound, cueSpeech: line.cueSpeech }
+}
+
+/** Muttersprache → Zielsprache + optionale Birkenbihl. Regie bleibt Deutsch. */
+export async function translateNativeDialogToTarget(
+  lines: DialogLine[],
+  targetLanguage: string,
+  nativeLanguage: string,
+  includeRomanization = true,
+): Promise<DialogLine[]> {
+  const prepared = lines.map((line) => {
+    const kind = inferDialogLineKind(line)
+    const native = lineStoryText(line)
+    if (kind === 'action') {
+      return applyNativeFirstDraftLine({ ...line, text: native, nativeText: native })
+    }
+    return { ...line, nativeText: native || line.nativeText, text: native }
+  })
+  const speechIdx = prepared
+    .map((line, i) => (inferDialogLineKind(line) === 'action' || !lineStoryText(line) ? -1 : i))
+    .filter((i) => i >= 0)
+  if (speechIdx.length === 0) {
+    return prepared.map((line) =>
+      inferDialogLineKind(line) === 'action' ? line : applyNativeFirstDraftLine(line),
+    )
+  }
+  const toTranslate = speechIdx.map((i) => prepared[i]!)
+  const translated = await translateDialog(toTranslate, targetLanguage)
+  const merged = [...prepared]
+  speechIdx.forEach((idx, j) => {
+    const orig = prepared[idx]!
+    const target = translated[j]?.text?.trim() || ''
+    merged[idx] = applyTargetTranslationToLine(orig, target)
+  })
+  const spoken = merged.filter((line) => lineHasTargetSpeech(line))
+  if (spoken.length === 0) return merged
+  const withBi = await applyBirkenbihl(spoken, nativeLanguage, targetLanguage, includeRomanization)
+  let k = 0
+  return merged.map((line) => {
+    if (!lineHasTargetSpeech(line)) return line
+    const next = withBi[k++] ?? line
+    return {
+      ...next,
+      nativeText: line.nativeText,
+      cueImage: line.cueImage,
+      cueSound: line.cueSound,
+      cueSpeech: line.cueSpeech,
+    }
+  })
 }
 
 export async function applyBirkenbihl(

@@ -245,6 +245,25 @@ if (packCarry.urls[0] === 'https://example.com/living-wide.png') {
 }
 if (packCarry.urls.length > 4) fail('Höchstens 4 Vorlagen')
 
+const stoveNow = painted.panels.find((p) => p.lineIds.includes('k-stove'))!
+const packCorrect = stillReferencePack(stoveNow, {
+  correctFromUrl: stoveNow.stillUrl,
+  board: painted,
+  inventory,
+})
+if (!packCorrect.urls.includes('https://example.com/kitchen-kettle.png')) {
+  fail('Bild ändern hängt das vorige Küchenbild an, nicht nur das aktuelle')
+}
+if (packCorrect.urls.length < 2) {
+  fail('Bild ändern schickt mehr als nur das aktuelle Standbild')
+}
+if (
+  !packCorrect.instruction.includes('GROUNDBILD') ||
+  !packCorrect.instruction.includes('PROP')
+) {
+  fail('Bild ändern beschriftet Vorlagen PROP und GROUNDBILD')
+}
+
 const firstKitchen = painted.panels.find((p) => p.lineIds.includes('k-fill'))!
 const packFirst = stillReferencePack(firstKitchen, { board: painted })
 if (packFirst.items.some((it) => it.role === 'prop')) {

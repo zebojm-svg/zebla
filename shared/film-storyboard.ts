@@ -8,6 +8,11 @@ import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
 import {
+  dialogNeedsTargetTranslation,
+  lineHasTargetSpeech,
+  lineStoryText,
+} from './film-dialog-native.js'
+import {
   inferDialogLineKind,
   isStageSpeaker,
   type Dialog,
@@ -338,7 +343,7 @@ export function matchBackground(
 }
 
 function lineCueText(line: DialogLine): string {
-  return [line.cueImage, line.text, line.imagePrompt].filter(Boolean).join(' ')
+  return [line.cueImage, lineStoryText(line), line.imagePrompt].filter(Boolean).join(' ')
 }
 
 export function inferExpression(text: string): string {
@@ -640,7 +645,7 @@ export function ensureCoverageDrafts(
       const inferred = inferShotForLine({
         kind,
         speaker,
-        text: line.text,
+        text: lineStoryText(line),
         cueImage: lineCue || priorCue,
         hadWide,
       })
@@ -654,7 +659,7 @@ export function ensureCoverageDrafts(
             ? geminiShot
             : inferred.shot
       const setting = inferSettingHintDe(
-        `${line.text} ${lineCue} ${priorCue} ${section.title}`,
+        `${lineStoryText(line)} ${lineCue} ${priorCue} ${section.title}`,
         prior?.settingHint || sectionSetting,
       )
       const imageCue = defaultImageCue({
@@ -662,7 +667,7 @@ export function ensureCoverageDrafts(
         speaker,
         setting,
         speakers,
-        text: line.text,
+        text: lineStoryText(line),
         cueImage: lineCue || priorCue,
       })
       const closeupSpeaker =
@@ -670,16 +675,16 @@ export function ensureCoverageDrafts(
       const caption =
         prior?.caption?.trim() ||
         (kind === 'action' || kind === 'narrator'
-          ? `${stageLabel(kind)}: ${line.text}`.slice(0, 140)
-          : `${speaker}: ${line.text}`.slice(0, 140))
-      const insertPeople = namesMentioned(`${line.text} ${lineCue} ${imageCue}`, speakers)
+          ? `${stageLabel(kind)}: ${lineStoryText(line)}`.slice(0, 140)
+          : `${speaker}: ${lineStoryText(line)}`.slice(0, 140))
+      const insertPeople = namesMentioned(`${lineStoryText(line)} ${lineCue} ${imageCue}`, speakers)
       const place = inferFilmPlaceKey(setting)
       const widePeople =
         place === 'kitchen' || place === 'door'
-          ? namesMentioned(`${line.text} ${lineCue} ${imageCue}`, speakers)
+          ? namesMentioned(`${lineStoryText(line)} ${lineCue} ${imageCue}`, speakers)
           : speakers
       const propIds = mergeLinePropIds({
-        text: line.text,
+        text: lineStoryText(line),
         cueImage: lineCue || priorCue || imageCue,
         propIds: [...(prior?.propIds ?? []), ...(line.propIds ?? [])],
       })
@@ -694,12 +699,12 @@ export function ensureCoverageDrafts(
         soundCue:
           line.cueSound?.trim() ||
           (kind === 'action' || kind === 'narrator'
-            ? inferSoundCueDe(line.text, line.cueSound)
+            ? inferSoundCueDe(lineStoryText(line), line.cueSound)
             : '') ||
           '',
         speechCue: prior?.speechCue || line.cueSpeech || '',
         settingHint: setting,
-        expressionHint: prior?.expressionHint || inferExpression(line.text),
+        expressionHint: prior?.expressionHint || inferExpression(lineStoryText(line)),
         characters:
           shot === 'wide'
             ? (widePeople.length ? widePeople : speakers).map((name) => ({
@@ -742,6 +747,8 @@ export function dialogNeedsNativeTranslation(dialog: Pick<Dialog, 'sections'>): 
     s.lines.some((l) => l.text.trim() && !lineNativeDe(l)),
   )
 }
+
+export { dialogNeedsTargetTranslation, lineStoryText, lineHasTargetSpeech }
 
 export function closeupExprKey(hint?: string): string {
   const t = (hint || 'neutral').trim().toLowerCase()
@@ -1266,7 +1273,7 @@ function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
   return {
     speaker,
     text: line.text.trim(),
-    nativeDe: lineNativeDe(line),
+    nativeDe: lineNativeDe(line) || (lineHasTargetSpeech(line) ? '' : lineStoryText(line)),
     lineId: line.id,
     audioUrl: line.audioUrl,
   }
@@ -1286,7 +1293,7 @@ export function lineForFilmPanel(
   const byId = allDialogLines(dialog)
   for (const id of panel.lineIds ?? []) {
     const line = byId.get(id)
-    if (line?.text.trim() && allowed.has(line.id)) return line
+    if (line && lineStoryText(line) && allowed.has(line.id)) return line
   }
   if (sceneLines.length === 0) return undefined
   const idx = peers.findIndex((p) => p.id === panel.id)
@@ -1320,7 +1327,7 @@ export function panelSpeakLines(
   const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
   if (!line) return []
   if (inferDialogLineKind(line) === 'action') return []
-  const text = lineSpeechText(line).trim() || line.text.trim()
+  const text = lineSpeechText(line).trim()
   if (!text) return []
   const kind = inferDialogLineKind(line)
   const speaker =
@@ -1375,10 +1382,10 @@ export interface FilmPlayBeat {
 }
 
 export function dialogLineFingerprint(
-  lines: Array<Pick<DialogLine, 'speaker' | 'text'>>,
+  lines: Array<Pick<DialogLine, 'speaker' | 'text' | 'nativeText' | 'kind' | 'cueImage'>>,
 ): string {
   return lines
-    .map((l) => `${l.speaker.trim()}\t${l.text.trim()}`)
+    .map((l) => `${l.speaker.trim()}\t${lineStoryText(l)}`)
     .filter((row) => row.trim())
     .join('\n')
 }
@@ -1483,7 +1490,7 @@ function dialogLinesForPanels(
   const seen = new Set<string>()
   const out: DialogLine[] = []
   const add = (line?: DialogLine) => {
-    if (!line?.text.trim() || seen.has(line.id)) return
+    if (!line || !lineStoryText(line) || seen.has(line.id)) return
     seen.add(line.id)
     out.push(line)
   }
@@ -1523,7 +1530,7 @@ export function sceneHasSpokenDialog(
   dialog?: Pick<Dialog, 'sections'> | null,
   sceneTitle?: string,
 ): boolean {
-  return dialogLinesForPanels(panels, dialog, sceneTitle).some((l) => l.text.trim())
+  return dialogLinesForPanels(panels, dialog, sceneTitle).some((l) => lineStoryText(l))
 }
 
 /** Spätere Szene zeigt denselben Text wie eine frühere — kein neuer Dialog. */
@@ -1559,18 +1566,19 @@ export function scenePlayBeats(
   for (const panel of panels) {
     const line = lineForFilmPanel(panel, dialog, panels, sceneTitle)
     const kind = line ? inferDialogLineKind(line) : undefined
-    const silent = !line || kind === 'action'
+    const silent = !line || kind === 'action' || !lineHasTargetSpeech(line)
+    const story = line ? lineStoryText(line) : ''
     const caption = line
       ? kind === 'action' || kind === 'narrator'
-        ? line.text.slice(0, 140)
-        : `${line.speaker}: ${line.text}`.slice(0, 140)
+        ? story.slice(0, 140)
+        : `${line.speaker}: ${story}`.slice(0, 140)
       : panel.caption
     const soundCue =
       panel.soundCue?.trim() ||
       line?.cueSound?.trim() ||
-      (kind === 'action' && line ? inferSoundCueDe(line.text, line.cueSound) : '') ||
+      (kind === 'action' && line ? inferSoundCueDe(lineStoryText(line), line.cueSound) : '') ||
       ''
-    const foley = foleyEventsFromText(soundCue, panel.imageCue, caption, line?.text)
+    const foley = foleyEventsFromText(soundCue, panel.imageCue, caption, line ? lineStoryText(line) : undefined)
     beats.push({
       panelId: panel.id,
       stillUrl:

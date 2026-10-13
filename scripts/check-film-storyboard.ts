@@ -424,9 +424,13 @@ if (pageSrc.includes('Dialog für diese Szene schreiben')) {
 }
 if (!pageSrc.includes('filmScenesFromDialog')) fail('Board folgt den Dialog-Szenen')
 if (!pageSrc.includes('boardFollowsDialog')) fail('Board merkt wenn der Dialog neu ist')
+if (!pageSrc.includes('Zielsprache machen')) fail('Board hat den Knopf Zielsprache machen')
 const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', import.meta.url), 'utf8')
 if (!editorSrc.includes('filmStoryboard: null')) {
   fail('Dialog daraus machen löscht den alten Bildplan')
+}
+if (!editorSrc.includes('Zielsprache machen')) {
+  fail('Dialog daraus machen: danach Zielsprache per Knopf')
 }
 const voicesSrc = readFileSync(new URL('../src/story/FilmCastVoices.tsx', import.meta.url), 'utf8')
 if (!voicesSrc.includes('Erzähler')) fail('Stimmen anpassen erklärt die Erzählerstimme')

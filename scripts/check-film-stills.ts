@@ -2,6 +2,7 @@
  * Standbilder Szene für Szene (ohne echte KI-Bilder).
  * Aufruf: npx tsx scripts/check-film-stills.ts
  */
+import { readFileSync } from 'node:fs'
 import {
   applyPanelStill,
   buildFilmStillPrompt,
@@ -27,10 +28,13 @@ import {
   sceneWideStillUrl,
   seatingLockEn,
   seatingNoteDe,
+  markLaterPanelsStaleAfterCorrection,
   stillAttachmentInstruction,
   stillLibraryHintDe,
+  stillReferencePack,
   stillTimeoutHintDe,
   speakerIdentityUrl,
+  STALE_STILL_NOTE_DE,
 } from '../shared/film-stills.ts'
 import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
 import {
@@ -872,6 +876,116 @@ const wideGuests = buildFilmStillPrompt({
 })
 if (!wideGuests.toLowerCase().includes('empty room')) {
   fail('Weit-Bild mit Gästen darf kein leeres Zimmer sein')
+}
+
+const scenePanels = panelsForScene(withStill, scene1.id)
+if (scenePanels.length >= 2) {
+  const first = {
+    ...scenePanels[0]!,
+    stillUrl: 'https://example.com/scene-p1.png',
+    shot: 'insert' as const,
+    settingHint: 'Küche',
+    imageCue: 'Ramo an der Spüle',
+    panelIndex: 1,
+    placements: [
+      {
+        ...(scenePanels[0]!.placements[0] ?? {
+          name: 'Julien',
+          poseId: 'standing' as const,
+          poseHint: 'standing-front',
+          depth: 'mid' as const,
+          x: 40,
+          scale: 1,
+          flip: false,
+          match: 'reuse' as const,
+          matchNoteDe: '',
+        }),
+        name: 'Julien',
+        imageUrl: 'https://example.com/julien.png',
+      },
+    ],
+  }
+  const second = {
+    ...scenePanels[1]!,
+    stillUrl: 'https://example.com/scene-p2.png',
+    shot: 'insert' as const,
+    settingHint: 'Küche',
+    imageCue: 'Kessel auf dem Herd',
+    panelIndex: 2,
+    placements: first.placements,
+  }
+  const third = scenePanels[2]
+    ? {
+        ...scenePanels[2],
+        stillUrl: 'https://example.com/scene-p3.png',
+        shot: 'insert' as const,
+        settingHint: 'Küche',
+        imageCue: 'Tee eingießen',
+        panelIndex: 3,
+        placements: first.placements,
+      }
+    : {
+        ...second,
+        id: 'scene-p3',
+        stillUrl: 'https://example.com/scene-p3.png',
+        imageCue: 'Tee eingießen',
+        panelIndex: 3,
+      }
+  const kitchenBoard = {
+    ...withStill,
+    panels: withStill.panels.map((p) => {
+      if (p.id === first.id) return first
+      if (p.id === second.id) return second
+      if (p.id === third.id) return third
+      return p
+    }).concat(scenePanels[2] ? [] : [third]),
+  }
+  const packFix = stillReferencePack(second, {
+    correctFromUrl: second.stillUrl,
+    board: kitchenBoard,
+  })
+  if (!packFix.urls.includes('https://example.com/scene-p1.png')) {
+    fail('Bild ändern hängt das vorige Bild an, nicht nur das aktuelle')
+  }
+  if (packFix.urls.length < 2) fail('Bild ändern: mehr als nur das aktuelle Foto')
+  if (
+    !packFix.instruction.includes('GROUNDBILD') &&
+    !packFix.instruction.includes('PREVIOUS') &&
+    !packFix.instruction.includes('PROP') &&
+    !packFix.instruction.includes('PERSON')
+  ) {
+    fail('Bild ändern beschriftet Vorlagen (PROP/PLACE/PERSON/GROUNDBILD)')
+  }
+  const onlyCurrent = packFix.urls.length === 1 && packFix.urls[0] === second.stillUrl
+  if (onlyCurrent) fail('Bild ändern darf nicht nur das aktuelle Standbild schicken')
+
+  const stale = markLaterPanelsStaleAfterCorrection(kitchenBoard, second.id)
+  const later = stale.panels.find((p) => p.id === third.id)
+  if (!later?.harvestNoteDe?.includes(STALE_STILL_NOTE_DE)) {
+    fail('Nach Bild 2 ändern müssen spätere Bilder der Szene neu gemalt werden')
+  }
+  const firstAfter = stale.panels.find((p) => p.id === first.id)
+  if (firstAfter?.harvestNoteDe?.includes(STALE_STILL_NOTE_DE)) {
+    fail('Vorige Bilder nicht als veraltet markieren')
+  }
+  const needAfter = panelsNeedingStills(
+    stale.panels.filter((p) => p.sceneId === second.sceneId),
+    'illustration-lebendig',
+  )
+  if (!needAfter.some((p) => p.id === third.id)) {
+    fail('Diese Szene erzeugen nimmt die späteren Bilder nach einer Korrektur mit')
+  }
+  if (needAfter.some((p) => p.id === second.id)) {
+    fail('Das gerade geänderte Bild nicht nochmal in der Warteschlange')
+  }
+}
+
+const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
+if (!stillGenSrc.includes('planFilmPanelRefNeeds')) {
+  fail('Bild ändern führt denselben Vorlagen-Check aus wie das erste Malen')
+}
+if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
+  fail('Nach Bild ändern werden spätere Bilder der Szene markiert')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

@@ -162,9 +162,11 @@ export function FilmBeatText({
   }
   return (
     <div className="film-beat-lines">
-      {lines.map((line, i) => (
+      {lines.map((line, i) => {
+        const hasTarget = Boolean(line.text.trim())
+        return (
         <div key={line.lineId ?? i} className="film-beat-line">
-          {which !== 'native' ? (
+          {which !== 'native' && hasTarget ? (
             <p
               className="film-beat-target"
               dir={isRtlLanguage(targetLanguage ?? '') ? 'rtl' : undefined}
@@ -172,6 +174,11 @@ export function FilmBeatText({
             >
               {line.speaker ? <strong>{line.speaker}: </strong> : null}
               {line.text}
+            </p>
+          ) : null}
+          {which !== 'native' && !hasTarget && which === 'target' ? (
+            <p className="muted film-beat-target">
+              Noch keine Zielsprache — oben «Zielsprache machen».
             </p>
           ) : null}
           {which !== 'target' ? (
@@ -184,11 +191,12 @@ export function FilmBeatText({
                 {line.nativeDe}
               </p>
             ) : which === 'native' ? (
-              <p className="muted film-beat-de">Noch keine Übersetzung — unten Deutsch schreiben.</p>
+              <p className="muted film-beat-de">Noch kein deutscher Text — unten schreiben.</p>
             ) : null
           ) : null}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -228,7 +236,7 @@ export function FilmNativeEditor({
         value={text}
         disabled={busy}
         lang={sourceLanguage || 'de'}
-        placeholder="Normale deutsche Übersetzung (nicht Wort für Wort). Namen wie Ramo, Ubai, Schöme."
+        placeholder="Deutscher Dialog (nicht Wort für Wort). Namen wie Ramo, Ubai, Schöme."
         onChange={(e) => setText(e.target.value)}
       />
       <button
@@ -379,6 +387,7 @@ export function FilmBeatColumns({
   const nativeName =
     !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
   const speaker = lines[0]?.speaker
+  const hasTarget = lines.some((l) => l.text.trim())
   return (
     <div className="film-beat">
       <div className="film-beat-pic">
@@ -387,14 +396,20 @@ export function FilmBeatColumns({
         {underPicture}
       </div>
       <div className="film-beat-text">
-        <p className="film-beat-col-label">{targetLanguage ? targetName : 'Text'}</p>
-        <FilmBeatText
-          lines={lines}
-          targetLanguage={targetLanguage}
-          sourceLanguage={sourceLanguage}
-          which="target"
-        />
-        <p className="film-beat-col-label film-beat-native-label">{nativeName}</p>
+        {hasTarget ? (
+          <>
+            <p className="film-beat-col-label">{targetLanguage ? targetName : 'Text'}</p>
+            <FilmBeatText
+              lines={lines}
+              targetLanguage={targetLanguage}
+              sourceLanguage={sourceLanguage}
+              which="target"
+            />
+            <p className="film-beat-col-label film-beat-native-label">{nativeName}</p>
+          </>
+        ) : (
+          <p className="film-beat-col-label">{nativeName}</p>
+        )}
         {speaker ? <p className="film-beat-speaker">{speaker}</p> : null}
         <FilmNativeEditor
           lines={lines}

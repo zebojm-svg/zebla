@@ -27,14 +27,17 @@ export function BirkenbihlLine({
   const nativeRtl = nativeLanguage ? isRtlLanguage(nativeLanguage) : false
 
   if (!line.birkenbihl?.length) {
-    if (!showTargetText) return null
+    const shown = (line.text.trim() || line.nativeText || '').trim()
+    const usingNative = !line.text.trim() && Boolean(line.nativeText?.trim())
+    if (!showTargetText && !usingNative) return null
+    if (!shown) return null
     return (
       <p
         className="dialog-line-text"
-        dir={targetRtl ? 'rtl' : undefined}
-        lang={targetLanguage}
+        dir={(usingNative ? nativeRtl : targetRtl) ? 'rtl' : undefined}
+        lang={usingNative ? nativeLanguage : targetLanguage}
       >
-        {line.text.split(/(\s+)/).map((w, i) => (
+        {shown.split(/(\s+)/).map((w, i) => (
           <span
             key={i}
             className={

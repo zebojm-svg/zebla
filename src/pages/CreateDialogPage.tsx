@@ -208,6 +208,7 @@ export function CreateDialogPage() {
         targetLanguage,
         asking ? 'ask' : draftMode === 'ask' ? 'embellish' : draftMode,
         asking ? undefined : answersText || undefined,
+        'de',
       )
       if (result.questions?.length) {
         setQuestions(result.questions)
