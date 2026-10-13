@@ -248,14 +248,49 @@ if (!editorSrc.includes('translateTimeoutHintDe')) {
   fail('Dialog-Seite erklärt Zeitlimit: fertige Zeilen bleiben')
 }
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
-if (!boardSrc.includes('Zielsprache machen')) {
-  fail('Bilder-Seite hat den Knopf Zielsprache machen')
+if (boardSrc.includes('Zielsprache machen')) {
+  fail('Bilder-Seite hat keinen Knopf Zielsprache machen — das bleibt unter Text')
 }
-if (!boardSrc.includes('translateTargetUntilDone')) {
-  fail('Bilder-Seite macht Zielsprache in Runden, nicht in einem Rutsch')
+if (boardSrc.includes('translateTargetUntilDone')) {
+  fail('Bilder-Seite übersetzt nicht — Zielsprache bleibt unter Text')
+}
+if (!boardSrc.includes('Zielsprache machst du unter Text')) {
+  fail('fehlende Zielsprache: Hinweis auf Text, kein zweiter Knopf')
 }
 if (!boardSrc.includes('Deutsch unter die Zeilen')) {
   fail('Bilder-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
+}
+if (!boardSrc.includes('Bilder planen')) {
+  fail('Bilder-Seite hat einen Knopf Bilder planen')
+}
+if (boardSrc.includes('Storyboard erzeugen')) {
+  fail('Storyboard erzeugen ist derselbe Job wie Bilder planen — nur ein Knopf')
+}
+if (boardSrc.includes("'Planen'") || boardSrc.includes('"Planen"') || boardSrc.includes('>Planen<')) {
+  fail('kein zweiter Knopf Planen — Bilder planen reicht')
+}
+if (!boardSrc.includes('Deutsch reicht')) {
+  fail('Leerzustand: Deutsch reicht für den Bildplan, ohne Persisch')
+}
+if (boardSrc.includes('erst dann spricht')) {
+  fail('Bilder-Seite verlangt nicht Zielsprache vor dem Bildplan')
+}
+if (!boardSrc.includes('{board ? (')) {
+  fail('Bilder planen oben nur wenn schon ein Plan da ist — Leerzustand hat denselben Knopf')
+}
+const emptyBlock = boardSrc.split('empty-state')[1]?.split(')}')[0] ?? ''
+if (!emptyBlock.includes('btn-primary')) fail('Leerzustand: ein grüner Knopf')
+if ((emptyBlock.match(/btn-primary/g) || []).length !== 1) {
+  fail('Leerzustand: nur ein grüner Knopf')
+}
+if (emptyBlock.includes('Zielsprache machen')) {
+  fail('Leerzustand mischt Zielsprache nicht in die Bilder')
+}
+if (editorSrc.includes('dann Bilder → Vom Text neu')) {
+  fail('Dialog daraus machen verlangt nicht Zielsprache vor den Bildern')
+}
+if (!editorSrc.includes('Bilder planen') || !editorSrc.includes('Deutsch reicht')) {
+  fail('nach Dialog daraus machen: Bilder ohne Zielsprache')
 }
 const layersSrc = readFileSync(
   new URL('../src/components/LineLanguageLayers.tsx', import.meta.url),
@@ -272,6 +307,28 @@ if (!layersSrc.includes('>Lautschrift<')) fail('Lautschrift hat ein eigenes Schi
 const beatSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
 if (!beatSrc.includes('LineLanguageLayers')) {
   fail('Board-Comic-Zeile zeigt die drei Sprachschichten')
+}
+if (beatSrc.includes('Vom Text neu')) {
+  fail('Szene-Hinweis sagt Bilder planen, nicht Vom Text neu')
+}
+if (!beatSrc.includes('Bilder planen')) {
+  fail('Szene-Hinweis zeigt auf Bilder planen')
+}
+if (beatSrc.includes('Zielsprache machen')) {
+  fail('Comic-Zeile hat keinen Knopf Zielsprache machen — das bleibt unter Text')
+}
+if (!beatSrc.includes('Zielsprache machst du unter Text')) {
+  fail('Comic-Zeile: fehlende Zielsprache verweist auf Text')
+}
+const previewSrc = readFileSync(new URL('../src/story/FilmScenePreview.tsx', import.meta.url), 'utf8')
+if (previewSrc.includes('Zielsprache machen')) {
+  fail('Szene-Abspielen hat keinen Knopf Zielsprache machen — das bleibt unter Text')
+}
+if (!previewSrc.includes('Zielsprache machst du unter Text')) {
+  fail('Szene-Abspielen: fehlende Zielsprache verweist auf Text')
+}
+if (!editorSrc.includes('id="ki-werkzeuge"') || !editorSrc.includes('Zielsprache machen')) {
+  fail('Zielsprache machen bleibt unter Text bei den KI-Werkzeugen')
 }
 
 const oldTargetFirst = {

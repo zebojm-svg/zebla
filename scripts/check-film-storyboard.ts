@@ -424,14 +424,46 @@ if (pageSrc.includes('Dialog für diese Szene schreiben')) {
 }
 if (!pageSrc.includes('filmScenesFromDialog')) fail('Board folgt den Dialog-Szenen')
 if (!pageSrc.includes('boardFollowsDialog')) fail('Board merkt wenn der Dialog neu ist')
-if (!pageSrc.includes('Zielsprache machen')) fail('Board hat den Knopf Zielsprache machen')
+if (pageSrc.includes('Zielsprache machen')) {
+  fail('Board hat keinen Knopf Zielsprache machen — das bleibt unter Text')
+}
+if (!pageSrc.includes('Zielsprache machst du unter Text')) {
+  fail('fehlende Zielsprache: Hinweis auf Text, kein zweiter Knopf')
+}
 if (!pageSrc.includes('Deutsch unter die Zeilen')) fail('Board hat den Knopf Deutsch unter die Zeilen für alte Filme')
+if (!pageSrc.includes('Bilder planen')) fail('Board hat einen Knopf Bilder planen')
+if (pageSrc.includes('Storyboard erzeugen')) {
+  fail('Storyboard erzeugen ist derselbe Job wie Bilder planen — nur ein Knopf')
+}
+if (pageSrc.includes("'Planen'") || pageSrc.includes('"Planen"') || pageSrc.includes('>Planen<')) {
+  fail('kein zweiter Knopf Planen neben Bilder planen')
+}
+if (!pageSrc.includes('Deutsch reicht')) {
+  fail('Leerzustand: Deutsch reicht, ohne auf die Zielsprache zu warten')
+}
+if ((pageSrc.match(/btn-primary/g) || []).length !== 2) {
+  fail('ein grüner Knopf ohne Board, einer mit Board — nicht zwei gleichzeitig')
+}
+const emptyBoard = pageSrc.split('empty-state')[1]?.split(')}')[0] ?? ''
+if (!emptyBoard.includes('btn-primary')) fail('Leerzustand: ein Satz plus Bilder planen')
+if ((emptyBoard.match(/btn-primary/g) || []).length !== 1) {
+  fail('Leerzustand: nur der Knopf Bilder planen')
+}
+if (emptyBoard.includes('btn-secondary')) {
+  fail('Leerzustand: kein zweiter Knopf neben Bilder planen')
+}
 const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', import.meta.url), 'utf8')
 if (!editorSrc.includes('filmStoryboard: null')) {
   fail('Dialog daraus machen löscht den alten Bildplan')
 }
 if (!editorSrc.includes('Zielsprache machen')) {
   fail('Dialog daraus machen: danach Zielsprache per Knopf')
+}
+if (editorSrc.includes('dann Bilder → Vom Text neu')) {
+  fail('Dialog daraus machen verlangt nicht Zielsprache vor den Bildern')
+}
+if (!editorSrc.includes('Bilder planen') || !editorSrc.includes('Deutsch reicht')) {
+  fail('nach Dialog daraus machen: Bilder planen ohne Zielsprache')
 }
 if (!editorSrc.includes('Deutsch unter die Zeilen')) {
   fail('alte Filme: Deutsch unter die Zeilen ohne die Bilder zu löschen')
