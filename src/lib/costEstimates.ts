@@ -6,9 +6,11 @@ export interface CostEstimate {
   note?: string
 }
 
-function lineCount(dialog: { sections: { lines: { text: string; audioUrl?: string }[] }[] }): number {
+function lineCount(dialog: {
+  sections: { lines: { text: string; nativeText?: string; audioUrl?: string }[] }[]
+}): number {
   return dialog.sections.reduce(
-    (n, s) => n + s.lines.filter((l) => l.text.trim()).length,
+    (n, s) => n + s.lines.filter((l) => (l.nativeText || l.text || '').trim()).length,
     0,
   )
 }
@@ -76,8 +78,8 @@ export function estimateBirkenbihl(lineCount: number): CostEstimate {
 export function estimateTranslate(lineCount: number): CostEstimate {
   const cents = Math.max(2, Math.round(lineCount * 0.2))
   return {
-    title: 'Dialog übersetzen',
-    description: 'KI übersetzt alle Zeilen (Text-KI).',
+    title: 'Zielsprache machen',
+    description: 'KI schreibt die Zielsprache aus dem deutschen Dialog (Text-KI).',
     items: [
       { label: 'Dialogzeilen', amount: String(lineCount) },
       { label: 'Geschätzte Kosten', amount: `ca. ${cents} KI-Punkte` },

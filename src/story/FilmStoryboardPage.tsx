@@ -18,6 +18,7 @@ import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-stor
 import {
   boardNeedsDrawing,
   dialogNeedsNativeTranslation,
+  dialogNeedsTargetTranslation,
   expectedSceneShotCount,
   boardFollowsDialog,
   filmScenesFromDialog,
@@ -223,6 +224,7 @@ export function FilmStoryboardPage() {
   const stills = useSceneStills(id, apply)
   const locked = busy || nativeBusy || stills.busySceneId !== null
   const needsGerman = dialog ? dialogNeedsNativeTranslation(dialog) : false
+  const needsTarget = dialog ? dialogNeedsTargetTranslation(dialog) : false
 
   const run = async (fn: () => Promise<{ dialog: Dialog; board: FilmStoryboard }>) => {
     setBusy(true)
@@ -248,6 +250,20 @@ export function FilmStoryboardPage() {
       setDialog(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Übersetzung fehlgeschlagen.')
+    } finally {
+      setNativeBusy(false)
+    }
+  }
+
+  const makeTarget = async () => {
+    if (!id || !dialog) return
+    setNativeBusy(true)
+    setError('')
+    try {
+      const { dialog: next } = await api.ai.translate(id, dialog.targetLanguage, true)
+      setDialog(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Zielsprache fehlgeschlagen.')
     } finally {
       setNativeBusy(false)
     }
@@ -319,6 +335,17 @@ export function FilmStoryboardPage() {
           >
             {busy ? '…' : board ? 'Vom Text neu' : 'Planen'}
           </button>
+          {needsTarget ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={locked}
+              onClick={() => void makeTarget()}
+              title="Zielsprache aus dem deutschen Dialog schreiben"
+            >
+              {nativeBusy ? '…' : 'Zielsprache machen'}
+            </button>
+          ) : null}
           {needsGerman ? (
             <button
               type="button"
@@ -334,6 +361,12 @@ export function FilmStoryboardPage() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+      {dialog && needsTarget ? (
+        <p className="alert alert-warn">
+          Der Dialog ist auf Deutsch. Oben «Zielsprache machen» drücken — erst dann spricht die
+          Stimme die Lernsprache.
+        </p>
+      ) : null}
       {dialog && needsGerman ? (
         <p className="alert alert-warn">
           In der Spalte Deutsch fehlt noch die normale Übersetzung. Hier «Deutsch anzeigen»

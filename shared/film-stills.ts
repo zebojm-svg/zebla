@@ -44,10 +44,18 @@ export function sceneStillProgress(
   const total = panels.length
   const done = panels.filter((p) => {
     if (!p.stillUrl) return false
+    if (panelStillNeedsRefresh(p)) return false
     if (styleId && p.stillStyleId && p.stillStyleId !== styleId) return false
     return true
   }).length
   return { total, done, pending: Math.max(0, total - done) }
+}
+
+/** Nach «Bild ändern»: spätere Bilder dieser Szene müssen die neue Vorlage sehen. */
+export const STALE_STILL_NOTE_DE = 'Vorlage hat sich geändert'
+
+export function panelStillNeedsRefresh(panel: Pick<FilmStoryboardPanel, 'harvestNoteDe'>): boolean {
+  return (panel.harvestNoteDe || '').includes(STALE_STILL_NOTE_DE)
 }
 
 /** Welche Bilder in der Szene noch fehlen (oder den Stil nicht mehr haben). */
@@ -59,6 +67,7 @@ export function panelsNeedingStills(
   if (force) return [...panels]
   return panels.filter((p) => {
     if (!p.stillUrl) return true
+    if (panelStillNeedsRefresh(p)) return true
     if (styleId && p.stillStyleId && p.stillStyleId !== styleId) return true
     return false
   })
@@ -446,21 +455,28 @@ export function stillReferencePack(
     }
   }
 
+  const correcting = Boolean(opts?.correctFromUrl)
   if (opts?.correctFromUrl) {
     add({ role: 'grundbild', name: 'aktuelles Bild', url: opts.correctFromUrl })
   }
   if (closeup && safeWide) {
     add({ role: 'grundbild', name: placeLabelDe(place), url: safeWide })
   }
-  const prevPlace = opts?.board ? previousPlaceStillUrl(opts.board, panel) : undefined
+  const prevPlace =
+    (opts?.board ? previousPlaceStillUrl(opts.board, panel) : undefined) || opts?.previousStillUrl
   const wantsThisPlace = !wantedPlaces.size || wantedPlaces.has(place)
-  if (insert && prevPlace && !opts?.correctFromUrl && !propUrls.has(prevPlace) && wantsThisPlace) {
+  const wantPrevPlace =
+    (insert || (correcting && !closeup)) &&
+    Boolean(prevPlace) &&
+    wantsThisPlace &&
+    !propUrls.has(prevPlace || '')
+  if (wantPrevPlace && prevPlace) {
     add({ role: 'grundbild', name: `vorige ${placeLabelDe(place)}`, url: prevPlace })
   }
   if (!closeup && !insert && bg && wantsThisPlace) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
   }
-  if (insert && bg && !opts?.correctFromUrl && !prevPlace && wantsThisPlace) {
+  if (insert && bg && !prevPlace && wantsThisPlace) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
   }
   const speakerId = closeup ? speakerIdentityUrl(panel) : undefined
@@ -499,6 +515,9 @@ export function stillReferencePack(
       return `${i + 1}. PROP: the SAME ${what} as in this photo — do not invent a new one.`
     }
     if (it.role === 'grundbild') {
+      if (it.url === opts?.correctFromUrl) {
+        return `${i + 1}. GROUNDBILD / CURRENT still to correct — apply the director fix. Keep these EXACT people unless the fix says otherwise.`
+      }
       return insert
         ? `${i + 1}. PREVIOUS still of the SAME ${placeLabelEn(place)} — same named objects, same furniture${place === 'kitchen' ? ', same stove type (gas stays gas, induction stays induction)' : ''}. New action only. NOT a different room.`
         : `${i + 1}. GROUNDBILD of the ${placeLabelEn(place)} only — same furniture, same people. NOT a different room.`
@@ -507,7 +526,7 @@ export function stillReferencePack(
       return `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room. Kitchen photos only for kitchen, living-room photos only for living room.`
     }
     if (it.role === 'identity') {
-      return `${i + 1}. IDENTITY plate of ${it.name} — this exact face and clothes, same sex.`
+      return `${i + 1}. PERSON / IDENTITY plate of ${it.name} — this exact face and clothes, same sex.`
     }
     return `${i + 1}. PERSON identity of ${it.name} — this exact face and clothes, same sex. Never swap with another guest.`
   })
@@ -640,8 +659,11 @@ export function stillAttachmentInstruction(opts: {
   packInstruction?: string
 }): string {
   const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
-  if (opts.insert && !opts.correctingExisting) {
-    return `${pack}If a PROP photo is attached, paint the SAME object as in that photo (flowers stay those flowers, a kettle stays that kettle, a coat stays that coat) — do not invent a new one. If a GROUNDBILD / previous still of this place is attached, keep that SAME room and the SAME named objects${opts.insert ? '; in a kitchen, SAME stove type (gas stays gas, induction stays induction)' : ''}. Paint the NEW named action. Identity plates are faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a replacement object. Fill the frame with the named detail.`
+  if (opts.insert) {
+    const current = opts.correctingExisting
+      ? 'Also attached: CURRENT still to correct. Keep these EXACT people (face, hair, clothes) unless the director fix says otherwise. Apply only the director fix. '
+      : ''
+    return `${pack}${current}If a PROP photo is attached, paint the SAME object as in that photo (flowers stay those flowers, a kettle stays that kettle, a coat stays that coat) — do not invent a new one. If a GROUNDBILD / previous still of this place is attached, keep that SAME room and the SAME named objects${opts.insert ? '; in a kitchen, SAME stove type (gas stays gas, induction stays induction)' : ''}. Paint the NEW named action. Identity plates are PERSON faces only — each face ONCE, never twins. Do NOT copy the wide group photo. Do NOT invent a replacement object. Fill the frame with the named detail. CAMERA at standing-adult eye level — never only feet.`
   }
   if (opts.rewritePerson && opts.closeup) {
     return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of everyone at the table. Optional second photo: identity plate of the speaker. Paint a TIGHT head-and-shoulders of that speaker still sitting in the gathering. Do not empty the room. Do not paste a giant face over the group. Sex and face may change as the director fix says. Do not keep a wrong-gender face.`
@@ -650,7 +672,7 @@ export function stillAttachmentInstruction(opts: {
     return `${pack}Attached photos: first the GROUNDBILD of this room. Keep that same room, furniture, camera and seating. Everyone stays at this table. Redraw only the named person as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not copy a girl face onto a boy or a boy face onto a girl. Do not invent a new location.`
   }
   if (opts.correctingExisting) {
-    return `${pack}Attached photos: the first photo is the CURRENT still to correct. Keep these EXACT people (face, hair, clothes). Apply only the director fix. If a photo is a place, keep that location.`
+    return `${pack}Attached photos: the CURRENT still to correct (keep these EXACT people: face, hair, clothes, unless the director fix says otherwise). Also previous stills of this PLACE, PROP photos, PLACE photos and PERSON/IDENTITY plates when attached — labeled GROUNDBILD / PROP / PLACE / PERSON. Use each only for that role. Apply only the director fix. CAMERA at eye level — never only feet.`
   }
   if (opts.closeup) {
     return `${pack}Attached photos: FIRST the WIDE GROUNDBILD of THIS same room. Optional second photo: identity plate (this speaker’s face and clothes). Output a TIGHT head-and-shoulders of that same person still sitting in that gathering. Neighbours may be cut by the frame edge. Do NOT empty the room into a vacant set. Do NOT paste a giant bust over the group photo. Do NOT copy a cropped screenshot. Same clothes as the wide. The speaker stays this person — never use another guest’s close-up.`
@@ -883,6 +905,26 @@ export function applyPanelHarvestNote(
   return {
     ...next,
     panels: next.panels.map((p) => (p.id === panelId ? { ...p, harvestNoteDe } : p)),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+/** Nach einem geänderten Bild: spätere Bilder der Szene neu malen, mit der neuen Vorlage. */
+export function markLaterPanelsStaleAfterCorrection(
+  board: FilmStoryboard,
+  panelId: string,
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  const panel = next.panels.find((p) => p.id === panelId)
+  if (!panel) return next
+  return {
+    ...next,
+    panels: next.panels.map((p) => {
+      if (p.sceneId !== panel.sceneId) return p
+      if (p.panelIndex <= panel.panelIndex) return p
+      if (!p.stillUrl) return p
+      return { ...p, harvestNoteDe: STALE_STILL_NOTE_DE }
+    }),
     updatedAt: new Date().toISOString(),
   }
 }

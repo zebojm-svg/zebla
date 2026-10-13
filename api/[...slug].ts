@@ -1728,12 +1728,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { prompt, targetLanguage, mode, answers } = req.body as {
+      const { prompt, targetLanguage, mode, answers, sourceLanguage } = req.body as {
         prompt?: string
         targetLanguage?: string
         mode?: 'embellish' | 'ask' | 'lucky'
         answers?: string
         length?: 'short' | 'medium' | 'long'
+        sourceLanguage?: string
       }
       if (!prompt?.trim() || !targetLanguage) {
         res.status(400).json({ error: 'Prompt und Sprache fehlen.' })
@@ -1745,6 +1746,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         targetLanguage,
         draftMode,
         answers,
+        sourceLanguage || 'de',
       )
       res.json(result)
       return

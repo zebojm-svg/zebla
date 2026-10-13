@@ -60,7 +60,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder, Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler), **Drehbuch → Inventar → Vorlagen** (jede wiederkehrende Sache behält dieselbe id und wandert mit dem vorigen Foto **dieser** Sache: Blumen an der Tür, später auf dem Tisch; Kanne/Tablett derselbe Mechanismus, keine Extra-Tee-Logik), Zwischenbilder auf Augenhöhe. Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): **Dialog daraus machen**, dann Bilder neu — sonst bleiben alte Fotos.
 
-**In Arbeit:** —
+**In Arbeit:** Bild ändern mit Vorlagen-Check; Dialog zuerst Muttersprache, Zielsprache per Knopf.
 
 **Nächste Baustellen (noch nicht hier):**
 

@@ -77,8 +77,9 @@ export interface DialogLine {
   speaker: string
   /** speech = Dialog, action = stilles Zwischenbild, narrator = Erzähler. */
   kind?: DialogLineKind
+  /** Zielsprache (leer, bis «Zielsprache machen»). Handlung bleibt auf Deutsch hier. */
   text: string
-  /** Normale Übersetzung in der Muttersprache (keine Birkenbihl-Wortfolge). */
+  /** Muttersprache (meist Deutsch) — zuerst geschrieben, bleibt die Vorlage. */
   nativeText?: string
   birkenbihl?: BirkenbihlWord[]
   imageUrl?: string
