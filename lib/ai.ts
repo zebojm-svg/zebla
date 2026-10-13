@@ -40,6 +40,7 @@ import {
   mergeTranslatedTargetLines,
   prepareLinesForTargetTranslation,
   spokenLooksLikeSourceLanguage,
+  TARGET_TRANSLATE_CHUNK,
 } from '../shared/film-dialog-native.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
@@ -680,7 +681,7 @@ Antwortformat als JSON:
   return { reply: parsed.reply.replace('[FERTIG]', '').trim(), dialog }
 }
 
-const TRANSLATE_CHUNK = 8
+const TRANSLATE_CHUNK = TARGET_TRANSLATE_CHUNK
 
 function jsonLineRows<T>(result: { lines?: T[] } | T[] | null | undefined): T[] {
   if (Array.isArray(result)) return result
@@ -756,22 +757,34 @@ export async function rewriteLineFromNative(
   return { ...next, nativeText: trimmed, cueImage: line.cueImage, cueSound: line.cueSound, cueSpeech: line.cueSpeech }
 }
 
+export type TranslateNativeOpts = {
+  /** Nur so viele noch fehlende Zeilen — Rest bleibt für die nächste Runde. */
+  maxLines?: number
+  /** Zielsprache speichern, Birkenbihl danach in einem zweiten Schritt. */
+  skipBirkenbihl?: boolean
+}
+
 /** Muttersprache → Zielsprache + Birkenbihl/Lautschrift. Regie und Bilder bleiben. */
 export async function translateNativeDialogToTarget(
   lines: DialogLine[],
   targetLanguage: string,
   nativeLanguage: string,
   includeRomanization = true,
+  opts?: TranslateNativeOpts,
 ): Promise<DialogLine[]> {
   const prepared = prepareLinesForTargetTranslation(lines, targetLanguage, nativeLanguage)
-  const toTranslate = prepared.filter((line) =>
+  const needing = prepared.filter((line) =>
     lineNeedsTargetTranslation(line, targetLanguage, nativeLanguage),
   )
+  const maxLines = opts?.maxLines
+  const toTranslate =
+    maxLines != null && maxLines > 0 ? needing.slice(0, maxLines) : needing
   if (toTranslate.length === 0) {
     throw new Error(
       'Kein deutscher Satz zum Übersetzen gefunden. Steht der Text in der Deutsch-Zeile?',
     )
   }
+  const filledBefore = countFilledTargetSpeech(prepared, targetLanguage, nativeLanguage)
   const translated = await translateDialog(toTranslate, targetLanguage)
   const stillGerman = translated.filter((row) =>
     spokenLooksLikeSourceLanguage(row.text || '', nativeLanguage, targetLanguage),
@@ -787,11 +800,12 @@ export async function translateNativeDialogToTarget(
     targetLanguage,
     nativeLanguage,
   )
-  if (countFilledTargetSpeech(merged, targetLanguage, nativeLanguage) === 0) {
+  if (countFilledTargetSpeech(merged, targetLanguage, nativeLanguage) <= filledBefore) {
     throw new Error(
       `Keine Zeile wurde ins ${languageName(targetLanguage)} übersetzt. Bitte noch einmal «Zielsprache machen» drücken.`,
     )
   }
+  if (opts?.skipBirkenbihl) return merged
   try {
     return await applyBirkenbihlDialog(
       merged,

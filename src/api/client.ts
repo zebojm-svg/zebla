@@ -398,6 +398,7 @@ export const api = {
         dialog: import('../types').Dialog
         unchanged?: boolean
         translatedCount?: number
+        remainingCount?: number
         message?: string
       }>(
         '/translate',

@@ -165,6 +165,107 @@ export function countFilledTargetSpeech(
   ).length
 }
 
+/** Pro Vercel-Aufruf so wenige Zeilen, dass Übersetzen + Birkenbihl unter dem Zeitlimit bleiben. */
+export const TARGET_TRANSLATE_CHUNK = 8
+
+/**
+ * Zielsprache steht schon, Deutsch auch — nur Birkenbihl fehlt (nach Zeitlimit in der Runde).
+ * Fehlt Deutsch, ist das «Deutsch unter die Zeilen», nicht dieser Knopf.
+ */
+export function lineNeedsTargetBirkenbihl(
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'birkenbihl' | 'kind' | 'speaker' | 'cueImage'>,
+  targetLanguage?: string,
+  sourceLanguage?: string,
+): boolean {
+  if (inferDialogLineKind(line) === 'action') return false
+  if (lineNeedsTargetTranslation(line, targetLanguage, sourceLanguage)) return false
+  if (!lineHasTargetSpeech(line)) return false
+  if (!lineGermanText(line, targetLanguage, sourceLanguage)) return false
+  return lineBirkenbihlWords(line).length === 0
+}
+
+export function lineNeedsTargetWork(
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'birkenbihl' | 'kind' | 'speaker' | 'cueImage'>,
+  targetLanguage?: string,
+  sourceLanguage?: string,
+): boolean {
+  return (
+    lineNeedsTargetTranslation(line, targetLanguage, sourceLanguage) ||
+    lineNeedsTargetBirkenbihl(line, targetLanguage, sourceLanguage)
+  )
+}
+
+export function countRemainingTargetWork(
+  dialog: Pick<Dialog, 'sections'> & { targetLanguage?: string; sourceLanguage?: string },
+): number {
+  return dialog.sections.reduce(
+    (n, s) =>
+      n +
+      s.lines.filter((l) =>
+        lineNeedsTargetWork(l, dialog.targetLanguage, dialog.sourceLanguage),
+      ).length,
+    0,
+  )
+}
+
+function pickNeedingLines(
+  sections: DialogSection[],
+  pred: (line: DialogLine) => boolean,
+  limit: number,
+): DialogLine[] {
+  const picked: DialogLine[] = []
+  for (const sec of sections) {
+    const need = sec.lines.filter(pred)
+    if (need.length === 0) continue
+    for (const line of need) {
+      picked.push(line)
+      if (picked.length >= limit) return picked
+    }
+    return picked
+  }
+  return picked
+}
+
+/** Nächster Abschnitt, höchstens ~8 gesprochene Zeilen ohne Zielsprache. */
+export function pickTargetTranslateChunk(
+  sections: DialogSection[],
+  targetLanguage?: string,
+  sourceLanguage?: string,
+  limit = TARGET_TRANSLATE_CHUNK,
+): DialogLine[] {
+  return pickNeedingLines(
+    sections,
+    (l) => lineNeedsTargetTranslation(l, targetLanguage, sourceLanguage),
+    limit,
+  )
+}
+
+/** Nächster Abschnitt, höchstens ~8 Zeilen mit Zielsprache aber ohne Birkenbihl. */
+export function pickTargetBirkenbihlChunk(
+  sections: DialogSection[],
+  targetLanguage?: string,
+  sourceLanguage?: string,
+  limit = TARGET_TRANSLATE_CHUNK,
+): DialogLine[] {
+  return pickNeedingLines(
+    sections,
+    (l) => lineNeedsTargetBirkenbihl(l, targetLanguage, sourceLanguage),
+    limit,
+  )
+}
+
+export function translateTimeoutHintDe(message: string): string {
+  if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION/i.test(message)) {
+    return 'Das hat zu lange gedauert. Die fertigen Zeilen bleiben. Noch einmal «Zielsprache machen» — es macht nur die fehlenden Zeilen.'
+  }
+  return message
+}
+
+export function zielspracheBusyLabel(remaining?: number | null): string {
+  if (remaining != null && remaining > 0) return `noch ${remaining} Zeilen`
+  return 'Zielsprache läuft …'
+}
+
 /** Deutsch sichern, Ziel-Slot leeren wenn dort noch die Muttersprache steht. Bilder/Regie bleiben. */
 export function prepareLinesForTargetTranslation(
   lines: DialogLine[],

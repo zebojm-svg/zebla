@@ -40,6 +40,12 @@ if (!zielAbort.includes('Zielsprache machen')) {
 if (zielAbort.includes('Deutsch unter die Zeilen')) {
   fail('Zielsprache-Timeout darf nicht auf den alten Knopf zeigen')
 }
+if (!zielAbort.includes('fertigen Zeilen bleiben')) {
+  fail('Zielsprache-Timeout: fertige Zeilen bleiben')
+}
+if (!zielAbort.includes('fehlenden Zeilen')) {
+  fail('Zielsprache-Timeout: nur die fehlenden Zeilen')
+}
 const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
 if (!clientSrc.includes('FUNCTION_INVOCATION_FAILED')) {
   fail('FUNCTION_INVOCATION_FAILED muss denselben Zielsprache-Text zeigen')

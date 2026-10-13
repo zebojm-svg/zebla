@@ -47,8 +47,8 @@ export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): 
     const translate = apiPathOnly(path) === '/translate'
     if (translate) {
       return reason === 'server'
-        ? 'Die Zielsprache hat auf dem Server zu lange gedauert. Bitte noch einmal «Zielsprache machen» drücken (kann bis zu zwei Minuten brauchen).'
-        : 'Zeitlimit. Bitte noch einmal «Zielsprache machen» drücken — wir warten bis zu zwei Minuten.'
+        ? 'Die Zielsprache hat auf dem Server zu lange gedauert. Die fertigen Zeilen bleiben. Noch einmal «Zielsprache machen» — es macht nur die fehlenden Zeilen.'
+        : 'Zeitlimit. Die fertigen Zeilen bleiben. Noch einmal «Zielsprache machen» — es macht nur die fehlenden Zeilen.'
     }
     return reason === 'server'
       ? 'Die Übersetzung hat auf dem Server zu lange gedauert. Bitte noch einmal versuchen (kann bis zu zwei Minuten brauchen).'

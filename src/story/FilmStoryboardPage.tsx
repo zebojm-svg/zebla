@@ -30,6 +30,11 @@ import {
   sceneShotPlanDe,
 } from '../../shared/film-storyboard'
 import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
+import {
+  translateTargetUntilDone,
+  translateTimeoutHintDe,
+  zielspracheBusyLabel,
+} from '../lib/translateTarget'
 
 function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
@@ -179,7 +184,9 @@ export function FilmStoryboardPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [targetFeedback, setTargetFeedback] = useState('Noch kein Klick.')
   const [nativeBusy, setNativeBusy] = useState(false)
+  const [remainingLines, setRemainingLines] = useState<number | null>(null)
   const [picked, setPicked] = useState<string[]>([])
   const [styles, setStyles] = useState<Record<string, string>>({})
 
@@ -258,12 +265,38 @@ export function FilmStoryboardPage() {
   }
 
   const makeTarget = async () => {
-    if (!id || !dialog) return
+    if (!id || !dialog) {
+      const msg = '0 Zeilen — Dialog nicht geladen.'
+      setTargetFeedback(msg)
+      setError(msg)
+      console.info('[zebla:zielsprache]', 'no-dialog', { id })
+      return
+    }
+    console.info('[zebla:zielsprache]', 'click', {
+      dialogId: id,
+      targetLanguage: dialog.targetLanguage,
+      sourceLanguage: dialog.sourceLanguage || 'de',
+    })
     setNativeBusy(true)
     setError('')
+    setTargetFeedback('POST /api/translate …')
+    setRemainingLines(null)
     try {
-      const result = await api.ai.translate(id, dialog.targetLanguage, true, true)
-      setDialog(result.dialog)
+      const result = await translateTargetUntilDone({
+        dialogId: id,
+        targetLanguage: dialog.targetLanguage,
+        includeRomanization: true,
+        onProgress: (info) => {
+          setDialog(info.dialog)
+          setRemainingLines(info.remainingCount)
+          const msg =
+            (info.message ||
+              (info.remainingCount > 0
+                ? `Zielsprache läuft … noch ${info.remainingCount} Zeilen`
+                : `${info.translatedCount} Zeilen`)).trim() || '0 Zeilen'
+          setTargetFeedback(msg)
+        },
+      })
       if (result.unchanged && dialogNeedsTargetTranslation(result.dialog)) {
         setError(
           result.message ||
@@ -271,13 +304,19 @@ export function FilmStoryboardPage() {
         )
         return
       }
-      if (!result.unchanged && (result.translatedCount === 0 || dialogNeedsTargetTranslation(result.dialog))) {
+      if (!result.unchanged && dialogNeedsTargetTranslation(result.dialog)) {
         setError(
           'Keine Zeile übersetzt. Bitte noch einmal «Zielsprache machen» drücken.',
         )
       }
+      const done = (result.message || `${result.translatedCount} Zeilen`).trim() || '0 Zeilen'
+      setTargetFeedback(done)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Zielsprache fehlgeschlagen.')
+      const raw = err instanceof Error ? err.message : 'Zielsprache fehlgeschlagen.'
+      const msg = translateTimeoutHintDe(raw).trim() || '0 Zeilen'
+      console.info('[zebla:zielsprache]', 'error', { msg })
+      setError(msg)
+      setTargetFeedback(msg)
     } finally {
       setNativeBusy(false)
     }
@@ -356,7 +395,7 @@ export function FilmStoryboardPage() {
             onClick={() => void makeTarget()}
             title="Zielsprache aus dem deutschen Dialog schreiben"
           >
-            {nativeBusy ? 'Zielsprache läuft …' : 'Zielsprache machen'}
+            {nativeBusy ? zielspracheBusyLabel(remainingLines) : 'Zielsprache machen'}
           </button>
           {needsNativeFill ? (
             <button
@@ -372,7 +411,15 @@ export function FilmStoryboardPage() {
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      <div className="dialog-target-feedback" aria-live="polite">
+        {nativeBusy ? (
+          <p className="alert alert-warn">Zielsprache läuft … {targetFeedback}</p>
+        ) : error ? (
+          <p className="alert alert-error">{error || targetFeedback || '0 Zeilen'}</p>
+        ) : (
+          <p className="alert alert-warn">{targetFeedback || 'Noch kein Klick.'}</p>
+        )}
+      </div>
       {dialog && needsTarget ? (
         <p className="alert alert-warn">
           Der Dialog ist auf Deutsch. Oben «Zielsprache machen» drücken — erst dann spricht die

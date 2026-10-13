@@ -19,8 +19,15 @@ import {
   lineStoryText,
   lineTargetText,
   mergeTranslatedTargetLines,
+  pickTargetBirkenbihlChunk,
+  pickTargetTranslateChunk,
   prepareLinesForTargetTranslation,
   spokenLooksLikeSourceLanguage,
+  TARGET_TRANSLATE_CHUNK,
+  translateTimeoutHintDe,
+  zielspracheBusyLabel,
+  countRemainingTargetWork,
+  lineNeedsTargetBirkenbihl,
 } from '../shared/film-dialog-native.ts'
 import { dialogNeedsNativeTranslation, planBoardWithoutAi } from '../shared/film-storyboard.ts'
 import { lineSpeechText } from '../shared/line-speech.ts'
@@ -231,15 +238,21 @@ if (editorSrc.includes('BirkenbihlLine')) {
 if (!editorSrc.includes('includeRomanization')) {
   fail('Dialog-Seite schickt Lautschrift mit an Zielsprache machen')
 }
-if (!/true,\s*includeRomanization/.test(editorSrc)) {
-  fail('Dialog-Seite ruft translate mit fromNative auf')
+if (!editorSrc.includes('translateTargetUntilDone')) {
+  fail('Dialog-Seite macht Zielsprache in Runden, nicht in einem Rutsch')
+}
+if (!editorSrc.includes('noch ${remainingLines} Zeilen') && !editorSrc.includes('zielspracheBusyLabel')) {
+  fail('Knopf zeigt «noch X Zeilen» während die Runden laufen')
+}
+if (!editorSrc.includes('translateTimeoutHintDe')) {
+  fail('Dialog-Seite erklärt Zeitlimit: fertige Zeilen bleiben')
 }
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
 if (!boardSrc.includes('Zielsprache machen')) {
   fail('Bilder-Seite hat den Knopf Zielsprache machen')
 }
-if (!boardSrc.includes('translate(id, dialog.targetLanguage, true')) {
-  fail('Bilder-Seite ruft translate mit fromNative auf')
+if (!boardSrc.includes('translateTargetUntilDone')) {
+  fail('Bilder-Seite macht Zielsprache in Runden, nicht in einem Rutsch')
 }
 if (!boardSrc.includes('Deutsch unter die Zeilen')) {
   fail('Bilder-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
@@ -485,6 +498,15 @@ if (translateFn.includes('fillFromNative && !needsTarget')) {
 if (!translateFn.includes('translatedCount')) {
   fail('API sagt, wie viele Zeilen übersetzt wurden')
 }
+if (!translateFn.includes('remainingCount')) {
+  fail('API sagt, wie viele Zeilen noch fehlen')
+}
+if (!translateFn.includes('pickTargetTranslateChunk')) {
+  fail('API übersetzt nur ein Paket pro Aufruf')
+}
+if (!translateFn.includes('skipBirkenbihl')) {
+  fail('API speichert die Zielsprache vor Birkenbihl, damit ein Zeitlimit nicht bei null beginnt')
+}
 if (!translateFn.includes('Keine Zeile wurde ins')) {
   fail('0 übersetzte Zeilen sind ein Fehler, kein stilles Erfolg')
 }
@@ -497,8 +519,88 @@ if (!clientSrc.includes('includeRomanization')) {
   fail('Client kann Lautschrift mitbestellen')
 }
 if (!clientSrc.includes('translatedCount')) fail('Client liest die Zeilenzahl')
+if (!clientSrc.includes('remainingCount')) fail('Client liest die restlichen Zeilen')
 if (!clientSrc.includes('FUNCTION_INVOCATION_FAILED')) {
   fail('Vercel-Absturz FUNCTION_INVOCATION_FAILED muss als Fehler erscheinen, nicht als leere Antwort')
 }
+
+if (TARGET_TRANSLATE_CHUNK !== 8) fail('Paketgrösse ist ~8 Zeilen')
+if (zielspracheBusyLabel(null) !== 'Zielsprache läuft …') fail('Knopf startet mit läuft')
+if (zielspracheBusyLabel(5) !== 'noch 5 Zeilen') fail('Knopf zeigt noch X Zeilen')
+const timeoutHint = translateTimeoutHintDe(
+  'Zeitlimit. Bitte noch einmal «Zielsprache machen» drücken — wir warten bis zu zwei Minuten.',
+)
+if (!timeoutHint.includes('fertigen Zeilen bleiben')) {
+  fail('Timeout-Text: fertige Zeilen bleiben')
+}
+if (!timeoutHint.includes('fehlenden Zeilen')) {
+  fail('Timeout-Text: nur die fehlenden Zeilen')
+}
+
+const manyLines: DialogLine[] = Array.from({ length: 12 }, (_, i) => ({
+  id: `m${i}`,
+  speaker: i % 3 === 0 ? 'Ramo' : i % 3 === 1 ? 'Khan' : 'Ubai',
+  kind: 'speech' as const,
+  nativeText: `Satz ${i + 1} auf Deutsch.`,
+  text: '',
+  cueImage: 'Wohnzimmer',
+}))
+const manyDialog: Dialog = {
+  ...nativeDialog,
+  sections: [{ id: 's-many', title: 'Wohnzimmer', lines: manyLines }],
+}
+const firstChunk = pickTargetTranslateChunk(manyDialog.sections, 'fa', 'de')
+if (firstChunk.length !== 8) fail('ein Abschnitt mit 12 Zeilen: erstes Paket 8')
+const afterFirst = manyDialog.sections[0]!.lines.map((l, i) =>
+  i < 8 ? applyTargetTranslationToLine(l, `هدف ${i}`) : l,
+)
+const afterFirstDialog: Dialog = {
+  ...manyDialog,
+  sections: [{ ...manyDialog.sections[0]!, lines: afterFirst }],
+}
+if (countRemainingTargetWork(afterFirstDialog) !== 12) {
+  fail('nach dem ersten Paket: 4 ohne Ziel + 8 ohne Birkenbihl')
+}
+if (pickTargetTranslateChunk(afterFirstDialog.sections, 'fa', 'de').length !== 4) {
+  fail('zweites Paket nimmt nur die fehlenden 4')
+}
+if (lineNeedsTargetBirkenbihl(afterFirst[0]!, 'fa', 'de') !== true) {
+  fail('übersetzte Zeile ohne Birkenbihl: nächste Runde füllt Birkenbihl')
+}
+const withBi = afterFirst.map((l, i) =>
+  i < 8
+    ? { ...l, birkenbihl: [{ text: 'هدف', translation: 'Satz' }] }
+    : l,
+)
+const biDialog: Dialog = {
+  ...afterFirstDialog,
+  sections: [{ ...afterFirstDialog.sections[0]!, lines: withBi }],
+}
+if (pickTargetBirkenbihlChunk(biDialog.sections, 'fa', 'de').length !== 0) {
+  fail('mit Birkenbihl kein zweites Birkenbihl-Paket')
+}
+if (countRemainingTargetWork(biDialog) !== 4) fail('Birkenbihl fertig, 4 Zielzeilen offen')
+
+const twoSecs: DialogSection[] = [
+  {
+    id: 'sa',
+    title: 'Wohnzimmer',
+    lines: manyLines.slice(0, 3),
+  },
+  {
+    id: 'sb',
+    title: 'Küche',
+    lines: manyLines.slice(3),
+  },
+]
+const sectionChunk = pickTargetTranslateChunk(twoSecs, 'fa', 'de')
+if (sectionChunk.length !== 3) fail('kleiner Abschnitt: ein Paket = der Abschnitt, nicht 8 aus der nächsten Szene')
+if (sectionChunk.some((l) => l.id.startsWith('m') && Number(l.id.slice(1)) >= 3)) {
+  fail('Paket bleibt im ersten Abschnitt')
+}
+
+const loopSrc = readFileSync(new URL('../src/lib/translateTarget.ts', import.meta.url), 'utf8')
+if (!loopSrc.includes('remainingCount')) fail('Client-Schleife liest remainingCount')
+if (!loopSrc.includes('MAX_ROUNDS')) fail('Client-Schleife hat ein Limit, kein Endlos-Drehen')
 
 console.log('OK: Dialog zuerst Muttersprache, Zielsprache per Knopf')
