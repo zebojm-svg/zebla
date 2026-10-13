@@ -31,10 +31,13 @@ import { buildVisualBrief, neededVisualQuestions, testImagePrompt } from './visu
 import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
-import { languageName } from '../shared/types.js'
+import { inferDialogLineKind, languageName } from '../shared/types.js'
 import {
   countFilledTargetSpeech,
+  countRemainingTargetWork,
   dialogNeedsTargetTranslation,
+  pickTargetBirkenbihlChunk,
+  pickTargetTranslateChunk,
 } from '../shared/film-dialog-native.js'
 import { findLineInDialog } from './dialog-audio.js'
 
@@ -191,56 +194,143 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       includeRomanization?: boolean
     }
     const dialogId = dialogIdFromRequest(req, body)
-    const { targetLanguage, includeRomanization } = body
+    const { targetLanguage, includeRomanization, fromNative } = body
     if (!dialogId || !targetLanguage) {
       res.status(400).json({ error: 'dialogId und Zielsprache fehlen.' })
       return
     }
+    // fromNative: immer Muttersprache → Zielsprache. Die alte Richtung Ziel→Deutsch ist tot.
+    void fromNative
     const dialog = await getDialog(dialogId, user.uid, profile)
     if (!dialog) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
     const sourceLanguage = dialog.sourceLanguage || 'de'
-    const needsTarget = dialogNeedsTargetTranslation({
-      ...dialog,
+    const scoped = { ...dialog, targetLanguage, sourceLanguage }
+    const needsTarget = dialogNeedsTargetTranslation(scoped)
+    const translateChunk = pickTargetTranslateChunk(
+      dialog.sections,
       targetLanguage,
       sourceLanguage,
-    })
+    )
+    const birkenbihlChunk = pickTargetBirkenbihlChunk(
+      dialog.sections,
+      targetLanguage,
+      sourceLanguage,
+    )
     const sameLang =
       sourceLanguage.slice(0, 2).toLowerCase() === targetLanguage.slice(0, 2).toLowerCase()
+    const speechCount = dialog.sections.reduce(
+      (n, s) => n + s.lines.filter((l) => inferDialogLineKind(l) !== 'action').length,
+      0,
+    )
     if (sameLang) {
       res.json({
         dialog,
         unchanged: true,
         translatedCount: 0,
-        message: 'Zielsprache und Deutsch sind dieselbe Sprache — nichts zu übersetzen.',
+        remainingCount: 0,
+        httpStatus: 200,
+        message: `0 Zeilen — Zielsprache und Deutsch sind dieselbe Sprache (${languageName(targetLanguage)}).`,
       })
       return
     }
-    if (!needsTarget && dialog.targetLanguage === targetLanguage) {
+    if (speechCount === 0) {
       res.json({
         dialog,
         unchanged: true,
         translatedCount: 0,
-        message: `Die Zielsprache ${languageName(targetLanguage)} steht schon. Für fehlendes Deutsch «Deutsch unter die Zeilen» — die Bilder bleiben.`,
+        remainingCount: 0,
+        httpStatus: 200,
+        message: '0 Zeilen — keine Sprech- oder Erzählerzeile zum Übersetzen.',
+      })
+      return
+    }
+    if (
+      !needsTarget &&
+      birkenbihlChunk.length === 0 &&
+      dialog.targetLanguage === targetLanguage
+    ) {
+      res.json({
+        dialog,
+        unchanged: true,
+        translatedCount: 0,
+        remainingCount: 0,
+        httpStatus: 200,
+        message: `0 Zeilen — die Zielsprache ${languageName(targetLanguage)} steht schon. Für fehlendes Deutsch «Deutsch unter die Zeilen» — die Bilder bleiben.`,
       })
       return
     }
     await consumeQuota(profile, 'aiCalls')
     const allLines = dialog.sections.flatMap((s) => s.lines)
-    const processed = await translateNativeDialogToTarget(
-      allLines,
-      targetLanguage,
-      sourceLanguage,
-      includeRomanization !== false,
-    )
-    const translatedCount = countFilledTargetSpeech(processed, targetLanguage, sourceLanguage)
-    if (translatedCount === 0) {
+    const filledBefore = countFilledTargetSpeech(allLines, targetLanguage, sourceLanguage)
+    let processed = allLines
+    if (translateChunk.length > 0) {
+      try {
+        processed = await translateNativeDialogToTarget(
+          allLines,
+          targetLanguage,
+          sourceLanguage,
+          includeRomanization !== false,
+          { maxLines: translateChunk.length, skipBirkenbihl: true },
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Übersetzung fehlgeschlagen.'
+        if (/kein deutscher satz/i.test(msg)) {
+          res.json({
+            dialog,
+            unchanged: true,
+            translatedCount: 0,
+            remainingCount: 0,
+            httpStatus: 200,
+            message: `0 Zeilen — ${msg}`,
+          })
+          return
+        }
+        throw err
+      }
+      const translatedNow = countFilledTargetSpeech(
+        processed,
+        targetLanguage,
+        sourceLanguage,
+      )
+      if (translatedNow <= filledBefore) {
+        throw new HttpError(
+          `Keine Zeile wurde ins ${languageName(targetLanguage)} übersetzt. Deutsch bleibt in der Deutsch-Zeile. Bitte noch einmal «Zielsprache machen» drücken.`,
+          502,
+        )
+      }
+      const afterTranslate = await updateDialog(
+        dialog.id,
+        user.uid,
+        { targetLanguage, sections: remapLinesToSections(dialog.sections, processed) },
+        profile,
+      )
+      processed = afterTranslate.sections.flatMap((s) => s.lines)
+    } else if (birkenbihlChunk.length === 0) {
       throw new HttpError(
         `Keine Zeile wurde ins ${languageName(targetLanguage)} übersetzt. Deutsch bleibt in der Deutsch-Zeile. Bitte noch einmal «Zielsprache machen» drücken.`,
         502,
       )
+    }
+    const biIds = new Set(
+      (translateChunk.length > 0 ? translateChunk : birkenbihlChunk).map((l) => l.id),
+    )
+    const biLines = processed.filter((l) => biIds.has(l.id))
+    if (biLines.length > 0) {
+      try {
+        const withBi = await applyBirkenbihlDialog(
+          biLines,
+          sourceLanguage,
+          targetLanguage,
+          includeRomanization !== false,
+        )
+        const byId = new Map(withBi.map((l) => [l.id, l]))
+        processed = processed.map((l) => byId.get(l.id) ?? l)
+      } catch {
+        // Zielsprache ist schon gespeichert — Birkenbihl in der nächsten Runde.
+      }
     }
     const sections = remapLinesToSections(dialog.sections, processed)
     const updated = await updateDialog(
@@ -249,10 +339,35 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       { targetLanguage, sections },
       profile,
     )
+    const translatedCount = Math.max(
+      0,
+      countFilledTargetSpeech(
+        updated.sections.flatMap((s) => s.lines),
+        targetLanguage,
+        sourceLanguage,
+      ) - filledBefore,
+    )
+    const remainingCount = countRemainingTargetWork({
+      ...updated,
+      targetLanguage,
+      sourceLanguage,
+    })
+    const lang = languageName(targetLanguage)
+    const doneMsg =
+      translatedCount > 0
+        ? `${translatedCount} Zeile${translatedCount === 1 ? '' : 'n'} auf ${lang}`
+        : `Birkenbihl für ${birkenbihlChunk.length} Zeile${
+            birkenbihlChunk.length === 1 ? '' : 'n'
+          }`
     res.json({
       dialog: updated,
       translatedCount,
-      message: `${translatedCount} Zeile${translatedCount === 1 ? '' : 'n'} auf ${languageName(targetLanguage)}.`,
+      remainingCount,
+      httpStatus: 200,
+      message:
+        remainingCount > 0
+          ? `${doneMsg}. Noch ${remainingCount} Zeilen.`
+          : `${doneMsg}.`,
     })
   } catch (err) {
     sendError(res, err)

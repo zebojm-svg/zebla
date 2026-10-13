@@ -16,10 +16,14 @@ import {
   estimateBirkenbihl,
   estimateSceneImages,
   estimateSectionImage,
-  estimateTranslate,
   estimateVisualTest,
   lineCount,
 } from '../lib/costEstimates'
+import {
+  translateTargetUntilDone,
+  translateTimeoutHintDe,
+  zielspracheBusyLabel,
+} from '../lib/translateTarget'
 import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
 import { StoryMetaSheet } from '../story/StoryMetaSheet'
@@ -29,7 +33,11 @@ import {
   dialogNeedsTargetTranslation,
   repeatedDialogSectionTitles,
 } from '../../shared/film-storyboard'
-import { lineGermanText, lineTargetText } from '../../shared/film-dialog-native'
+import {
+  countRemainingTargetWork,
+  lineGermanText,
+  lineTargetText,
+} from '../../shared/film-dialog-native'
 import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
 import type { Dialog, DialogLineKind, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
@@ -41,6 +49,8 @@ export function DialogEditorPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
+  const [targetFeedback, setTargetFeedback] = useState('Noch kein Klick.')
+  const [remainingLines, setRemainingLines] = useState<number | null>(null)
   const [translateLang, setTranslateLang] = useState('en')
   const [birkenbihlLang, setBirkenbihlLang] = useState('de')
   const [includeRomanization, setIncludeRomanizationState] = useState(true)
@@ -160,7 +170,9 @@ export function DialogEditorPage() {
     try {
       await fn()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fehler')
+      const msg = err instanceof Error ? err.message : 'Fehler'
+      setError(msg)
+      setTargetFeedback(msg || '0 Zeilen')
     } finally {
       setBusy(null)
     }
@@ -170,6 +182,7 @@ export function DialogEditorPage() {
     dialog: Dialog
     unchanged?: boolean
     translatedCount?: number
+    remainingCount?: number
     message?: string
   }) => {
     setDialog(result.dialog)
@@ -190,13 +203,50 @@ export function DialogEditorPage() {
           ? `${n} Zeile${n === 1 ? '' : 'n'} auf ${languageName(result.dialog.targetLanguage)}.`
           : `${languageName(result.dialog.targetLanguage)}, Birkenbihl und Lautschrift stehen als eigene Zeilen. Die Regie bleibt Deutsch.`),
     )
-    if (
-      (typeof n === 'number' && n === 0) ||
-      (!n && dialogNeedsTargetTranslation(result.dialog))
-    ) {
+    if (dialogNeedsTargetTranslation(result.dialog)) {
       throw new Error(
         'Keine Zeile übersetzt. Die Deutsch-Zeile ist geblieben, die Zielsprache ist leer. Bitte noch einmal «Zielsprache machen» drücken.',
       )
+    }
+  }
+
+  const runTranslate = async (lang: string, current: Dialog) => {
+    const remaining = countRemainingTargetWork(current)
+    const start = `POST /api/translate … ${remaining} Zeile${remaining === 1 ? '' : 'n'} offen.`
+    console.info('[zebla:zielsprache]', 'click', {
+      dialogId: current.id,
+      lang,
+      remaining,
+      targetLanguage: current.targetLanguage,
+      sourceLanguage: current.sourceLanguage || 'de',
+    })
+    setTargetFeedback(start)
+    setStatus(start)
+    setRemainingLines(remaining)
+    try {
+      const result = await translateTargetUntilDone({
+        dialogId: current.id,
+        targetLanguage: lang,
+        includeRomanization,
+        onProgress: (info) => {
+          setDialog(info.dialog)
+          setRemainingLines(info.remainingCount)
+          const msg =
+            (info.message ||
+              (info.remainingCount > 0
+                ? `Zielsprache läuft … noch ${info.remainingCount} Zeilen`
+                : `${info.translatedCount} Zeile${info.translatedCount === 1 ? '' : 'n'}`)).trim() ||
+            '0 Zeilen'
+          setTargetFeedback(msg)
+          setStatus(msg)
+        },
+      })
+      applyTranslateResult(result)
+      const done = (result.message || `${result.translatedCount ?? 0} Zeilen`).trim() || '0 Zeilen'
+      setTargetFeedback(done)
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : 'Zielsprache fehlgeschlagen.'
+      throw new Error(translateTimeoutHintDe(raw) || '0 Zeilen')
     }
   }
 
@@ -577,21 +627,13 @@ export function DialogEditorPage() {
               type="button"
               className="btn btn-primary btn-sm"
               disabled={!!busy}
-              onClick={async () => {
-                if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
-                await runAction('target-lang', async () => {
-                  setStatus('Zielsprache läuft …')
-                  const result = await api.ai.translate(
-                    dialog.id,
-                    dialog.targetLanguage,
-                    true,
-                    includeRomanization,
-                  )
-                  applyTranslateResult(result)
+              onClick={() =>
+                void runAction('target-lang', async () => {
+                  await runTranslate(dialog.targetLanguage, dialog)
                 })
-              }}
+              }
             >
-              {busy === 'target-lang' ? 'Zielsprache läuft …' : 'Zielsprache machen'}
+              {busy === 'target-lang' ? zielspracheBusyLabel(remainingLines) : 'Zielsprache machen'}
             </button>
             <button
               type="button"
@@ -637,17 +679,17 @@ export function DialogEditorPage() {
             </button>
             <FilmSaveStatusText status={saveStatus} />
           </div>
-          {(busy === 'target-lang' || busy === 'translate' || error || status) && (
-            <div className="dialog-target-feedback" aria-live="polite">
-              {busy === 'target-lang' || busy === 'translate' ? (
-                <p className="alert alert-warn">Zielsprache läuft …</p>
-              ) : null}
-              {error ? <p className="alert alert-error">{error}</p> : null}
-              {status && busy !== 'target-lang' && busy !== 'translate' ? (
-                <p className="alert alert-warn">{status}</p>
-              ) : null}
-            </div>
-          )}
+          <div className="dialog-target-feedback" aria-live="polite">
+            {busy === 'target-lang' || busy === 'translate' ? (
+              <p className="alert alert-warn">
+                Zielsprache läuft … {targetFeedback || status || '0 Zeilen'}
+              </p>
+            ) : error ? (
+              <p className="alert alert-error">{error || targetFeedback || '0 Zeilen'}</p>
+            ) : (
+              <p className="alert alert-warn">{targetFeedback || status || 'Noch kein Klick.'}</p>
+            )}
+          </div>
           <p className="muted dialog-meta-hint">
             Titel und Text werden laufend gespeichert. «Dialog daraus machen» schreibt alles auf Deutsch.
             Danach «Zielsprache machen». Bei alten Filmen ohne Deutsch: «Deutsch unter die Zeilen» — die Bilder
@@ -764,21 +806,13 @@ export function DialogEditorPage() {
                 type="button"
                 className="btn btn-secondary"
                 disabled={!!busy}
-                onClick={async () => {
-                  if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
-                  await runAction('translate', async () => {
-                    setStatus('Zielsprache läuft …')
-                    const result = await api.ai.translate(
-                      dialog.id,
-                      translateLang,
-                      true,
-                      includeRomanization,
-                    )
-                    applyTranslateResult(result)
+                onClick={() =>
+                  void runAction('translate', async () => {
+                    await runTranslate(translateLang, dialog)
                   })
-                }}
+                }
               >
-                {busy === 'translate' ? 'Zielsprache läuft …' : 'Zielsprache machen'}
+                {busy === 'translate' ? zielspracheBusyLabel(remainingLines) : 'Zielsprache machen'}
               </button>
             </div>
           </div>
