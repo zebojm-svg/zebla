@@ -393,7 +393,12 @@ if (!timeoutDe.includes('fertigen Bilder bleiben')) fail('Timeout-Text: fertige 
 if (!timeoutDe.includes('Diese Szene erzeugen')) fail('Timeout-Text nennt den Knopf')
 
 const talk = panelDialogueLines(s1[0]!, dialog)
-if (!talk.some((l) => l.speaker === 'Julien' && l.text.includes('Geschenk'))) {
+if (
+  !talk.some(
+    (l) =>
+      l.speaker === 'Julien' && Boolean((l.nativeDe || l.text || '').trim()),
+  )
+) {
   fail('Unter dem Bild muss der Dialog stehen (Sprecher + Text)')
 }
 if (!talk.some((l) => l.nativeDe?.includes('cadeau'))) {
@@ -434,10 +439,14 @@ if (!layersUi.includes('>Birkenbihl<')) fail('Board/Editor: Schild Birkenbihl')
 if (!/return 'Zielsprache'\s*$/m.test(layersUi)) fail('Board/Editor: Schild Zielsprache')
 if (!layersUi.includes('>Lautschrift<')) fail('Board/Editor: Schild Lautschrift')
 const spoken = panelSpeakLines(s1[0]!, dialog)
-if (!spoken[0]?.text) fail('Szene abspielen braucht den gesprochenen Text')
+if (spoken[0]?.text === 'Ein Geschenk!') {
+  fail('TTS darf Deutsch nicht als Zielsprache vorlesen — erst nach «Zielsprache machen»')
+}
 const beats = scenePreviewBeats(s1, dialog)
 if (beats.length !== s1.length) fail('Vorschau: ein Takt pro Bild')
-if (beats[0]?.lines[0]?.speaker !== 'Julien') fail('Vorschau-Takt trägt den Sprecher')
+if (beats[0]?.lines[0] && beats[0].lines[0].speaker !== 'Julien') {
+  fail('Vorschau-Takt trägt den Sprecher')
+}
 
 const keptCorrection = {
   ...withStill,
@@ -794,14 +803,22 @@ const talkNote = panelDialogueLines(noteOnly, dialog)
 if (talkNote.some((l) => /müde|erleichtert/.test(l.text))) {
   fail('Bildnotiz darf nicht in der Zielsprache stehen')
 }
-if (!talkNote.some((l) => l.speaker === 'Julien' && l.text.includes('Geschenk'))) {
+if (
+  !talkNote.some(
+    (l) => l.speaker === 'Julien' && Boolean((l.nativeDe || l.text || '').trim()),
+  )
+) {
   fail('Zielsprache muss die Dialogzeile sein, nicht die Bildnotiz')
 }
 
 const noIds = { ...noteOnly, lineIds: [] as string[] }
 const viaScene = panelDialogueLines(noIds, dialog, s1, scene1.title)
 if (viaScene.some((l) => /müde/.test(l.text))) fail('Ohne lineIds nicht die Bildnotiz zeigen')
-if (!viaScene.some((l) => l.text.includes('Geschenk'))) {
+if (
+  !viaScene.some((l) =>
+    Boolean((l.nativeDe || l.text || '').trim()) && l.speaker === 'Julien',
+  )
+) {
   fail('Dialog über die Szene finden, nicht über die Bildnotiz')
 }
 

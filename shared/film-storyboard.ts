@@ -1227,9 +1227,11 @@ export interface FilmPanelDialogueLine {
 }
 
 export function lineNativeDe(
-  line: Pick<DialogLine, 'text' | 'nativeText' | 'kind' | 'speaker' | 'cueImage'>,
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'kind' | 'speaker' | 'cueImage' | 'birkenbihl'>,
+  targetLanguage?: string,
+  sourceLanguage?: string,
 ): string {
-  return lineGermanText(line)
+  return lineGermanText(line, targetLanguage, sourceLanguage)
 }
 
 function allDialogLines(dialog: Pick<Dialog, 'sections'>): Map<string, DialogLine> {
@@ -1274,7 +1276,10 @@ export function panelAddressee(
   return undefined
 }
 
-function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
+function toFilmDialogueLine(
+  line: DialogLine,
+  langs?: { targetLanguage?: string; sourceLanguage?: string } | null,
+): FilmPanelDialogueLine {
   const kind = inferDialogLineKind(line)
   const speaker =
     kind === 'narrator'
@@ -1282,8 +1287,8 @@ function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
       : line.speaker
   return {
     speaker,
-    text: lineTargetText(line),
-    nativeDe: lineGermanText(line),
+    text: lineTargetText(line, langs?.targetLanguage, langs?.sourceLanguage),
+    nativeDe: lineGermanText(line, langs?.targetLanguage, langs?.sourceLanguage),
     birkenbihl: line.birkenbihl,
     kind,
     lineId: line.id,
@@ -1321,25 +1326,25 @@ export function lineForFilmPanel(
 /** Sprecher + Text unter dem Standbild, zum Vergleichen. */
 export function panelDialogueLines(
   panel: FilmStoryboardPanel,
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: (Pick<Dialog, 'sections'> & { targetLanguage?: string; sourceLanguage?: string }) | null,
   scenePanels?: FilmStoryboardPanel[],
   sceneTitle?: string,
 ): FilmPanelDialogueLine[] {
   const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
-  return line ? [toFilmDialogueLine(line)] : []
+  return line ? [toFilmDialogueLine(line, dialog)] : []
 }
 
 /** Zeilen für die Szenen-Vorschau (Zielsprache + gespeicherte Stimme). */
 export function panelSpeakLines(
   panel: FilmStoryboardPanel,
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: (Pick<Dialog, 'sections'> & { targetLanguage?: string; sourceLanguage?: string }) | null,
   scenePanels?: FilmStoryboardPanel[],
   sceneTitle?: string,
 ): Array<{ id: string; speaker: string; text: string; audioUrl?: string }> {
   const line = lineForFilmPanel(panel, dialog, scenePanels, sceneTitle)
   if (!line) return []
   if (inferDialogLineKind(line) === 'action') return []
-  const text = lineSpeechText(line).trim()
+  const text = lineSpeechText(line, dialog?.targetLanguage, dialog?.sourceLanguage).trim()
   if (!text) return []
   const kind = inferDialogLineKind(line)
   const speaker =
@@ -1366,7 +1371,7 @@ export interface FilmScenePreviewBeat {
 
 export function scenePreviewBeats(
   panels: FilmStoryboardPanel[],
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: (Pick<Dialog, 'sections'> & { targetLanguage?: string; sourceLanguage?: string }) | null,
   sceneTitle?: string,
 ): FilmScenePreviewBeat[] {
   return panels.map((panel) => ({
@@ -1569,7 +1574,7 @@ export function sceneRepeatsEarlierDialog(
 
 export function scenePlayBeats(
   panels: FilmStoryboardPanel[],
-  dialog?: Pick<Dialog, 'sections'> | null,
+  dialog?: (Pick<Dialog, 'sections'> & { targetLanguage?: string; sourceLanguage?: string }) | null,
   sceneTitle?: string,
 ): FilmPlayBeat[] {
   const wide = panels.find((p) => p.shot === 'wide' && p.stillUrl)
@@ -1600,7 +1605,7 @@ export function scenePlayBeats(
       silent,
       soundCue: soundCue || undefined,
       foley: foley.length ? foley : undefined,
-      line: silent || !line ? undefined : toFilmDialogueLine(line),
+      line: silent || !line ? undefined : toFilmDialogueLine(line, dialog),
       lineIndex: silent ? -1 : spoken++,
       lineTotal: 0,
     })

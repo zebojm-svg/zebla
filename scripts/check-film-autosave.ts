@@ -2,6 +2,7 @@
  * Titel-Platzhalter und Timeout-Texte (ohne echte KI).
  * Aufruf: npx tsx scripts/check-film-autosave.ts
  */
+import { readFileSync } from 'node:fs'
 import {
   clientTimeoutMessage,
   FILM_PLAN_TIMEOUT_MS,
@@ -38,6 +39,10 @@ if (!zielAbort.includes('Zielsprache machen')) {
 }
 if (zielAbort.includes('Deutsch unter die Zeilen')) {
   fail('Zielsprache-Timeout darf nicht auf den alten Knopf zeigen')
+}
+const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+if (!clientSrc.includes('FUNCTION_INVOCATION_FAILED')) {
+  fail('FUNCTION_INVOCATION_FAILED muss denselben Zielsprache-Text zeigen')
 }
 
 if (!isImageGenPath('/image')) fail('/image ist Bild')
