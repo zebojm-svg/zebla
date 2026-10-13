@@ -37,11 +37,22 @@ export function isTextAiPath(path: string): boolean {
   return TEXT_AI_PATHS.has(apiPathOnly(path))
 }
 
+const BOARD_PLAN_PATHS = new Set(['/film-storyboard', '/film-storyboard-reset'])
+
+export function isBoardPlanPath(path: string): boolean {
+  return BOARD_PLAN_PATHS.has(apiPathOnly(path))
+}
+
 export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): string {
   if (isImageGenPath(path)) {
     return reason === 'server'
       ? 'Server-Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.'
       : 'Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.'
+  }
+  if (isBoardPlanPath(path)) {
+    return reason === 'server'
+      ? 'Server-Zeitlimit. Bitte noch einmal «Storyboard erzeugen» — der Plan ohne extra KI sollte sofort da sein.'
+      : 'Zeitlimit. Bitte noch einmal «Storyboard erzeugen» — der Plan ohne extra KI sollte sofort da sein.'
   }
   if (isTextAiPath(path)) {
     const translate = apiPathOnly(path) === '/translate'

@@ -382,7 +382,7 @@ export function FilmStoryboardPage() {
                 })()
                 return
               }
-              void run(() => api.ai.filmStoryboard(id))
+              void run(() => api.ai.filmStoryboard(id, false))
             }}
             title={board ? 'Alte Bilder löschen, vom Dialog neu' : 'Storyboard aus dem Dialog'}
           >
@@ -622,7 +622,7 @@ export function FilmStoryboardPage() {
             type="button"
             className="btn btn-primary"
             disabled={locked}
-            onClick={() => void run(() => api.ai.filmStoryboard(id))}
+            onClick={() => void run(() => api.ai.filmStoryboard(id, false))}
           >
             {busy ? 'Plane …' : 'Storyboard erzeugen'}
           </button>

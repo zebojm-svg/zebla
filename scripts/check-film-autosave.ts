@@ -7,6 +7,7 @@ import {
   clientTimeoutMessage,
   FILM_PLAN_TIMEOUT_MS,
   TEXT_AI_TIMEOUT_MS,
+  isBoardPlanPath,
   isImageGenPath,
   isTextAiPath,
 } from '../shared/api-timeout.ts'
@@ -65,8 +66,15 @@ const filmAbort = clientTimeoutMessage('/film-from-prompt', 'abort')
 if (filmAbort.includes('Bild')) fail('Film-Timeout darf nicht so tun, als wäre es ein Bild')
 if (!filmAbort.includes('noch einmal')) fail('Film-Timeout: bitte noch einmal versuchen')
 
+if (!isBoardPlanPath('/film-storyboard')) fail('Storyboard-Plan ist Board-Plan')
+if (!isBoardPlanPath('/film-storyboard-reset')) fail('Vom-Text-neu ist Board-Plan')
+if (isBoardPlanPath('/film-from-prompt')) fail('Film-Prompt ist kein Board-Plan')
 const filmServer = clientTimeoutMessage('/film-storyboard', 'server')
 if (filmServer.includes('Bild')) fail('Server-Film-Timeout ohne Bild-Text')
+if (!filmServer.includes('Storyboard erzeugen')) fail('Storyboard-Timeout nennt den Knopf')
+if (!filmServer.includes('ohne extra KI')) fail('Storyboard-Timeout: extra KI war das Problem')
+const clientPlan = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+if (!clientPlan.includes('cheapAi = false')) fail('Client schickt Storyboard-Plan ohne extra KI')
 
 if (resolvedFilmTitle('Park', 'langer prompt') !== 'Park') fail('gesetzter Titel bleibt')
 if (resolvedFilmTitle('  ', 'Julien im Park\nTara kommt') !== 'Julien im Park') {
