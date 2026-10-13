@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { buildSpeakerIndexMap, useSpeechReader } from '../hooks/useSpeechReader'
-import { isRtlLanguage } from '../types'
 import type { Dialog } from '../types'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { scenePlayBeats } from '../../shared/film-storyboard'
+import { LineLanguageLayers } from '../components/LineLanguageLayers'
 import { foleyDurationMs, foleyFlagsFromNote, SCENE_ESTABLISHING_MS } from '../../shared/film-scene-foley'
 import { FilmStillPicture } from './FilmStillArrange'
 import { createSceneBedMusic } from './sceneBedMusic'
@@ -96,10 +96,6 @@ export function FilmScenePreviewPlayer({
     .map((s) => s?.trim())
     .filter(Boolean)
     .join(' · ')
-  const nativeName =
-    !dialog.sourceLanguage || dialog.sourceLanguage === 'de'
-      ? 'Deutsch'
-      : dialog.sourceLanguage
 
   const pause = () => {
     cancelled.current = true
@@ -261,8 +257,8 @@ export function FilmScenePreviewPlayer({
     <div className="film-scene-player">
       <p className="muted film-scene-player-note">
         <strong>Szene anhören:</strong> jedes gemalte Bild der Reihe nach — Zwischenbilder mit
-        Geräusch (Wasser, Pfeifen, Klopfen), Erzähler spricht, Dialog spricht. Deutsch steht unter
-        der Zeile.
+        Geräusch (Wasser, Pfeifen, Klopfen), Erzähler spricht, Dialog spricht. Deutsch, Zielsprache
+        und Birkenbihl stehen je als eigene Zeile.
       </p>
       <p className="muted film-scene-player-voice">
         {voiceLabel}
@@ -326,23 +322,16 @@ export function FilmScenePreviewPlayer({
       ) : nowLine ? (
         <div className="film-play-now">
           <p className="film-play-now-speaker">Jetzt: {nowLine.speaker}</p>
-          <p
-            className="film-play-now-target"
-            dir={isRtlLanguage(dialog.targetLanguage) ? 'rtl' : undefined}
-            lang={dialog.targetLanguage}
-          >
-            {nowLine.text}
-          </p>
-          {nowLine.nativeDe ? (
-            <p className="film-play-now-de" lang={dialog.sourceLanguage || 'de'}>
-              <span className="film-beat-de-label">{nativeName}</span>
-              {nowLine.nativeDe}
-            </p>
-          ) : (
-            <p className="muted film-play-now-de">
-              Deutsch fehlt — oben «Deutsch anzeigen» drücken.
-            </p>
-          )}
+          <LineLanguageLayers
+            nativeText={nowLine.nativeDe}
+            targetText={nowLine.text}
+            birkenbihl={nowLine.birkenbihl}
+            targetLanguage={dialog.targetLanguage}
+            sourceLanguage={dialog.sourceLanguage}
+            kind={nowLine.kind}
+            missingNativeHint="Noch kein Deutsch — oben «Deutsch unter die Zeilen»."
+            missingTargetHint="Noch keine Zielsprache — oben «Zielsprache machen»."
+          />
         </div>
       ) : (
         <p className="muted film-play-now">Erst das Bild, dann spricht jemand.</p>

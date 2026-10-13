@@ -204,7 +204,7 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.json({
         dialog,
         unchanged: true,
-        message: `Der Dialog ist schon ${languageName(targetLanguage)}. Für Deutsch unter den Zeilen rechts «Deutsch unter die Zeilen» drücken.`,
+        message: `Der Dialog ist schon ${languageName(targetLanguage)}. Für Deutsch und Birkenbihl «Deutsch unter die Zeilen» drücken — die Bilder bleiben.`,
       })
       return
     }

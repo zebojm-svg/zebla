@@ -425,12 +425,19 @@ if (pageSrc.includes('Dialog für diese Szene schreiben')) {
 if (!pageSrc.includes('filmScenesFromDialog')) fail('Board folgt den Dialog-Szenen')
 if (!pageSrc.includes('boardFollowsDialog')) fail('Board merkt wenn der Dialog neu ist')
 if (!pageSrc.includes('Zielsprache machen')) fail('Board hat den Knopf Zielsprache machen')
+if (!pageSrc.includes('Deutsch unter die Zeilen')) fail('Board hat den Knopf Deutsch unter die Zeilen für alte Filme')
 const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', import.meta.url), 'utf8')
 if (!editorSrc.includes('filmStoryboard: null')) {
   fail('Dialog daraus machen löscht den alten Bildplan')
 }
 if (!editorSrc.includes('Zielsprache machen')) {
   fail('Dialog daraus machen: danach Zielsprache per Knopf')
+}
+if (!editorSrc.includes('Deutsch unter die Zeilen')) {
+  fail('alte Filme: Deutsch unter die Zeilen ohne die Bilder zu löschen')
+}
+if (!editorSrc.includes('LineLanguageLayers')) {
+  fail('Text-Seite zeigt Deutsch, Zielsprache und Birkenbihl getrennt')
 }
 const voicesSrc = readFileSync(new URL('../src/story/FilmCastVoices.tsx', import.meta.url), 'utf8')
 if (!voicesSrc.includes('Erzähler')) fail('Stimmen anpassen erklärt die Erzählerstimme')

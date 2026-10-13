@@ -5,7 +5,7 @@ import {
   type StoryArtStyleId,
 } from '../../shared/story-art-styles'
 import type { Dialog } from '../types'
-import { isRtlLanguage, languageName } from '../types'
+import { LineLanguageLayers } from '../components/LineLanguageLayers'
 import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
   isFilmStoryboard,
@@ -148,55 +148,34 @@ export function FilmBeatText({
   lines,
   targetLanguage,
   sourceLanguage,
-  which = 'both',
+  nativeSlotFor,
 }: {
   lines: FilmPanelDialogueLine[]
   targetLanguage?: string
   sourceLanguage?: string
-  which?: 'target' | 'native' | 'both'
+  nativeSlotFor?: (line: FilmPanelDialogueLine) => ReactNode
 }) {
-  const nativeName =
-    !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
   if (lines.length === 0) {
     return <p className="muted">Kein Dialog zu diesem Bild</p>
   }
   return (
     <div className="film-beat-lines">
-      {lines.map((line, i) => {
-        const hasTarget = Boolean(line.text.trim())
-        return (
+      {lines.map((line, i) => (
         <div key={line.lineId ?? i} className="film-beat-line">
-          {which !== 'native' && hasTarget ? (
-            <p
-              className="film-beat-target"
-              dir={isRtlLanguage(targetLanguage ?? '') ? 'rtl' : undefined}
-              lang={targetLanguage}
-            >
-              {line.speaker ? <strong>{line.speaker}: </strong> : null}
-              {line.text}
-            </p>
-          ) : null}
-          {which !== 'native' && !hasTarget && which === 'target' ? (
-            <p className="muted film-beat-target">
-              Noch keine Zielsprache — oben «Zielsprache machen».
-            </p>
-          ) : null}
-          {which !== 'target' ? (
-            line.nativeDe ? (
-              <p className="film-beat-de" lang={sourceLanguage || 'de'}>
-                {which === 'native' && line.speaker ? <strong>{line.speaker}: </strong> : null}
-                {which !== 'native' ? (
-                  <span className="film-beat-de-label">{nativeName}</span>
-                ) : null}
-                {line.nativeDe}
-              </p>
-            ) : which === 'native' ? (
-              <p className="muted film-beat-de">Noch kein deutscher Text — unten schreiben.</p>
-            ) : null
-          ) : null}
+          <LineLanguageLayers
+            nativeText={line.nativeDe}
+            targetText={line.text}
+            birkenbihl={line.birkenbihl}
+            targetLanguage={targetLanguage}
+            sourceLanguage={sourceLanguage}
+            kind={line.kind}
+            speaker={line.speaker}
+            nativeSlot={nativeSlotFor?.(line)}
+            missingNativeHint="Noch kein Deutsch — oben «Deutsch unter die Zeilen»."
+            missingTargetHint="Noch keine Zielsprache — oben «Zielsprache machen»."
+          />
         </div>
-        )
-      })}
+      ))}
     </div>
   )
 }
@@ -383,11 +362,6 @@ export function FilmBeatColumns({
   nativeBusy?: boolean
   onConfirmNative?: (lineId: string, nativeText: string) => void
 }) {
-  const targetName = languageName(targetLanguage || '')
-  const nativeName =
-    !sourceLanguage || sourceLanguage === 'de' ? 'Deutsch' : languageName(sourceLanguage)
-  const speaker = lines[0]?.speaker
-  const hasTarget = lines.some((l) => l.text.trim())
   return (
     <div className="film-beat">
       <div className="film-beat-pic">
@@ -396,26 +370,22 @@ export function FilmBeatColumns({
         {underPicture}
       </div>
       <div className="film-beat-text">
-        {hasTarget ? (
-          <>
-            <p className="film-beat-col-label">{targetLanguage ? targetName : 'Text'}</p>
-            <FilmBeatText
-              lines={lines}
-              targetLanguage={targetLanguage}
-              sourceLanguage={sourceLanguage}
-              which="target"
-            />
-            <p className="film-beat-col-label film-beat-native-label">{nativeName}</p>
-          </>
-        ) : (
-          <p className="film-beat-col-label">{nativeName}</p>
-        )}
-        {speaker ? <p className="film-beat-speaker">{speaker}</p> : null}
-        <FilmNativeEditor
+        <FilmBeatText
           lines={lines}
+          targetLanguage={targetLanguage}
           sourceLanguage={sourceLanguage}
-          busy={nativeBusy}
-          onConfirm={onConfirmNative}
+          nativeSlotFor={
+            onConfirmNative
+              ? (line) => (
+                  <FilmNativeEditor
+                    lines={[line]}
+                    sourceLanguage={sourceLanguage}
+                    busy={nativeBusy}
+                    onConfirm={onConfirmNative}
+                  />
+                )
+              : undefined
+          }
         />
       </div>
       {notes ? (

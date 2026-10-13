@@ -34,6 +34,7 @@ import {
   applyNativeFirstDraftSections,
   applyTargetTranslationToLine,
   lineHasTargetSpeech,
+  lineNeedsNativeFill,
   lineStoryText,
 } from '../shared/film-dialog-native.js'
 import { linesFromRaw, newLineId } from './ids.js'
@@ -838,9 +839,7 @@ Antworte als JSON:
 const BIRKENBIHL_CHUNK = 8
 
 function lineNeedsBirkenbihl(line: DialogLine): boolean {
-  if (inferDialogLineKind(line) === 'action') return false
-  if (line.nativeText?.trim()) return false
-  return Boolean(line.text.trim())
+  return lineNeedsNativeFill(line)
 }
 
 function lineWithoutAi(line: DialogLine): DialogLine {

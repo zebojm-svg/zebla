@@ -65,8 +65,8 @@ export function estimateMissingTts(dialog: {
 export function estimateBirkenbihl(lineCount: number): CostEstimate {
   const cents = Math.max(1, Math.round(lineCount * 0.15))
   return {
-    title: 'Birkenbihl anwenden',
-    description: 'KI ordnet jedem Wort eine Übersetzung zu (Text-KI).',
+    title: 'Deutsch unter die Zeilen',
+    description: 'Für alte Filme: Deutsch (ganze Sätze) und Birkenbihl dazu. Die Bilder bleiben.',
     items: [
       { label: 'Dialogzeilen', amount: String(lineCount) },
       { label: 'Geschätzte Kosten', amount: `ca. ${cents} KI-Punkte` },
