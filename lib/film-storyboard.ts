@@ -27,6 +27,7 @@ import {
   isFilmStoryboard,
   normalizeFilmStoryboard,
   panelAddressee,
+  planBoardWithoutAi,
   type FilmDraftPanel,
   type FilmPlan,
   type FilmPlacement,
@@ -235,6 +236,11 @@ async function saveBoard(
   return updated
 }
 
+/**
+ * Erstes Planen und «Vom Text neu»: lokaler Plan, sofort speichern.
+ * Gemini-Regie plus Vorlagen-KI (60 s+ FUNCTION_INVOCATION) darf die leere Seite nicht rot machen.
+ * cheapAi/extra bleiben in der Signatur, werden hier nicht mehr abgewartet.
+ */
 export async function planFilmStoryboard(
   dialogId: string,
   userId: string,
@@ -248,66 +254,29 @@ export async function planFilmStoryboard(
   const previous = opts?.keepBoard && isFilmStoryboard(dialog.filmStoryboard)
     ? normalizeFilmStoryboard(dialog.filmStoryboard)
     : undefined
-  const useAi = opts?.cheapAi !== false
-  const aiDrafts = useAi ? await draftsFromGemini(dialog, opts?.extra ?? '') : null
-  const drafts = aiDrafts
-    ? ensureCoverageDrafts(dialog, aiDrafts)
-    : draftPanelsFromDialog(dialog)
-  const board = buildBoardFromDrafts(
-    dialog,
-    drafts,
-    library,
-    aiDrafts ? 'gemini' : 'rules',
-    previous,
-    { freshPlaces: Boolean(opts?.freshPlaces) },
-  )
+  const board = previous
+    ? buildBoardFromDrafts(
+        dialog,
+        draftPanelsFromDialog(dialog),
+        library,
+        'rules',
+        previous,
+        { freshPlaces: Boolean(opts?.freshPlaces) },
+      )
+    : planBoardWithoutAi(dialog, library)
   const inventory = deriveFilmInventory(dialog)
-  const withRefs = useAi ? await attachRefNeedsFromAi(board, inventory) : board
 
   const updated = await updateDialog(
     dialogId,
     userId,
     {
-      filmStoryboard: normalizeFilmStoryboard(withRefs),
+      filmStoryboard: normalizeFilmStoryboard(board),
       filmInventory: inventory,
     },
     profile,
   )
   if (!updated) throw new Error('Storyboard konnte nicht gespeichert werden.')
   return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
-}
-
-async function attachRefNeedsFromAi(
-  board: FilmStoryboard,
-  inventory: FilmInventory,
-): Promise<FilmStoryboard> {
-  try {
-    const planned = await planFilmPanelRefNeeds({
-      inventory,
-      panels: board.panels.map((p) => ({
-        id: p.id,
-        caption: p.caption,
-        imageCue: p.imageCue,
-        settingHint: p.settingHint,
-        shot: p.shot,
-        people: p.placements.map((pl) => pl.name.trim()).filter(Boolean),
-        propIds: p.propIds,
-      })),
-    })
-    return {
-      ...board,
-      panels: board.panels.map((panel) => ({
-        ...panel,
-        refNeeds: mergeRefNeeds(panel.refNeeds, planned[panel.id]),
-        propIds: mergeRefNeeds(
-          { people: [], places: [], propIds: panel.propIds ?? [] },
-          planned[panel.id],
-        ).propIds,
-      })),
-    }
-  } catch {
-    return board
-  }
 }
 
 /** Alte Standbilder und den Bildplan löschen, dann nur aus dem Dialog neu planen. */
@@ -326,7 +295,7 @@ export async function resetFilmStoryboardFromDialog(
   )
   if (!wiped) throw new Error('Alter Bildplan konnte nicht gelöscht werden.')
   return planFilmStoryboard(dialogId, userId, profile, {
-    cheapAi: true,
+    cheapAi: false,
     keepBoard: false,
     freshPlaces: true,
   })

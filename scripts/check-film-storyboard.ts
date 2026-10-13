@@ -494,6 +494,29 @@ if (!planSrc.includes('shot="insert"')) fail('Regie darf Zwischenbilder planen')
 if (!planSrc.includes('closeup')) fail('Regie zeigt wer spricht')
 if (!planSrc.includes('Zwillinge')) fail('Regie: keine Zwillingsfiguren im Zwischenbild')
 if (!planSrc.includes('leeres Wohnzimmer')) fail('Regie: Gäste bleiben im Weit-Bild')
+const planFn = planSrc.slice(
+  planSrc.indexOf('export async function planFilmStoryboard'),
+  planSrc.indexOf('export async function resetFilmStoryboardFromDialog'),
+)
+if (!planFn.includes('planBoardWithoutAi')) fail('Erstes Planen speichert den lokalen Plan')
+if (planFn.includes('draftsFromGemini')) fail('Erstes Planen wartet nicht auf Gemini')
+if (planFn.includes('attachRefNeedsFromAi') || planFn.includes('planFilmPanelRefNeeds')) {
+  fail('Erstes Planen wartet nicht auf Vorlagen-KI')
+}
+if (!planSrc.includes('cheapAi: false')) fail('Vom Text neu plant ohne Gemini')
+if (!pageSrc.includes('filmStoryboard(id, false)')) {
+  fail('Planen und Storyboard erzeugen ohne extra KI')
+}
+const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+if (!clientSrc.includes('cheapAi = false')) fail('API-Client plant zuerst ohne KI')
+const apiSrc = readFileSync(new URL('../api/[...slug].ts', import.meta.url), 'utf8')
+const storyboardRoute = apiSrc.slice(
+  apiSrc.indexOf("route === 'film-storyboard'"),
+  apiSrc.indexOf("route === 'film-storyboard-reset'"),
+)
+if (!storyboardRoute.includes('cheapAi: false')) {
+  fail('API-Route film-storyboard erzwingt den lokalen Plan')
+}
 
 const unnamed: Dialog = {
   ...dialog,

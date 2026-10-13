@@ -1698,13 +1698,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { dialogId, cheapAi } = req.body as { dialogId?: string; cheapAi?: boolean }
+      const { dialogId } = req.body as { dialogId?: string; cheapAi?: boolean }
       if (!dialogId?.trim()) {
         res.status(400).json({ error: 'dialogId fehlt.' })
         return
       }
       const result = await planFilmStoryboard(dialogId.trim(), user.uid, profile, {
-        cheapAi: cheapAi !== false,
+        cheapAi: false,
       })
       res.json(result)
       return

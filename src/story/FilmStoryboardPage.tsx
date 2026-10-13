@@ -300,7 +300,7 @@ export function FilmStoryboardPage() {
       })()
       return
     }
-              void run(() => api.ai.filmStoryboard(id, false))
+    void run(() => api.ai.filmStoryboard(id, false))
   }
 
   return (

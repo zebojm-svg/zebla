@@ -413,7 +413,7 @@ export const api = {
         },
         TEXT_AI_TIMEOUT_MS,
       ),
-    filmStoryboard: (dialogId: string, cheapAi = true) =>
+    filmStoryboard: (dialogId: string, cheapAi = false) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
@@ -423,7 +423,7 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ dialogId, cheapAi }),
         },
-        FILM_PLAN_TIMEOUT_MS,
+        DEFAULT_API_TIMEOUT_MS,
       ),
     filmStoryboardReset: (dialogId: string) =>
       request<{
@@ -435,7 +435,7 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ dialogId }),
         },
-        FILM_PLAN_TIMEOUT_MS,
+        DEFAULT_API_TIMEOUT_MS,
       ),
     filmStoryboardTweak: (dialogId: string, panelId: string, note: string) =>
       request<{
