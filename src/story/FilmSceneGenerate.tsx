@@ -114,8 +114,7 @@ export function FilmSceneGenerateBar({
       {expectedShots != null && stats.total < expectedShots ? (
         <p className="alert alert-warn">
           Hier sind nur {stats.total} Bild{stats.total === 1 ? '' : 'er'}, erwartet sind{' '}
-          {expectedShots} (eines je Dialogzeile). Oben auf Vom Text neu
-          drücken.
+          {expectedShots} (eines je Dialogzeile). Oben «Bilder planen» drücken.
         </p>
       ) : null}
       {busy ? (

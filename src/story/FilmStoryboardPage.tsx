@@ -347,6 +347,27 @@ export function FilmStoryboardPage() {
     )
   }
 
+  const planPictures = () => {
+    if (board) {
+      const ok = window.confirm(
+        'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen? Pro Dialogzeile entsteht ein Bild — gleiche Bilder werden wiederverwendet, bis du etwas änderst. Danach wird die erste Szene gemalt.',
+      )
+      if (!ok) return
+      void (async () => {
+        const result = await run(() => api.ai.filmStoryboardReset(id))
+        if (!result) return
+        const nextBoard = normalizeFilmStoryboard(result.board)
+        const first = nextBoard.scenes[0]
+        if (!first) return
+        const panels = nextBoard.panels.filter((p) => p.sceneId === first.id)
+        if (panels.length === 0) return
+        await stills.generate(first.id, panels, DEFAULT_STORY_ART_STYLE, false)
+      })()
+      return
+    }
+              void run(() => api.ai.filmStoryboard(id, false))
+  }
+
   return (
     <div className="page film-board-page">
       <FilmProjectNav dialogId={dialog.id} />
@@ -355,45 +376,23 @@ export function FilmStoryboardPage() {
           <h1>Bilder</h1>
         </div>
         <div className="header-actions">
+          {board ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={locked}
+              onClick={() => planPictures()}
+              title="Alte Bilder löschen, vom deutschen Dialog neu"
+            >
+              {busy ? '…' : 'Bilder planen'}
+            </button>
+          ) : null}
           <button
             type="button"
-            className="btn btn-primary"
-            disabled={locked}
-            onClick={() => {
-              if (board) {
-                const ok = window.confirm(
-                  'Alte Bilder und den Bildplan löschen und nur aus dem Dialog neu bauen? Pro Dialogzeile entsteht ein Bild — gleiche Bilder werden wiederverwendet, bis du etwas änderst. Danach wird die erste Szene gemalt.',
-                )
-                if (!ok) return
-                void (async () => {
-                  const result = await run(() => api.ai.filmStoryboardReset(id))
-                  if (!result || !id) return
-                  const nextBoard = normalizeFilmStoryboard(result.board)
-                  const first = nextBoard.scenes[0]
-                  if (!first) return
-                  const panels = nextBoard.panels.filter((p) => p.sceneId === first.id)
-                  if (panels.length === 0) return
-                  await stills.generate(
-                    first.id,
-                    panels,
-                    DEFAULT_STORY_ART_STYLE,
-                    false,
-                  )
-                })()
-                return
-              }
-              void run(() => api.ai.filmStoryboard(id))
-            }}
-            title={board ? 'Alte Bilder löschen, vom Dialog neu' : 'Storyboard aus dem Dialog'}
-          >
-            {busy ? '…' : board ? 'Vom Text neu' : 'Planen'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
+            className="btn btn-secondary"
             disabled={locked}
             onClick={() => void makeTarget()}
-            title="Zielsprache aus dem deutschen Dialog schreiben"
+            title="Zielsprache aus dem deutschen Dialog schreiben — nicht nötig für den Bildplan"
           >
             {nativeBusy ? zielspracheBusyLabel(remainingLines) : 'Zielsprache machen'}
           </button>
@@ -422,8 +421,8 @@ export function FilmStoryboardPage() {
       </div>
       {dialog && needsTarget ? (
         <p className="alert alert-warn">
-          Der Dialog ist auf Deutsch. Oben «Zielsprache machen» drücken — erst dann spricht die
-          Stimme die Lernsprache.
+          Die Stimme spricht die Lernsprache erst nach «Zielsprache machen» (Text). Den Bildplan
+          kannst du schon aus dem Deutschen machen.
         </p>
       ) : null}
       {dialog && needsNativeFill ? (
@@ -442,7 +441,7 @@ export function FilmStoryboardPage() {
       ) : null}
       {board && dialog && !boardFitsDialog ? (
         <p className="alert alert-warn">
-          Der Dialog ist neu — die alten Bilder passen nicht mehr. Oben «Vom Text neu» drücken,
+          Der Dialog ist neu — die alten Bilder passen nicht mehr. Oben «Bilder planen» drücken,
           dann entstehen die Bilder zur neuen Regie (Nahaufnahme, Zwischenbild).
         </p>
       ) : null}
@@ -499,7 +498,7 @@ export function FilmStoryboardPage() {
                   </label>
                 </header>
                 {panels.length === 0 ? (
-                  <p className="muted">Noch keine Bilder für diese Szene. Oben «Vom Text neu».</p>
+                  <p className="muted">Noch keine Bilder für diese Szene. Oben «Bilder planen».</p>
                 ) : null}
                 <FilmScenePreviewPlayer
                   dialogId={dialog.id}
@@ -617,14 +616,15 @@ export function FilmStoryboardPage() {
         </>
       ) : (
         <div className="empty-state">
-          <h2>Noch kein Bildplan</h2>
+          <p>Noch kein Bildplan. Deutsch reicht — die Zielsprache kommt später unter Text.</p>
           <button
             type="button"
             className="btn btn-primary"
             disabled={locked}
-            onClick={() => void run(() => api.ai.filmStoryboard(id))}
+            onClick={() => planPictures()}
+            title="Bildplan aus dem deutschen Dialog"
           >
-            {busy ? 'Plane …' : 'Storyboard erzeugen'}
+            {busy ? 'Plane …' : 'Bilder planen'}
           </button>
         </div>
       )}

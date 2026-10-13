@@ -616,7 +616,7 @@ export function DialogEditorPage() {
                   if (result.speechDirection) setSpeechDirectionDraft(result.speechDirection)
                   const n = d.sections.length
                   setStatus(
-                    `${n} Szene${n === 1 ? '' : 'n'} auf Deutsch. Dein Text oben ist geblieben. Danach «Zielsprache machen», dann Bilder → Vom Text neu.`,
+                    `${n} Szene${n === 1 ? '' : 'n'} auf Deutsch. Dein Text oben ist geblieben. Bilder → «Bilder planen» (Deutsch reicht). «Zielsprache machen» bleibt ein eigener Knopf.`,
                   )
                 })
               }
@@ -692,8 +692,9 @@ export function DialogEditorPage() {
           </div>
           <p className="muted dialog-meta-hint">
             Titel und Text werden laufend gespeichert. «Dialog daraus machen» schreibt alles auf Deutsch.
-            Danach «Zielsprache machen». Bei alten Filmen ohne Deutsch: «Deutsch unter die Zeilen» — die Bilder
-            bleiben. Pro Zeile stehen unten Deutsch, Zielsprache und Birkenbihl getrennt.
+            Bilder kannst du schon ohne Zielsprache planen. «Zielsprache machen» bleibt ein eigener Knopf.
+            Bei alten Filmen ohne Deutsch: «Deutsch unter die Zeilen» — die Bilder bleiben. Pro Zeile stehen
+            unten Deutsch, Zielsprache und Birkenbihl getrennt.
           </p>
         </div>
 
