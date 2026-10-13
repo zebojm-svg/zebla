@@ -171,7 +171,7 @@ export function FilmBeatText({
             speaker={line.speaker}
             nativeSlot={nativeSlotFor?.(line)}
             missingNativeHint="Noch kein Deutsch — oben «Deutsch unter die Zeilen»."
-            missingTargetHint="Noch keine Zielsprache — oben «Zielsprache machen»."
+            missingTargetHint="Zielsprache machst du unter Text"
           />
         </div>
       ))}

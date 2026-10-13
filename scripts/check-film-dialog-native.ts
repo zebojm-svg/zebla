@@ -248,11 +248,14 @@ if (!editorSrc.includes('translateTimeoutHintDe')) {
   fail('Dialog-Seite erklärt Zeitlimit: fertige Zeilen bleiben')
 }
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
-if (!boardSrc.includes('Zielsprache machen')) {
-  fail('Bilder-Seite hat den Knopf Zielsprache machen')
+if (boardSrc.includes('Zielsprache machen')) {
+  fail('Bilder-Seite hat keinen Knopf Zielsprache machen — das bleibt unter Text')
 }
-if (!boardSrc.includes('translateTargetUntilDone')) {
-  fail('Bilder-Seite macht Zielsprache in Runden, nicht in einem Rutsch')
+if (boardSrc.includes('translateTargetUntilDone')) {
+  fail('Bilder-Seite übersetzt nicht — Zielsprache bleibt unter Text')
+}
+if (!boardSrc.includes('Zielsprache machst du unter Text')) {
+  fail('fehlende Zielsprache: Hinweis auf Text, kein zweiter Knopf')
 }
 if (!boardSrc.includes('Deutsch unter die Zeilen')) {
   fail('Bilder-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
@@ -310,6 +313,22 @@ if (beatSrc.includes('Vom Text neu')) {
 }
 if (!beatSrc.includes('Bilder planen')) {
   fail('Szene-Hinweis zeigt auf Bilder planen')
+}
+if (beatSrc.includes('Zielsprache machen')) {
+  fail('Comic-Zeile hat keinen Knopf Zielsprache machen — das bleibt unter Text')
+}
+if (!beatSrc.includes('Zielsprache machst du unter Text')) {
+  fail('Comic-Zeile: fehlende Zielsprache verweist auf Text')
+}
+const previewSrc = readFileSync(new URL('../src/story/FilmScenePreview.tsx', import.meta.url), 'utf8')
+if (previewSrc.includes('Zielsprache machen')) {
+  fail('Szene-Abspielen hat keinen Knopf Zielsprache machen — das bleibt unter Text')
+}
+if (!previewSrc.includes('Zielsprache machst du unter Text')) {
+  fail('Szene-Abspielen: fehlende Zielsprache verweist auf Text')
+}
+if (!editorSrc.includes('id="ki-werkzeuge"') || !editorSrc.includes('Zielsprache machen')) {
+  fail('Zielsprache machen bleibt unter Text bei den KI-Werkzeugen')
 }
 
 const oldTargetFirst = {

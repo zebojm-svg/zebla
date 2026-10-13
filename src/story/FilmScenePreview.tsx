@@ -330,7 +330,7 @@ export function FilmScenePreviewPlayer({
             sourceLanguage={dialog.sourceLanguage}
             kind={nowLine.kind}
             missingNativeHint="Noch kein Deutsch — oben «Deutsch unter die Zeilen»."
-            missingTargetHint="Noch keine Zielsprache — oben «Zielsprache machen»."
+            missingTargetHint="Zielsprache machst du unter Text"
           />
         </div>
       ) : (
