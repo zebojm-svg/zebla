@@ -7,9 +7,14 @@ import {
   applyNativeFirstDraftLine,
   applyNativeFirstDraftSections,
   applyTargetTranslationToLine,
+  dialogNeedsNativeFill,
   dialogNeedsTargetTranslation,
+  lineGermanText,
   lineHasTargetSpeech,
+  lineNeedsNativeFill,
+  lineRomanizationText,
   lineStoryText,
+  lineTargetText,
 } from '../shared/film-dialog-native.ts'
 import { dialogNeedsNativeTranslation, planBoardWithoutAi } from '../shared/film-storyboard.ts'
 import { lineSpeechText } from '../shared/line-speech.ts'
@@ -172,9 +177,100 @@ const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', impo
 if (!editorSrc.includes('Zielsprache machen')) {
   fail('Dialog-Seite hat den Knopf Zielsprache machen')
 }
+if (!editorSrc.includes('Deutsch unter die Zeilen')) {
+  fail('Dialog-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
+}
+if (!editorSrc.includes('LineLanguageLayers')) {
+  fail('Dialog-Seite zeigt die drei Sprachschichten getrennt')
+}
+if (editorSrc.includes('BirkenbihlLine')) {
+  fail('Dialog-Seite darf Deutsch nicht in der Birkenbihl-Zeile verstecken')
+}
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
 if (!boardSrc.includes('Zielsprache machen')) {
   fail('Bilder-Seite hat den Knopf Zielsprache machen')
+}
+if (!boardSrc.includes('Deutsch unter die Zeilen')) {
+  fail('Bilder-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
+}
+const layersSrc = readFileSync(
+  new URL('../src/components/LineLanguageLayers.tsx', import.meta.url),
+  'utf8',
+)
+if (!layersSrc.includes("return 'Deutsch'")) fail('Deutsch-Schicht hat ein eigenes Schild')
+if (!layersSrc.includes("return 'Zielsprache'")) fail('Zielsprache hat ein eigenes Schild')
+if (!layersSrc.includes('>Birkenbihl<')) fail('Birkenbihl hat ein eigenes Schild')
+if (!layersSrc.includes('>Lautschrift<')) fail('Lautschrift hat ein eigenes Schild')
+const beatSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
+if (!beatSrc.includes('LineLanguageLayers')) {
+  fail('Board-Comic-Zeile zeigt die drei Sprachschichten')
+}
+
+const oldTargetFirst = {
+  id: 'old',
+  speaker: 'Ramo',
+  kind: 'speech' as const,
+  text: 'خوش آمدید',
+  birkenbihl: [
+    { text: 'خوش', translation: 'willkommen' },
+    { text: 'آمدید', translation: 'ihr-kamt' },
+  ],
+}
+if (lineGermanText(oldTargetFirst)) {
+  fail('German slot darf die Birkenbihl-Wörter nicht als Deutsch zeigen')
+}
+if (lineGermanText(oldTargetFirst) === 'willkommen ihr-kamt') {
+  fail('Birkenbihl-Wortsalat gehört nicht ins Deutsche')
+}
+if (lineTargetText(oldTargetFirst) !== 'خوش آمدید') fail('Persisch bleibt die Zielsprache')
+if (
+  lineGermanText({ ...oldTargetFirst, nativeText: 'Willkommen.' }) !== 'Willkommen.'
+) {
+  fail('gespeichertes Deutsch ohne neuen Film zeigen')
+}
+if (!lineNeedsNativeFill(oldTargetFirst)) {
+  fail('ohne Deutsch braucht der alte Film Deutsch unter die Zeilen')
+}
+if (
+  lineNeedsNativeFill({
+    ...oldTargetFirst,
+    nativeText: 'Willkommen.',
+    birkenbihl: [{ text: 'خوش', translation: 'willkommen', romanization: 'khosh' }],
+  })
+) {
+  fail('mit Deutsch und Birkenbihl ist Deutsch unter die Zeilen nicht nötig')
+}
+if (
+  !lineNeedsNativeFill({
+    ...oldTargetFirst,
+    nativeText: 'Willkommen.',
+    birkenbihl: undefined,
+  })
+) {
+  fail('mit Deutsch aber ohne Birkenbihl fehlt die dritte Schicht')
+}
+if (lineRomanizationText(filled) !== 'khosh') fail('Lautschrift getrennt aus den Wörtern')
+
+const oldDialog: Dialog = {
+  ...nativeDialog,
+  sections: [
+    {
+      id: 'old-s',
+      title: 'Wohnzimmer',
+      lines: [oldTargetFirst],
+    },
+  ],
+}
+if (!dialogNeedsNativeFill(oldDialog)) fail('alter Film ohne Deutsch: Knopf Deutsch unter die Zeilen')
+if (dialogNeedsNativeFill(nativeDialog)) fail('neuer Film auf Deutsch: kein Deutsch unter die Zeilen')
+
+const handlersSrc = readFileSync(new URL('../lib/ai-handlers.ts', import.meta.url), 'utf8')
+const birkenFn = handlersSrc.split('export async function handleBirkenbihl')[1]?.split(
+  'export async function',
+)[0]
+if (!birkenFn) fail('Deutsch unter die Zeilen geht über handleBirkenbihl')
+if (birkenFn.includes('filmStoryboard')) {
+  fail('Deutsch unter die Zeilen darf den Bildplan nicht löschen')
 }
 
 console.log('OK: Dialog zuerst Muttersprache, Zielsprache per Knopf')

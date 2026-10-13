@@ -23,6 +23,37 @@ export function lineHasTargetSpeech(
   return Boolean(line.text?.trim())
 }
 
+/** Normale Muttersprache — nie die Birkenbihl-Wortfolge. */
+export function lineGermanText(
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'kind' | 'speaker' | 'cueImage'>,
+): string {
+  const native = line.nativeText?.trim()
+  if (native) return native
+  if (!lineHasTargetSpeech(line)) return (line.text || '').trim()
+  return ''
+}
+
+/** Zielsprache (z. B. Persisch) — leer bis «Zielsprache machen», Handlung nie. */
+export function lineTargetText(
+  line: Pick<DialogLine, 'text' | 'kind' | 'speaker' | 'cueImage'>,
+): string {
+  if (!lineHasTargetSpeech(line)) return ''
+  return (line.text || '').trim()
+}
+
+export function lineBirkenbihlWords(
+  line: Pick<DialogLine, 'birkenbihl'>,
+): BirkenbihlWord[] {
+  return line.birkenbihl?.length ? line.birkenbihl : []
+}
+
+export function lineRomanizationText(line: Pick<DialogLine, 'birkenbihl'>): string {
+  return lineBirkenbihlWords(line)
+    .map((w) => w.romanization?.trim())
+    .filter(Boolean)
+    .join(' ')
+}
+
 export function dialogNeedsTargetTranslation(dialog: Pick<Dialog, 'sections'>): boolean {
   return dialog.sections.some((s) =>
     s.lines.some((l) => {
@@ -30,6 +61,21 @@ export function dialogNeedsTargetTranslation(dialog: Pick<Dialog, 'sections'>): 
       return Boolean(lineStoryText(l)) && !lineHasTargetSpeech(l)
     }),
   )
+}
+
+/** Alte Filme: Zielsprache steht, Deutsch oder Birkenbihl fehlt — «Deutsch unter die Zeilen». */
+export function lineNeedsNativeFill(
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'birkenbihl' | 'kind' | 'speaker' | 'cueImage'>,
+): boolean {
+  if (inferDialogLineKind(line) === 'action') return false
+  if (!lineHasTargetSpeech(line)) return false
+  if (!lineGermanText(line)) return true
+  if (!lineBirkenbihlWords(line).length) return true
+  return false
+}
+
+export function dialogNeedsNativeFill(dialog: Pick<Dialog, 'sections'>): boolean {
+  return dialog.sections.some((s) => s.lines.some(lineNeedsNativeFill))
 }
 
 /** Gesprochene Zeile in die Muttersprache legen, Zielsprache leeren. Handlung bleibt Deutsch. */

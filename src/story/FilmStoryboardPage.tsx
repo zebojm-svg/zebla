@@ -17,6 +17,7 @@ import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
   boardNeedsDrawing,
+  dialogNeedsNativeFill,
   dialogNeedsNativeTranslation,
   dialogNeedsTargetTranslation,
   expectedSceneShotCount,
@@ -224,6 +225,7 @@ export function FilmStoryboardPage() {
   const stills = useSceneStills(id, apply)
   const locked = busy || nativeBusy || stills.busySceneId !== null
   const needsGerman = dialog ? dialogNeedsNativeTranslation(dialog) : false
+  const needsNativeFill = dialog ? dialogNeedsNativeFill(dialog) : false
   const needsTarget = dialog ? dialogNeedsTargetTranslation(dialog) : false
 
   const run = async (fn: () => Promise<{ dialog: Dialog; board: FilmStoryboard }>) => {
@@ -346,15 +348,15 @@ export function FilmStoryboardPage() {
               {nativeBusy ? '…' : 'Zielsprache machen'}
             </button>
           ) : null}
-          {needsGerman ? (
+          {needsNativeFill ? (
             <button
               type="button"
               className="btn btn-secondary"
               disabled={locked}
               onClick={() => void fetchGerman()}
-              title="Normale deutsche Übersetzung unter den Dialog schreiben (keine Wort-für-Wort-Zeile)"
+              title="Deutsches und Birkenbihl aus der Zielsprache schreiben — Bilder bleiben"
             >
-              {nativeBusy ? '…' : 'Deutsch anzeigen'}
+              {nativeBusy ? '…' : 'Deutsch unter die Zeilen'}
             </button>
           ) : null}
         </div>
@@ -367,10 +369,11 @@ export function FilmStoryboardPage() {
           Stimme die Lernsprache.
         </p>
       ) : null}
-      {dialog && needsGerman ? (
+      {dialog && needsNativeFill ? (
         <p className="alert alert-warn">
-          In der Spalte Deutsch fehlt noch die normale Übersetzung. Hier «Deutsch anzeigen»
-          drücken.
+          {needsGerman
+            ? 'Deutsch (normale Sprache) fehlt noch. «Deutsch unter die Zeilen» schreibt Deutsch und Birkenbihl aus der Zielsprache — die Bilder bleiben.'
+            : 'Birkenbihl fehlt noch. «Deutsch unter die Zeilen» füllt es aus der Zielsprache — die Bilder bleiben.'}
         </p>
       ) : null}
       {repeatedTitles.length > 0 ? (

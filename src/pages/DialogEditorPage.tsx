@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { BirkenbihlLine } from '../components/BirkenbihlLine'
+import { LineLanguageLayers } from '../components/LineLanguageLayers'
 import { LanguageFlag } from '../components/LanguageFlag'
 import { inferDialogLineKind, LANGUAGES, languageName, needsRomanization } from '../types'
 import { getIncludeRomanization, setIncludeRomanization, getAskVisualQuestions, setAskVisualQuestions } from '../lib/preferences'
@@ -24,7 +24,12 @@ import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
 import { StoryMetaSheet } from '../story/StoryMetaSheet'
 import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
-import { dialogNeedsTargetTranslation, repeatedDialogSectionTitles } from '../../shared/film-storyboard'
+import {
+  dialogNeedsNativeFill,
+  dialogNeedsTargetTranslation,
+  repeatedDialogSectionTitles,
+} from '../../shared/film-storyboard'
+import { lineGermanText, lineTargetText } from '../../shared/film-dialog-native'
 import { normalizeStoryMeta } from '../../shared/story-project'
 import { patchFilmDraft } from '../lib/filmDraftSave'
 import type { Dialog, DialogLineKind, FilmDraftMode, StoryMeta, VisualQuestion } from '../types'
@@ -392,6 +397,11 @@ export function DialogEditorPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-warn">{status}</div>}
+      {dialogNeedsNativeFill(dialog) ? (
+        <p className="alert alert-warn">
+          Deutsch oder Birkenbihl fehlt. Oben «Deutsch unter die Zeilen» drücken — die Bilder bleiben.
+        </p>
+      ) : null}
       {repeatedDialogSectionTitles(dialog).length > 0 ? (
         <p className="alert alert-warn">
           Spätere Szenen haben denselben Dialog wie die erste. Oben «Dialog daraus machen»
@@ -543,12 +553,33 @@ export function DialogEditorPage() {
                   )
                   setDialog(d)
                   setStatus(
-                    `${languageName(dialog.targetLanguage)} steht jetzt unter dem deutschen Dialog. Die Regie bleibt Deutsch.`,
+                    `${languageName(dialog.targetLanguage)}, Birkenbihl und Lautschrift stehen als eigene Zeilen. Die Regie bleibt Deutsch.`,
                   )
                 })
               }}
             >
               {busy === 'target-lang' ? 'Bitte warten …' : 'Zielsprache machen'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={!!busy || !dialogNeedsNativeFill(dialog)}
+              onClick={async () => {
+                if (!(await confirmCost(estimateBirkenbihl(lineCount(dialog))))) return
+                await runAction('native-fill', async () => {
+                  const { dialog: d } = await api.ai.birkenbihl(
+                    dialog.id,
+                    dialog.sourceLanguage || 'de',
+                    includeRomanization,
+                  )
+                  setDialog(d)
+                  setStatus(
+                    'Deutsch (normale Sprache) und Birkenbihl stehen jetzt als eigene Zeilen. Die Bilder bleiben.',
+                  )
+                })
+              }}
+            >
+              {busy === 'native-fill' ? 'Bitte warten …' : 'Deutsch unter die Zeilen'}
             </button>
             <button
               type="button"
@@ -575,7 +606,8 @@ export function DialogEditorPage() {
           </div>
           <p className="muted dialog-meta-hint">
             Titel und Text werden laufend gespeichert. «Dialog daraus machen» schreibt alles auf Deutsch.
-            Danach «Zielsprache machen». Pro Zeile kannst du unten noch Bild / Ton / Sprache ergänzen.
+            Danach «Zielsprache machen». Bei alten Filmen ohne Deutsch: «Deutsch unter die Zeilen» — die Bilder
+            bleiben. Pro Zeile stehen unten Deutsch, Zielsprache und Birkenbihl getrennt.
           </p>
         </div>
 
@@ -670,7 +702,8 @@ export function DialogEditorPage() {
             <span className="tool-label">Zielsprache machen</span>
             <p className="tool-hint muted">
               Der Dialog bleibt auf Deutsch. Die KI schreibt {languageName(dialog.targetLanguage)}{' '}
-              dazu — und bei Bedarf Lautschrift. Regie-Notizen bleiben Deutsch.
+              und Birkenbihl als eigene Zeilen dazu — und bei Bedarf Lautschrift. Regie bleibt
+              Deutsch.
             </p>
             <div className="tool-controls">
               <span className="lang-select-row">
@@ -699,7 +732,7 @@ export function DialogEditorPage() {
                     setStatus(
                       unchanged && message
                         ? message
-                        : `${languageName(translateLang)} steht unter dem deutschen Dialog.`,
+                        : `${languageName(translateLang)}, Birkenbihl und Lautschrift stehen als eigene Zeilen.`,
                     )
                   })
                 }}
@@ -712,8 +745,8 @@ export function DialogEditorPage() {
           <div className="tool-group tool-group--stack">
             <span className="tool-label">Deutsch unter die Zeilen</span>
             <p className="tool-hint muted">
-              Lässt den Dialog. Schreibt {languageName(birkenbihlLang)} darunter — das brauchst du
-              auf der Bilder-Seite. Kann bis zu zwei Minuten dauern.
+              Für alte Filme: lässt {languageName(dialog.targetLanguage)} und die Bilder. Schreibt
+              Deutsch (normale Sprache) und Birkenbihl dazu. Kann bis zu zwei Minuten dauern.
             </p>
             <div className="tool-controls">
               <span className="lang-select-row">
@@ -741,12 +774,12 @@ export function DialogEditorPage() {
                     )
                     setDialog(d)
                     setStatus(
-                      'Deutsch steht unter den Zeilen. Oben auf Bilder, dann die Spalte Deutsch prüfen.',
+                      'Deutsch und Birkenbihl stehen als eigene Zeilen. Die Bilder bleiben.',
                     )
                   })
                 }}
               >
-                {busy === 'birkenbihl' ? 'Bitte warten …' : 'Deutsch schreiben'}
+                {busy === 'birkenbihl' ? 'Bitte warten …' : 'Deutsch unter die Zeilen'}
               </button>
             </div>
             {needsRomanization(dialog.targetLanguage) && (
@@ -998,11 +1031,14 @@ export function DialogEditorPage() {
                       <option value="narrator">Erzähler</option>
                     </select>
                   </div>
-                  <BirkenbihlLine
-                    line={line}
+                  <LineLanguageLayers
+                    nativeText={lineGermanText(line)}
+                    targetText={lineTargetText(line)}
+                    birkenbihl={line.birkenbihl}
                     targetLanguage={dialog.targetLanguage}
-                    nativeLanguage={dialog.sourceLanguage}
+                    sourceLanguage={dialog.sourceLanguage}
                     showRomanization={includeRomanization}
+                    kind={inferDialogLineKind(line)}
                   />
                   <div className="film-line-cues">
                     <input

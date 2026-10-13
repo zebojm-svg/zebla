@@ -416,6 +416,21 @@ if (
 ) {
   fail('Normale deutsche Übersetzung nutzen, mit lesbarem Namen')
 }
+const saladDe = biOnly.birkenbihl.map((w) => w.translation).join(' ')
+if (lineNativeDe({ ...biOnly, nativeText: 'Ubai ist müde.' }) === saladDe) {
+  fail('Deutsch-Schicht ist kein Birkenbihl-Wortsalat')
+}
+if (!talk.some((l) => l.birkenbihl?.length)) {
+  fail('Birkenbihl kommt als eigenes Feld neben Deutsch und Zielsprache')
+}
+if (talk.some((l) => l.nativeDe && l.birkenbihl?.map((w) => w.text).join(' ') === l.nativeDe)) {
+  fail('Deutsch-Schicht darf nicht die Zielwörter der Birkenbihl sein')
+}
+const layersUi = readFileSync(new URL('../src/components/LineLanguageLayers.tsx', import.meta.url), 'utf8')
+if (!layersUi.includes("return 'Deutsch'")) fail('Board/Editor: Schild Deutsch')
+if (!layersUi.includes('>Birkenbihl<')) fail('Board/Editor: Schild Birkenbihl')
+if (!layersUi.includes("return 'Zielsprache'")) fail('Board/Editor: Schild Zielsprache')
+if (!layersUi.includes('>Lautschrift<')) fail('Board/Editor: Schild Lautschrift')
 const spoken = panelSpeakLines(s1[0]!, dialog)
 if (!spoken[0]?.text) fail('Szene abspielen braucht den gesprochenen Text')
 const beats = scenePreviewBeats(s1, dialog)

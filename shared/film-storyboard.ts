@@ -8,13 +8,17 @@ import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
 import {
+  dialogNeedsNativeFill,
   dialogNeedsTargetTranslation,
+  lineGermanText,
   lineHasTargetSpeech,
   lineStoryText,
+  lineTargetText,
 } from './film-dialog-native.js'
 import {
   inferDialogLineKind,
   isStageSpeaker,
+  type BirkenbihlWord,
   type Dialog,
   type DialogLine,
   type DialogLineKind,
@@ -748,7 +752,13 @@ export function dialogNeedsNativeTranslation(dialog: Pick<Dialog, 'sections'>): 
   )
 }
 
-export { dialogNeedsTargetTranslation, lineStoryText, lineHasTargetSpeech }
+export {
+  dialogNeedsNativeFill,
+  dialogNeedsTargetTranslation,
+  lineGermanText,
+  lineStoryText,
+  lineHasTargetSpeech,
+}
 
 export function closeupExprKey(hint?: string): string {
   const t = (hint || 'neutral').trim().toLowerCase()
@@ -1208,18 +1218,18 @@ function guessNames(text: string): string[] {
 export interface FilmPanelDialogueLine {
   speaker: string
   text: string
-  /** Muttersprache aus Birkenbihl, oft Deutsch. */
+  /** Muttersprache, oft Deutsch — nie die Birkenbihl-Wortfolge. */
   nativeDe?: string
+  birkenbihl?: BirkenbihlWord[]
+  kind?: DialogLineKind
   lineId?: string
   audioUrl?: string
 }
 
 export function lineNativeDe(
-  line: Pick<DialogLine, 'nativeText' | 'birkenbihl' | 'speaker'>,
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'kind' | 'speaker' | 'cueImage'>,
 ): string {
-  const fluent = line.nativeText?.trim()
-  if (fluent) return fluent
-  return ''
+  return lineGermanText(line)
 }
 
 function allDialogLines(dialog: Pick<Dialog, 'sections'>): Map<string, DialogLine> {
@@ -1272,8 +1282,10 @@ function toFilmDialogueLine(line: DialogLine): FilmPanelDialogueLine {
       : line.speaker
   return {
     speaker,
-    text: line.text.trim(),
-    nativeDe: lineNativeDe(line) || (lineHasTargetSpeech(line) ? '' : lineStoryText(line)),
+    text: lineTargetText(line),
+    nativeDe: lineGermanText(line),
+    birkenbihl: line.birkenbihl,
+    kind,
     lineId: line.id,
     audioUrl: line.audioUrl,
   }
