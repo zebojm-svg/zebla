@@ -32,7 +32,7 @@ import { buildVisualBrief, neededVisualQuestions, testImagePrompt } from './visu
 import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
-import { languageName } from '../shared/types.js'
+import { inferDialogLineKind, languageName } from '../shared/types.js'
 import { dialogNeedsTargetTranslation } from '../shared/film-dialog-native.js'
 import { findLineInDialog } from './dialog-audio.js'
 
@@ -199,12 +199,26 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
-    const fillFromNative = Boolean(fromNative) || dialogNeedsTargetTranslation(dialog)
-    if (!fillFromNative && dialog.targetLanguage === targetLanguage) {
+    const hasNativeSource = dialog.sections.some((s) =>
+      s.lines.some(
+        (l) => inferDialogLineKind(l) !== 'action' && Boolean(l.nativeText?.trim()),
+      ),
+    )
+    const needsTarget = dialogNeedsTargetTranslation(dialog)
+    const fillFromNative = Boolean(fromNative) || needsTarget || hasNativeSource
+    if (!needsTarget && dialog.targetLanguage === targetLanguage && !fromNative) {
       res.json({
         dialog,
         unchanged: true,
-        message: `Der Dialog ist schon ${languageName(targetLanguage)}. Für Deutsch und Birkenbihl «Deutsch unter die Zeilen» drücken — die Bilder bleiben.`,
+        message: `Die Zielsprache ${languageName(targetLanguage)} steht schon. Für fehlendes Deutsch «Deutsch unter die Zeilen» — die Bilder bleiben.`,
+      })
+      return
+    }
+    if (fillFromNative && !needsTarget && dialog.targetLanguage === targetLanguage) {
+      res.json({
+        dialog,
+        unchanged: true,
+        message: `${languageName(targetLanguage)} steht schon in der Zielsprache-Zeile. Deutsch bleibt in der Deutsch-Zeile.`,
       })
       return
     }
@@ -227,7 +241,12 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.json({ dialog: updated })
       return
     }
-    const translated = await translateDialog(allLines, targetLanguage)
+    const spoken = allLines.filter((l) => inferDialogLineKind(l) !== 'action')
+    const translatedSpoken = await translateDialog(spoken, targetLanguage)
+    let t = 0
+    const translated = allLines.map((l) =>
+      inferDialogLineKind(l) === 'action' ? l : (translatedSpoken[t++] ?? l),
+    )
     const sections = remapLinesToSections(dialog.sections, translated)
     const updated = await updateDialog(
       dialog.id,

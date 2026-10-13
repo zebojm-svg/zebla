@@ -12,13 +12,16 @@ import {
   lineGermanText,
   lineHasTargetSpeech,
   lineNeedsNativeFill,
+  lineNeedsTargetTranslation,
   lineRomanizationText,
   lineStoryText,
   lineTargetText,
+  mergeTranslatedTargetLines,
+  prepareLinesForTargetTranslation,
 } from '../shared/film-dialog-native.ts'
 import { dialogNeedsNativeTranslation, planBoardWithoutAi } from '../shared/film-storyboard.ts'
 import { lineSpeechText } from '../shared/line-speech.ts'
-import type { Dialog, DialogSection } from '../shared/types.ts'
+import type { Dialog, DialogLine, DialogSection } from '../shared/types.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -169,6 +172,30 @@ if (!aiSrc.includes('applyNativeFirstDraftSections')) {
 if (!aiSrc.includes('translateNativeDialogToTarget')) {
   fail('Es gibt einen Übersetzer Muttersprache → Zielsprache')
 }
+const nativeFn = aiSrc.split('export async function translateNativeDialogToTarget')[1]?.split(
+  'export async function',
+)[0]
+if (!nativeFn?.includes('prepareLinesForTargetTranslation')) {
+  fail('Übersetzer sichert Deutsch bevor die Zielsprache kommt')
+}
+if (!nativeFn?.includes('mergeTranslatedTargetLines')) {
+  fail('Übersetzer schreibt die Zielsprache nach text, nicht nach nativeText')
+}
+if (!nativeFn?.includes('applyBirkenbihlDialog')) {
+  fail('Birkenbihl nach der Zielsprache in Paketen, nicht in einem Rutsch')
+}
+if (!/catch\s*\{[\s\S]*return merged/.test(nativeFn ?? '')) {
+  fail('Zielsprache bleibt gespeichert, auch wenn Birkenbihl scheitert')
+}
+if (!aiSrc.includes('l.nativeText || l.text')) {
+  fail('Übersetzer liest Deutsch aus nativeText oder text')
+}
+if (!aiSrc.includes('languageName(targetLanguage)')) {
+  fail('Übersetzer sagt Persisch/Dari, nicht nur fa')
+}
+if (!aiSrc.includes('row?.nativeText')) {
+  fail('Birkenbihl stürzt nicht ab wenn die KI eine Zeile auslässt')
+}
 if (!aiSrc.includes('ALLE Regie auf Deutsch')) {
   fail('Regie bleibt Deutsch im Prompt')
 }
@@ -186,9 +213,18 @@ if (!editorSrc.includes('LineLanguageLayers')) {
 if (editorSrc.includes('BirkenbihlLine')) {
   fail('Dialog-Seite darf Deutsch nicht in der Birkenbihl-Zeile verstecken')
 }
+if (!editorSrc.includes('includeRomanization')) {
+  fail('Dialog-Seite schickt Lautschrift mit an Zielsprache machen')
+}
+if (!/true,\s*includeRomanization/.test(editorSrc)) {
+  fail('Dialog-Seite ruft translate mit fromNative auf')
+}
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
 if (!boardSrc.includes('Zielsprache machen')) {
   fail('Bilder-Seite hat den Knopf Zielsprache machen')
+}
+if (!boardSrc.includes('translate(id, dialog.targetLanguage, true')) {
+  fail('Bilder-Seite ruft translate mit fromNative auf')
 }
 if (!boardSrc.includes('Deutsch unter die Zeilen')) {
   fail('Bilder-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
@@ -255,6 +291,85 @@ if (
 }
 if (lineRomanizationText(filled) !== 'khosh') fail('Lautschrift getrennt aus den Wörtern')
 
+const germanInBoth: DialogLine = {
+  id: 'both',
+  speaker: 'Ramo',
+  kind: 'speech',
+  text: 'Willkommen, Khan.',
+  nativeText: 'Willkommen, Khan.',
+  cueImage: 'Nahaufnahme Ramo',
+  imageUrl: 'https://img/still.png',
+}
+if (!lineNeedsTargetTranslation(germanInBoth, 'fa')) {
+  fail('Deutsch in text und nativeText: Zielsprache fehlt noch')
+}
+const leftoverDialog: Dialog = {
+  ...nativeDialog,
+  sections: [{ id: 's-both', title: 'Wohnzimmer', lines: [germanInBoth] }],
+}
+if (!dialogNeedsTargetTranslation(leftoverDialog)) {
+  fail('Knopf Zielsprache machen trotz Deutsch in text')
+}
+
+const germanOnlyInText = {
+  id: 'latin',
+  speaker: 'Ramo',
+  kind: 'speech' as const,
+  text: 'Setz dich bitte.',
+  cueImage: 'Ramo zeigt auf das Kissen',
+}
+if (!lineNeedsTargetTranslation(germanOnlyInText, 'fa')) {
+  fail('lateinischer Text bei Persisch ist noch Deutsch, nicht die Zielsprache')
+}
+if (lineNeedsTargetTranslation(oldTargetFirst, 'fa')) {
+  fail('alter Film mit Persisch braucht nicht Zielsprache machen')
+}
+
+const prepared = prepareLinesForTargetTranslation([
+  speech,
+  action,
+  germanInBoth,
+  {
+    ...germanOnlyInText,
+    imageUrl: 'https://img/seat.png',
+    cueSound: '',
+    cueSpeech: 'freundlich',
+  },
+])
+const prepSpeech = prepared.find((l) => l.id === 'sp1')!
+const prepAction = prepared.find((l) => l.id === 'a1')!
+const prepBoth = prepared.find((l) => l.id === 'both')!
+const prepLatin = prepared.find((l) => l.id === 'latin')!
+if (prepSpeech.text.trim()) fail('Vorbereitung: Zielsprache-Slot leer')
+if (prepSpeech.nativeText !== 'Willkommen, Khan.') fail('Vorbereitung: Deutsch in nativeText')
+if (prepSpeech.cueImage !== 'Nahaufnahme Ramo') fail('Vorbereitung: Regie bleibt')
+if (prepAction.text !== 'Ramo füllt Wasser in den Kessel.') fail('Vorbereitung: Handlung bleibt Deutsch')
+if (prepBoth.nativeText !== 'Willkommen, Khan.') fail('Vorbereitung: Deutsch aus beiden Feldern behalten')
+if (prepBoth.text.trim()) fail('Vorbereitung: doppeltes Deutsch nicht als Ziel lassen')
+if (prepBoth.imageUrl !== 'https://img/still.png') fail('Vorbereitung: Standbild bleibt')
+if (prepLatin.nativeText !== 'Setz dich bitte.') fail('Vorbereitung: Deutsch aus text holen')
+if (prepLatin.text.trim()) fail('Vorbereitung: lateinischen Text nicht als Persisch behalten')
+
+const merged = mergeTranslatedTargetLines(prepared, [
+  { text: 'خوش آمدید، خان' },
+  { text: 'خوش آمدید، خان' },
+  { text: 'بشین لطفاً' },
+])
+const mSpeech = merged.find((l) => l.id === 'sp1')!
+const mAction = merged.find((l) => l.id === 'a1')!
+const mBoth = merged.find((l) => l.id === 'both')!
+const mLatin = merged.find((l) => l.id === 'latin')!
+if (mSpeech.text !== 'خوش آمدید، خان') fail('Merge schreibt die Zielsprache nach text')
+if (mSpeech.nativeText !== 'Willkommen, Khan.') fail('Merge lässt Deutsch in nativeText')
+if (mSpeech.cueImage !== 'Nahaufnahme Ramo') fail('Merge lässt Bild-Regie auf Deutsch')
+if (mAction.text !== 'Ramo füllt Wasser in den Kessel.') fail('Merge übersetzt Handlung nicht')
+if (mBoth.text !== 'خوش آمدید، خان') fail('Merge füllt Zielsprache trotz Deutsch in text')
+if (mBoth.nativeText !== 'Willkommen, Khan.') fail('Merge wischt Deutsch nicht weg')
+if (mBoth.imageUrl !== 'https://img/still.png') fail('Merge lässt das Standbild')
+if (mLatin.text !== 'بشین لطفاً') fail('Merge füllt Zielsprache aus deutschem text')
+if (mLatin.nativeText !== 'Setz dich bitte.') fail('Merge legt Deutsch nach nativeText')
+if (mLatin.cueImage !== 'Ramo zeigt auf das Kissen') fail('Merge lässt Regie')
+
 const oldDialog: Dialog = {
   ...nativeDialog,
   sections: [
@@ -275,6 +390,22 @@ const birkenFn = handlersSrc.split('export async function handleBirkenbihl')[1]?
 if (!birkenFn) fail('Deutsch unter die Zeilen geht über handleBirkenbihl')
 if (birkenFn.includes('filmStoryboard')) {
   fail('Deutsch unter die Zeilen darf den Bildplan nicht löschen')
+}
+const translateFn = handlersSrc.split('export async function handleTranslate')[1]?.split(
+  'export async function',
+)[0]
+if (!translateFn) fail('Zielsprache machen geht über handleTranslate')
+if (!translateFn.includes('fromNative')) fail('Knopf schickt fromNative')
+if (!translateFn.includes('translateNativeDialogToTarget')) {
+  fail('API übersetzt Muttersprache → Zielsprache, nicht umgekehrt')
+}
+if (translateFn.includes('filmStoryboard')) {
+  fail('Zielsprache machen darf den Bildplan nicht löschen')
+}
+const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+if (!clientSrc.includes('fromNative')) fail('Client schickt fromNative')
+if (!clientSrc.includes('includeRomanization')) {
+  fail('Client kann Lautschrift mitbestellen')
 }
 
 console.log('OK: Dialog zuerst Muttersprache, Zielsprache per Knopf')

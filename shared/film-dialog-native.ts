@@ -5,7 +5,14 @@
  * Regie-Notizen bleiben Deutsch.
  */
 
-import { inferDialogLineKind, type Dialog, type DialogLine, type DialogSection } from './types.js'
+import {
+  inferDialogLineKind,
+  isRtlLanguage,
+  needsRomanization,
+  type Dialog,
+  type DialogLine,
+  type DialogSection,
+} from './types.js'
 import type { BirkenbihlWord } from './types.js'
 
 export function lineStoryText(
@@ -54,13 +61,76 @@ export function lineRomanizationText(line: Pick<DialogLine, 'birkenbihl'>): stri
     .join(' ')
 }
 
-export function dialogNeedsTargetTranslation(dialog: Pick<Dialog, 'sections'>): boolean {
+/** Deutscher Satz, aus dem «Zielsprache machen» übersetzt (nativeText oder noch text). */
+export function lineNativeSourceForTarget(
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'kind' | 'speaker' | 'cueImage'>,
+): string {
+  if (inferDialogLineKind(line) === 'action') return ''
+  return (line.nativeText || line.text || '').trim()
+}
+
+/**
+ * Gesprochene Zeile hat Deutsch, aber noch keine echte Zielsprache.
+ * native-first: Deutsch darf in nativeText ODER (kurz) in text stehen — text === Deutsch zählt nicht als Ziel.
+ * Alte Filme mit Persisch/Arabisch in text und ohne Deutsch: nicht hier, sondern «Deutsch unter die Zeilen».
+ */
+export function lineNeedsTargetTranslation(
+  line: Pick<DialogLine, 'text' | 'nativeText' | 'birkenbihl' | 'kind' | 'speaker' | 'cueImage'>,
+  targetLanguage?: string,
+): boolean {
+  if (inferDialogLineKind(line) === 'action') return false
+  const german = (line.nativeText || '').trim()
+  const spoken = (line.text || '').trim()
+  if (german) return !spoken || spoken === german
+  if (!spoken) return false
+  if (lineBirkenbihlWords(line).length) return false
+  if (targetLanguage && (isRtlLanguage(targetLanguage) || needsRomanization(targetLanguage))) {
+    return !/[^\u0000-\u024F]/.test(spoken)
+  }
+  return false
+}
+
+export function dialogNeedsTargetTranslation(
+  dialog: Pick<Dialog, 'sections'> & { targetLanguage?: string },
+): boolean {
   return dialog.sections.some((s) =>
-    s.lines.some((l) => {
-      if (inferDialogLineKind(l) === 'action') return false
-      return Boolean(lineStoryText(l)) && !lineHasTargetSpeech(l)
-    }),
+    s.lines.some((l) => lineNeedsTargetTranslation(l, dialog.targetLanguage)),
   )
+}
+
+/** Deutsch sichern, Ziel-Slot leeren wenn dort noch die Muttersprache steht. Bilder/Regie bleiben. */
+export function prepareLinesForTargetTranslation(lines: DialogLine[]): DialogLine[] {
+  return lines.map((line) => {
+    const kind = inferDialogLineKind(line)
+    if (kind === 'action') {
+      const native = lineStoryText(line)
+      return applyNativeFirstDraftLine({ ...line, text: native, nativeText: native })
+    }
+    const native = lineNativeSourceForTarget(line)
+    const spoken = (line.text || '').trim()
+    const targetStillSource = !spoken || spoken === native
+    return {
+      ...line,
+      kind,
+      nativeText: native || undefined,
+      text: targetStillSource ? '' : spoken,
+      audioUrl: targetStillSource ? undefined : line.audioUrl,
+    }
+  })
+}
+
+/** KI-Übersetzungen in text schreiben — nativeText, Regie und Standbilder bleiben. */
+export function mergeTranslatedTargetLines(
+  lines: DialogLine[],
+  translated: Array<{ text?: string } | undefined>,
+): DialogLine[] {
+  let j = 0
+  return lines.map((line) => {
+    if (!lineNeedsTargetTranslation(line)) return line
+    const target = translated[j++]?.text?.trim() || ''
+    if (!target) return line
+    return applyTargetTranslationToLine(line, target)
+  })
 }
 
 /** Alte Filme: Zielsprache steht, Deutsch oder Birkenbihl fehlt — «Deutsch unter die Zeilen». */

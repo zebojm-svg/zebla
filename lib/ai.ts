@@ -35,7 +35,9 @@ import {
   applyTargetTranslationToLine,
   lineHasTargetSpeech,
   lineNeedsNativeFill,
-  lineStoryText,
+  lineNeedsTargetTranslation,
+  mergeTranslatedTargetLines,
+  prepareLinesForTargetTranslation,
 } from '../shared/film-dialog-native.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
@@ -670,25 +672,45 @@ Antwortformat als JSON:
   return { reply: parsed.reply.replace('[FERTIG]', '').trim(), dialog }
 }
 
+const TRANSLATE_CHUNK = 8
+
+function jsonLineRows<T>(result: { lines?: T[] } | T[] | null | undefined): T[] {
+  if (Array.isArray(result)) return result
+  if (result && Array.isArray(result.lines)) return result.lines
+  return []
+}
+
 export async function translateDialog(
   lines: DialogLine[],
   targetLanguage: string,
 ): Promise<DialogLine[]> {
-  const result = await chatJson<{ lines: { speaker: string; text: string }[] }>(
-    `Du übersetzt Dialogzeilen präzise in ${targetLanguage}.
-Antworte als JSON: { "lines": [{ "speaker": "...", "text": "..." }] }
-Sprecher-Namen bleiben in lateinischer Schrift wie angegeben (z. B. Ramo, Khan, Ubai, Schöme) — nicht umschreiben.
-Gleiche Anzahl Zeilen.`,
-    JSON.stringify(lines.map((l) => ({ speaker: l.speaker, text: l.text }))),
-    { temperature: 0.2 },
-  )
-
-  return result.lines.map((l, i) => ({
-    ...(lines[i] ?? { id: newLineId(), speaker: '', text: '' }),
-    id: lines[i]?.id ?? newLineId(),
-    speaker: l.speaker || lines[i]?.speaker || '',
-    text: l.text,
-  }))
+  const targetName = languageName(targetLanguage)
+  const out: DialogLine[] = []
+  for (let i = 0; i < lines.length; i += TRANSLATE_CHUNK) {
+    const chunk = lines.slice(i, i + TRANSLATE_CHUNK)
+    const payload = chunk.map((l) => ({
+      speaker: l.speaker,
+      text: (l.nativeText || l.text || '').trim(),
+    }))
+    const result = await chatJson<{ lines?: { speaker: string; text: string }[] }>(
+      `Du übersetzt gesprochene Dialogzeilen von der Muttersprache (meist Deutsch) ins ${targetName} (Code: ${targetLanguage}).
+Feld "text" jedes Eintrags ist die Muttersprache — noch NICHT die Zielsprache.
+Schreibe in "text" NUR die Übersetzung auf ${targetName}. Nicht auf Deutsch lassen. Kein Birkenbihl, keine Lautschrift, keine Umschrift.
+Sprecher-Namen bleiben in lateinischer Schrift (Ramo, Khan, Ubai, Schöme).
+Gleiche Anzahl Zeilen. JSON: { "lines": [{ "speaker": "...", "text": "Satz auf ${targetName}" }] }`,
+      JSON.stringify(payload),
+      { temperature: 0.2 },
+    )
+    const rows = jsonLineRows(result)
+    chunk.forEach((line, j) => {
+      out.push({
+        ...line,
+        speaker: rows[j]?.speaker || line.speaker,
+        text: rows[j]?.text?.trim() || '',
+      })
+    })
+  }
+  return out
 }
 
 /** Deutsch (Muttersprache) ändern → Zielsprache nachziehen, falls sie schon da ist. */
@@ -709,7 +731,7 @@ export async function rewriteLineFromNative(
     })
   }
   const translated = await translateDialog(
-    [{ ...line, text: trimmed }],
+    [{ ...line, nativeText: trimmed, text: trimmed }],
     targetLanguage,
   )
   const withText = applyTargetTranslationToLine(
@@ -721,52 +743,28 @@ export async function rewriteLineFromNative(
   return { ...next, nativeText: trimmed, cueImage: line.cueImage, cueSound: line.cueSound, cueSpeech: line.cueSpeech }
 }
 
-/** Muttersprache → Zielsprache + optionale Birkenbihl. Regie bleibt Deutsch. */
+/** Muttersprache → Zielsprache + Birkenbihl/Lautschrift. Regie und Bilder bleiben. */
 export async function translateNativeDialogToTarget(
   lines: DialogLine[],
   targetLanguage: string,
   nativeLanguage: string,
   includeRomanization = true,
 ): Promise<DialogLine[]> {
-  const prepared = lines.map((line) => {
-    const kind = inferDialogLineKind(line)
-    const native = lineStoryText(line)
-    if (kind === 'action') {
-      return applyNativeFirstDraftLine({ ...line, text: native, nativeText: native })
-    }
-    return { ...line, nativeText: native || line.nativeText, text: native }
-  })
-  const speechIdx = prepared
-    .map((line, i) => (inferDialogLineKind(line) === 'action' || !lineStoryText(line) ? -1 : i))
-    .filter((i) => i >= 0)
-  if (speechIdx.length === 0) {
-    return prepared.map((line) =>
-      inferDialogLineKind(line) === 'action' ? line : applyNativeFirstDraftLine(line),
-    )
-  }
-  const toTranslate = speechIdx.map((i) => prepared[i]!)
+  const prepared = prepareLinesForTargetTranslation(lines)
+  const toTranslate = prepared.filter((line) => lineNeedsTargetTranslation(line))
+  if (toTranslate.length === 0) return prepared
   const translated = await translateDialog(toTranslate, targetLanguage)
-  const merged = [...prepared]
-  speechIdx.forEach((idx, j) => {
-    const orig = prepared[idx]!
-    const target = translated[j]?.text?.trim() || ''
-    merged[idx] = applyTargetTranslationToLine(orig, target)
-  })
-  const spoken = merged.filter((line) => lineHasTargetSpeech(line))
-  if (spoken.length === 0) return merged
-  const withBi = await applyBirkenbihl(spoken, nativeLanguage, targetLanguage, includeRomanization)
-  let k = 0
-  return merged.map((line) => {
-    if (!lineHasTargetSpeech(line)) return line
-    const next = withBi[k++] ?? line
-    return {
-      ...next,
-      nativeText: line.nativeText,
-      cueImage: line.cueImage,
-      cueSound: line.cueSound,
-      cueSpeech: line.cueSpeech,
-    }
-  })
+  const merged = mergeTranslatedTargetLines(prepared, translated)
+  try {
+    return await applyBirkenbihlDialog(
+      merged,
+      nativeLanguage,
+      targetLanguage,
+      includeRomanization,
+    )
+  } catch {
+    return merged
+  }
 }
 
 export async function applyBirkenbihl(
@@ -787,28 +785,34 @@ export async function applyBirkenbihl(
     ? `\nZusätzlich pro Wort "romanization": wie man das Wort in ${targetName} in lateinischen Buchstaben ausspricht (Lautumschrift zum Mitsprechen, z. B. Persisch/Dari: salām, chetoreh). Keine Übersetzung, nur Aussprache-Hilfe.\n`
     : ''
 
+  const lockNative = lines.every((l) => Boolean(l.nativeText?.trim()))
+  const nativePart = lockNative
+    ? `nativeText ist schon ${nativeName} — nicht ändern, nicht neu schreiben.`
+    : `1) nativeText: eine NORMALE Übersetzung in ${nativeName} (Code: ${nativeLanguage}) —
+natürliche Wortstellung, so wie man spricht. Kein Wort-für-Wort, keine Birkenbihl-Reihenfolge.
+Personennamen immer in lateinischer Schrift / deutscher Lesart, genau wie der Sprechername
+(z. B. Ramo, Khan, Ubai, Schöme), niemals in einer anderen Schrift.`
+  const wordsPart = lockNative
+    ? `words: Birkenbihl zur Zielsprache (Feld text), wörtlich je Wort in ${nativeName}.`
+    : `2) words: Birkenbihl darunter, wörtlich je Wort in ${nativeName}.`
   const result = await chatJson<{
-    lines: {
+    lines?: {
       text: string
       nativeText?: string
       words: { text: string; translation: string; romanization?: string }[]
     }[]
   }>(
-    `Du machst zwei Dinge:
+    `Du machst ${lockNative ? 'Birkenbihl zur Zielsprache' : 'zwei Dinge'}:
 
-1) nativeText: eine NORMALE Übersetzung in ${nativeName} (Code: ${nativeLanguage}) —
-natürliche Wortstellung, so wie man spricht. Kein Wort-für-Wort, keine Birkenbihl-Reihenfolge.
-Personennamen immer in lateinischer Schrift / deutscher Lesart, genau wie der Sprechername
-(z. B. Ramo, Khan, Ubai, Schöme), niemals in einer anderen Schrift.
+${nativePart}
 
-2) words: Birkenbihl darunter, wörtlich je Wort in ${nativeName}.
+${wordsPart}
 Teile zusammengesetzte Wörter sinnvoll. Interpunktion bleibt am Wort.${rtlHint}${romanHint}
 Antworte als JSON:
 {
   "lines": [
     {
-      "text": "Originalzeile",
-      "nativeText": "Natürliche Übersetzung",
+      "text": "Originalzeile"${lockNative ? '' : ', "nativeText": "Natürliche Übersetzung"'},
       "words": [{ "text": "Wort", "translation": "Übersetzung"${
         wantRoman ? ', "romanization": "lautschrift"' : ''
       } }]
@@ -819,15 +823,16 @@ Antworte als JSON:
     { temperature: 0.2 },
   )
 
+  const rows = jsonLineRows(result)
   return lines.map((line, i) => {
-    const row = result.lines[i]
+    const row = rows[i]
     const birkenbihl: BirkenbihlWord[] =
       row?.words?.map((w) => ({
         text: w.text,
         translation: w.translation,
         ...(w.romanization?.trim() ? { romanization: w.romanization.trim() } : {}),
       })) ?? []
-    const nativeText = line.nativeText?.trim() || row.nativeText?.trim() || undefined
+    const nativeText = line.nativeText?.trim() || row?.nativeText?.trim() || undefined
     const updated = { ...line, birkenbihl, ...(nativeText ? { nativeText } : {}) }
     if (line.audioUrl && speechTextDiffersFromLineText(updated)) {
       return { ...updated, audioUrl: undefined }

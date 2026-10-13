@@ -385,7 +385,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ messages, targetLanguage, length }),
       }),
-    translate: (dialogId: string, targetLanguage: string, fromNative?: boolean) =>
+    translate: (
+      dialogId: string,
+      targetLanguage: string,
+      fromNative?: boolean,
+      includeRomanization?: boolean,
+    ) =>
       request<{
         dialog: import('../types').Dialog
         unchanged?: boolean
@@ -394,7 +399,12 @@ export const api = {
         '/translate',
         {
           method: 'POST',
-          body: JSON.stringify({ dialogId, targetLanguage, fromNative }),
+          body: JSON.stringify({
+            dialogId,
+            targetLanguage,
+            fromNative,
+            includeRomanization,
+          }),
         },
         TEXT_AI_TIMEOUT_MS,
       ),

@@ -32,6 +32,13 @@ const trAbort = clientTimeoutMessage('/birkenbihl', 'abort')
 if (!trAbort.toLowerCase().includes('zwei minuten') && !trAbort.toLowerCase().includes('deutsch')) {
   fail('Birkenbihl-Timeout erklärt das Warten')
 }
+const zielAbort = clientTimeoutMessage('/translate', 'abort')
+if (!zielAbort.includes('Zielsprache machen')) {
+  fail('Zielsprache-Timeout muss denselben Knopf nennen, nicht Deutsch unter die Zeilen')
+}
+if (zielAbort.includes('Deutsch unter die Zeilen')) {
+  fail('Zielsprache-Timeout darf nicht auf den alten Knopf zeigen')
+}
 
 if (!isImageGenPath('/image')) fail('/image ist Bild')
 if (!isImageGenPath('/story-generate-character')) fail('Figur-Zeichnen ist Bild')
