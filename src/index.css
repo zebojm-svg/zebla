@@ -202,6 +202,16 @@ code {
 .alert-error { background: var(--error-bg); color: var(--error-text); }
 .alert-warn { background: var(--warn-bg); color: var(--warn-text); }
 
+.dialog-target-feedback {
+  margin-top: 0.75rem;
+}
+.dialog-target-feedback .alert {
+  font-weight: 700;
+  font-size: 1.05rem;
+  border: 2px solid currentColor;
+  margin-bottom: 0.5rem;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
