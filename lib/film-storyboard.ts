@@ -42,7 +42,9 @@ import {
   applyPanelHarvestNote,
   applyPanelStill,
   applyPanelStillError,
+  applyRestageToPanel,
   correctionIsFaceOnly,
+  correctionRestagesBlocking,
   correctionRewritesPerson,
   correctFromUrlForPanel,
   genderFromPictureNote,
@@ -76,7 +78,8 @@ function continuityEnFor(
   speaker: string,
   correction?: string,
 ): string {
-  const placements = (wide ?? panel).placements
+  const restage = correctionRestagesBlocking(correction)
+  const placements = (restage ? panel : wide ?? panel).placements
   const names = [...new Set(placements.map((pl) => pl.name.trim()).filter(Boolean))]
   const genders: Record<string, 'male' | 'female' | undefined> = {}
   for (const name of names) {
@@ -89,11 +92,14 @@ function continuityEnFor(
   return sceneContinuityBlock({
     placements,
     speaker,
-    addressee: panelAddressee(panel, dialog),
+    addressee: restage ? undefined : panelAddressee(panel, dialog),
     lookNote: dialog.storyMeta?.lookNote,
     genders,
     stillCorrection: correction,
-    hasGrundbild: Boolean(wide?.stillUrl || ((panel.shot ?? 'wide') !== 'closeup' && panel.stillUrl)),
+    hasGrundbild: restage
+      ? false
+      : Boolean(wide?.stillUrl || ((panel.shot ?? 'wide') !== 'closeup' && panel.stillUrl)),
+    restage,
   })
 }
 
@@ -761,9 +767,22 @@ export async function stillFilmPanel(
         /* Vorlagen-Check fehlgeschlagen: vorhandene Vorlagen nehmen. */
       }
     }
+    const restage = Boolean(correction && correctionRestagesBlocking(correction))
+    if (restage && correction) {
+      const candidateNames = [
+        ...panelForGen.placements.map((pl) => pl.name),
+        ...(placeGrundbildPanel(boardForGen, panelForGen)?.placements ?? []).map((pl) => pl.name),
+      ]
+      panelForGen = applyRestageToPanel(panelForGen, correction, candidateNames)
+      boardForGen = {
+        ...boardForGen,
+        panels: boardForGen.panels.map((p) => (p.id === panelId ? panelForGen : p)),
+      }
+      correctFromUrl = undefined
+    }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
     const isInsert = (panelForGen.shot ?? 'wide') === 'insert'
-    if (isInsert) {
+    if (isInsert && !restage) {
       correctFromUrl = correction ? correctFromUrl : undefined
     }
     const grund = placeGrundbildPanel(boardForGen, panelForGen)
@@ -782,8 +801,9 @@ export async function stillFilmPanel(
     const rewrite = Boolean(correction && correctionRewritesPerson(correction))
     const isCloseup = (panelForGen.shot ?? 'wide') === 'closeup'
     const grundUrl = grund?.stillUrl
-    const continuityForShot =
-      isInsert
+    const continuityForShot = restage
+      ? continuityEn
+      : isInsert
         ? 'INSERT: same house/location as this scene. Do not show the whole gathering unless the cue names it. Fill the frame with the named detail.'
         : continuityEn
 
@@ -843,21 +863,22 @@ export async function stillFilmPanel(
     if (isCloseup && !correctionIsFaceOnly(correction)) {
       correctFromUrl = undefined
     }
-    const placeWideUrl = isInsert ? undefined : grund?.stillUrl
+    const placeWideUrl = isInsert || restage ? undefined : grund?.stillUrl
     const prevPlaceUrl = previousPlaceStillUrl(boardForGen, panelForGen)
     const pack = stillReferencePack(panelForGen, {
-      previousStillUrl: prevPlaceUrl,
-      correctFromUrl,
+      previousStillUrl: restage && prevPlaceUrl === panelForGen.stillUrl ? undefined : prevPlaceUrl,
+      correctFromUrl: restage ? undefined : correctFromUrl,
       sceneWideStillUrl: placeWideUrl,
       board: boardForGen,
       inventory: dialog.filmInventory,
+      restage,
     })
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
       styleId: resolvedStyle,
-      previousStillUrl: prevPlaceUrl,
-      correctFromUrl,
+      previousStillUrl: restage && prevPlaceUrl === panelForGen.stillUrl ? undefined : prevPlaceUrl,
+      correctFromUrl: restage ? undefined : correctFromUrl,
       targetLanguage,
       beatTotal,
       sceneWideStillUrl: placeWideUrl,
@@ -882,7 +903,9 @@ export async function stillFilmPanel(
       [
         pack.noteDe,
         correction
-          ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
+          ? restage
+            ? `Neu gemalt: ${correction} — neue Stellung, nicht das alte Bild retuschiert.`
+            : `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
           : isCloseup
             ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
             : isInsert

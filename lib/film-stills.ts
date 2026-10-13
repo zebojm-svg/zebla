@@ -15,6 +15,7 @@ import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
 import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
+  correctionRestagesBlocking,
   correctionRewritesPerson,
   stillAttachmentInstruction,
   stillReferencePack,
@@ -87,6 +88,7 @@ async function generateStillPng(
   rewritePerson = false,
   insert = false,
   packInstruction = '',
+  restage = false,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   await assertAiAllowed()
@@ -97,11 +99,12 @@ async function generateStillPng(
     }
     parts.push({
       text: stillAttachmentInstruction({
-        correctingExisting,
+        correctingExisting: correctingExisting && !restage,
         closeup,
         insert,
         rewritePerson,
         packInstruction,
+        restage,
       }),
     })
   }
@@ -159,6 +162,7 @@ export function stillPromptForPanel(
     speakerGender?: 'male' | 'female'
     speakerX?: number
     continuityEn?: string
+    restage?: boolean
   },
 ): string {
   return buildFilmStillPrompt({
@@ -183,6 +187,7 @@ export function stillPromptForPanel(
     speakerGender: extras.speakerGender,
     speakerX: extras.speakerX,
     continuityEn: extras.continuityEn,
+    restage: extras.restage,
   })
 }
 
@@ -202,23 +207,26 @@ export async function generateFilmPanelStillImage(opts: {
   board?: FilmStoryboard
   inventory?: FilmInventory | null
 }): Promise<string> {
+  const restage = correctionRestagesBlocking(opts.panel.stillCorrection)
   const pack = stillReferencePack(opts.panel, {
     previousStillUrl: opts.previousStillUrl,
-    correctFromUrl: opts.correctFromUrl,
-    sceneWideStillUrl: opts.sceneWideStillUrl,
+    correctFromUrl: restage ? undefined : opts.correctFromUrl,
+    sceneWideStillUrl: restage ? undefined : opts.sceneWideStillUrl,
     board: opts.board,
     inventory: opts.inventory,
+    restage,
   })
   const refs = await loadRefs(pack.urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
     hasLibraryRefs: refs.length > 0,
     targetLanguage: opts.targetLanguage,
-    correctingExisting: Boolean(opts.correctFromUrl),
+    correctingExisting: Boolean(opts.correctFromUrl) && !restage,
     spokenLine: opts.panel.caption || opts.panel.imageCue,
     beatTotal: opts.beatTotal,
     speakerGender: opts.speakerGender,
     speakerX: opts.speakerX,
     continuityEn: opts.continuityEn,
+    restage,
   })
   const rewritePerson = correctionRewritesPerson(opts.panel.stillCorrection)
   const isCloseup = opts.panel.shot === 'closeup'
@@ -227,6 +235,7 @@ export async function generateFilmPanelStillImage(opts: {
   if (
     isCloseup &&
     !faceOnly &&
+    !restage &&
     opts.sceneWideStillUrl &&
     fluxLockAvailable()
   ) {
@@ -248,14 +257,15 @@ export async function generateFilmPanelStillImage(opts: {
   let buffer = await generateStillPng(
     prompt,
     refs,
-    Boolean(opts.correctFromUrl),
-    isCloseup,
+    Boolean(opts.correctFromUrl) && !restage,
+    isCloseup && !restage,
     rewritePerson,
-    isInsert,
+    isInsert && !restage,
     pack.instruction,
+    restage,
   )
   const shouldCatchCrop =
-    isCloseup && Boolean(opts.sceneWideStillUrl) && !faceOnly
+    isCloseup && Boolean(opts.sceneWideStillUrl) && !faceOnly && !restage
   if (shouldCatchCrop && opts.sceneWideStillUrl) {
     const wide = await fetchImageAsInline(opts.sceneWideStillUrl)
     if (wide) {
