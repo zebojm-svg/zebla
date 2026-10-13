@@ -247,6 +247,18 @@ if (!editorSrc.includes('noch ${remainingLines} Zeilen') && !editorSrc.includes(
 if (!editorSrc.includes('translateTimeoutHintDe')) {
   fail('Dialog-Seite erklärt Zeitlimit: fertige Zeilen bleiben')
 }
+if (editorSrc.includes('confirmCost(estimateTranslate')) {
+  fail('Zielsprache machen darf nicht hinter der Kostenbox verschwinden — sonst passiert beim Klick nichts')
+}
+if (!editorSrc.includes('[zebla:zielsprache]')) {
+  fail('Klick schreibt in die Browser-Konsole')
+}
+if (!editorSrc.includes('Noch kein Klick')) {
+  fail('Status neben dem Knopf darf nicht leer starten')
+}
+if (!editorSrc.includes('0 Zeilen')) {
+  fail('Auch ein No-op muss «0 Zeilen» oder den HTTP-Status zeigen')
+}
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
 if (!boardSrc.includes('Zielsprache machen')) {
   fail('Bilder-Seite hat den Knopf Zielsprache machen')
@@ -522,6 +534,15 @@ if (!clientSrc.includes('translatedCount')) fail('Client liest die Zeilenzahl')
 if (!clientSrc.includes('remainingCount')) fail('Client liest die restlichen Zeilen')
 if (!clientSrc.includes('FUNCTION_INVOCATION_FAILED')) {
   fail('Vercel-Absturz FUNCTION_INVOCATION_FAILED muss als Fehler erscheinen, nicht als leere Antwort')
+}
+if (!clientSrc.includes('withHttpStatus')) {
+  fail('API-Fehler müssen den HTTP-Status zeigen (401/402/500), nicht still schlucken')
+}
+if (!clientSrc.includes('[zebla:api]')) {
+  fail('Client loggt fetch und HTTP-Status in die Konsole')
+}
+if (!translateFn.includes('0 Zeilen')) {
+  fail('API-No-op sagt 0 Zeilen, nicht still Erfolg')
 }
 
 if (TARGET_TRANSLATE_CHUNK !== 8) fail('Paketgrösse ist ~8 Zeilen')

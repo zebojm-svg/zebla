@@ -15,6 +15,12 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter
 }
 
+function withHttpStatus(message: string, status: string | number): string {
+  const text = message.trim() || 'Fehler'
+  if (/\(HTTP\s/i.test(text)) return text
+  return `${text} (HTTP ${status})`
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -30,6 +36,9 @@ async function request<T>(
     if (token) headers.Authorization = `Bearer ${token}`
   }
 
+  const method = (options.method || 'GET').toUpperCase()
+  console.info('[zebla:api]', method, path)
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -42,36 +51,48 @@ async function request<T>(
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(clientTimeoutMessage(path, 'abort'))
+      throw new Error(withHttpStatus(clientTimeoutMessage(path, 'abort'), 'abort'))
     }
-    throw err
+    const msg = err instanceof Error ? err.message : 'Netzwerkfehler'
+    throw new Error(withHttpStatus(msg, 'network'))
   } finally {
     clearTimeout(timer)
   }
 
+  console.info('[zebla:api]', method, path, '→', res.status)
+
   const text = await res.text()
   if (!text) {
-    throw new Error(`Leere Antwort vom Server (${res.status}).`)
+    throw new Error(withHttpStatus('Leere Antwort vom Server.', res.status))
   }
   if (
     text.includes('FUNCTION_INVOCATION_TIMEOUT') ||
     text.includes('FUNCTION_INVOCATION_FAILED')
   ) {
-    throw new Error(clientTimeoutMessage(path, 'server'))
+    throw new Error(withHttpStatus(clientTimeoutMessage(path, 'server'), res.status))
   }
   let data: unknown
   try {
     data = JSON.parse(text)
   } catch {
     throw new Error(
-      text.slice(0, 300) || `Server-Fehler (${res.status}). Bitte später erneut versuchen.`,
+      withHttpStatus(
+        text.slice(0, 300) || 'Server-Fehler. Bitte später erneut versuchen.',
+        res.status,
+      ),
     )
   }
   if (!res.ok) {
     const err = data as { error?: string }
     throw new Error(
-      err.error ?? `Anfrage fehlgeschlagen (${res.status}). Prüfe GEMINI_API_KEY auf Vercel.`,
+      withHttpStatus(
+        err.error ?? 'Anfrage fehlgeschlagen. Prüfe GEMINI_API_KEY auf Vercel.',
+        res.status,
+      ),
     )
+  }
+  if (data && typeof data === 'object' && !('httpStatus' in (data as object))) {
+    ;(data as { httpStatus?: number }).httpStatus = res.status
   }
   return data as T
 }
