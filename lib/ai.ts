@@ -471,7 +471,7 @@ export async function generateFilmSceneDialog(opts: {
   imageDirection?: string
   earlier: Array<{ title: string; lines: Array<{ speaker: string; text: string }> }>
   speakers: string[]
-}): Promise<{
+}): Promise<
   Array<{
     speaker: string
     text: string
