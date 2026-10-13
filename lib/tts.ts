@@ -7,6 +7,7 @@ import {
   isGeminiTtsVoiceName,
   usesGeminiTts,
 } from '../shared/tts-routing.js'
+import { ttsUserError } from '../shared/voice-probe.js'
 
 export interface TtsRequest {
   text: string
@@ -93,28 +94,6 @@ function resolveClassicVoice(
   }
 }
 
-function formatApiError(msg: string): string {
-  if (msg.includes('aiplatform.endpoints.predict')) {
-    return (
-      'Gemini-Sprachausgabe: Dem Firebase-Service-Account fehlt die Rolle ' +
-      '„Vertex AI User“ im Google-Projekt zebla-f517e (IAM → Mitglieder → Service-Account → Rolle hinzufügen).'
-    )
-  }
-  if (
-    msg.includes('SERVICE_DISABLED') ||
-    (msg.includes('has not been used') && msg.includes('aiplatform'))
-  ) {
-    return 'Vertex AI API ist nicht aktiv. In der Google Cloud Console „Vertex AI API“ aktivieren.'
-  }
-  if (msg.includes('billing') || msg.includes('BILLING')) {
-    return 'Cloud-Sprachausgabe braucht ein aktives Abrechnungskonto im Google-Projekt.'
-  }
-  if (msg.includes('has not been used') || msg.includes('disabled')) {
-    return 'Google Cloud API nicht aktiv. Text-to-Speech API bzw. Vertex AI API in der Cloud Console aktivieren.'
-  }
-  return msg
-}
-
 function projectId(): string {
   return process.env.FIREBASE_PROJECT_ID ?? ''
 }
@@ -146,7 +125,7 @@ async function callClassicSynthesize(
   })
 
   const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
-  if (!res.ok) throw new Error(formatApiError(data.error?.message ?? `TTS-Fehler (${res.status})`))
+  if (!res.ok) throw new Error(ttsUserError(data.error?.message ?? `TTS-Fehler (${res.status})`))
   if (!data.audioContent) throw new Error('Keine Audiodaten von TTS erhalten.')
 
   return {
@@ -207,7 +186,7 @@ async function callGeminiSynthesize(
   })
 
   const data = (await res.json()) as { audioContent?: string; error?: { message?: string } }
-  if (!res.ok) throw new Error(formatApiError(data.error?.message ?? `Gemini-TTS-Fehler (${res.status})`))
+  if (!res.ok) throw new Error(ttsUserError(data.error?.message ?? `Gemini-TTS-Fehler (${res.status})`))
   if (!data.audioContent) throw new Error('Keine Audiodaten von Gemini-TTS erhalten.')
   recordGeminiUsage('tts', GEMINI_TTS_MODEL, null, {
     units: Math.max(1, Math.round((data.audioContent.length * 3) / 4 / MP3_BYTES_PER_SECOND)),

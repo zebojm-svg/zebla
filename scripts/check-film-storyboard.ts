@@ -473,6 +473,12 @@ if (!editorSrc.includes('LineLanguageLayers')) {
 }
 const voicesSrc = readFileSync(new URL('../src/story/FilmCastVoices.tsx', import.meta.url), 'utf8')
 if (!voicesSrc.includes('Erzähler')) fail('Stimmen anpassen erklärt die Erzählerstimme')
+if (voicesSrc.includes('await el.play()')) {
+  fail('Probe wartet nicht auf play() — sonst bleibt der Knopf tot bis zum Reload')
+}
+if (!voicesSrc.includes('ttsUserError')) fail('Probe-Fehler auf Deutsch, ohne Google-Quota-URL')
+if (!voicesSrc.includes('revokeObjectURL')) fail('Probe räumt die Audio-URL auf')
+if (!voicesSrc.includes('decideVoiceProbe')) fail('Probe nutzt Cache und Quota-Pause')
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('HIER im Dialog')) fail('Prompt sagt: Szenen im Dialog')
