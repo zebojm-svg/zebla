@@ -3,12 +3,13 @@ import type { BirkenbihlWord, DialogLineKind } from '../types'
 import { isRtlLanguage, languageName } from '../types'
 
 export function nativeLayerLabel(sourceLanguage?: string): string {
-  if (!sourceLanguage || sourceLanguage === 'de') return 'Deutsch'
-  return languageName(sourceLanguage)
+  if (!sourceLanguage || sourceLanguage === 'de') return 'Deutsch (normale Sprache)'
+  return `${languageName(sourceLanguage)} (normale Sprache)`
 }
 
-export function targetLayerLabel(_targetLanguage?: string): string {
-  return 'Zielsprache'
+export function targetLayerLabel(targetLanguage?: string): string {
+  const name = targetLanguage ? languageName(targetLanguage) : ''
+  return name ? `Zielsprache (${name})` : 'Zielsprache'
 }
 
 export function LineLanguageLayers({

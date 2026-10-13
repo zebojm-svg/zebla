@@ -372,7 +372,7 @@ export function FilmStoryboardPage() {
       {dialog && needsNativeFill ? (
         <p className="alert alert-warn">
           {needsGerman
-            ? 'Deutsch (normale Sprache) fehlt noch. «Deutsch unter die Zeilen» schreibt Deutsch und Birkenbihl aus der Zielsprache — die Bilder bleiben.'
+            ? 'Deutsch fehlt noch. «Deutsch unter die Zeilen» schreibt Deutsch (ganze Sätze) und Birkenbihl aus der Zielsprache — die Bilder bleiben.'
             : 'Birkenbihl fehlt noch. «Deutsch unter die Zeilen» füllt es aus der Zielsprache — die Bilder bleiben.'}
         </p>
       ) : null}

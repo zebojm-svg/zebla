@@ -574,7 +574,7 @@ export function DialogEditorPage() {
                   )
                   setDialog(d)
                   setStatus(
-                    'Deutsch (normale Sprache) und Birkenbihl stehen jetzt als eigene Zeilen. Die Bilder bleiben.',
+                    'Deutsch, Birkenbihl und Lautschrift stehen als eigene Zeilen. Die Bilder bleiben.',
                   )
                 })
               }}
@@ -746,7 +746,7 @@ export function DialogEditorPage() {
             <span className="tool-label">Deutsch unter die Zeilen</span>
             <p className="tool-hint muted">
               Für alte Filme: lässt {languageName(dialog.targetLanguage)} und die Bilder. Schreibt
-              Deutsch (normale Sprache) und Birkenbihl dazu. Kann bis zu zwei Minuten dauern.
+              Deutsch (ganze Sätze) und Birkenbihl als eigene Zeilen. Kann bis zu zwei Minuten dauern.
             </p>
             <div className="tool-controls">
               <span className="lang-select-row">

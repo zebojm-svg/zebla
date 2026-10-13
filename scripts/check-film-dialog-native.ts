@@ -197,8 +197,8 @@ const layersSrc = readFileSync(
   new URL('../src/components/LineLanguageLayers.tsx', import.meta.url),
   'utf8',
 )
-if (!layersSrc.includes("return 'Deutsch'")) fail('Deutsch-Schicht hat ein eigenes Schild')
-if (!layersSrc.includes("return 'Zielsprache'")) fail('Zielsprache hat ein eigenes Schild')
+if (!layersSrc.includes('Deutsch (normale Sprache)')) fail('Deutsch-Schicht hat ein eigenes Schild')
+if (!layersSrc.includes('Zielsprache')) fail('Zielsprache hat ein eigenes Schild')
 if (!layersSrc.includes('>Birkenbihl<')) fail('Birkenbihl hat ein eigenes Schild')
 if (!layersSrc.includes('>Lautschrift<')) fail('Lautschrift hat ein eigenes Schild')
 const beatSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
