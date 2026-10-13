@@ -262,7 +262,7 @@ export function FilmStoryboardPage() {
     setNativeBusy(true)
     setError('')
     try {
-      const { dialog: next } = await api.ai.translate(id, dialog.targetLanguage, true)
+      const { dialog: next } = await api.ai.translate(id, dialog.targetLanguage, true, true)
       setDialog(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Zielsprache fehlgeschlagen.')

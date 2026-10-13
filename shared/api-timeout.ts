@@ -44,6 +44,12 @@ export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): 
       : 'Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.'
   }
   if (isTextAiPath(path)) {
+    const translate = apiPathOnly(path) === '/translate'
+    if (translate) {
+      return reason === 'server'
+        ? 'Die Zielsprache hat auf dem Server zu lange gedauert. Bitte noch einmal «Zielsprache machen» drücken (kann bis zu zwei Minuten brauchen).'
+        : 'Zeitlimit. Bitte noch einmal «Zielsprache machen» drücken — wir warten bis zu zwei Minuten.'
+    }
     return reason === 'server'
       ? 'Die Übersetzung hat auf dem Server zu lange gedauert. Bitte noch einmal versuchen (kann bis zu zwei Minuten brauchen).'
       : 'Zeitlimit. Bitte noch einmal auf «Deutsch unter die Zeilen» klicken — wir warten bis zu zwei Minuten.'

@@ -550,6 +550,7 @@ export function DialogEditorPage() {
                     dialog.id,
                     dialog.targetLanguage,
                     true,
+                    includeRomanization,
                   )
                   setDialog(d)
                   setStatus(
@@ -727,6 +728,7 @@ export function DialogEditorPage() {
                       dialog.id,
                       translateLang,
                       true,
+                      includeRomanization,
                     )
                     setDialog(d)
                     setStatus(
