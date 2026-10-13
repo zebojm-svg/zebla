@@ -33,11 +33,13 @@ import {
   applyNativeFirstDraftLine,
   applyNativeFirstDraftSections,
   applyTargetTranslationToLine,
+  countFilledTargetSpeech,
   lineHasTargetSpeech,
   lineNeedsNativeFill,
   lineNeedsTargetTranslation,
   mergeTranslatedTargetLines,
   prepareLinesForTargetTranslation,
+  spokenLooksLikeSourceLanguage,
 } from '../shared/film-dialog-native.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
@@ -138,6 +140,12 @@ function geminiErrorMessage(err: unknown): string {
     }
     if (err.message.includes('is not found') || err.message.includes('404 Not Found')) {
       return `Gemini-Modell „${TEXT_MODEL}“ ist nicht verfügbar. Setze GEMINI_MODEL auf z. B. gemini-2.5-flash in Vercel und deploye neu.`
+    }
+    if (
+      err.message.includes('FUNCTION_INVOCATION_FAILED') ||
+      err.message.includes('FUNCTION_INVOCATION_TIMEOUT')
+    ) {
+      return 'Die Zielsprache ist auf dem Server abgebrochen. Bitte noch einmal «Zielsprache machen» drücken.'
     }
     return err.message
   }
@@ -702,6 +710,11 @@ Gleiche Anzahl Zeilen. JSON: { "lines": [{ "speaker": "...", "text": "Satz auf $
       { temperature: 0.2 },
     )
     const rows = jsonLineRows(result)
+    if (rows.length === 0) {
+      throw new Error(
+        `Die KI hat keine ${targetName}-Zeilen geliefert. Bitte noch einmal «Zielsprache machen» drücken.`,
+      )
+    }
     chunk.forEach((line, j) => {
       out.push({
         ...line,
@@ -750,11 +763,35 @@ export async function translateNativeDialogToTarget(
   nativeLanguage: string,
   includeRomanization = true,
 ): Promise<DialogLine[]> {
-  const prepared = prepareLinesForTargetTranslation(lines)
-  const toTranslate = prepared.filter((line) => lineNeedsTargetTranslation(line))
-  if (toTranslate.length === 0) return prepared
+  const prepared = prepareLinesForTargetTranslation(lines, targetLanguage, nativeLanguage)
+  const toTranslate = prepared.filter((line) =>
+    lineNeedsTargetTranslation(line, targetLanguage, nativeLanguage),
+  )
+  if (toTranslate.length === 0) {
+    throw new Error(
+      'Kein deutscher Satz zum Übersetzen gefunden. Steht der Text in der Deutsch-Zeile?',
+    )
+  }
   const translated = await translateDialog(toTranslate, targetLanguage)
-  const merged = mergeTranslatedTargetLines(prepared, translated)
+  const stillGerman = translated.filter((row) =>
+    spokenLooksLikeSourceLanguage(row.text || '', nativeLanguage, targetLanguage),
+  )
+  if (stillGerman.length === translated.length) {
+    throw new Error(
+      `Die KI hat ${languageName(targetLanguage)} nicht geschrieben (noch Deutsch). Bitte noch einmal «Zielsprache machen» drücken.`,
+    )
+  }
+  const merged = mergeTranslatedTargetLines(
+    prepared,
+    translated,
+    targetLanguage,
+    nativeLanguage,
+  )
+  if (countFilledTargetSpeech(merged, targetLanguage, nativeLanguage) === 0) {
+    throw new Error(
+      `Keine Zeile wurde ins ${languageName(targetLanguage)} übersetzt. Bitte noch einmal «Zielsprache machen» drücken.`,
+    )
+  }
   try {
     return await applyBirkenbihlDialog(
       merged,

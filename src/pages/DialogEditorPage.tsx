@@ -166,6 +166,40 @@ export function DialogEditorPage() {
     }
   }
 
+  const applyTranslateResult = (result: {
+    dialog: Dialog
+    unchanged?: boolean
+    translatedCount?: number
+    message?: string
+  }) => {
+    setDialog(result.dialog)
+    if (result.unchanged) {
+      setStatus(result.message || 'Die Zielsprache stand schon.')
+      if (dialogNeedsTargetTranslation(result.dialog)) {
+        throw new Error(
+          result.message ||
+            'Die Zielsprache ist leer geblieben. Bitte noch einmal «Zielsprache machen» drücken.',
+        )
+      }
+      return
+    }
+    const n = result.translatedCount
+    setStatus(
+      result.message ||
+        (typeof n === 'number'
+          ? `${n} Zeile${n === 1 ? '' : 'n'} auf ${languageName(result.dialog.targetLanguage)}.`
+          : `${languageName(result.dialog.targetLanguage)}, Birkenbihl und Lautschrift stehen als eigene Zeilen. Die Regie bleibt Deutsch.`),
+    )
+    if (
+      (typeof n === 'number' && n === 0) ||
+      (!n && dialogNeedsTargetTranslation(result.dialog))
+    ) {
+      throw new Error(
+        'Keine Zeile übersetzt. Die Deutsch-Zeile ist geblieben, die Zielsprache ist leer. Bitte noch einmal «Zielsprache machen» drücken.',
+      )
+    }
+  }
+
   if (loading) {
     return (
       <div className="page-center">
@@ -542,24 +576,22 @@ export function DialogEditorPage() {
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              disabled={!!busy || !dialogNeedsTargetTranslation(dialog)}
+              disabled={!!busy}
               onClick={async () => {
                 if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
                 await runAction('target-lang', async () => {
-                  const { dialog: d } = await api.ai.translate(
+                  setStatus('Zielsprache läuft …')
+                  const result = await api.ai.translate(
                     dialog.id,
                     dialog.targetLanguage,
                     true,
                     includeRomanization,
                   )
-                  setDialog(d)
-                  setStatus(
-                    `${languageName(dialog.targetLanguage)}, Birkenbihl und Lautschrift stehen als eigene Zeilen. Die Regie bleibt Deutsch.`,
-                  )
+                  applyTranslateResult(result)
                 })
               }}
             >
-              {busy === 'target-lang' ? 'Bitte warten …' : 'Zielsprache machen'}
+              {busy === 'target-lang' ? 'Zielsprache läuft …' : 'Zielsprache machen'}
             </button>
             <button
               type="button"
@@ -605,6 +637,17 @@ export function DialogEditorPage() {
             </button>
             <FilmSaveStatusText status={saveStatus} />
           </div>
+          {(busy === 'target-lang' || busy === 'translate' || error || status) && (
+            <div className="dialog-target-feedback" aria-live="polite">
+              {busy === 'target-lang' || busy === 'translate' ? (
+                <p className="alert alert-warn">Zielsprache läuft …</p>
+              ) : null}
+              {error ? <p className="alert alert-error">{error}</p> : null}
+              {status && busy !== 'target-lang' && busy !== 'translate' ? (
+                <p className="alert alert-warn">{status}</p>
+              ) : null}
+            </div>
+          )}
           <p className="muted dialog-meta-hint">
             Titel und Text werden laufend gespeichert. «Dialog daraus machen» schreibt alles auf Deutsch.
             Danach «Zielsprache machen». Bei alten Filmen ohne Deutsch: «Deutsch unter die Zeilen» — die Bilder
@@ -724,22 +767,18 @@ export function DialogEditorPage() {
                 onClick={async () => {
                   if (!(await confirmCost(estimateTranslate(lineCount(dialog))))) return
                   await runAction('translate', async () => {
-                    const { dialog: d, unchanged, message } = await api.ai.translate(
+                    setStatus('Zielsprache läuft …')
+                    const result = await api.ai.translate(
                       dialog.id,
                       translateLang,
                       true,
                       includeRomanization,
                     )
-                    setDialog(d)
-                    setStatus(
-                      unchanged && message
-                        ? message
-                        : `${languageName(translateLang)}, Birkenbihl und Lautschrift stehen als eigene Zeilen.`,
-                    )
+                    applyTranslateResult(result)
                   })
                 }}
               >
-                {busy === 'translate' ? 'Bitte warten …' : 'Zielsprache machen'}
+                {busy === 'translate' ? 'Zielsprache läuft …' : 'Zielsprache machen'}
               </button>
             </div>
           </div>
@@ -1034,8 +1073,16 @@ export function DialogEditorPage() {
                     </select>
                   </div>
                   <LineLanguageLayers
-                    nativeText={lineGermanText(line)}
-                    targetText={lineTargetText(line)}
+                    nativeText={lineGermanText(
+                      line,
+                      dialog.targetLanguage,
+                      dialog.sourceLanguage,
+                    )}
+                    targetText={lineTargetText(
+                      line,
+                      dialog.targetLanguage,
+                      dialog.sourceLanguage,
+                    )}
                     birkenbihl={line.birkenbihl}
                     targetLanguage={dialog.targetLanguage}
                     sourceLanguage={dialog.sourceLanguage}

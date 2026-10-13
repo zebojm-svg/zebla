@@ -53,7 +53,10 @@ async function request<T>(
   if (!text) {
     throw new Error(`Leere Antwort vom Server (${res.status}).`)
   }
-  if (text.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+  if (
+    text.includes('FUNCTION_INVOCATION_TIMEOUT') ||
+    text.includes('FUNCTION_INVOCATION_FAILED')
+  ) {
     throw new Error(clientTimeoutMessage(path, 'server'))
   }
   let data: unknown
@@ -394,6 +397,7 @@ export const api = {
       request<{
         dialog: import('../types').Dialog
         unchanged?: boolean
+        translatedCount?: number
         message?: string
       }>(
         '/translate',

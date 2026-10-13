@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireAuth, sendError } from './api-utils.js'
+import { HttpError, requireAuth, sendError } from './api-utils.js'
 import { getDialog, updateDialog, type UserProfile } from './firestore.js'
 import { requireProfile, assertCanUseAi } from './access.js'
 import { consumeQuota } from './usage.js'
@@ -8,7 +8,6 @@ import {
   generateDialogFromTopic,
   generateDialogFromSentences,
   chatForDialog,
-  translateDialog,
   rewriteLineFromNative,
   translateNativeDialogToTarget,
   applyBirkenbihlDialog,
@@ -32,8 +31,11 @@ import { buildVisualBrief, neededVisualQuestions, testImagePrompt } from './visu
 import { reviewRecentBeats } from './visual-critic.js'
 import { formatCharacterBibleForPrompt } from './visual-script.js'
 import type { ChatMessage, Dialog, DialogLength, DialogSection } from '../shared/types.js'
-import { inferDialogLineKind, languageName } from '../shared/types.js'
-import { dialogNeedsTargetTranslation } from '../shared/film-dialog-native.js'
+import { languageName } from '../shared/types.js'
+import {
+  countFilledTargetSpeech,
+  dialogNeedsTargetTranslation,
+} from '../shared/film-dialog-native.js'
 import { findLineInDialog } from './dialog-audio.js'
 
 export function handleAiStatus(_req: VercelRequest, res: VercelResponse) {
@@ -189,7 +191,7 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       includeRomanization?: boolean
     }
     const dialogId = dialogIdFromRequest(req, body)
-    const { targetLanguage, fromNative, includeRomanization } = body
+    const { targetLanguage, includeRomanization } = body
     if (!dialogId || !targetLanguage) {
       res.status(400).json({ error: 'dialogId und Zielsprache fehlen.' })
       return
@@ -199,62 +201,59 @@ export async function handleTranslate(req: VercelRequest, res: VercelResponse) {
       res.status(404).json({ error: 'Dialog nicht gefunden.' })
       return
     }
-    const hasNativeSource = dialog.sections.some((s) =>
-      s.lines.some(
-        (l) => inferDialogLineKind(l) !== 'action' && Boolean(l.nativeText?.trim()),
-      ),
-    )
-    const needsTarget = dialogNeedsTargetTranslation(dialog)
-    const fillFromNative = Boolean(fromNative) || needsTarget || hasNativeSource
-    if (!needsTarget && dialog.targetLanguage === targetLanguage && !fromNative) {
+    const sourceLanguage = dialog.sourceLanguage || 'de'
+    const needsTarget = dialogNeedsTargetTranslation({
+      ...dialog,
+      targetLanguage,
+      sourceLanguage,
+    })
+    const sameLang =
+      sourceLanguage.slice(0, 2).toLowerCase() === targetLanguage.slice(0, 2).toLowerCase()
+    if (sameLang) {
       res.json({
         dialog,
         unchanged: true,
-        message: `Die Zielsprache ${languageName(targetLanguage)} steht schon. Für fehlendes Deutsch «Deutsch unter die Zeilen» — die Bilder bleiben.`,
+        translatedCount: 0,
+        message: 'Zielsprache und Deutsch sind dieselbe Sprache — nichts zu übersetzen.',
       })
       return
     }
-    if (fillFromNative && !needsTarget && dialog.targetLanguage === targetLanguage) {
+    if (!needsTarget && dialog.targetLanguage === targetLanguage) {
       res.json({
         dialog,
         unchanged: true,
-        message: `${languageName(targetLanguage)} steht schon in der Zielsprache-Zeile. Deutsch bleibt in der Deutsch-Zeile.`,
+        translatedCount: 0,
+        message: `Die Zielsprache ${languageName(targetLanguage)} steht schon. Für fehlendes Deutsch «Deutsch unter die Zeilen» — die Bilder bleiben.`,
       })
       return
     }
     await consumeQuota(profile, 'aiCalls')
     const allLines = dialog.sections.flatMap((s) => s.lines)
-    if (fillFromNative) {
-      const processed = await translateNativeDialogToTarget(
-        allLines,
-        targetLanguage,
-        dialog.sourceLanguage || 'de',
-        includeRomanization !== false,
-      )
-      const sections = remapLinesToSections(dialog.sections, processed)
-      const updated = await updateDialog(
-        dialog.id,
-        user.uid,
-        { targetLanguage, sections },
-        profile,
-      )
-      res.json({ dialog: updated })
-      return
-    }
-    const spoken = allLines.filter((l) => inferDialogLineKind(l) !== 'action')
-    const translatedSpoken = await translateDialog(spoken, targetLanguage)
-    let t = 0
-    const translated = allLines.map((l) =>
-      inferDialogLineKind(l) === 'action' ? l : (translatedSpoken[t++] ?? l),
+    const processed = await translateNativeDialogToTarget(
+      allLines,
+      targetLanguage,
+      sourceLanguage,
+      includeRomanization !== false,
     )
-    const sections = remapLinesToSections(dialog.sections, translated)
+    const translatedCount = countFilledTargetSpeech(processed, targetLanguage, sourceLanguage)
+    if (translatedCount === 0) {
+      throw new HttpError(
+        `Keine Zeile wurde ins ${languageName(targetLanguage)} übersetzt. Deutsch bleibt in der Deutsch-Zeile. Bitte noch einmal «Zielsprache machen» drücken.`,
+        502,
+      )
+    }
+    const sections = remapLinesToSections(dialog.sections, processed)
     const updated = await updateDialog(
       dialog.id,
       user.uid,
       { targetLanguage, sections },
       profile,
     )
-    res.json({ dialog: updated })
+    res.json({
+      dialog: updated,
+      translatedCount,
+      message: `${translatedCount} Zeile${translatedCount === 1 ? '' : 'n'} auf ${languageName(targetLanguage)}.`,
+    })
   } catch (err) {
     sendError(res, err)
   }

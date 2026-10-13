@@ -7,10 +7,12 @@ import {
   applyNativeFirstDraftLine,
   applyNativeFirstDraftSections,
   applyTargetTranslationToLine,
+  countFilledTargetSpeech,
   dialogNeedsNativeFill,
   dialogNeedsTargetTranslation,
   lineGermanText,
   lineHasTargetSpeech,
+  looksLikeGerman,
   lineNeedsNativeFill,
   lineNeedsTargetTranslation,
   lineRomanizationText,
@@ -18,6 +20,7 @@ import {
   lineTargetText,
   mergeTranslatedTargetLines,
   prepareLinesForTargetTranslation,
+  spokenLooksLikeSourceLanguage,
 } from '../shared/film-dialog-native.ts'
 import { dialogNeedsNativeTranslation, planBoardWithoutAi } from '../shared/film-storyboard.ts'
 import { lineSpeechText } from '../shared/line-speech.ts'
@@ -204,6 +207,18 @@ const editorSrc = readFileSync(new URL('../src/pages/DialogEditorPage.tsx', impo
 if (!editorSrc.includes('Zielsprache machen')) {
   fail('Dialog-Seite hat den Knopf Zielsprache machen')
 }
+if (editorSrc.includes('disabled={!!busy || !dialogNeedsTargetTranslation')) {
+  fail('linker Knopf Zielsprache machen darf nicht stumm disabled sein — sonst passiert beim Klick nichts')
+}
+if (!editorSrc.includes('Zielsprache läuft')) {
+  fail('Knopf zeigt «Zielsprache läuft …», nicht stilles Warten')
+}
+if (!editorSrc.includes('applyTranslateResult')) {
+  fail('Dialog-Seite zeigt Fehler oder Zeilenzahl nach Zielsprache machen')
+}
+if (!editorSrc.includes('dialog-target-feedback')) {
+  fail('Fehler und Ergebnis stehen neben dem Knopf, nicht nur oben auf der Seite')
+}
 if (!editorSrc.includes('Deutsch unter die Zeilen')) {
   fail('Dialog-Seite hat den Knopf Deutsch unter die Zeilen für alte Filme')
 }
@@ -318,11 +333,73 @@ const germanOnlyInText = {
   text: 'Setz dich bitte.',
   cueImage: 'Ramo zeigt auf das Kissen',
 }
-if (!lineNeedsTargetTranslation(germanOnlyInText, 'fa')) {
+if (!looksLikeGerman('Setz dich bitte.')) fail('setz dich bitte ist Deutsch')
+if (!looksLikeGerman('Ramo hat Freunde eingeladen.')) fail('Erzähler-Satz ist Deutsch')
+if (looksLikeGerman('خوش آمدید')) fail('Persisch ist kein Deutsch')
+if (!spokenLooksLikeSourceLanguage('Willkommen, Khan.', 'de', 'fa')) {
+  fail('Deutsch in text gilt als Muttersprache, nicht als Ziel')
+}
+if (!lineNeedsTargetTranslation(germanOnlyInText, 'fa', 'de')) {
   fail('lateinischer Text bei Persisch ist noch Deutsch, nicht die Zielsprache')
+}
+if (!lineNeedsTargetTranslation(germanOnlyInText, 'en', 'de')) {
+  fail('Deutsch in text bei Englisch als Ziel muss übersetzt werden')
+}
+if (lineGermanText(germanOnlyInText, 'fa', 'de') !== 'Setz dich bitte.') {
+  fail('Deutsch in text erscheint in der Deutsch-Zeile, nicht in der Zielsprache')
+}
+if (lineTargetText(germanOnlyInText, 'fa', 'de')) {
+  fail('Deutsch in text ist keine Zielsprache — Zeile bleibt leer bis zum Knopf')
+}
+if (lineSpeechText(germanOnlyInText, 'fa', 'de')) {
+  fail('TTS schweigt, solange Deutsch noch in text steht')
 }
 if (lineNeedsTargetTranslation(oldTargetFirst, 'fa')) {
   fail('alter Film mit Persisch braucht nicht Zielsprache machen')
+}
+
+const narratorGermanInText: DialogLine = {
+  id: 'erz',
+  speaker: 'Erzähler',
+  kind: 'narrator',
+  text: 'Ramo hat Freunde eingeladen.',
+  cueImage: 'Wohnzimmer',
+}
+if (!lineNeedsTargetTranslation(narratorGermanInText, 'fa', 'de')) {
+  fail('Erzähler mit Deutsch in text braucht Zielsprache machen')
+}
+if (lineGermanText(narratorGermanInText, 'fa', 'de') !== 'Ramo hat Freunde eingeladen.') {
+  fail('Erzähler-Deutsch in text steht in der Deutsch-Zeile')
+}
+if (lineTargetText(narratorGermanInText, 'fa', 'de')) {
+  fail('Erzähler-Zielsprache bleibt leer solange nur Deutsch in text steht')
+}
+
+const emptyMerge = mergeTranslatedTargetLines(
+  prepareLinesForTargetTranslation([narratorGermanInText], 'fa', 'de'),
+  [{ text: '' }, { text: 'Ramo hat Freunde eingeladen.' }],
+  'fa',
+  'de',
+)
+if (countFilledTargetSpeech(emptyMerge, 'fa', 'de') !== 0) {
+  fail('leere oder deutsche KI-Antwort darf nicht als Zielsprache zählen')
+}
+if (emptyMerge[0]!.nativeText !== 'Ramo hat Freunde eingeladen.') {
+  fail('bei leerer KI bleibt Deutsch in nativeText')
+}
+if (emptyMerge[0]!.text.trim()) fail('bei leerer KI bleibt die Zielsprache leer')
+
+const directMerge = mergeTranslatedTargetLines(
+  [narratorGermanInText],
+  [{ text: 'رامو دوستان را دعوت کرده' }],
+  'fa',
+  'de',
+)
+if (directMerge[0]!.text !== 'رامو دوستان را دعوت کرده') {
+  fail('ohne Vorbereitung: Zielsprache nach text, Deutsch war nur in text')
+}
+if (directMerge[0]!.nativeText !== 'Ramo hat Freunde eingeladen.') {
+  fail('ohne Vorbereitung: Deutsch aus text nach nativeText')
 }
 
 const prepared = prepareLinesForTargetTranslation([
@@ -402,10 +479,26 @@ if (!translateFn.includes('translateNativeDialogToTarget')) {
 if (translateFn.includes('filmStoryboard')) {
   fail('Zielsprache machen darf den Bildplan nicht löschen')
 }
+if (translateFn.includes('fillFromNative && !needsTarget')) {
+  fail('fromNative darf nicht stumm no-open wenn der Detektor Deutsch in text übersieht')
+}
+if (!translateFn.includes('translatedCount')) {
+  fail('API sagt, wie viele Zeilen übersetzt wurden')
+}
+if (!translateFn.includes('Keine Zeile wurde ins')) {
+  fail('0 übersetzte Zeilen sind ein Fehler, kein stilles Erfolg')
+}
+if (!nativeFn?.includes('Kein deutscher Satz zum Übersetzen')) {
+  fail('Übersetzer wirft, statt 0 Zeilen still zurückzugeben')
+}
 const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
 if (!clientSrc.includes('fromNative')) fail('Client schickt fromNative')
 if (!clientSrc.includes('includeRomanization')) {
   fail('Client kann Lautschrift mitbestellen')
+}
+if (!clientSrc.includes('translatedCount')) fail('Client liest die Zeilenzahl')
+if (!clientSrc.includes('FUNCTION_INVOCATION_FAILED')) {
+  fail('Vercel-Absturz FUNCTION_INVOCATION_FAILED muss als Fehler erscheinen, nicht als leere Antwort')
 }
 
 console.log('OK: Dialog zuerst Muttersprache, Zielsprache per Knopf')

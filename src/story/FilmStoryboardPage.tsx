@@ -262,8 +262,20 @@ export function FilmStoryboardPage() {
     setNativeBusy(true)
     setError('')
     try {
-      const { dialog: next } = await api.ai.translate(id, dialog.targetLanguage, true, true)
-      setDialog(next)
+      const result = await api.ai.translate(id, dialog.targetLanguage, true, true)
+      setDialog(result.dialog)
+      if (result.unchanged && dialogNeedsTargetTranslation(result.dialog)) {
+        setError(
+          result.message ||
+            'Die Zielsprache ist leer geblieben. Bitte noch einmal «Zielsprache machen» drücken.',
+        )
+        return
+      }
+      if (!result.unchanged && (result.translatedCount === 0 || dialogNeedsTargetTranslation(result.dialog))) {
+        setError(
+          'Keine Zeile übersetzt. Bitte noch einmal «Zielsprache machen» drücken.',
+        )
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Zielsprache fehlgeschlagen.')
     } finally {
@@ -337,17 +349,15 @@ export function FilmStoryboardPage() {
           >
             {busy ? '…' : board ? 'Vom Text neu' : 'Planen'}
           </button>
-          {needsTarget ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={locked}
-              onClick={() => void makeTarget()}
-              title="Zielsprache aus dem deutschen Dialog schreiben"
-            >
-              {nativeBusy ? '…' : 'Zielsprache machen'}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={locked}
+            onClick={() => void makeTarget()}
+            title="Zielsprache aus dem deutschen Dialog schreiben"
+          >
+            {nativeBusy ? 'Zielsprache läuft …' : 'Zielsprache machen'}
+          </button>
           {needsNativeFill ? (
             <button
               type="button"
