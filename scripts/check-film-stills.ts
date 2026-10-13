@@ -9,9 +9,12 @@ import {
   closeupCameraLine,
   insertCameraLine,
   closeupGenderLine,
+  applyRestageToPanel,
   correctionIsFaceOnly,
   correctFromUrlForPanel,
+  correctionRestagesBlocking,
   correctionRewritesPerson,
+  peopleKeptInRestage,
   filmStillLanguageEn,
   genderFromPictureNote,
   gazeLockEn,
@@ -1014,12 +1017,220 @@ if (scenePanels.length >= 2) {
   }
 }
 
+const STAGING_HINT = 'mach dass ramo alleine am Herd steht'
+if (!correctionRestagesBlocking(STAGING_HINT)) {
+  fail('«alleine am Herd» ist eine neue Stellung, kein Mini-Tweak')
+}
+if (!correctionRestagesBlocking('Ramo allein, keine anderen Leute')) {
+  fail('«keine anderen Leute» ist Restage')
+}
+if (!correctionRestagesBlocking('ohne Gäste, nur Ramo')) fail('«ohne Gäste» ist Restage')
+if (!correctionRestagesBlocking('niemand sonst im Bild')) fail('«niemand sonst» ist Restage')
+if (!correctionRestagesBlocking('Ubai und Khan raus')) fail('Gäste raus ist Restage')
+if (!correctionRestagesBlocking('Ramo steht am Herd')) fail('steht am Herd ist Restage')
+if (correctionRestagesBlocking('mach ramo etwas fröhlicher')) {
+  fail('fröhlicher ist Mimik, keine neue Stellung')
+}
+if (correctionRestagesBlocking('Mund etwas offener')) fail('Mund ist keine Restage')
+if (correctionRestagesBlocking('Schöme ist ein Mann')) fail('Geschlecht ist keine Restage')
+if (correctionRestagesBlocking('Prospekt fehlt')) fail('fehlendes Requisit ist keine Restage')
+if (correctionRestagesBlocking('Ramo steht auf')) {
+  fail('nur aufstehen am Tisch ist keine Restage vom ganzen Bild')
+}
+
+const keptAlone = peopleKeptInRestage(STAGING_HINT, ['Ramo', 'Khan', 'Ubai'])
+if (keptAlone.length !== 1 || keptAlone[0] !== 'Ramo') {
+  fail('allein am Herd: nur Ramo bleibt im Bild')
+}
+const keptRaus = peopleKeptInRestage('Ubai raus', ['Ramo', 'Khan', 'Ubai'])
+if (keptRaus.includes('Ubai')) fail('raus entfernt Ubai')
+if (!keptRaus.includes('Ramo') || !keptRaus.includes('Khan')) fail('raus behält die anderen')
+
+if (correctFromUrlForPanel(boardGirl, girlCu, STAGING_HINT) !== undefined) {
+  fail('Restage hängt das alte Standbild nicht als Kompositions-Schloss an')
+}
+if (correctFromUrlForPanel(boardGirl, girlCu, 'Mund etwas offener') !== girlCu.stillUrl) {
+  fail('Mimik nimmt weiter das vorhandene Bild')
+}
+
+const restageAttach = stillAttachmentInstruction({
+  correctingExisting: true,
+  closeup: false,
+  restage: true,
+})
+if (restageAttach.toLowerCase().includes('exact people')) {
+  fail('Restage darf die Gäste aus dem alten Bild nicht sperren')
+}
+if (!restageAttach.toLowerCase().includes('old blocking is wrong') && !restageAttach.toLowerCase().includes('restage')) {
+  fail('Anhang sagt: alte Stellung ist falsch')
+}
+if (!restageAttach.toLowerCase().includes('zero extra') && !restageAttach.toLowerCase().includes('alone')) {
+  fail('Anhang: allein = keine Extra-Gäste')
+}
+
+const restagePrompt = buildFilmStillPrompt({
+  caption: 'So, das Wasser kann kochen.',
+  imageCue: 'Ramo sitzt mit Gästen am Tisch',
+  settingHint: 'Küche',
+  names: ['Ramo'],
+  poseHints: ['Ramo: steht'],
+  hasLibraryRefs: true,
+  targetLanguage: 'fa',
+  stillCorrection: STAGING_HINT,
+  correctingExisting: false,
+  restage: true,
+  shot: 'wide',
+})
+if (restagePrompt.toLowerCase().includes('current still')) {
+  fail('Restage-Prompt nimmt das alte Bild nicht als Vorlage zum Retuschieren')
+}
+if (restagePrompt.toLowerCase().includes('change only this')) {
+  fail('Restage ist kein «change only this» auf dem Tischbild')
+}
+if (!restagePrompt.toLowerCase().includes('restage') && !restagePrompt.toLowerCase().includes('new shot')) {
+  fail('Restage-Prompt sagt: neues Bild, neue Stellung')
+}
+if (!restagePrompt.toLowerCase().includes('ramo')) fail('Restage nennt Ramo')
+if (/\bkhan\b|\bubai\b/i.test(restagePrompt) && restagePrompt.toLowerCase().includes('must be visible')) {
+  fail('Restage darf Khan/Ubai nicht als Pflicht-Gäste verlangen')
+}
+if (!restagePrompt.toLowerCase().includes('zero extra') && !restagePrompt.toLowerCase().includes('forbidden')) {
+  fail('Restage verbietet Extra-Gäste')
+}
+if (!restagePrompt.toLowerCase().includes('kettle') && !restagePrompt.toLowerCase().includes('stove')) {
+  fail('Restage behält Kanne und Herd')
+}
+
+const restageContig = sceneContinuityBlock({
+  placements: [{ name: 'Ramo', x: 40, poseId: 'standing-front', poseHint: 'steht' }],
+  speaker: 'Ramo',
+  stillCorrection: STAGING_HINT,
+  hasGrundbild: true,
+  restage: true,
+})
+if (restageContig.includes('SEATING LOCK')) fail('Restage sperrt nicht die alten Sitzplätze')
+if (restageContig.includes('same people in the same seats')) {
+  fail('Restage: nicht dieselben Leute auf denselben Stühlen')
+}
+if (!restageContig.includes('RESTAGE')) fail('Kontinuität markiert Restage')
+
+const tableGuests = {
+  ...closePanel,
+  id: 'table-guests',
+  shot: 'wide' as const,
+  stillUrl: 'https://example.com/table-guests.png',
+  settingHint: 'Küche',
+  imageCue: 'Ramo sitzt mit zwei Gästen am Tisch, Kanne auf dem Tisch',
+  caption: 'So, das Wasser kann kochen.',
+  stillCorrection: STAGING_HINT,
+  propIds: ['kanne-1'],
+  placements: [
+    {
+      name: 'Ramo',
+      poseId: 'sitting' as const,
+      poseHint: 'sitzt',
+      depth: 'mid' as const,
+      x: 50,
+      scale: 1,
+      flip: false,
+      match: 'reuse' as const,
+      matchNoteDe: '',
+      imageUrl: 'https://example.com/ramo.png',
+    },
+    {
+      name: 'Khan',
+      poseId: 'sitting' as const,
+      poseHint: 'sitzt',
+      depth: 'mid' as const,
+      x: 20,
+      scale: 1,
+      flip: false,
+      match: 'reuse' as const,
+      matchNoteDe: '',
+      imageUrl: 'https://example.com/khan.png',
+    },
+    {
+      name: 'Ubai',
+      poseId: 'sitting' as const,
+      poseHint: 'sitzt',
+      depth: 'mid' as const,
+      x: 80,
+      scale: 1,
+      flip: false,
+      match: 'reuse' as const,
+      matchNoteDe: '',
+      imageUrl: 'https://example.com/ubai.png',
+    },
+  ],
+}
+const stoveAlone = {
+  ...tableGuests,
+  id: 'stove-alone',
+  stillUrl: 'https://example.com/stove-alone.png',
+  imageCue: 'Ramo am Herd mit der Kanne',
+  stillCorrection: undefined,
+  placements: [tableGuests.placements[0]!],
+  panelIndex: 1,
+}
+const restageBoard = {
+  ...withWide,
+  panels: [stoveAlone, tableGuests],
+}
+const restaged = applyRestageToPanel(tableGuests, STAGING_HINT)
+if (restaged.placements.length !== 1 || restaged.placements[0]?.name !== 'Ramo') {
+  fail('Restage-Panel behält nur Ramo')
+}
+if (restaged.placements[0]?.poseId !== 'standing-front') fail('Restage: Ramo steht')
+const packRestage = stillReferencePack(restaged, {
+  correctFromUrl: tableGuests.stillUrl,
+  board: restageBoard,
+  restage: true,
+})
+if (packRestage.urls.includes('https://example.com/table-guests.png')) {
+  fail('Restage schickt das Tischbild nicht als Kompositions-Schloss')
+}
+if (!packRestage.urls.includes('https://example.com/ramo.png')) {
+  fail('Restage schickt Ramo-Stammbild (Gesicht/Kleidung)')
+}
+if (!packRestage.urls.includes('https://example.com/stove-alone.png')) {
+  fail('Restage schickt ein anderes Küchenbild für dieselbe Kanne, nicht das Tischbild')
+}
+if (packRestage.urls.includes('https://example.com/khan.png') || packRestage.urls.includes('https://example.com/ubai.png')) {
+  fail('Restage schickt keine Gäste-Stammbilder')
+}
+if (!packRestage.instruction.toLowerCase().includes('restage')) {
+  fail('Vorlagen-Anweisung sagt Restage, nicht compose-lock')
+}
+if (packRestage.instruction.includes('CURRENT still to correct')) {
+  fail('Restage beschriftet das alte Bild nicht als CURRENT still to correct')
+}
+if (!packRestage.instruction.toLowerCase().includes('kettle') && !packRestage.instruction.toLowerCase().includes('stove')) {
+  fail('Restage behält Kanne/Herd in der Vorlagen-Anweisung')
+}
+
 const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 if (!stillGenSrc.includes('planFilmPanelRefNeeds')) {
   fail('Bild ändern führt denselben Vorlagen-Check aus wie das erste Malen')
 }
 if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
   fail('Nach Bild ändern werden spätere Bilder der Szene markiert')
+}
+if (!stillGenSrc.includes('correctionRestagesBlocking')) {
+  fail('Bild ändern erkennt Stellung (allein am Herd) und restagt')
+}
+if (!stillGenSrc.includes('applyRestageToPanel')) {
+  fail('Bild ändern filtert Gäste raus, wenn die Stellung neu ist')
+}
+if (!stillGenSrc.includes('neue Stellung, nicht das alte Bild retuschiert')) {
+  fail('Hinweis nach Restage: neue Stellung, kein Retuschieren')
+}
+
+const stillPngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
+if (!stillPngSrc.includes('restage')) {
+  fail('Standbild-KI bekommt den Restage-Pfad')
+}
+if (!stillPngSrc.includes('correctFromUrl: restage ? undefined')) {
+  fail('Restage schickt das vorige Standbild nicht als Kompositions-Schloss an Gemini')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

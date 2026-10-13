@@ -9,6 +9,7 @@ import {
   placeLabelDe,
   placeLabelEn,
   placeLockEn,
+  settingHintForPlace,
   type FilmPlaceKey,
 } from './film-place.js'
 import { getStoryArtStyle, getStoryStylePrompt } from './story-art-styles.js'
@@ -271,23 +272,130 @@ export function personNamedInCorrection(note: string | undefined, names: string[
   return names.find((n) => n.trim() && t.includes(n.trim().toLowerCase()))
 }
 
+/** Jean-Marie writes German without worrying about ä/ö/ü. */
+export function foldCorrectionDe(note?: string): string {
+  return (note || '')
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+}
+
+const RESTAGE_ALONE_RE =
+  /\ballein(?:e|ig)?\b|\bnur\s+(?!ein\b|etwas\b|den\b|die\b|das\b|bisschen\b|wenig\b|noch\b|mal\b|ganz\b|leicht\b)[a-z]{3,}\b|\bkeine[nm]?\s+(?:anderen|leute|gaeste|personen|menschen|kinder)\b|\bohne\s+(?:gaeste|die\s+anderen|andere)\b|\bniemand\s+sonst\b|\bkein\s+gast\b|\bleere[rs]?\s+(?:zimmer|raum|kueche)\b/
+
+const RESTAGE_REMOVE_RE =
+  /\b(?:gaeste|leute|personen|kinder|die\s+anderen).{0,16}(?:raus|weg|entfernen)\b|\b(?:raus|weg|entfernen).{0,16}(?:gaeste|leute|personen|kinder|die\s+anderen)\b|\baus\s+dem\s+bild\b|\bnicht\s+mehr\s+im\s+bild\b|\b(?:raus|weg)\s*$/
+
+const RESTAGE_PLACE_RE =
+  /\bam\s+herd\b|\ban\s+der\s+spuele\b|\bbeim\s+herd\b|\bbeim\s+kessel\b|\bvor\s+dem\s+herd\b|\ban\s+der\s+theke\b|\bam\s+ofen\b|\ban\s+der\s+tuer\b|\bam\s+waschbecken\b|\bam\s+fenster\b|\bweg\s+vom\s+tisch\b|\bnicht\s+am\s+tisch\b|\ban\s+der\s+spuele\b/
+
+const RESTAGE_STAND_AT_RE =
+  /\b(?:steht|stehen|sitzt|sitzen)\s+(?:am|an|bei|vor|hinter|neben)\b|\b(?:am|an|bei)\s+\w+\s+(?:steht|stehen|sitzt|sitzen)\b/
+
+/**
+ * «mach dass ramo alleine am Herd steht» is a new shot, not a pixel tweak
+ * of the old table still.
+ */
+export function correctionRestagesBlocking(note?: string): boolean {
+  const raw = (note || '').trim()
+  if (!raw) return false
+  if (correctionIsFaceOnly(raw) || correctionRewritesPerson(raw)) return false
+  const t = foldCorrectionDe(raw)
+  return (
+    RESTAGE_ALONE_RE.test(t) ||
+    RESTAGE_REMOVE_RE.test(t) ||
+    RESTAGE_PLACE_RE.test(t) ||
+    RESTAGE_STAND_AT_RE.test(t)
+  )
+}
+
+/** Who stays in frame after a restage hint. Alone → only the named person. */
+export function peopleKeptInRestage(note: string | undefined, names: string[]): string[] {
+  const clean = [...new Set(names.map((n) => n.trim()).filter(Boolean))]
+  if (!clean.length) return []
+  const t = foldCorrectionDe(note)
+  const named = clean.filter((n) => (note || '').toLowerCase().includes(n.trim().toLowerCase()))
+  if (RESTAGE_ALONE_RE.test(t)) return named.length ? named : clean.slice(0, 1)
+  if (RESTAGE_REMOVE_RE.test(t) && named.length) {
+    const drop = new Set(named.map((n) => n.toLowerCase()))
+    const kept = clean.filter((n) => !drop.has(n.toLowerCase()))
+    return kept.length ? kept : named
+  }
+  if (named.length && (RESTAGE_PLACE_RE.test(t) || RESTAGE_STAND_AT_RE.test(t))) return named
+  if (RESTAGE_PLACE_RE.test(t) || RESTAGE_STAND_AT_RE.test(t)) return clean.slice(0, 1)
+  return named.length ? named : clean
+}
+
+export function applyRestageToPanel(
+  panel: FilmStoryboardPanel,
+  correction: string,
+  candidateNames?: string[],
+): FilmStoryboardPanel {
+  const names = candidateNames?.length
+    ? candidateNames
+    : panel.placements.map((pl) => pl.name)
+  const keep = new Set(
+    peopleKeptInRestage(correction, names).map((n) => n.trim().toLowerCase()),
+  )
+  const folded = foldCorrectionDe(correction)
+  const standing =
+    /\b(steht|stehen|stehend)\b/.test(folded) && !/\b(sitzt|sitzen|sitzend)\b/.test(folded)
+  const kitchenish = /herd|spuele|kessel|kueche|ofen/.test(folded)
+  const filtered = panel.placements.filter((pl) => keep.has(pl.name.trim().toLowerCase()))
+  const source = filtered.length ? filtered : panel.placements.slice(0, 1)
+  const placements = source.map((pl) =>
+    standing
+      ? {
+          ...pl,
+          poseId: 'standing-front' as const,
+          poseHint: pl.poseHint?.includes('steht') ? pl.poseHint : 'steht',
+        }
+      : pl,
+  )
+  const people = placements.map((pl) => pl.name.trim()).filter(Boolean)
+  const refNeeds = panel.refNeeds
+    ? {
+        ...panel.refNeeds,
+        people: (panel.refNeeds.people ?? []).filter((n) => keep.has(n.trim().toLowerCase())),
+      }
+    : people.length
+      ? { people, places: [] as string[], propIds: panel.propIds ?? [] }
+      : panel.refNeeds
+  return {
+    ...panel,
+    placements,
+    refNeeds,
+    settingHint: kitchenish ? settingHintForPlace('kitchen') : panel.settingHint,
+    stillCorrection: correction,
+    directorNote: correction,
+  }
+}
+
 export function castIdentityLockEn(opts: {
   names: string[]
   genders: Record<string, 'male' | 'female' | undefined>
   stillCorrection?: string
+  restage?: boolean
 }): string {
   const names = opts.names.filter(Boolean)
   if (names.length === 0) return ''
   const rewrite = correctionRewritesPerson(opts.stillCorrection)
+  const restage = Boolean(opts.restage) || correctionRestagesBlocking(opts.stillCorrection)
   const changed = personNamedInCorrection(opts.stillCorrection, names)
   const bits = names.map((name) => {
     const g = opts.genders[name]
     const sex =
-      g === 'male' ? 'male' : g === 'female' ? 'female' : 'the same sex as in the attached room photo'
+      g === 'male' ? 'male' : g === 'female' ? 'female' : 'the same sex as in the attached identity plate'
     const changing = rewrite && changed && name.trim().toLowerCase() === changed.trim().toLowerCase()
-    return changing
-      ? `${name} is ${sex} AFTER the director fix (face/sex may change; they stay the same person in the same seat)`
-      : `${name} is ${sex} — same person throughout this scene, same face as in the attached room photo`
+    if (changing) {
+      return `${name} is ${sex} AFTER the director fix (face/sex may change; they stay the same person)`
+    }
+    if (restage) {
+      return `${name} is ${sex} — same face and clothes as the PERSON identity plate, in the NEW blocking`
+    }
+    return `${name} is ${sex} — same person throughout this scene, same face as in the attached room photo`
   })
   const looks = rewrite
     ? []
@@ -295,9 +403,11 @@ export function castIdentityLockEn(opts: {
         .map((n) => lookForCharacterName(n)?.identityLock)
         .filter((s): s is string => Boolean(s))
   return `CAST LOCK: ${bits.join('. ')}. ${
-    rewrite
-      ? 'Only the named person in the director fix may change sex/face. Everyone else stays the same people in the same seats.'
-      : 'Keep these exact identities. Do not swap faces.'
+    restage
+      ? 'Only these named people appear. Do not paint extra guests. Identity plates are faces and clothes, not the old seating chart.'
+      : rewrite
+        ? 'Only the named person in the director fix may change sex/face. Everyone else stays the same people in the same seats.'
+        : 'Keep these exact identities. Do not swap faces.'
   }${looks.length ? ` ${looks.join(' ')}` : ''}`
 }
 
@@ -309,9 +419,32 @@ export function sceneContinuityBlock(opts: {
   genders?: Record<string, 'male' | 'female' | undefined>
   stillCorrection?: string
   hasGrundbild?: boolean
+  restage?: boolean
 }): string {
+  const restage = Boolean(opts.restage) || correctionRestagesBlocking(opts.stillCorrection)
   const placements = opts.placements ?? []
   const names = [...new Set(placements.map((pl) => pl.name.trim()).filter(Boolean))]
+  if (restage) {
+    const who = names.length ? names.join(', ') : opts.speaker || 'the named person'
+    const stove =
+      inferFilmPlaceKey(`${opts.stillCorrection || ''} ${who}`) === 'kitchen' ||
+      /herd|spuele|kessel|kueche/.test(foldCorrectionDe(opts.stillCorrection))
+        ? 'Keep the SAME kettle and SAME stove type (gas stays gas, induction stays induction). '
+        : ''
+    return [
+      `RESTAGE: The previous blocking is WRONG. Paint a NEW camera and NEW staging from the German line and the director hint. Do not copy the old seated gathering. Do not treat the hint as a caption on the old still.`,
+      `People in this new shot: ${who} only. FORBIDDEN: extra guests, unnamed people, twins.`,
+      stove,
+      castIdentityLockEn({
+        names,
+        genders: opts.genders ?? {},
+        stillCorrection: opts.stillCorrection,
+        restage: true,
+      }),
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
   const ground = opts.hasGrundbild
     ? 'GROUNDBILD: The attached room photo is THIS scene. Same table, same furniture, same people in the same seats. Do not invent a new location.'
     : ''
@@ -394,6 +527,24 @@ export function previousPropStillUrl(
   return undefined
 }
 
+/** Restage: Kanne/Herd from ANY other still, not the current table composition. */
+export function otherPropStillUrl(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+  propId: string,
+): string | undefined {
+  const want = propId.trim().toLowerCase()
+  if (!want) return undefined
+  const all = normalizeFilmStoryboard(board).panels
+  for (const other of all) {
+    if (other.id === panel.id) continue
+    if (!other.stillUrl?.startsWith('http')) continue
+    if (other.stillUrl === panel.stillUrl) continue
+    if (panelPropIds(other).includes(want)) return other.stillUrl
+  }
+  return undefined
+}
+
 /**
  * Welche Vorlagen die Bild-KI bekommt: Raum dieses Ortes, Stammbilder der Figuren,
  * Grundbild nur wenn es derselbe Ort ist.
@@ -406,12 +557,15 @@ export function stillReferencePack(
     sceneWideStillUrl?: string
     board?: FilmStoryboard
     inventory?: FilmInventory | null
+    restage?: boolean
   },
 ): { urls: string[]; items: StillRefItem[]; instruction: string; noteDe: string } {
   const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
   const place = panelPlaceKey(panel)
   const closeup = panel.shot === 'closeup'
   const insert = panel.shot === 'insert'
+  const restage =
+    Boolean(opts?.restage) || correctionRestagesBlocking(panel.stillCorrection)
   const placeWide =
     opts?.board ? placeGrundbildPanel(opts.board, panel)?.stillUrl : undefined
   const wideUrl = placeWide || opts?.sceneWideStillUrl
@@ -443,8 +597,10 @@ export function stillReferencePack(
   const propUrls = new Set<string>()
   if (opts?.board) {
     for (const propId of propIds) {
-      const url = previousPropStillUrl(opts.board, panel, propId)
-      if (!url) continue
+      const url: string | undefined =
+        previousPropStillUrl(opts.board, panel, propId) ||
+        (restage ? otherPropStillUrl(opts.board, panel, propId) : undefined)
+      if (!url || url === panel.stillUrl || url === opts?.correctFromUrl) continue
       propUrls.add(url)
       add({
         role: 'prop',
@@ -455,23 +611,30 @@ export function stillReferencePack(
     }
   }
 
-  const correcting = Boolean(opts?.correctFromUrl)
-  if (opts?.correctFromUrl) {
+  const correcting = Boolean(opts?.correctFromUrl) && !restage
+  if (opts?.correctFromUrl && !restage) {
     add({ role: 'grundbild', name: 'aktuelles Bild', url: opts.correctFromUrl })
   }
-  if (closeup && safeWide) {
+  if (closeup && safeWide && !restage) {
     add({ role: 'grundbild', name: placeLabelDe(place), url: safeWide })
   }
   const prevPlace =
     (opts?.board ? previousPlaceStillUrl(opts.board, panel) : undefined) || opts?.previousStillUrl
   const wantsThisPlace = !wantedPlaces.size || wantedPlaces.has(place)
+  const prevIsCurrent =
+    prevPlace === panel.stillUrl || prevPlace === opts?.correctFromUrl
   const wantPrevPlace =
-    (insert || (correcting && !closeup)) &&
+    (insert || ((correcting || restage) && !closeup)) &&
     Boolean(prevPlace) &&
     wantsThisPlace &&
-    !propUrls.has(prevPlace || '')
+    !propUrls.has(prevPlace || '') &&
+    !(restage && prevIsCurrent)
   if (wantPrevPlace && prevPlace) {
-    add({ role: 'grundbild', name: `vorige ${placeLabelDe(place)}`, url: prevPlace })
+    add({
+      role: restage ? 'place' : 'grundbild',
+      name: `vorige ${placeLabelDe(place)}`,
+      url: prevPlace,
+    })
   }
   if (!closeup && !insert && bg && wantsThisPlace) {
     add({ role: 'place', name: placeLabelDe(place), url: bg })
@@ -487,7 +650,7 @@ export function stillReferencePack(
       url: speakerId,
     })
   }
-  if (!closeup) {
+  if (!closeup || restage) {
     for (const pl of panel.placements) {
       const name = pl.name.trim() || 'Figur'
       if (wantedPeople.size && !wantedPeople.has(name.toLowerCase())) continue
@@ -495,8 +658,14 @@ export function stillReferencePack(
     }
   }
 
-  const max = closeup ? 3 : 4
+  const max = closeup && !restage ? 3 : 4
   const rank = (it: StillRefItem): number => {
+    if (restage) {
+      if (it.role === 'prop') return 0
+      if (it.role === 'person' || it.role === 'identity') return 1
+      if (it.role === 'place') return 2
+      return 3
+    }
     if (it.role === 'grundbild' && it.url === opts?.correctFromUrl) return 0
     if (it.role === 'prop') return 1
     if (it.role === 'place' || it.role === 'grundbild') return 2
@@ -512,18 +681,25 @@ export function stillReferencePack(
   const labels = clipped.map((it, i) => {
     if (it.role === 'prop') {
       const what = propLabelEn(it.propId || it.name, opts?.inventory)
-      return `${i + 1}. PROP: the SAME ${what} as in this photo — do not invent a new one.`
+      return restage
+        ? `${i + 1}. PROP identity: the SAME ${what} as in this photo (shape, color, handle). Do NOT copy the people or seating from this photo.`
+        : `${i + 1}. PROP: the SAME ${what} as in this photo — do not invent a new one.`
     }
     if (it.role === 'grundbild') {
       if (it.url === opts?.correctFromUrl) {
         return `${i + 1}. GROUNDBILD / CURRENT still to correct — apply the director fix. Keep these EXACT people unless the fix says otherwise.`
+      }
+      if (restage) {
+        return `${i + 1}. PLACE identity of the ${placeLabelEn(place)} — SAME furniture and named objects${place === 'kitchen' ? ', SAME stove type (gas stays gas, induction stays induction)' : ''}. The OLD blocking in this photo is WRONG. Do NOT copy who sits where.`
       }
       return insert
         ? `${i + 1}. PREVIOUS still of the SAME ${placeLabelEn(place)} — same named objects, same furniture${place === 'kitchen' ? ', same stove type (gas stays gas, induction stays induction)' : ''}. New action only. NOT a different room.`
         : `${i + 1}. GROUNDBILD of the ${placeLabelEn(place)} only — same furniture, same people. NOT a different room.`
     }
     if (it.role === 'place') {
-      return `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room. Kitchen photos only for kitchen, living-room photos only for living room.`
+      return restage
+        ? `${i + 1}. PLACE identity: ${placeLabelEn(place)} — furniture and room only${place === 'kitchen' ? ', SAME stove type (gas stays gas, induction stays induction)' : ''}. Ignore any people in this photo. The old blocking is WRONG.`
+        : `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room. Kitchen photos only for kitchen, living-room photos only for living room.`
     }
     if (it.role === 'identity') {
       return `${i + 1}. PERSON / IDENTITY plate of ${it.name} — this exact face and clothes, same sex.`
@@ -531,7 +707,9 @@ export function stillReferencePack(
     return `${i + 1}. PERSON identity of ${it.name} — this exact face and clothes, same sex. Never swap with another guest.`
   })
   const instruction = labels.length
-    ? `Attached photos in order: ${labels.join(' | ')} Use each photo only for that role. Do not mix rooms. PROP photos lock THAT object: paint the SAME object as in the PROP photo (flowers stay those flowers, a kettle stays that kettle) — do not invent a replacement. If a kitchen still is attached: same stove type (gas stays gas, induction stays induction).`
+    ? restage
+      ? `RESTAGE, not a pixel tweak. Attached photos in order: ${labels.join(' | ')} Use each photo only for identity (face, clothes, room, props). The OLD gathering/blocking is WRONG — do not copy who sits where. Do not paint extra guests. PROP photos lock THAT object: the SAME kettle stays that kettle. If a kitchen still is attached: same stove type (gas stays gas, induction stays induction).`
+      : `Attached photos in order: ${labels.join(' | ')} Use each photo only for that role. Do not mix rooms. PROP photos lock THAT object: paint the SAME object as in the PROP photo (flowers stay those flowers, a kettle stays that kettle) — do not invent a replacement. If a kitchen still is attached: same stove type (gas stays gas, induction stays induction).`
     : ''
   const noteDe = clipped.length
     ? `Mitgeschickt: ${clipped
@@ -644,6 +822,7 @@ export function correctFromUrlForPanel(
 ): string | undefined {
   const note = correction?.trim()
   if (!note) return undefined
+  if (correctionRestagesBlocking(note)) return undefined
   if (correctionRewritesPerson(note)) {
     return sceneGrundbildPanel(board, panel.sceneId)?.stillUrl || panel.stillUrl
   }
@@ -657,8 +836,12 @@ export function stillAttachmentInstruction(opts: {
   insert?: boolean
   rewritePerson?: boolean
   packInstruction?: string
+  restage?: boolean
 }): string {
   const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
+  if (opts.restage) {
+    return `${pack}RESTAGE: attached photos are IDENTITY only (face, clothes, room, props). The OLD blocking is WRONG — do not copy who sits where, do not keep extra guests from an old table scene. Paint a NEW camera and NEW staging from the director restage and the German line. If the restage says alone / no other people, paint ZERO extra guests. Keep the SAME kettle and SAME stove type (gas stays gas, induction stays induction) when those objects apply. Do NOT treat the restage as a caption over the old still.`
+  }
   if (opts.insert) {
     const current = opts.correctingExisting
       ? 'Also attached: CURRENT still to correct. Keep these EXACT people (face, hair, clothes) unless the director fix says otherwise. Apply only the director fix. '
@@ -787,6 +970,7 @@ export function buildFilmStillPrompt(opts: {
   speakerGender?: 'male' | 'female'
   speakerX?: number
   continuityEn?: string
+  restage?: boolean
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -796,9 +980,12 @@ export function buildFilmStillPrompt(opts: {
   const isCloseup = opts.shot === 'closeup'
   const isInsert = opts.shot === 'insert'
   const rewritePerson = correctionRewritesPerson(opts.stillCorrection)
+  const restage = Boolean(opts.restage) || correctionRestagesBlocking(opts.stillCorrection)
   const closeEyes =
     'Eyes fully drawn and opaque: white sclera, colored iris, dark pupil — never translucent, glassy, hollow, see-through, or empty-white.'
-  const lock = rewritePerson
+  const lock = restage
+    ? `${STORY_STILLS_LOCK_PROMPT} RESTAGE identity: faces and clothes of the NAMED people only. PROP LOCK: the SAME kettle as in a PROP photo, SAME stove type (gas stays gas, induction stays induction). Paint NEW blocking from the director restage. Do not copy a previous gathering. Do not invent extra guests. ${closeEyes}`
+    : rewritePerson
     ? `${closeEyes} ${closeupGenderLine(opts.speakerGender)} Keep the same room, the same table and the same seats. The speaker stays sitting with the others. Redraw only that person as the director fix says. Do not keep a wrong-gender face. Do not stand them up or move them to a studio.`
     : opts.hasLibraryRefs
     ? isCloseup
@@ -824,7 +1011,9 @@ export function buildFilmStillPrompt(opts: {
 
   return [
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
-    isCloseup
+    restage
+      ? `NEW SHOT / RESTAGE. New camera, new blocking from the director restage and the German line. FORBIDDEN: copying the previous seated gathering. FORBIDDEN: extra guests not named in the restage. If the restage says alone / no other people, paint ZERO extra people — only the named person. Do not treat the restage as a caption over the old still.`
+      : isCloseup
       ? `${closeupCameraLine(opts.closeupSpeaker)} Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. ${
           rewritePerson
             ? 'New correct face and sex. Do not keep a wrong-gender face from the attached photo.'
@@ -835,7 +1024,9 @@ export function buildFilmStillPrompt(opts: {
         : rewritePerson
         ? `WIDE shot of the SAME gathering. Keep this camera, this table and these seats. Apply the director fix to the named person only. Everyone else stays where they are. Sitting people stay sitting, hips on the seat.`
         : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people. FORBIDDEN: an empty room with no guests if people are named.`,
-    opts.correctingExisting
+    restage
+      ? `${moment} This frame MUST NOT copy the previous still's composition. New place-in-the-room, new who-is-in-frame.`
+      : opts.correctingExisting
       ? ''
       : isCloseup
         ? `${moment} Same gathering and clothes as the wide still. Only the camera is closer — do not invent a new room or a new person.`
@@ -843,11 +1034,17 @@ export function buildFilmStillPrompt(opts: {
           ? `${moment} New camera on the named detail. Never copy the previous wide frame.`
           : `${moment} It MUST look different from other frames: who speaks, what they hold, gaze, pose or camera. Never copy the previous frame.`,
     `Art style (${styleLabel}): ${style}`,
-    placeLockEn(inferFilmPlaceKey(`${opts.settingHint || ''} ${opts.imageCue || ''} ${opts.caption || ''}`)),
-    teaBeatLockEn(opts.caption, opts.imageCue),
+    placeLockEn(
+      inferFilmPlaceKey(
+        `${opts.settingHint || ''} ${opts.imageCue || ''} ${opts.caption || ''} ${opts.stillCorrection || ''}`,
+      ),
+    ),
+    teaBeatLockEn(opts.caption, opts.imageCue || opts.stillCorrection),
     opts.continuityEn || '',
     lock,
-    isCloseup
+    restage
+      ? 'Do not keep the old seating chart. Ignore who sat where in any attached photo.'
+      : isCloseup
       ? closeupSpaceLine({
           speaker: opts.closeupSpeaker || '',
           settingHint: opts.settingHint,
@@ -857,13 +1054,13 @@ export function buildFilmStillPrompt(opts: {
       : isInsert
         ? 'Do not keep the seating chart of the wide shot. Show only what the insert names.'
         : '',
-    opts.correctingExisting
-      ? correctionRewritesPerson(opts.stillCorrection)
+    restage || !opts.correctingExisting
+      ? ''
+      : correctionRewritesPerson(opts.stillCorrection)
         ? 'An attached photo is the CURRENT GROUNDBILD. Keep the SAME room, furniture, camera and seats. The named person stays at this table. Redraw that speaker as the director fix says (sex and face may change). Do not keep a wrong-gender face. Do not stand them up.'
         : isCloseup
           ? 'An attached photo is the CURRENT close-up of this person. Keep the exact crop, face, hair and clothes. Change ONLY facial muscles (eyebrows, eyelids, mouth, nose wrinkle) as asked. Do not redraw a new portrait.'
-          : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.'
-      : '',
+          : 'An attached photo is the CURRENT still. Apply the director fix to that frame. Keep faces, clothes and place unless the fix says otherwise.',
     `Scene title: ${opts.sceneTitle || 'Scene'}.`,
     `Place: ${opts.settingHint || 'as implied'}.`,
     `Action / caption: ${opts.caption}.`,
@@ -871,18 +1068,26 @@ export function buildFilmStillPrompt(opts: {
     opts.imageCue ? `What we see in THIS frame only: ${opts.imageCue}.` : '',
     `Faces: ${opts.expressionHint || 'natural'}.`,
     people
-      ? isInsert
+      ? restage
+        ? `People in frame (exactly these, each ONCE, ZERO extras): ${people}. FORBIDDEN: any guest not in this list.`
+        : isInsert
         ? `People in frame (exactly these, each ONCE, no twins): ${people}.`
         : `People in frame — they MUST be visible, not an empty room: ${people}. Only these people. Do not invent a girl or an extra guest.`
-      : isInsert
+      : restage
+        ? 'No extra people. If the restage says alone, the room has only the named person.'
+        : isInsert
         ? 'No extra people in this insert unless the cue names them.'
         : '',
     poses ? `Poses: ${poses}.` : '',
     opts.directorNote ? `Director note: ${opts.directorNote}.` : '',
     opts.stillCorrection
-      ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
+      ? restage
+        ? `DIRECTOR RESTAGE — this is a NEW shot, not a tweak of the old still: ${opts.stillCorrection}. The old seating/group is WRONG. Guests must not appear unless this restage names them.`
+        : `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
       : '',
-    isCloseup
+    restage
+      ? `Widescreen 16:9. NEW staging. Standing people: full body, both legs and shoes on the floor. Sitting people only if the restage says they sit. Same body scale. No extra limbs, no extra guests.`
+      : isCloseup
       ? `Widescreen 16:9. Close-up crop of the same gathering. Face large. Hair not cut off at the top. Opaque eyes with iris and pupil. No legs, no floating torso, no studio cut-out, no second person, no glassy see-through eyes.`
       : isInsert
         ? `Widescreen 16:9. Insert/cutaway. The named detail fills most of the frame. Not a group wide. Not a portrait.`
