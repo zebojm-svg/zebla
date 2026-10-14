@@ -2,9 +2,13 @@ import {
   clientTimeoutMessage,
   DEFAULT_API_TIMEOUT_MS,
   FILM_PLAN_TIMEOUT_MS,
+  isStillEditPlanPath,
   TEXT_AI_TIMEOUT_MS,
 } from '../../shared/api-timeout'
-import { STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS } from '../../shared/film-still-pack'
+import {
+  STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
+  STILL_EDIT_PLANNER_GOOGLE_DE,
+} from '../../shared/film-still-pack'
 
 const STILL_EDIT_PLAN_TIMEOUT_MS = STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS
 
@@ -47,6 +51,7 @@ async function request<T>(
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(clientTimeoutMessage(path, 'abort'))
     }
+    if (isStillEditPlanPath(path)) throw new Error(STILL_EDIT_PLANNER_GOOGLE_DE)
     throw err
   } finally {
     clearTimeout(timer)
@@ -54,6 +59,11 @@ async function request<T>(
 
   const text = await res.text()
   if (!text) {
+    if (isStillEditPlanPath(path)) {
+      throw new Error(
+        res.status === 504 ? clientTimeoutMessage(path, 'server') : STILL_EDIT_PLANNER_GOOGLE_DE,
+      )
+    }
     throw new Error(`Leere Antwort vom Server (${res.status}).`)
   }
   if (
@@ -66,14 +76,23 @@ async function request<T>(
   try {
     data = JSON.parse(text)
   } catch {
+    if (isStillEditPlanPath(path)) {
+      throw new Error(
+        res.status === 504 ? clientTimeoutMessage(path, 'server') : STILL_EDIT_PLANNER_GOOGLE_DE,
+      )
+    }
     throw new Error(
       text.slice(0, 300) || `Server-Fehler (${res.status}). Bitte später erneut versuchen.`,
     )
   }
   if (!res.ok) {
     const err = data as { error?: string }
+    const fromServer = typeof err?.error === 'string' ? err.error.trim() : ''
+    if (fromServer) throw new Error(fromServer)
     throw new Error(
-      err.error ?? `Anfrage fehlgeschlagen (${res.status}). Prüfe GEMINI_API_KEY auf Vercel.`,
+      isStillEditPlanPath(path)
+        ? STILL_EDIT_PLANNER_GOOGLE_DE
+        : `Anfrage fehlgeschlagen (${res.status}). Prüfe GEMINI_API_KEY auf Vercel.`,
     )
   }
   return data as T

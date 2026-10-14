@@ -1,5 +1,5 @@
 import { assertAiAllowed } from './ai-authorize.js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai'
 import { randomUUID } from 'crypto'
 import type {
   CharacterVisual,
@@ -68,10 +68,12 @@ import {
   catalogForPlanner,
   extractJsonValue,
   parseStillEditPackzettel,
+  runStillEditPlannerModelAttempts,
   stillEditPlannerErrorDe,
   stillEditPlannerMessages,
   stillEditPlannerRetryUser,
   withStillEditPlannerQuotaRetries,
+  STILL_EDIT_PLANNER_FALLBACK_MODEL,
   STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
   STILL_EDIT_PLANNER_MODEL,
@@ -136,13 +138,23 @@ function clipPlannerTimeoutMs(remainingMs: number, cap: number): number {
   return Math.min(cap, Math.max(5_000, remainingMs))
 }
 
-function getTextModel(temperature = 0.7, model = TEXT_MODEL) {
+const STILL_EDIT_PACK_SCHEMA: ResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    imagePrompt: { type: SchemaType.STRING },
+    imageIds: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+  },
+  required: ['imagePrompt', 'imageIds'],
+}
+
+function getTextModel(temperature = 0.7, model = TEXT_MODEL, responseSchema?: ResponseSchema) {
   const genAI = new GoogleGenerativeAI(requireGeminiKey())
   return genAI.getGenerativeModel({
     model,
     generationConfig: {
       responseMimeType: 'application/json',
       temperature,
+      ...(responseSchema ? { responseSchema } : {}),
     },
   })
 }
@@ -201,10 +213,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   })
 }
 
+type ChatJsonOpts = {
+  temperature?: number
+  timeoutMs?: number
+  timeoutMessage?: string
+  model?: string
+  responseSchema?: ResponseSchema
+}
+
 export async function chatJson<T>(
   system: string,
   user: string,
-  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string; model?: string },
+  opts?: ChatJsonOpts,
 ): Promise<T> {
   return chatJsonWithImages<T>(system, user, [], opts)
 }
@@ -213,12 +233,12 @@ export async function chatJsonWithImages<T>(
   system: string,
   user: string,
   images: Array<{ mimeType: string; data: string }> = [],
-  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string; model?: string },
+  opts?: ChatJsonOpts,
 ): Promise<T> {
   await assertAiAllowed()
   const modelId = opts?.model?.trim() || TEXT_MODEL
   try {
-    const model = getTextModel(opts?.temperature ?? 0.7, modelId)
+    const model = getTextModel(opts?.temperature ?? 0.7, modelId, opts?.responseSchema)
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
       { text: `${system}\n\n---\n\n${user}` },
     ]
@@ -451,27 +471,40 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
   }
 }
 
+function logStillEditPlannerCause(cause: unknown, model: string) {
+  const raw = cause instanceof Error ? cause.message : String(cause ?? '')
+  console.error('[still-edit-packzettel]', model, raw)
+}
+
 async function requestStillEditPackzettel(
   system: string,
   user: string,
   timeoutMs: number,
   model = stillEditPlannerModelId(),
 ): Promise<StillEditPackzettel> {
-  try {
-    const raw = await chatJson<unknown>(system, user, {
-      temperature: 0.2,
-      timeoutMs,
-      timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
-      model,
-    })
-    return parseStillEditPackzettel(raw)
-  } catch (err) {
-    const fallback = TEXT_MODEL
-    if (model !== fallback && isGeminiModelMissing(err) && !/tts|image/i.test(fallback)) {
-      return requestStillEditPackzettel(system, user, timeoutMs, fallback)
-    }
-    throw err
-  }
+  const raw = await chatJson<unknown>(system, user, {
+    temperature: 0.2,
+    timeoutMs,
+    timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
+    model,
+    responseSchema: STILL_EDIT_PACK_SCHEMA,
+  })
+  return parseStillEditPackzettel(raw)
+}
+
+function stillEditPlannerAsk(
+  system: string,
+  user: string,
+  timeoutMs: number,
+  catalogLen: number,
+): Promise<StillEditPackzettel> {
+  return runStillEditPlannerModelAttempts({
+    catalogLen,
+    primary: stillEditPlannerModelId(),
+    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
+    log: logStillEditPlannerCause,
+    call: (model) => requestStillEditPackzettel(system, user, timeoutMs, model),
+  })
 }
 
 /** Bild ändern: kurze Drehbuch-KI, nur JSON-Packzettel, malt nicht. Keine Fotos an diesen Aufruf. */
@@ -485,16 +518,18 @@ export async function planStillEditPackzettel(
   const remaining = () => STILL_EDIT_PLANNER_HTTP_BUDGET_MS - (Date.now() - started)
   try {
     return await withStillEditPlannerQuotaRetries(async () => {
-      const pack = await requestStillEditPackzettel(
+      const pack = await stillEditPlannerAsk(
         system,
         user,
         clipPlannerTimeoutMs(remaining() - 2_000, STILL_EDIT_PLANNER_TIMEOUT_MS),
+        catalog.length,
       )
       if (pack.imageIds.length > 0 || catalog.length === 0) return pack
-      const retried = await requestStillEditPackzettel(
+      const retried = await stillEditPlannerAsk(
         system,
         stillEditPlannerRetryUser(planned),
         clipPlannerTimeoutMs(remaining() - 1_000, STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS),
+        catalog.length,
       )
       if (retried.imageIds.length === 0) {
         throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
@@ -502,6 +537,7 @@ export async function planStillEditPackzettel(
       return retried
     })
   } catch (err) {
+    logStillEditPlannerCause(err, stillEditPlannerModelId())
     throw new Error(stillEditPlannerErrorDe(err))
   }
 }

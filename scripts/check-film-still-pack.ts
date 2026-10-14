@@ -20,11 +20,15 @@ import {
   stillNumberInScene,
   stillPackzettelAttachEn,
   stillEditTimeoutHintDe,
+  isStillEditPlannerFlashFallbackError,
   isStillEditPlannerQuotaError,
+  runStillEditPlannerModelAttempts,
   withStillEditPlannerQuotaRetries,
   STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
   STILL_EDIT_PLANNER_EMPTY_DE,
   STILL_EDIT_PLANNER_ERROR_DE,
+  STILL_EDIT_PLANNER_FALLBACK_MODEL,
+  STILL_EDIT_PLANNER_GOOGLE_DE,
   STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
   STILL_EDIT_PLANNER_MODEL,
@@ -348,6 +352,9 @@ if (stillEditPlannerErrorDe(new Error('Keine Antwort von der KI erhalten.')) !==
 if (stillEditPlannerErrorDe(new Error('JSON der KI war ungültig.')) !== STILL_EDIT_PLANNER_INVALID_DE) {
   fail('Kaputtes JSON wird als ungültiger Packzettel erklärt')
 }
+if (stillEditPlannerErrorDe(new Error('Invalid JSON payload received. Unknown name responseMimeType')) !== STILL_EDIT_PLANNER_INVALID_DE) {
+  fail('Invalid JSON payload ist ungültiger Packzettel, nicht der Satz ohne Klammer')
+}
 const quotaRaw =
   'Quota exceeded for aiplatform.googleapis.com/generate_content_requests_per_minute_per_project_per_base_model with base model: gemini-2.5-flash. Please submit a quota increase request. https://cloud.google.com/vertex-ai/docs/generative-ai/quotas-genai'
 if (!isStillEditPlannerQuotaError(quotaRaw)) fail('Vertex-Quota ist echte Quota')
@@ -359,6 +366,12 @@ if (isStillEditPlannerQuotaError(sdk500)) fail('Google-URL allein ist keine Quot
 if (stillEditPlannerErrorDe(new Error(sdk500)) === STILL_EDIT_PLANNER_QUOTA_DE) {
   fail('500 nicht als gerade voll zeigen')
 }
+if (stillEditPlannerErrorDe(new Error(sdk500)) !== STILL_EDIT_PLANNER_GOOGLE_DE) {
+  fail('500 ist Google-Fehler mit Grund, nicht der Satz ohne Klammer')
+}
+if (stillEditPlannerErrorDe(new Error(sdk500)) === STILL_EDIT_PLANNER_ERROR_DE) {
+  fail('Unklassifizierter Google-Dump darf nicht den Satz ohne Grund zeigen')
+}
 const deadline =
   'Error fetching from https://generativelanguage.googleapis.com/v1beta: Deadline Exceeded'
 if (stillEditPlannerErrorDe(new Error(deadline)) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
@@ -369,6 +382,12 @@ if (
   !STILL_EDIT_PLANNER_MODEL.includes('flash-lite')
 ) {
   fail('Planner ist günstiges Text-Flash, nicht TTS und nicht Bild')
+}
+if (
+  /tts|image|lite/i.test(STILL_EDIT_PLANNER_FALLBACK_MODEL) ||
+  STILL_EDIT_PLANNER_FALLBACK_MODEL !== 'gemini-2.5-flash'
+) {
+  fail('Fallback nach lite ist gemini-2.5-flash')
 }
 const quota = stillEditPlannerErrorDe(new Error(quotaRaw))
 if (quota !== STILL_EDIT_PLANNER_QUOTA_DE) fail('Quota wie Probe, ohne URL')
@@ -383,11 +402,17 @@ if (stillEditPlannerErrorDe(new Error('Die Drehbuch-KI ist gerade voll. Bitte no
 if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_QUOTA_DE) !== STILL_EDIT_PLANNER_QUOTA_DE) {
   fail('Quota-Satz nicht auf Zeitlimit umbiegen')
 }
-if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_PLANNER_ERROR_DE) {
-  fail('Der kurze Satz bleibt, wenn wir nichts Genaueres wissen')
+if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_PLANNER_GOOGLE_DE) {
+  fail('Der Satz ohne Klammer bekommt den Grund Google-Fehler')
 }
 if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_TIMEOUT_DE)) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
   fail('Zeitlimit bleibt Zeitlimit, nicht Quota')
+}
+if (stillEditPlannerErrorDe(new Error('Kein Storyboard.')) !== 'Kein Storyboard.') {
+  fail('Kein Storyboard bleibt der App-Satz, nicht Google-Fehler')
+}
+if (stillEditPlannerErrorDe(new Error('Failed to fetch')) !== STILL_EDIT_PLANNER_GOOGLE_DE) {
+  fail('Netzwerkfehler am Packzettel ist Google-Fehler')
 }
 
 {
@@ -426,6 +451,79 @@ if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_TIMEOUT_DE)) !== STILL_
   if (timed !== 1) fail('Timeout nicht wiederholen')
 }
 
+if (!isStillEditPlannerFlashFallbackError(new Error(STILL_EDIT_PLANNER_EMPTY_DE))) {
+  fail('Leere lite-Antwort → Flash')
+}
+if (!isStillEditPlannerFlashFallbackError(new Error(STILL_EDIT_PLANNER_INVALID_DE))) {
+  fail('Ungültiger lite-Packzettel → Flash')
+}
+if (!isStillEditPlannerFlashFallbackError(new Error('404 Not Found models/gemini-2.5-flash-lite is not found'))) {
+  fail('404 lite → Flash')
+}
+if (!isStillEditPlannerFlashFallbackError(new Error(sdk500))) {
+  fail('500 lite → Flash')
+}
+if (isStillEditPlannerFlashFallbackError(new Error('GEMINI_API_KEY ist nicht gesetzt. Bitte in Vercel einen Google AI Studio Key eintragen.'))) {
+  fail('Fehlender Schlüssel nicht auf Flash umbiegen')
+}
+if (isStillEditPlannerFlashFallbackError(new Error('Kein Storyboard.'))) {
+  fail('Kein Storyboard nicht auf Flash umbiegen')
+}
+
+{
+  const order: string[] = []
+  const fromEmpty = await runStillEditPlannerModelAttempts({
+    catalogLen: 3,
+    primary: STILL_EDIT_PLANNER_MODEL,
+    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
+    call: async (model) => {
+      order.push(model)
+      if (model.includes('lite')) {
+        return { imagePrompt: 'Ramo at the stove', imageIds: [] }
+      }
+      return { imagePrompt: 'Ramo alone at the stove', imageIds: ['person-ramo'] }
+    },
+  })
+  if (fromEmpty.imageIds[0] !== 'person-ramo') fail('Leere ids von lite: gleicher Prompt auf Flash')
+  if (order.join(',') !== `${STILL_EDIT_PLANNER_MODEL},${STILL_EDIT_PLANNER_FALLBACK_MODEL}`) {
+    fail('Erst lite, dann flash')
+  }
+}
+
+{
+  const order: string[] = []
+  const fromInvalid = await runStillEditPlannerModelAttempts({
+    catalogLen: 3,
+    primary: STILL_EDIT_PLANNER_MODEL,
+    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
+    call: async (model) => {
+      order.push(model)
+      if (model.includes('lite')) throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
+      return { imagePrompt: 'Ramo alone at the stove', imageIds: ['person-ramo', 'still-stove'] }
+    },
+  })
+  if (fromInvalid.imageIds.length !== 2) fail('Ungültiges lite-JSON: gleicher Prompt auf Flash')
+  if (order[0] !== STILL_EDIT_PLANNER_MODEL || order[1] !== STILL_EDIT_PLANNER_FALLBACK_MODEL) {
+    fail('Ungültig: lite dann flash')
+  }
+}
+
+{
+  const order: string[] = []
+  const from404 = await runStillEditPlannerModelAttempts({
+    catalogLen: 1,
+    primary: STILL_EDIT_PLANNER_MODEL,
+    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
+    call: async (model) => {
+      order.push(model)
+      if (model.includes('lite')) throw new Error('404 Not Found is not found')
+      return { imagePrompt: 'ok', imageIds: ['person-ramo'] }
+    },
+  })
+  if (from404.imagePrompt !== 'ok') fail('404 lite: Flash liefert den Packzettel')
+  if (order.length !== 2) fail('404 lite ruft Flash')
+}
+
 const attach = stillPackzettelAttachEn(onlyListed.map((it) => it.label))
 if (/exact people|same seats/i.test(attach)) {
   fail('Packzettel hängt keine Extra-Sperre keep EXACT people / same seats an')
@@ -447,11 +545,17 @@ if (timeoutHint.includes('Diese Szene erzeugen')) {
   fail('Bild-ändern-Timeout darf nicht auf Diese Szene erzeugen zeigen')
 }
 const packHint = stillEditTimeoutHintDe(STILL_EDIT_PLANNER_ERROR_DE)
-if (packHint !== STILL_EDIT_PLANNER_ERROR_DE) {
-  fail('Packzettel-Fehler bleibt der gleiche Satz')
+if (packHint !== STILL_EDIT_PLANNER_GOOGLE_DE) {
+  fail('Staler Satz ohne Klammer zeigt Google-Fehler')
 }
 if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_TIMEOUT_DE) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
   fail('Zeitlimit-Satz nicht umbiegen')
+}
+if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_EMPTY_DE) !== STILL_EDIT_PLANNER_EMPTY_DE) {
+  fail('Leere-Antwort-Satz nicht umbiegen')
+}
+if (stillEditTimeoutHintDe('Anfrage fehlgeschlagen (500). Prüfe GEMINI_API_KEY auf Vercel.') !== STILL_EDIT_PLANNER_GOOGLE_DE) {
+  fail('500 ohne Server-Text ist Google-Fehler, nicht der Satz ohne Klammer')
 }
 
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
@@ -497,12 +601,20 @@ if (!aiSrc.includes('STILL_EDIT_PLANNER_TIMEOUT_MS')) fail('Planner ist ein kurz
 if (!aiSrc.includes('catalogForPlanner')) fail('Planner bekommt den Text-Katalog, nicht die PNGs')
 if (!aiSrc.includes('stillEditPlannerRetryUser')) fail('Leere imageIds: einmal kürzer nachfragen')
 if (!aiSrc.includes('STILL_EDIT_PLANNER_MODEL')) fail('Packzettel-Planner ist das günstige Text-Flash, nicht TTS')
+if (!aiSrc.includes('STILL_EDIT_PLANNER_FALLBACK_MODEL')) fail('Nach lite kommt gemini-2.5-flash')
+if (!aiSrc.includes('runStillEditPlannerModelAttempts')) fail('Leere/ungültige lite-Antwort versucht Flash')
+if (!aiSrc.includes('responseSchema')) fail('Packzettel verlangt strukturiertes JSON')
+if (!aiSrc.includes('SchemaType')) fail('SDK-responseSchema für den Packzettel')
+if (!aiSrc.includes('[still-edit-packzettel]')) fail('Roh-Ursache des Packzettels serverseitig loggen')
 if (!aiSrc.includes('withStillEditPlannerQuotaRetries')) fail('429 wartet und versucht denselben Klick nochmal')
 if (!aiSrc.includes('clipPlannerTimeoutMs')) fail('Quota-Retry bleibt unter dem 60s-HTTP-Budget')
 const planStart = aiSrc.indexOf('async function requestStillEditPackzettel')
 const planEnd = aiSrc.indexOf('export async function planFilmPanelRefNeeds')
 const planFn = aiSrc.slice(planStart, planEnd > planStart ? planEnd : undefined)
 if (!planFn.includes('planStillEditPackzettel')) fail('Planner-Funktionen hängen zusammen')
+if (!planFn.includes('STILL_EDIT_PACK_SCHEMA') && !planFn.includes('responseSchema')) {
+  fail('Planner-Aufruf setzt das JSON-Schema')
+}
 if (planFn.includes('chatJsonWithImages')) {
   fail('Packzettel-Planner darf keine Bilder an Gemini hängen')
 }
@@ -552,6 +664,12 @@ const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url),
 if (!clientSrc.includes('/film-storyboard-still-plan')) fail('Client ruft den Packzettel extra')
 if (!clientSrc.includes('STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS')) {
   fail('Client-Wartezeit deckt Planner plus einen kurzen zweiten Ask')
+}
+if (!clientSrc.includes('fromServer') || !clientSrc.includes('err.error')) {
+  fail('Client zeigt den Server-error-Text, keinen eigenen Satz ohne Grund')
+}
+if (clientSrc.includes(`'${STILL_EDIT_PLANNER_ERROR_DE}'`) || clientSrc.includes(`"${STILL_EDIT_PLANNER_ERROR_DE}"`)) {
+  fail('Client darf den Satz ohne Klammer nicht als Fallback hart kodieren')
 }
 if (clientTimeoutMessage('/film-storyboard-still-plan', 'abort') !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
   fail('Client-Timeout am Packzettel sagt Zeitlimit, nicht nur den kurzen Satz')
