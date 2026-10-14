@@ -869,7 +869,7 @@ export async function stillFilmPanel(
       try {
         editLibrary = libraryForCompose(await listStoryAssets(userId))
       } catch {
-        /* ohne Bibliothek: isolierte Requisite, leeres Ortsbild */
+        /* ohne Bibliothek: Orts-Grundbild und Stammbilder */
       }
     }
     const pack = stillReferencePack(panelForGen, {

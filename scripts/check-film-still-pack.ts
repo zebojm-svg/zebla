@@ -211,56 +211,56 @@ const hint = 'mach dass ramo alleine am Herd steht'
     { board, inventory },
   )
   if (editPack.urls.includes(table.stillUrl || '')) {
-    fail('aktuelles Tischbild nicht mitschicken — das hat die Gäste kopiert')
+    fail('aktuelles Still nicht als GROUNDBILD mitschicken')
   }
   if (editPack.urls.length > 4) fail('kleines Paket wie erstes Malen, kein Filmkatalog')
   if (editPack.items.some((it) => it.name === 'aktuelles Bild')) {
     fail('kein GROUNDBILD-Lock auf dem aktuellen Still')
   }
   if (editPack.items.some((it) => it.name.startsWith('vorige'))) {
-    fail('Bild ändern hängt keine vorigen Ortsbilder als Komposition an')
+    fail('Bild ändern hängt keine vorigen Szenen-Bilder als Komposition an')
+  }
+  if (editPack.urls.includes(stove.stillUrl || '')) {
+    fail('Bild ändern hängt kein Szenen-Still als Requisite an')
   }
   if (!editPack.urls.includes('https://example.com/ramo.png')) {
-    fail('Sprecher-Gesicht bleibt (Hinweis nennt Ramo)')
-  }
-  if (editPack.urls.includes('https://example.com/khan.png')) {
-    fail('Gäste-Stammbilder nicht als 3er-Besetzung — Hinweis nennt Ramo')
+    fail('Stammbild bleibt')
   }
   if (!editPack.urls.includes('https://example.com/kitchen-empty.png')) {
-    fail('leeres Küchen-Grundbild bleibt')
+    fail('Orts-Grundbild bleibt')
   }
-  if (!firstPack.urls.includes('https://example.com/khan.png')) {
-    fail('Erstes Malen darf die Gäste-Stammbilder schicken')
+  if (!firstPack.urls.includes('https://example.com/ramo.png')) {
+    fail('Erstes Malen schickt Stammbilder')
   }
 
-  const guestsWide = panel({
-    id: 'guests-wide',
+  const prevWide = panel({
+    id: 'prev-wide',
     panelIndex: 0,
-    caption: 'Ramo sitzt mit Gästen in der Küche',
-    imageCue: 'drei Personen in der Küche',
-    stillUrl: 'https://example.com/kitchen-guests.png',
+    caption: 'Vorige Szene am selben Ort',
+    imageCue: 'ganzer Raum',
+    stillUrl: 'https://example.com/prev-scene.png',
     shot: 'wide',
     placements: table.placements,
     background: table.background,
   })
-  const stoveAfterGuests = { ...stove, panelIndex: 1 }
-  const kitchenBoard2: FilmStoryboard = {
+  const insertAfter = { ...stove, panelIndex: 1 }
+  const seqBoard: FilmStoryboard = {
     ...board,
-    panels: [guestsWide, stoveAfterGuests, table],
+    panels: [prevWide, insertAfter, table],
   }
-  const firstInsert = stillReferencePack(stoveAfterGuests, { board: kitchenBoard2, inventory })
+  const firstInsert = stillReferencePack(insertAfter, { board: seqBoard, inventory })
   const editInsert = stillReferencePack(
-    { ...stoveAfterGuests, stillCorrection: hint, directorNote: hint },
-    { board: kitchenBoard2, inventory },
+    { ...insertAfter, stillCorrection: hint, directorNote: hint },
+    { board: seqBoard, inventory },
   )
-  if (!firstInsert.urls.includes(guestsWide.stillUrl || '')) {
-    fail('Erstes Malen darf voriges Küchenbild zur Kontinuität schicken')
+  if (!firstInsert.urls.includes(prevWide.stillUrl || '')) {
+    fail('Erstes Malen darf voriges Ortsbild zur Kontinuität schicken')
   }
-  if (editInsert.urls.includes(guestsWide.stillUrl || '')) {
-    fail('Bild ändern hängt kein voriges 3-Personen-Küchenbild als Komposition an')
+  if (editInsert.urls.includes(prevWide.stillUrl || '')) {
+    fail('Bild ändern hängt kein voriges Szenen-Bild desselben Ortes an')
   }
   if (editInsert.urls.includes(table.stillUrl || '')) {
-    fail('Tisch mit Gästen nicht als Vorlage auf Bild ändern')
+    fail('anderes Szenen-Still nicht als Vorlage auf Bild ändern')
   }
   if (editInsert.items.some((it) => it.name === 'aktuelles Bild')) {
     fail('kein GROUNDBILD current still auf Bild ändern')
@@ -268,19 +268,19 @@ const hint = 'mach dass ramo alleine am Herd steht'
   const editWithLib = stillReferencePack(
     { ...table, stillCorrection: hint, directorNote: hint },
     {
-      board: kitchenBoard2,
+      board: seqBoard,
       inventory,
-      library: [{ type: 'prop', name: 'Kanne', imageUrl: 'https://example.com/kanne-cutout.png' }],
+      library: [{ type: 'prop', name: 'Kanne', imageUrl: 'https://example.com/prop-plate.png' }],
     },
   )
-  if (!editWithLib.urls.includes('https://example.com/kanne-cutout.png')) {
-    fail('Bibliotheks-Freisteller der Kanne vor Tisch mit Gästen')
+  if (!editWithLib.urls.includes('https://example.com/prop-plate.png')) {
+    fail('Bibliotheks-Platte der Requisite statt Szenen-Still')
   }
   if (editWithLib.urls.includes(table.stillUrl || '')) {
-    fail('Tisch mit Gästen nicht als Kannen-Foto')
+    fail('Szenen-Still nicht als Requisiten-Platte')
   }
-  if (editWithLib.urls.includes(guestsWide.stillUrl || '')) {
-    fail('3-Personen-Küche nicht als Requisite')
+  if (editWithLib.urls.includes(prevWide.stillUrl || '')) {
+    fail('voriges Szenen-Bild nicht als Requisite')
   }
 
   const editPrompt = buildFilmStillPrompt({
@@ -885,4 +885,10 @@ if (!planMd.includes('höchste Priorität')) {
   fail('ZEBLA_PLAN: Hinweis hat höchste Priorität')
 }
 
-console.log('OK: Bild ändern = Hinweis zuerst, ohne vorige Orts-Stills')
+const stillsSrc = readFileSync(new URL('../shared/film-stills.ts', import.meta.url), 'utf8')
+if (!stillsSrc.includes('stillEditHintPriorityEn')) fail('Hinweis-Priorität im Bild-Prompt')
+if (stillsSrc.includes('stillShowsExtraPeople')) {
+  fail('Bild ändern rät nicht extra Leute aus dem Szenen-Still')
+}
+
+console.log('OK: Bild ändern = Hinweis zuerst, ohne vorige Szenen-Bilder')

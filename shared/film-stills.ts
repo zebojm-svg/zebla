@@ -299,14 +299,10 @@ export function gazeNoteDe(speaker: string, addressee?: string, lookNote?: strin
   return null
 }
 
-export function peopleNamedInCorrection(note: string | undefined, names: string[]): string[] {
-  const t = (note || '').toLowerCase()
-  if (!t) return []
-  return names.filter((n) => n.trim() && t.includes(n.trim().toLowerCase()))
-}
-
 export function personNamedInCorrection(note: string | undefined, names: string[]): string | undefined {
-  return peopleNamedInCorrection(note, names)[0]
+  const t = (note || '').toLowerCase()
+  if (!t) return undefined
+  return names.find((n) => n.trim() && t.includes(n.trim().toLowerCase()))
 }
 
 export function castIdentityLockEn(opts: {
@@ -336,7 +332,7 @@ export function castIdentityLockEn(opts: {
     rewrite
       ? 'Only the named person in the director fix may change sex/face. Everyone else stays the same people in the same seats.'
       : opts.stillCorrection?.trim()
-        ? 'Identity plates are face and clothes only. Who appears in THIS frame follows the director hint — not this cast list.'
+        ? 'Identity plates are face and clothes only. Who appears in THIS frame follows the director hint.'
         : 'Keep these exact identities. Do not swap faces.'
   return `CAST LOCK: ${bits.join('. ')}. ${who}${looks.length ? ` ${looks.join(' ')}` : ''}`
 }
@@ -355,7 +351,7 @@ export function sceneContinuityBlock(opts: {
   const editing = Boolean(opts.stillCorrection?.trim())
   const ground = opts.hasGrundbild
     ? editing
-      ? 'PLACE / GROUNDBILD: The attached empty-room photo is THIS place (furniture only). Who appears follows the director hint — not the people in a previous still.'
+      ? 'PLACE / GROUNDBILD: The attached empty-room photo is THIS place (furniture). Who appears follows the director hint — not an attached scene still.'
       : 'GROUNDBILD: The attached room photo is THIS scene. Same table, same furniture, same people in the same seats. Do not invent a new location.'
     : ''
   return [
@@ -437,17 +433,6 @@ export function previousPropStillUrl(
   return undefined
 }
 
-/** Erzähl-Still mit mehreren Figuren — auf Bild ändern keine Kompositions-Vorlage. */
-export function stillShowsExtraPeople(
-  board: FilmStoryboard | undefined,
-  url: string | undefined,
-): boolean {
-  if (!board || !url) return false
-  const hit = normalizeFilmStoryboard(board).panels.find((p) => p.stillUrl === url)
-  if (!hit) return false
-  return hit.placements.filter((pl) => pl.name.trim()).length >= 2
-}
-
 export function libraryCutoutPropUrl(
   library: StillPackLibraryAsset[] | undefined,
   propId: string,
@@ -468,8 +453,8 @@ export function libraryCutoutPropUrl(
 }
 
 /**
- * Requisiten-Foto: auf Bild ändern Freisteller/Bibliothek vor einem Tisch mit Gästen.
- * Erstes Malen bleibt das letzte Still, in dem die Sache sichtbar war.
+ * Requisiten-Foto: auf Bild ändern nur Bibliotheks-Platte (type=prop),
+ * nie ein gemaltes Szenen-Still. Erstes Malen bleibt das letzte Still der Sache.
  */
 export function propIdentityUrlForPack(
   board: FilmStoryboard | undefined,
@@ -482,21 +467,17 @@ export function propIdentityUrlForPack(
   },
 ): string | undefined {
   if (opts?.editing) {
-    const cutout = libraryCutoutPropUrl(opts.library, propId, opts.inventory)
-    if (cutout) return cutout
+    return libraryCutoutPropUrl(opts.library, propId, opts.inventory)
   }
-  const prev = board ? previousPropStillUrl(board, panel, propId) : undefined
-  if (opts?.editing && stillShowsExtraPeople(board, prev)) return undefined
-  return prev
+  return board ? previousPropStillUrl(board, panel, propId) : undefined
 }
 
 /**
  * Welche Vorlagen die Bild-KI bekommt: Raum dieses Ortes, Stammbilder der Figuren,
  * Grundbild nur wenn es derselbe Ort ist, letztes Foto derselben Requisite.
  * Erstes Malen und Bild ändern rufen dieselbe Funktion. Bild ändern hängt
- * kein correctFromUrl an — das aktuelle Tischbild ist keine GROUNDBILD-Sperre.
- * Bild ändern hängt auch keine vorigen Erzähl-Bilder desselben Ortes an
- * (die kopieren Gäste); Hinweis ist die Regie.
+ * kein correctFromUrl an und keine vorigen Szenen-Bilder desselben Ortes.
+ * Hinweis ist die Regie.
  */
 export function stillReferencePack(
   panel: FilmStoryboardPanel,
@@ -543,22 +524,20 @@ export function stillReferencePack(
   const editing = Boolean(panel.stillCorrection?.trim())
   const propIds = panelPropIds(panel)
   const propUrls = new Set<string>()
-  if (opts?.board) {
-    for (const propId of propIds) {
-      const url = propIdentityUrlForPack(opts.board, panel, propId, {
-        editing,
-        inventory: opts?.inventory,
-        library: opts?.library,
-      })
-      if (!url) continue
-      propUrls.add(url)
-      add({
-        role: 'prop',
-        name: propLabelDe(propId, opts?.inventory),
-        url,
-        propId,
-      })
-    }
+  for (const propId of propIds) {
+    const url = propIdentityUrlForPack(opts?.board, panel, propId, {
+      editing,
+      inventory: opts?.inventory,
+      library: opts?.library,
+    })
+    if (!url) continue
+    propUrls.add(url)
+    add({
+      role: 'prop',
+      name: propLabelDe(propId, opts?.inventory),
+      url,
+      propId,
+    })
   }
 
   const correcting = Boolean(opts?.correctFromUrl)
@@ -596,17 +575,7 @@ export function stillReferencePack(
     })
   }
   if (!closeup) {
-    const named = peopleNamedInCorrection(
-      panel.stillCorrection,
-      panel.placements.map((pl) => pl.name),
-    )
-    const keepPeople =
-      editing && named.length
-        ? panel.placements.filter((pl) =>
-            named.some((n) => n.trim().toLowerCase() === pl.name.trim().toLowerCase()),
-          )
-        : panel.placements
-    for (const pl of keepPeople) {
+    for (const pl of panel.placements) {
       const name = pl.name.trim() || 'Figur'
       if (wantedPeople.size && !wantedPeople.has(name.toLowerCase())) continue
       if (pl.imageUrl) add({ role: 'person', name, url: pl.imageUrl })
@@ -631,7 +600,7 @@ export function stillReferencePack(
     if (it.role === 'prop') {
       const what = propLabelEn(it.propId || it.name, opts?.inventory)
       return editing
-        ? `${i + 1}. PROP: the SAME ${what} as in this photo (object only — ignore extra people in that photo).`
+        ? `${i + 1}. PROP: inventory object plate of the SAME ${what} — the object only, not a scene still.`
         : `${i + 1}. PROP: the SAME ${what} as in this photo — do not invent a new one.`
     }
     if (it.role === 'grundbild') {
@@ -639,7 +608,7 @@ export function stillReferencePack(
         return `${i + 1}. GROUNDBILD / CURRENT still to correct — apply the director fix. Keep these EXACT people unless the fix says otherwise.`
       }
       if (editing) {
-        return `${i + 1}. PLACE / GROUNDBILD of the empty ${placeLabelEn(place)} — furniture of this room, not who sits in it. Who appears follows the director hint.`
+        return `${i + 1}. PLACE / GROUNDBILD of the empty ${placeLabelEn(place)} — furniture of this room. Who appears follows the director hint.`
       }
       return insert
         ? `${i + 1}. PREVIOUS still of the SAME ${placeLabelEn(place)} — same named objects, same furniture${place === 'kitchen' ? ', same stove type (gas stays gas, induction stays induction)' : ''}. New action only. NOT a different room.`
@@ -647,7 +616,7 @@ export function stillReferencePack(
     }
     if (it.role === 'place') {
       return editing
-        ? `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room (furniture only). Who appears follows the director hint, not a previous gathering.`
+        ? `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room (furniture). Who appears follows the director hint, not an attached scene still.`
         : `${i + 1}. PLACE photo: ${placeLabelEn(place)} empty room. Kitchen photos only for kitchen, living-room photos only for living room.`
     }
     if (it.role === 'identity') {
@@ -786,7 +755,7 @@ export function stillAttachmentInstruction(opts: {
 }): string {
   const pack = opts.packInstruction?.trim() ? `${opts.packInstruction.trim()} ` : ''
   if (opts.directorHint && !opts.rewritePerson) {
-    return `${pack}Attached photos are appearance only (face, clothes, empty room, isolated prop). They are NOT a seating chart and NOT a lock on who is in frame. If a photo shows extra people, ignore those people — follow the director hint in the prompt. Identity plates: that person's face and clothes IF they appear. PLACE / empty room: furniture of this place. PROP: the same object, not the other people in that photo.`
+    return `${pack}Attached photos are appearance only (identity plates, place plate, inventory object plate). They are NOT a seating chart and NOT a lock on who is in frame. Who appears follows the director hint. Do not copy a previous scene still.`
   }
   if (opts.insert) {
     const current = opts.correctingExisting
@@ -934,10 +903,10 @@ export function buildFilmStillPrompt(opts: {
       ? `${STORY_STILLS_LOCK_PROMPT} If a WIDE group photo is attached, CAMERA PUSH-IN: tight head-and-shoulders of THAT person still sitting in the gathering. Same seat, same clothes, same face. The others are still at the table (maybe only a shoulder in frame). Not a cropped screenshot, not a giant bust overlaid on the group, not an emptied room. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Not a new studio portrait, not a cut-out sprite, not a floating bust.`
       : isInsert
         ? opts.stillCorrection
-          ? `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, paint the SAME object as in that photo — do not invent a new one. Attached photos are appearance only. Identity plates are faces only. Who is in THIS frame follows the director hint. Do not copy a previous gathering. Do not collage.`
+          ? `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, it is an inventory object plate — paint that object. Attached photos are appearance only. Who is in THIS frame follows the director hint. Do not copy a previous scene still.`
           : `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, paint the SAME object as in that photo (flowers stay those flowers, a kettle stays that kettle) — do not invent a new one. If a previous still of THIS place is attached, keep that SAME room and the SAME named objects. Identity plates are faces only. Paint each named person ONCE. Never twins. Paint a NEW insert of the named detail. Do not copy the wide gathering. Do not collage.`
         : opts.stillCorrection
-          ? `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, the SAME object as in that photo must appear — do not invent a new one. Attached photos are appearance only: empty PLACE room (furniture), identity plates (face/clothes of people the director hint keeps), isolated PROP. Do not copy a previous gathering. Who is in THIS frame follows the director hint.`
+          ? `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, it is an inventory object plate — paint that object. Attached photos are appearance only (place plate, identity plates, object plate). Who is in THIS frame follows the director hint. Do not copy a previous scene still.`
           : `${STORY_STILLS_LOCK_PROMPT} PROP LOCK: if a PROP photo is attached, the SAME object as in that photo must appear — do not invent a new one. Attached photos are identity plates, not stickers: first an EMPTY ROOM with complete furniture matching the place description (not a generic unused living room); then COMPLETE people. Paint a NEW coherent illustration of those people living INSIDE a room that matches the DIALOGUE setting (cushions, table, carpets as described). Sit them IN the real furniture. Do not copy a previous living room. Do not collage or paste sprites.`
     : isCloseup
       ? `Paint a close-up by zooming into the same person in the same room: face fills the frame, mouth and eyebrows readable, head and shoulders, hair not cropped off. ${closeEyes} ${closeupGenderLine(opts.speakerGender)} Same table/seat still readable. No cut-out, no full body, no studio backdrop.`

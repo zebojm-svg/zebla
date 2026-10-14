@@ -1000,7 +1000,7 @@ if (scenePanels.length >= 2) {
     fail('aktuelles Still ist keine GROUNDBILD-Sperre')
   }
   if (packFix.items.some((it) => it.name.startsWith('vorige'))) {
-    fail('Bild ändern hängt keine vorigen Ortsbilder als Komposition an')
+    fail('Bild ändern hängt keine vorigen Szenen-Bilder als Komposition an')
   }
   if (packFix.urls.length > 4) fail('Bild ändern: kleines Paket')
   if (
@@ -1031,7 +1031,7 @@ if (scenePanels.length >= 2) {
   }
   if (!editPrompt.includes(guestsHint)) fail('Hinweis wörtlich im Prompt')
   if (!editPrompt.includes(STILL_EDIT_DIRECTOR_DE)) fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
-  if (/MUST be visible/.test(editPrompt)) fail('Hinweis entscheidet wer im Bild ist, nicht die Gästeliste')
+  if (/MUST be visible/.test(editPrompt)) fail('Hinweis entscheidet wer im Bild ist')
 
   const stale = markLaterPanelsStaleAfterCorrection(kitchenBoard, second.id)
   const later = stale.panels.find((p) => p.id === third.id)
