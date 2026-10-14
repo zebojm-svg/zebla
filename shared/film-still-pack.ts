@@ -335,6 +335,15 @@ export function stillEditPlannerErrorDe(err: unknown): string {
   return STILL_EDIT_PLANNER_ERROR_DE
 }
 
+/** Fehler von «Bild ändern» — nicht auf «Diese Szene erzeugen» umbiegen. */
+export function stillEditTimeoutHintDe(message: string): string {
+  if (/bild ändern|packzettel/i.test(message)) return message
+  if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION|leere antwort|zeitüberschreitung/i.test(message)) {
+    return 'Das hat zu lange gedauert. Bitte noch einmal «Bild ändern».'
+  }
+  return message
+}
+
 export function stillEditHarvestNoteDe(
   correction: string,
   picked: StillCatalogItem[],

@@ -43,7 +43,16 @@ export function isBoardPlanPath(path: string): boolean {
   return BOARD_PLAN_PATHS.has(apiPathOnly(path))
 }
 
+const STILL_EDIT_PLAN_PATHS = new Set(['/film-storyboard-still-plan'])
+
+export function isStillEditPlanPath(path: string): boolean {
+  return STILL_EDIT_PLAN_PATHS.has(apiPathOnly(path))
+}
+
 export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): string {
+  if (isStillEditPlanPath(path)) {
+    return 'Die Drehbuch-KI hat den Packzettel nicht geliefert. Bitte noch einmal «Bild ändern».'
+  }
   if (isImageGenPath(path)) {
     return reason === 'server'
       ? 'Server-Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.'

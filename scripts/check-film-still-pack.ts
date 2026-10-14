@@ -16,6 +16,7 @@ import {
   stillEditPlannerSystem,
   stillNumberInScene,
   stillPackzettelAttachEn,
+  stillEditTimeoutHintDe,
   STILL_EDIT_PLANNER_ERROR_DE,
   type StillCatalogItem,
 } from '../shared/film-still-pack.ts'
@@ -235,13 +236,31 @@ const note = stillEditHarvestNoteDe(hint, onlyListed)
 if (!note.includes('Packzettel')) fail('Hinweis nach Bild ändern nennt den Packzettel')
 if (note.includes('gleiche Plätze')) fail('Werkzeug behauptet nicht von allein gleiche Plätze')
 
+const timeoutHint = stillEditTimeoutHintDe('Leere Antwort vom Server (504).')
+if (!timeoutHint.includes('Bild ändern')) {
+  fail('Leere Server-Antwort bei Bild ändern nennt den Knopf, nicht Szene erzeugen')
+}
+if (timeoutHint.includes('Diese Szene erzeugen')) {
+  fail('Bild-ändern-Timeout darf nicht auf Diese Szene erzeugen zeigen')
+}
+const packHint = stillEditTimeoutHintDe(STILL_EDIT_PLANNER_ERROR_DE)
+if (packHint !== STILL_EDIT_PLANNER_ERROR_DE) {
+  fail('Packzettel-Fehler bleibt der gleiche Satz')
+}
+
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
+if (!stillFnSrc.includes('planFilmPanelStillEdit')) {
+  fail('Packzettel hat eine eigene Funktion, nicht nur im Bild-Aufruf')
+}
 const stillFn = stillFnSrc.slice(
   stillFnSrc.indexOf('export async function stillFilmPanel'),
   stillFnSrc.indexOf('export async function saveFilmPlan'),
 )
 if (!stillFn.includes('planStillEditPackzettel')) {
   fail('Bild ändern ruft die Drehbuch-KI für den Packzettel')
+}
+if (!stillFn.includes('packFromClient') || !stillFn.includes('parseStillEditPackzettel')) {
+  fail('Bild-Aufruf nimmt den fertigen Packzettel, statt nochmal zu planen')
 }
 if (!stillFn.includes('stillEditCatalog')) fail('Bild ändern legt den Katalog an')
 if (!stillFn.includes('pickStillCatalogImages')) fail('Bild ändern schickt nur gelistete ids')
@@ -274,9 +293,34 @@ const hookSrc = readFileSync(new URL('../src/story/generateSceneStills.ts', impo
 if (hookSrc.includes('confirmCost')) fail('Bild ändern nicht hinter Kosten-Dialog verstecken')
 if (!hookSrc.includes('finally')) fail('Busy nach Fehler zurücksetzen')
 if (!hookSrc.includes('stillTimeoutHintDe')) fail('Planner-Fehler auf Deutsch zeigen, nicht schlucken')
+if (!hookSrc.includes('stillEditTimeoutHintDe')) {
+  fail('Bild ändern zeigt eigenen Timeout-Text, nicht Diese Szene erzeugen')
+}
+if (!hookSrc.includes('filmStillPlan')) fail('Bild ändern holt zuerst den Packzettel')
+if (!hookSrc.includes('Drehbuch-KI schreibt den Packzettel')) {
+  fail('Während des Packzettels steht ein Satz unter dem Knopf')
+}
 
 const uxSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
 if (!uxSrc.includes('Bild ändern')) fail('Knopf Bild ändern bleibt')
 if (!uxSrc.includes('placeholder=')) fail('Kurzer Hinweis bleibt das Eingabefeld')
+if (!uxSrc.includes('alert-error')) fail('Fehler neben Bild ändern zeigen, nicht nur unter Bilder erzeugen')
+if (!uxSrc.includes('Schreib zuerst einen kurzen Hinweis')) {
+  fail('Klick ohne Hinweis sagt was fehlt, statt still zu bleiben')
+}
+
+const apiSrc = readFileSync(new URL('../api/[...slug].ts', import.meta.url), 'utf8')
+if (!apiSrc.includes('film-storyboard-still-plan')) {
+  fail('Packzettel hat eine eigene API-Route')
+}
+if (!apiSrc.includes('planFilmPanelStillEdit')) fail('API ruft planFilmPanelStillEdit')
+
+const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+if (!clientSrc.includes('/film-storyboard-still-plan')) fail('Client ruft den Packzettel extra')
+
+const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
+if (!boardSrc.includes('stills.errors[panel.id]')) {
+  fail('Bilder-Seite zeigt den Fehler am Bild, nicht nur in Szenen anpassen')
+}
 
 console.log('OK: Bild ändern als Packzettel-Förderband, ohne Stichwort-Denken')

@@ -57,12 +57,8 @@ async function fetchImageAsInline(url: string): Promise<InlineImage | null> {
 }
 
 async function loadRefs(urls: string[]): Promise<InlineImage[]> {
-  const out: InlineImage[] = []
-  for (const url of urls) {
-    const img = await fetchImageAsInline(url)
-    if (img) out.push(img)
-  }
-  return out
+  const loaded = await Promise.all(urls.map((url) => fetchImageAsInline(url)))
+  return loaded.filter((img): img is InlineImage => img !== null)
 }
 
 const CLOSEUP_NOT_CROP_RETRY =

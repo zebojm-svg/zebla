@@ -36,6 +36,7 @@ import {
   speakerIdentityUrl,
   STALE_STILL_NOTE_DE,
 } from '../shared/film-stills.ts'
+import { stillEditTimeoutHintDe } from '../shared/film-still-pack.ts'
 import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
 import {
   buildSpeakerVoiceProfiles,
@@ -395,6 +396,13 @@ const packFail = stillTimeoutHintDe(
   'Die Drehbuch-KI hat den Packzettel nicht geliefert. Bitte noch einmal «Bild ändern».',
 )
 if (!packFail.includes('Bild ändern')) fail('Planner-Fehler bleibt «Bild ändern», nicht Szene erzeugen')
+const editTimeout = stillEditTimeoutHintDe(
+  'Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.',
+)
+if (!editTimeout.includes('Bild ändern')) fail('Bild-ändern-Timeout nennt Bild ändern')
+if (editTimeout.includes('Diese Szene erzeugen')) {
+  fail('Bild-ändern-Timeout darf nicht Diese Szene erzeugen sagen')
+}
 
 const talk = panelDialogueLines(s1[0]!, dialog)
 if (

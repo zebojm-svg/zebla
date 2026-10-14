@@ -3960,6 +3960,12 @@ html[dir='rtl'] .slideshow-topbar {
   padding-bottom: 0.55rem;
 }
 
+.film-still-fix .alert {
+  margin: 0.4rem 0.75rem 0;
+  font-weight: 700;
+  font-size: 1.02rem;
+}
+
 .film-still-thumb .film-tweak,
 .film-still-fix .film-tweak {
   padding: 0.25rem 0.75rem;

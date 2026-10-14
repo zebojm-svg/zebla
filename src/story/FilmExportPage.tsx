@@ -203,6 +203,8 @@ export function FilmExportPage() {
                   sceneTitle={scene.title}
                   busy={sceneBusy || busy}
                   busyPanelId={stills.busyPanelId}
+                  errors={stills.errors}
+                  status={stills.status}
                   onCorrect={(panel, note) => void correctStill(scene.id, panel, note)}
                   onInsert={(panel, text) => void insertAfter(scene.id, panel.id, text)}
                   onLayout={applyBoard}
