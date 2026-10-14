@@ -4,9 +4,10 @@ import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { panelsNeedingStills, stillTimeoutHintDe } from '../../shared/film-stills'
 import {
-  stillEditTimeoutHintDe,
-  STILL_EDIT_PLANNER_WAIT_AFTER_MS,
-  STILL_EDIT_PLANNER_WAIT_DE,
+  stillEditImageErrorDe,
+  tryStillEditPackzettel,
+  STILL_EDIT_PAINT_STATUS_DE,
+  STILL_EDIT_PLAN_STATUS_DE,
 } from '../../shared/film-still-pack'
 
 export async function generateSceneStills(opts: {
@@ -116,42 +117,30 @@ export function useSceneStills(
     }
     setBusySceneId(sceneId)
     setBusyPanelId(panel.id)
-    setStatus(
-      hint
-        ? 'Drehbuch-KI schreibt den Packzettel …'
-        : 'Bild wird neu gemalt … das dauert etwa eine Minute.',
-    )
+    setStatus(hint ? STILL_EDIT_PLAN_STATUS_DE : STILL_EDIT_PAINT_STATUS_DE)
     setErrors((prev) => ({ ...prev, [sceneId]: '', [panel.id]: '' }))
     setProgress({ sceneId, current: 0, total: 1 })
-    const waitHint =
-      hint &&
-      window.setTimeout(() => {
-        setStatus(STILL_EDIT_PLANNER_WAIT_DE)
-      }, STILL_EDIT_PLANNER_WAIT_AFTER_MS)
     try {
       let result: { dialog: Dialog; board: FilmStoryboard }
       if (hint) {
-        const planned = await api.ai.filmStillPlan(dialogId, panel.id, styleId, hint)
-        if (waitHint) window.clearTimeout(waitHint)
-        setStatus('Bild wird neu gemalt … das dauert etwa eine Minute.')
-        result = await api.ai.filmStill(
-          dialogId,
-          panel.id,
-          styleId,
-          hint,
-          planned.packzettel,
-        )
+        let packzettel: { imagePrompt: string; imageIds: string[] } | undefined
+        try {
+          const planned = await api.ai.filmStillPlan(dialogId, panel.id, styleId, hint)
+          packzettel = tryStillEditPackzettel(planned.packzettel) ?? undefined
+        } catch {
+          /* 402/400/429/leer: Packzettel optional — sofort malen. */
+        }
+        setStatus(STILL_EDIT_PAINT_STATUS_DE)
+        result = await api.ai.filmStill(dialogId, panel.id, styleId, hint, packzettel)
       } else {
         result = await api.ai.filmStill(dialogId, panel.id, styleId)
       }
       apply(result.dialog, result.board)
       setProgress({ sceneId, current: 1, total: 1 })
     } catch (err) {
-      const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
-      const shown = stillEditTimeoutHintDe(raw)
+      const shown = stillEditImageErrorDe(err)
       setErrors((prev) => ({ ...prev, [sceneId]: shown, [panel.id]: shown }))
     } finally {
-      if (waitHint) window.clearTimeout(waitHint)
       setBusySceneId(null)
       setBusyPanelId(null)
       setStatus('')

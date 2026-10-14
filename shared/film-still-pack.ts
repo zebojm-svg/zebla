@@ -1,7 +1,9 @@
 /**
  * Bild ändern = Förderband, kein Mitdenken.
- * Zebla legt den Katalog hin, reicht den Hinweis weiter,
- * und schickt nur die Bild-ids aus dem Packzettel der Drehbuch-KI.
+ * Packzettel ist nice-to-have: wenn die Drehbuch-KI schnell
+ * { imagePrompt, imageIds } liefert, hängen wir nur diese Fotos an.
+ * Jeder Planner-Fehler (402/400/429/leer/Schema) malt trotzdem —
+ * Hinweis wörtlich + Katalog an die Bild-KI. Keine Stichwörter.
  */
 
 import {
@@ -53,8 +55,18 @@ export type StillEditPlannerInput = {
   styleLabel?: string
 }
 
-/** Höchstens so viele Fotos an die Bild-KI — Kapazität, keine Interpretation. */
+/** Höchstens so viele Fotos aus dem Packzettel — Kapazität, keine Interpretation. */
 export const STILL_EDIT_PACK_MAX = 4
+
+/** Ohne Packzettel: Katalog-Arten an die Bild-KI (current, Gesicht, Ort, Requisite, andere Stills). */
+export const STILL_EDIT_DIRECT_PACK_MAX = 8
+
+/** Stehender Regie-Satz an die Bild-KI — kein Stichwort-Denken im Werkzeug. */
+export const STILL_EDIT_DIRECTOR_DE =
+  'Der Hinweis des Users ist die Regie. Die mitgeschickten Fotos sind Aussehen (Gesicht, Kleidung, Kanne, Herd). Wenn der Hinweis die Stellung oder wer im Bild ist ändert, NICHT die Sitzordnung/Gäste vom aktuellen Foto kopieren.'
+
+export const STILL_EDIT_PLAN_STATUS_DE = 'Packzettel …'
+export const STILL_EDIT_PAINT_STATUS_DE = 'wird neu gemalt …'
 
 export const STILL_EDIT_PLANNER_ERROR_DE =
   'Die Drehbuch-KI hat den Packzettel nicht geliefert. Bitte noch einmal «Bild ändern».'
@@ -86,20 +98,20 @@ export const STILL_EDIT_PLANNER_WAIT_DE = 'Google voll, warte kurz …'
 export const STILL_EDIT_PLANNER_WAIT_AFTER_MS = 8_000
 
 /**
- * Cheap text Flash for the Packzettel — not TTS, not image.
- * Own per-base-model RPM vs gemini-2.5-flash, gemini-2.5-flash-tts, *-flash-image.
+ * Same text Flash as Dialog (`generateFilmFromPrompt` / `chatJson` / GEMINI_MODEL).
+ * flash-lite is a 402/404 magnet on this key — do not use it for Packzettel.
  */
-export const STILL_EDIT_PLANNER_MODEL = 'gemini-2.5-flash-lite'
+export const STILL_EDIT_PLANNER_MODEL = 'gemini-2.5-flash'
 
-/** Same text Flash as the rest of Zebla — if lite is empty/invalid/404/500. */
-export const STILL_EDIT_PLANNER_FALLBACK_MODEL = 'gemini-2.5-flash'
+/** @deprecated Same as STILL_EDIT_PLANNER_MODEL — planner is one short ask, then paint. */
+export const STILL_EDIT_PLANNER_FALLBACK_MODEL = STILL_EDIT_PLANNER_MODEL
 
-/** Text-JSON only — keep well under a 60 s HTTP budget (quota wait is in this same call). */
-export const STILL_EDIT_PLANNER_TIMEOUT_MS = 30_000
-export const STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS = 12_000
+/** Short optional JSON — fail fast so Bild ändern can paint. */
+export const STILL_EDIT_PLANNER_TIMEOUT_MS = 12_000
+export const STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS = 8_000
 export const STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS = 16_000
-export const STILL_EDIT_PLANNER_QUOTA_RETRIES = 2
-export const STILL_EDIT_PLANNER_HTTP_BUDGET_MS = 55_000
+export const STILL_EDIT_PLANNER_QUOTA_RETRIES = 0
+export const STILL_EDIT_PLANNER_HTTP_BUDGET_MS = 16_000
 export const STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS = STILL_EDIT_PLANNER_HTTP_BUDGET_MS + 3_000
 
 function httpUrl(u?: string): u is string {
@@ -539,9 +551,8 @@ function stripVendorUrls(text: string): string {
 }
 
 /**
- * chatJson options for the Packzettel.
- * JSON mime is already the default. Do not send SDK responseSchema —
- * Google 400 Invalid JSON payload on both lite and flash (#79).
+ * chatJson options for the Packzettel — same Google client as Dialog.
+ * JSON mime is already the default. Do not send SDK responseSchema.
  */
 export function stillEditPlannerChatJsonOpts(model: string, timeoutMs: number): {
   temperature: number
@@ -775,5 +786,159 @@ export function stillEditHarvestNoteDe(
   const listed = picked.length
     ? `Packzettel: ${picked.map((it) => it.label).join(', ')}.`
     : 'Packzettel ohne Vorlagenfoto.'
+  return `${listed} Neu gemalt nach Hinweis: ${correction}`
+}
+
+export const STILL_EDIT_IMAGE_ERROR_DE =
+  'Das Bild konnte nicht neu gemalt werden. Bitte noch einmal «Bild ändern».'
+
+export const STILL_EDIT_IMAGE_TIMEOUT_DE =
+  'Das Bild hat zu lange gedauert. Bitte noch einmal «Bild ändern».'
+
+/** Red box only after the IMAGE call fails — never Packzettel, no Google URL. */
+export function stillEditImageErrorDe(err: unknown): string {
+  const original = err instanceof Error ? err.message : String(err ?? '')
+  const raw = stripVendorUrls(original)
+  if (!raw.trim()) return STILL_EDIT_IMAGE_ERROR_DE
+  if (raw === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(original) || isStillEditPlannerQuotaError(raw)) {
+    return STILL_EDIT_PLANNER_QUOTA_DE
+  }
+  if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
+    return raw
+  }
+  const status = stillEditPlannerGoogleHttpStatus(raw)
+  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|FUNCTION_INVOCATION/i.test(raw) || status === 504) {
+    return STILL_EDIT_IMAGE_TIMEOUT_DE
+  }
+  if (status && status >= 400 && status < 600) {
+    return `Das Bild konnte nicht neu gemalt werden (${status}). Bitte noch einmal «Bild ändern».`
+  }
+  if (/packzettel|drehbuch-ki hat den packzettel/i.test(raw)) {
+    return STILL_EDIT_IMAGE_ERROR_DE
+  }
+  if (/bild ändern/i.test(raw) && !/https?:\/\//i.test(raw)) return raw
+  return STILL_EDIT_IMAGE_ERROR_DE
+}
+
+export type StillEditPaintJob = {
+  mode: 'packzettel' | 'direct'
+  prompt: string
+  picked: StillCatalogItem[]
+  attach: string
+}
+
+/** Valid conveyor Packzettel: prompt + at least one catalog id. Else null → paint directly. */
+export function tryStillEditPackzettel(raw: unknown): StillEditPackzettel | null {
+  try {
+    const pack = parseStillEditPackzettel(raw)
+    if (!pack.imagePrompt.trim() || pack.imageIds.length === 0) return null
+    return pack
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Katalog ohne Packzettel: current, Gesichter, Ort, Requisiten, andere Stills.
+ * Keine Stichwörter — die Bild-KI entscheidet, ob current Retusche oder ignorieren ist.
+ */
+export function pickStillCatalogForDirectPaint(catalog: StillCatalogItem[]): StillCatalogItem[] {
+  const order: StillCatalogKind[] = ['current', 'person', 'place', 'prop', 'still']
+  const out: StillCatalogItem[] = []
+  const seenUrl = new Set<string>()
+  const add = (item: StillCatalogItem) => {
+    if (out.length >= STILL_EDIT_DIRECT_PACK_MAX) return
+    if (!item.url || seenUrl.has(item.url)) return
+    seenUrl.add(item.url)
+    out.push(item)
+  }
+  for (const kind of order) {
+    for (const item of catalog) {
+      if (item.kind === kind) add(item)
+    }
+  }
+  for (const item of catalog) add(item)
+  return out
+}
+
+export function stillEditDirectAttachEn(items: StillCatalogItem[]): string {
+  if (!items.length) return ''
+  const listed = items
+    .map((it, i) => {
+      const n = i + 1
+      if (it.kind === 'current') {
+        return `${n}. current — ${it.label}. Appearance and room only; if the user hint changes stance or who is in the picture, do NOT copy seating/guests from this photo.`
+      }
+      if (it.kind === 'person') return `${n}. appearance — ${it.label} (face, clothes).`
+      if (it.kind === 'place') return `${n}. place — ${it.label} (room, stove).`
+      if (it.kind === 'prop') return `${n}. prop — ${it.label} (same object).`
+      return `${n}. other still — ${it.label}.`
+    })
+    .join(' | ')
+  return `Attached photos in this order: ${listed}. Photos are appearance. The user hint is the direction.`
+}
+
+export function stillEditDirectPaintPrompt(input: {
+  userHint: string
+  dialogDe: string
+  figures: string[]
+  place: string
+  styleLabel?: string
+}): string {
+  const figures = input.figures.filter(Boolean).join(', ') || '—'
+  return [
+    'Paint a new 16:9 still.',
+    `German line: ${input.dialogDe}`,
+    `User hint (verbatim): ${input.userHint}`,
+    STILL_EDIT_DIRECTOR_DE,
+    `Place: ${input.place || '—'}`,
+    `Figures in the story: ${figures}`,
+    input.styleLabel ? `Style: ${input.styleLabel}` : '',
+  ]
+    .filter((line) => line !== '')
+    .join('\n')
+}
+
+export function resolveStillEditPaint(opts: {
+  packFromClient?: { imagePrompt?: string; imageIds?: string[] } | null
+  catalog: StillCatalogItem[]
+  userHint: string
+  dialogDe: string
+  figures: string[]
+  place: string
+  styleLabel?: string
+}): StillEditPaintJob {
+  const pack = tryStillEditPackzettel(opts.packFromClient)
+  if (pack) {
+    const picked = pickStillCatalogImages(opts.catalog, pack.imageIds)
+    if (picked.length > 0 || opts.catalog.length === 0) {
+      return {
+        mode: 'packzettel',
+        prompt: pack.imagePrompt,
+        picked,
+        attach: stillPackzettelAttachEn(picked.map((it) => it.label)),
+      }
+    }
+  }
+  const picked = pickStillCatalogForDirectPaint(opts.catalog)
+  return {
+    mode: 'direct',
+    prompt: stillEditDirectPaintPrompt({
+      userHint: opts.userHint,
+      dialogDe: opts.dialogDe,
+      figures: opts.figures,
+      place: opts.place,
+      styleLabel: opts.styleLabel,
+    }),
+    picked,
+    attach: stillEditDirectAttachEn(picked),
+  }
+}
+
+export function stillEditHarvestNoteForPaint(correction: string, job: StillEditPaintJob): string {
+  if (job.mode === 'packzettel') return stillEditHarvestNoteDe(correction, job.picked)
+  const listed = job.picked.length
+    ? `Katalog: ${job.picked.map((it) => it.label).join(', ')}.`
+    : 'Ohne Packzettel.'
   return `${listed} Neu gemalt nach Hinweis: ${correction}`
 }

@@ -64,11 +64,10 @@ import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId } from '../shared/story-art-styles.js'
 import {
   catalogForPlanner,
-  parseStillEditPackzettel,
-  pickStillCatalogImages,
+  resolveStillEditPaint,
   stillEditCatalog,
   stillEditFigures,
-  stillEditHarvestNoteDe,
+  stillEditHarvestNoteForPaint,
   stillEditLineDe,
   stillNumberInScene,
   type StillEditPackzettel,
@@ -790,27 +789,24 @@ export async function stillFilmPanel(
         panel: panelForGen,
         inventory,
       })
-      const packzettel = packFromClient?.imagePrompt
-        ? parseStillEditPackzettel(packFromClient)
-        : await planStillEditPackzettel({
-            stillNumber: stillNumberInScene(boardForGen, panelForGen),
-            panelId: panelForGen.id,
-            userHint: correction,
-            dialogDe: stillEditLineDe(panelForGen, dialog),
-            figures: stillEditFigures(boardForGen, panelForGen, inventory),
-            place: panelForGen.settingHint || panelPlaceKey(panelForGen),
-            catalog: catalogForPlanner(catalog),
-            styleLabel: getStoryArtStyle(resolvedStyle).label,
-          })
-      const picked = pickStillCatalogImages(catalog, packzettel.imageIds)
+      const paint = resolveStillEditPaint({
+        packFromClient,
+        catalog,
+        userHint: correction,
+        dialogDe: stillEditLineDe(panelForGen, dialog),
+        figures: stillEditFigures(boardForGen, panelForGen, inventory),
+        place: panelForGen.settingHint || panelPlaceKey(panelForGen),
+        styleLabel: getStoryArtStyle(resolvedStyle).label,
+      })
       const url = await generateFilmPanelStillImage({
         panel: panelForGen,
         scene,
         styleId: resolvedStyle,
         packzettel: {
-          prompt: packzettel.imagePrompt,
-          urls: picked.map((it) => it.url),
-          labels: picked.map((it) => it.label),
+          prompt: paint.prompt,
+          urls: paint.picked.map((it) => it.url),
+          labels: paint.picked.map((it) => it.label),
+          attach: paint.attach,
         },
       })
       const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
@@ -818,7 +814,7 @@ export async function stillFilmPanel(
       const withNote = applyPanelHarvestNote(
         notedBoard,
         panelId,
-        stillEditHarvestNoteDe(correction, picked),
+        stillEditHarvestNoteForPaint(correction, paint),
       )
       const updated = await persist(withNote)
       return { dialog: updated, board: withNote }
