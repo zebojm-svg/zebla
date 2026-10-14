@@ -18,7 +18,9 @@ import {
   stillEditHarvestNoteDe,
   stillEditHarvestNoteForPaint,
   stillEditImageErrorDe,
+  stillEditImageStatusDe,
   stillEditLineDe,
+  stillEditSpeakerName,
   stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
   stillEditPlannerGoogleHttpStatus,
@@ -31,9 +33,17 @@ import {
   stillEditTimeoutHintDe,
   tryStillEditPackzettel,
   isStillEditPlannerQuotaError,
+  withStillEditImage429Retry,
   withStillEditPlannerQuotaRetries,
   STILL_EDIT_DIRECTOR_DE,
+  STILL_EDIT_DIRECT_PACK_MAX,
+  STILL_EDIT_IMAGE_ATTEMPT_TIMEOUT_MS,
+  STILL_EDIT_IMAGE_BILLING_DE,
+  STILL_EDIT_IMAGE_EMPTY_DE,
   STILL_EDIT_IMAGE_ERROR_DE,
+  STILL_EDIT_IMAGE_HTTP_BUDGET_MS,
+  STILL_EDIT_IMAGE_QUOTA_DE,
+  STILL_EDIT_IMAGE_QUOTA_RETRIES,
   STILL_EDIT_IMAGE_TIMEOUT_DE,
   STILL_EDIT_PAINT_STATUS_DE,
   STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
@@ -526,7 +536,18 @@ if (
   if (!after402.prompt.includes(STILL_EDIT_DIRECTOR_DE)) fail('Regie-Satz an die Bild-KI')
   if (!after402.prompt.includes('So, das Wasser kann kochen')) fail('Deutsche Zeile an die Bild-KI')
   if (!after402.picked.some((it) => it.kind === 'current')) fail('aktuelles Still beschriftet mitschicken')
-  if (!after402.picked.some((it) => it.kind === 'person')) fail('Gesicht/Kleidung mitschicken')
+  if (!after402.picked.some((it) => it.kind === 'person' && /ramo/i.test(it.label))) {
+    fail('Sprecher-Gesicht mitschicken')
+  }
+  if (after402.picked.some((it) => /khan|ubai/i.test(it.label))) {
+    fail('Gäste-Gesichter nicht an die Bild-KI')
+  }
+  if (after402.picked.some((it) => it.kind === 'still')) {
+    fail('nicht jedes Still der Szene anhängen')
+  }
+  if (after402.picked.length > STILL_EDIT_DIRECT_PACK_MAX) {
+    fail('Direkt-Malen höchstens current + Sprecher + Ort + Requisite')
+  }
   if (!after402.picked.some((it) => it.kind === 'place' || /Küche|Herd/.test(it.label))) {
     fail('Ort/Herd mitschicken')
   }
@@ -567,8 +588,17 @@ if (
 }
 
 {
-  const directPicked = pickStillCatalogForDirectPaint(catalog)
+  const directPicked = pickStillCatalogForDirectPaint(catalog, {
+    speaker: stillEditSpeakerName(stillEditLineDe(table, dialog), figures, hint),
+    userHint: hint,
+    dialogDe: stillEditLineDe(table, dialog),
+  })
   if (!directPicked.some((it) => it.kind === 'current')) fail('Direkt-Katalog hat current')
+  if (directPicked.filter((it) => it.kind === 'person').length !== 1) {
+    fail('Direkt-Katalog nur Sprecher-Gesicht, nicht alle Gäste')
+  }
+  if (directPicked.some((it) => it.kind === 'still')) fail('Direkt-Katalog ohne andere Stills')
+  if (directPicked.length > STILL_EDIT_DIRECT_PACK_MAX) fail('Direkt-Katalog gedeckelt')
   const attachDirect = stillEditDirectAttachEn(directPicked)
   if (!attachDirect.includes('current')) fail('Direkt-Anhang sagt current')
   const promptDirect = stillEditDirectPaintPrompt({
@@ -593,8 +623,14 @@ if (
 if (stillEditImageErrorDe(new Error(sdk402)).includes('Packzettel')) {
   fail('Bild-Fehler sagt nicht Packzettel — 402 am Planner ist kein rotes Tor')
 }
-if (stillEditImageErrorDe(new Error(sdk402)) !== 'Das Bild konnte nicht neu gemalt werden (402). Bitte noch einmal «Bild ändern».') {
-  fail('402 an der Bild-KI ist (402) auf Deutsch, ohne URL')
+if (stillEditImageErrorDe(new Error(sdk402)) !== STILL_EDIT_IMAGE_BILLING_DE) {
+  fail('402 an der Bild-KI ist Konto/Kontingent, kein JSON-Packzettel')
+}
+if (!STILL_EDIT_IMAGE_BILLING_DE.includes('(402)') || !STILL_EDIT_IMAGE_BILLING_DE.includes('Konto')) {
+  fail('402-Satz nennt (402) und Konto/Kontingent')
+}
+if (stillEditImageErrorDe(new Error('Payment Required')) !== STILL_EDIT_IMAGE_BILLING_DE) {
+  fail('Payment Required ohne Klammer ist trotzdem Konto/Kontingent')
 }
 if (stillEditImageErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_IMAGE_ERROR_DE) {
   fail('Packzettel-Satz nicht als Bild-Fehler zeigen')
@@ -602,14 +638,101 @@ if (stillEditImageErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT
 if (stillEditImageErrorDe(new Error('Zeitüberschreitung bei der KI')) !== STILL_EDIT_IMAGE_TIMEOUT_DE) {
   fail('Bild-Timeout auf Deutsch')
 }
+if (!STILL_EDIT_IMAGE_TIMEOUT_DE.includes('(Zeitlimit)')) fail('Bild-Timeout nennt (Zeitlimit)')
+if (stillEditImageErrorDe(new Error('Kein Standbild erhalten.')) !== STILL_EDIT_IMAGE_EMPTY_DE) {
+  fail('Leere Bildbytes sind (leere Antwort)')
+}
+if (stillEditImageErrorDe(new Error('[400] Request payload size exceeds the limit: 20971520 bytes')) !== stillEditImageStatusDe(400)) {
+  fail('Zu große PNGs sind (400)')
+}
+if (stillEditImageErrorDe(new Error('[429] RESOURCE_EXHAUSTED')) !== STILL_EDIT_IMAGE_QUOTA_DE) {
+  fail('429 an der Bild-KI ist (Google voll)')
+}
 if (
-  stillEditImageErrorDe(new Error(quotaRaw)) !== STILL_EDIT_PLANNER_QUOTA_DE ||
+  stillEditImageErrorDe(new Error(quotaRaw)) !== STILL_EDIT_IMAGE_QUOTA_DE ||
   stillEditImageErrorDe(new Error(quotaRaw)).includes('http')
 ) {
-  fail('Bild-Quota wie Probe, ohne URL')
+  fail('Bild-Quota (Google voll), ohne URL')
+}
+if (!STILL_EDIT_IMAGE_ERROR_DE.includes('(') || !STILL_EDIT_IMAGE_QUOTA_DE.includes('Google voll')) {
+  fail('Roter Kasten immer mit Grund')
+}
+if (stillEditImageErrorDe(new Error('')) !== STILL_EDIT_IMAGE_ERROR_DE) {
+  fail('Leerer Dump ist (Google voll), nicht der Satz ohne Klammer')
 }
 if (!STILL_EDIT_PLAN_STATUS_DE.includes('Packzettel') || !STILL_EDIT_PAINT_STATUS_DE.includes('neu gemalt')) {
   fail('Status: Packzettel … dann wird neu gemalt …')
+}
+
+if (STILL_EDIT_DIRECT_PACK_MAX > 4) fail('Direkt-Malen höchstens 4 Fotos')
+if (STILL_EDIT_IMAGE_HTTP_BUDGET_MS >= 60_000) fail('Bild-KI bleibt unter 60 s')
+if (STILL_EDIT_IMAGE_ATTEMPT_TIMEOUT_MS >= STILL_EDIT_IMAGE_HTTP_BUDGET_MS) {
+  fail('Ein Bildversuch kürzer als das Gesamtbudget')
+}
+if (STILL_EDIT_IMAGE_QUOTA_RETRIES !== 1) fail('429 an der Bild-KI einmal wiederholen')
+if (stillEditSpeakerName('Ramo: So, das Wasser kann kochen.', figures, hint) !== 'Ramo') {
+  fail('Sprecher aus der deutschen Zeile')
+}
+
+{
+  const fat: StillCatalogItem[] = [
+    ...catalog,
+    ...[3, 4, 5, 6, 7, 8].map((n) => ({
+      id: `still-extra-${n}`,
+      label: `anderes Still der Szene — Bild ${n}`,
+      url: `https://example.com/extra-${n}.png`,
+      kind: 'still' as const,
+    })),
+  ]
+  const capped = pickStillCatalogForDirectPaint(fat, {
+    speaker: 'Ramo',
+    userHint: hint,
+    dialogDe: stillEditLineDe(table, dialog),
+  })
+  if (capped.length > STILL_EDIT_DIRECT_PACK_MAX) fail('Viele Stills dürfen nicht alle an die Bild-KI')
+  if (capped.some((it) => it.kind === 'still')) fail('Extra-Stills nicht anhängen')
+  if (!capped.some((it) => it.kind === 'current')) fail('current bleibt trotz fettem Katalog')
+  if (!capped.some((it) => /ramo/i.test(it.label))) fail('Sprecher bleibt trotz fettem Katalog')
+}
+
+{
+  let n = 0
+  const hit = await withStillEditImage429Retry(
+    async () => {
+      n += 1
+      if (n === 1) throw new Error('[429] RESOURCE_EXHAUSTED')
+      return 'ok'
+    },
+    { sleep: async () => {}, backoffMs: 1, budgetMs: 40_000 },
+  )
+  if (hit !== 'ok' || n !== 2) fail('429 an der Bild-KI einmal wiederholen, dann malen')
+}
+{
+  let n = 0
+  try {
+    await withStillEditImage429Retry(
+      async () => {
+        n += 1
+        throw new Error('[400] Invalid argument')
+      },
+      { sleep: async () => { fail('400 nicht retrien') } },
+    )
+    fail('400 muss werfen')
+  } catch (err) {
+    if (!(err instanceof Error) || !/400/.test(err.message)) fail('400 bleibt der Fehler')
+  }
+  if (n !== 1) fail('400 an der Bild-KI nicht wiederholen')
+}
+
+const packLibSrc = readFileSync(new URL('../shared/film-still-pack.ts', import.meta.url), 'utf8')
+const pickBody = packLibSrc.slice(
+  packLibSrc.indexOf('export function pickStillCatalogForDirectPaint'),
+  packLibSrc.indexOf('export function stillEditDirectAttachEn'),
+)
+if (pickBody.includes("kind === 'still'")) fail('Direkt-Malen hängt keine anderen Stills an')
+const geminiImgSrc = readFileSync(new URL('../lib/gemini-image-model.ts', import.meta.url), 'utf8')
+if (!geminiImgSrc.includes('402') || !geminiImgSrc.includes('return false')) {
+  fail('402 am Bildmodell ist nicht «Modell fehlt, nächstes versuchen»')
 }
 
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
@@ -625,6 +748,9 @@ if (stillFn.includes('planStillEditPackzettel')) {
 }
 if (!stillFn.includes('resolveStillEditPaint')) {
   fail('Bild ändern entscheidet Packzettel oder direkt malen')
+}
+if (!stillFn.includes('stillEditImageErrorDe')) {
+  fail('Bild ändern mappt den Mal-Fehler auf Deutsch mit Grund')
 }
 if (!stillFn.includes('packFromClient')) fail('Bild-Aufruf nimmt den fertigen Packzettel wenn er da ist')
 if (!stillFn.includes('stillEditCatalog')) fail('Bild ändern legt den Katalog an')
@@ -649,6 +775,13 @@ if (!pngSrc.includes('attachOverride') && !pngSrc.includes('opts.packzettel.atta
 const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPanelStillImage'))
 if (!genFn.includes('if (opts.packzettel)')) fail('Packzettel/Direkt umgeht stillReferencePack')
 if (!genFn.includes('attach')) fail('Bild-KI bekommt den beschrifteten Anhang')
+const pngFn = pngSrc.slice(pngSrc.indexOf('async function generateStillPng'))
+if (pngFn.includes('90_000')) fail('Bild-KI nicht 90 s — bleibt unter 60 s')
+if (!pngFn.includes('STILL_EDIT_IMAGE_ATTEMPT_TIMEOUT_MS')) fail('Bild-Versuch mit Zeitbudget')
+if (!pngFn.includes('res.status')) fail('Google-HTTP-Status in den Bild-Fehler')
+if (!pngFn.includes('withStillEditImage429Retry')) fail('429 an der Bild-KI einmal wiederholen')
+if (!pngFn.includes('stillEditImageErrorDe')) fail('Bild-Fehler auf Deutsch mappen bevor er nach oben geht')
+if (!pngFn.includes('Kein Standbild erhalten')) fail('Leere Bildbytes erkennen')
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die optionale Drehbuch-KI')
@@ -742,6 +875,12 @@ if (!planMd.includes('Packzettel ist nice-to-have') && !planMd.includes('nice-to
 }
 if (!planMd.includes('malt immer') && !/Bild ändern.*malt immer/s.test(planMd)) {
   fail('ZEBLA_PLAN: Bild ändern malt immer')
+}
+if (!planMd.includes('current') || !/Sprecher|Gesicht/.test(planMd) || !planMd.includes('Grundbild')) {
+  fail('ZEBLA_PLAN: Direkt-Malen nur current + Sprecher + Grundbild + Requisite')
+}
+if (!planMd.includes('(Zeitlimit)') || !planMd.includes('leere Antwort') || !planMd.includes('Konto/Kontingent')) {
+  fail('ZEBLA_PLAN: Bild-Fehler mit Grund')
 }
 
 console.log('OK: Bild ändern malt auch ohne Packzettel, ohne Stichwort-Denken')

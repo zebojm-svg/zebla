@@ -32,7 +32,7 @@ export function geminiImageModelCandidates(): string[] {
 }
 
 export function isGeminiImageUnavailable(message: string): boolean {
-  return /not found|NOT_FOUND|is not found|not supported|not available|not available to your|UNKNOWN_MODEL/i.test(
-    message,
-  )
+  if (/\b402\b|payment required|billing|konto\/kontingent/i.test(message)) return false
+  if (/\b429\b|quota|resource_exhausted|resource exhausted/i.test(message)) return false
+  return /not found|NOT_FOUND|UNKNOWN_MODEL|is not found for/i.test(message)
 }

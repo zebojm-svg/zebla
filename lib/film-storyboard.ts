@@ -68,6 +68,7 @@ import {
   stillEditCatalog,
   stillEditFigures,
   stillEditHarvestNoteForPaint,
+  stillEditImageErrorDe,
   stillEditLineDe,
   stillNumberInScene,
   type StillEditPackzettel,
@@ -955,7 +956,8 @@ export async function stillFilmPanel(
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+    const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+    const message = correction ? stillEditImageErrorDe(err) : raw
     const failed = applyPanelStillError(working, panelId, message)
     try {
       await saveBoard(dialogId, userId, failed, profile)

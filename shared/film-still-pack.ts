@@ -58,8 +58,11 @@ export type StillEditPlannerInput = {
 /** Höchstens so viele Fotos aus dem Packzettel — Kapazität, keine Interpretation. */
 export const STILL_EDIT_PACK_MAX = 4
 
-/** Ohne Packzettel: Katalog-Arten an die Bild-KI (current, Gesicht, Ort, Requisite, andere Stills). */
-export const STILL_EDIT_DIRECT_PACK_MAX = 8
+/**
+ * Ohne Packzettel: nur current + Sprecher-Gesicht + Ort-Grundbild + Inventar-Requisite.
+ * Nicht jedes Still des Films — viele PNGs sprengen Google (400) oder die 60 s.
+ */
+export const STILL_EDIT_DIRECT_PACK_MAX = 4
 
 /** Stehender Regie-Satz an die Bild-KI — kein Stichwort-Denken im Werkzeug. */
 export const STILL_EDIT_DIRECTOR_DE =
@@ -113,6 +116,12 @@ export const STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS = 16_000
 export const STILL_EDIT_PLANNER_QUOTA_RETRIES = 0
 export const STILL_EDIT_PLANNER_HTTP_BUDGET_MS = 16_000
 export const STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS = STILL_EDIT_PLANNER_HTTP_BUDGET_MS + 3_000
+
+/** Bild-KI: ein Versuch + höchstens ein 429-Retry, unter Vercel/60 s. */
+export const STILL_EDIT_IMAGE_ATTEMPT_TIMEOUT_MS = 40_000
+export const STILL_EDIT_IMAGE_HTTP_BUDGET_MS = 55_000
+export const STILL_EDIT_IMAGE_QUOTA_RETRIES = 1
+export const STILL_EDIT_IMAGE_QUOTA_BACKOFF_MS = 2_000
 
 function httpUrl(u?: string): u is string {
   return Boolean(u && u.startsWith('http'))
@@ -790,34 +799,159 @@ export function stillEditHarvestNoteDe(
 }
 
 export const STILL_EDIT_IMAGE_ERROR_DE =
-  'Das Bild konnte nicht neu gemalt werden. Bitte noch einmal «Bild ändern».'
+  'Das Bild konnte nicht neu gemalt werden (Google voll). Bitte noch einmal «Bild ändern».'
 
 export const STILL_EDIT_IMAGE_TIMEOUT_DE =
-  'Das Bild hat zu lange gedauert. Bitte noch einmal «Bild ändern».'
+  'Das Bild konnte nicht neu gemalt werden (Zeitlimit). Bitte noch einmal «Bild ändern».'
 
-/** Red box only after the IMAGE call fails — never Packzettel, no Google URL. */
+export const STILL_EDIT_IMAGE_EMPTY_DE =
+  'Das Bild konnte nicht neu gemalt werden (leere Antwort). Bitte noch einmal «Bild ändern».'
+
+export const STILL_EDIT_IMAGE_QUOTA_DE =
+  'Das Bild konnte nicht neu gemalt werden (Google voll). Bitte noch einmal «Bild ändern».'
+
+/** 402 am Bildmodell — Billing/Kontingent, kein weiterer JSON-Packzettel. */
+export const STILL_EDIT_IMAGE_BILLING_DE =
+  'Google lässt das Malen gerade nicht zu (402). Konto/Kontingent. Bitte noch einmal «Bild ändern».'
+
+export function stillEditImageStatusDe(status: number): string {
+  if (status === 402) return STILL_EDIT_IMAGE_BILLING_DE
+  if (status === 429) return STILL_EDIT_IMAGE_QUOTA_DE
+  if (status === 504) return STILL_EDIT_IMAGE_TIMEOUT_DE
+  return `Das Bild konnte nicht neu gemalt werden (${status}). Bitte noch einmal «Bild ändern».`
+}
+
+function isStillEditImageBillingError(raw: string): boolean {
+  if (/\b402\b|payment required/i.test(raw)) return true
+  return /billing|konto\/kontingent|lässt das malen gerade nicht zu/i.test(raw)
+}
+
+function isStillEditImageEmptyError(raw: string): boolean {
+  return /leere antwort|kein standbild|no candidate|blocked|SAFETY|prompt.?feedback|empty bytes|keine antwort/i.test(
+    raw,
+  )
+}
+
+function isStillEditImagePayloadError(raw: string): boolean {
+  return /payload size|too large|request entity too large|bytes exceed|max.?bytes/i.test(raw)
+}
+
+export async function withStillEditImage429Retry<T>(
+  run: () => Promise<T>,
+  opts?: {
+    sleep?: (ms: number) => Promise<void>
+    now?: () => number
+    retries?: number
+    backoffMs?: number
+    budgetMs?: number
+  },
+): Promise<T> {
+  const sleep = opts?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  const now = opts?.now ?? Date.now
+  const retries = opts?.retries ?? STILL_EDIT_IMAGE_QUOTA_RETRIES
+  const backoffMs = opts?.backoffMs ?? STILL_EDIT_IMAGE_QUOTA_BACKOFF_MS
+  const budgetMs = opts?.budgetMs ?? STILL_EDIT_IMAGE_HTTP_BUDGET_MS
+  const started = now()
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await run()
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err ?? '')
+      if (!isStillEditPlannerQuotaError(msg) && stillEditPlannerGoogleHttpStatus(msg) !== 429) {
+        throw err
+      }
+      if (attempt >= retries) break
+      const remaining = budgetMs - (now() - started)
+      if (remaining < backoffMs + 12_000) break
+      await sleep(backoffMs)
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr ?? STILL_EDIT_IMAGE_QUOTA_DE))
+}
+
+/** Red box only after the IMAGE call fails — never Packzettel, no Google URL. Always a reason. */
 export function stillEditImageErrorDe(err: unknown): string {
   const original = err instanceof Error ? err.message : String(err ?? '')
   const raw = stripVendorUrls(original)
-  if (!raw.trim()) return STILL_EDIT_IMAGE_ERROR_DE
-  if (raw === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(original) || isStillEditPlannerQuotaError(raw)) {
-    return STILL_EDIT_PLANNER_QUOTA_DE
+  if (
+    raw === STILL_EDIT_IMAGE_BILLING_DE ||
+    raw === STILL_EDIT_IMAGE_EMPTY_DE ||
+    raw === STILL_EDIT_IMAGE_TIMEOUT_DE ||
+    raw === STILL_EDIT_IMAGE_QUOTA_DE
+  ) {
+    return raw
   }
   if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
     return raw
   }
+  if (isStillEditImageBillingError(raw)) return STILL_EDIT_IMAGE_BILLING_DE
+  if (
+    raw === STILL_EDIT_PLANNER_QUOTA_DE ||
+    isStillEditPlannerQuotaError(original) ||
+    isStillEditPlannerQuotaError(raw)
+  ) {
+    return STILL_EDIT_IMAGE_QUOTA_DE
+  }
   const status = stillEditPlannerGoogleHttpStatus(raw)
-  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|FUNCTION_INVOCATION/i.test(raw) || status === 504) {
+  if (
+    /zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|FUNCTION_INVOCATION/i.test(raw) ||
+    status === 504
+  ) {
     return STILL_EDIT_IMAGE_TIMEOUT_DE
   }
+  if (isStillEditImageEmptyError(raw) || /leere antwort vom server/i.test(raw)) {
+    if (status === 504) return STILL_EDIT_IMAGE_TIMEOUT_DE
+    if (status && status >= 400 && status < 600 && status !== 200) {
+      return stillEditImageStatusDe(status)
+    }
+    return STILL_EDIT_IMAGE_EMPTY_DE
+  }
+  if (isStillEditImagePayloadError(raw)) return stillEditImageStatusDe(status === 413 ? 413 : 400)
   if (status && status >= 400 && status < 600) {
-    return `Das Bild konnte nicht neu gemalt werden (${status}). Bitte noch einmal «Bild ändern».`
+    return stillEditImageStatusDe(status)
   }
   if (/packzettel|drehbuch-ki hat den packzettel/i.test(raw)) {
     return STILL_EDIT_IMAGE_ERROR_DE
   }
-  if (/bild ändern/i.test(raw) && !/https?:\/\//i.test(raw)) return raw
+  if (/bild ändern/i.test(raw) && /\(.*\)/.test(raw) && !/https?:\/\//i.test(raw)) return raw
+  if (/bild ändern/i.test(raw) && !/https?:\/\//i.test(raw)) return STILL_EDIT_IMAGE_ERROR_DE
   return STILL_EDIT_IMAGE_ERROR_DE
+}
+
+/** Sprecher aus der deutschen Zeile, sonst Name im Hinweis, sonst erste Figur. Kein Stichwort-Denken. */
+export function stillEditSpeakerName(dialogDe: string, figures: string[], userHint = ''): string {
+  const fromLine = dialogDe.match(/^([^:]{1,48}):\s/)
+  const lineName = fromLine?.[1]?.trim()
+  if (lineName && lineName !== '—') return lineName
+  const hay = userHint.toLowerCase()
+  const named = figures.find((name) => {
+    const token = name.trim().toLowerCase()
+    return token.length >= 3 && hay.includes(token)
+  })
+  if (named) return named.trim()
+  return (figures[0] || '').trim()
+}
+
+function catalogItemNameTokens(item: StillCatalogItem): string[] {
+  return item.label
+    .toLowerCase()
+    .split(/[^a-zäöüß0-9]+/i)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3)
+}
+
+function textHasToken(text: string, token: string): boolean {
+  if (!token) return false
+  return text.toLowerCase().includes(token.toLowerCase())
+}
+
+function personMatchesName(item: StillCatalogItem, name: string): boolean {
+  const want = name.trim().toLowerCase()
+  if (!want) return false
+  if (item.id.toLowerCase().includes(want.replace(/\s+/g, '-'))) return true
+  return catalogItemNameTokens(item).some((t) => t === want || want.includes(t) || t.includes(want))
 }
 
 export type StillEditPaintJob = {
@@ -839,25 +973,42 @@ export function tryStillEditPackzettel(raw: unknown): StillEditPackzettel | null
 }
 
 /**
- * Katalog ohne Packzettel: current, Gesichter, Ort, Requisiten, andere Stills.
- * Keine Stichwörter — die Bild-KI entscheidet, ob current Retusche oder ignorieren ist.
+ * Direkt malen: current + Sprecher-Gesicht + Ort-Grundbild + Inventar-Requisite.
+ * Andere Stills und Gäste-Gesichter bleiben weg — das war zu viele PNGs.
  */
-export function pickStillCatalogForDirectPaint(catalog: StillCatalogItem[]): StillCatalogItem[] {
-  const order: StillCatalogKind[] = ['current', 'person', 'place', 'prop', 'still']
+export function pickStillCatalogForDirectPaint(
+  catalog: StillCatalogItem[],
+  opts?: { speaker?: string; userHint?: string; dialogDe?: string },
+): StillCatalogItem[] {
   const out: StillCatalogItem[] = []
   const seenUrl = new Set<string>()
-  const add = (item: StillCatalogItem) => {
-    if (out.length >= STILL_EDIT_DIRECT_PACK_MAX) return
+  const add = (item?: StillCatalogItem) => {
+    if (!item || out.length >= STILL_EDIT_DIRECT_PACK_MAX) return
     if (!item.url || seenUrl.has(item.url)) return
     seenUrl.add(item.url)
     out.push(item)
   }
-  for (const kind of order) {
-    for (const item of catalog) {
-      if (item.kind === kind) add(item)
-    }
-  }
-  for (const item of catalog) add(item)
+
+  add(catalog.find((it) => it.kind === 'current'))
+
+  const people = catalog.filter((it) => it.kind === 'person')
+  const speaker = (opts?.speaker || '').trim()
+  const hint = opts?.userHint || ''
+  const speakerPerson =
+    people.find((it) => personMatchesName(it, speaker)) ||
+    people.find((it) => catalogItemNameTokens(it).some((t) => textHasToken(hint, t)))
+  add(speakerPerson)
+
+  const places = catalog.filter((it) => it.kind === 'place')
+  add(places.find((it) => /grundbild/i.test(it.label)) || places[0])
+
+  const props = catalog.filter((it) => it.kind === 'prop')
+  const mentionText = `${hint} ${opts?.dialogDe || ''}`
+  const mentionedProps = props.filter((it) =>
+    catalogItemNameTokens(it).some((t) => textHasToken(mentionText, t)),
+  )
+  for (const prop of mentionedProps.length ? mentionedProps : props) add(prop)
+
   return out
 }
 
@@ -920,7 +1071,11 @@ export function resolveStillEditPaint(opts: {
       }
     }
   }
-  const picked = pickStillCatalogForDirectPaint(opts.catalog)
+  const picked = pickStillCatalogForDirectPaint(opts.catalog, {
+    speaker: stillEditSpeakerName(opts.dialogDe, opts.figures, opts.userHint),
+    userHint: opts.userHint,
+    dialogDe: opts.dialogDe,
+  })
   return {
     mode: 'direct',
     prompt: stillEditDirectPaintPrompt({

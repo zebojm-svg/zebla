@@ -1033,5 +1033,10 @@ if (!stillGenSrc.includes('resolveStillEditPaint')) {
 if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
   fail('Nach Bild ändern werden spätere Bilder der Szene markiert')
 }
+const stillPngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
+const stillPngFn = stillPngSrc.slice(stillPngSrc.indexOf('async function generateStillPng'))
+if (stillPngFn.includes('90_000')) fail('Standbild-Malen nicht 90 s')
+if (!stillPngFn.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
+if (!stillPngFn.includes('withStillEditImage429Retry')) fail('Standbild 429 einmal wiederholen')
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

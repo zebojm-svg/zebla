@@ -12,7 +12,15 @@ import {
   cropWideStillToSpeaker,
 } from './film-closeup-crop.js'
 import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
-import { stillPackzettelAttachEn } from '../shared/film-still-pack.js'
+import {
+  stillEditImageErrorDe,
+  stillPackzettelAttachEn,
+  withStillEditImage429Retry,
+  STILL_EDIT_IMAGE_ATTEMPT_TIMEOUT_MS,
+  STILL_EDIT_IMAGE_EMPTY_DE,
+  STILL_EDIT_IMAGE_HTTP_BUDGET_MS,
+  STILL_EDIT_IMAGE_TIMEOUT_DE,
+} from '../shared/film-still-pack.js'
 import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
@@ -34,8 +42,10 @@ function requireGeminiKey(): string {
 type GeminiImageResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }
+    finishReason?: string
   }>
-  error?: { message?: string }
+  promptFeedback?: { blockReason?: string }
+  error?: { message?: string; code?: number; status?: string }
 }
 
 type InlineImage = { mimeType: string; data: string }
@@ -109,12 +119,23 @@ async function generateStillPng(
   }
   parts.push({ text: prompt })
 
-  let lastError = 'Standbild fehlgeschlagen.'
-  for (const model of geminiImageModelCandidates()) {
+  const started = Date.now()
+  let lastError = STILL_EDIT_IMAGE_EMPTY_DE
+
+  const callModel = async (model: string): Promise<Buffer> => {
+    const remaining = STILL_EDIT_IMAGE_HTTP_BUDGET_MS - (Date.now() - started)
+    const timeoutMs = Math.max(
+      8_000,
+      Math.min(STILL_EDIT_IMAGE_ATTEMPT_TIMEOUT_MS, remaining - 1_000),
+    )
+    if (remaining < 8_000) {
+      throw new Error(STILL_EDIT_IMAGE_TIMEOUT_DE)
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    let res: Response
     try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 90_000)
-      const res = await fetch(
+      res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
@@ -129,19 +150,47 @@ async function generateStillPng(
           signal: controller.signal,
         },
       )
-      clearTimeout(timer)
-      const data = (await res.json()) as GeminiImageResponse
-      recordGeminiResponse('still', model, data)
-      if (data.error?.message) throw new Error(data.error.message)
-      const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
-      if (!img?.data) throw new Error('Kein Standbild erhalten.')
-      return Buffer.from(img.data, 'base64')
     } catch (err) {
-      lastError = err instanceof Error ? err.message : lastError
       if (err instanceof Error && err.name === 'AbortError') {
-        lastError = 'Das Standbild hat zu lange gedauert. Bitte noch einmal versuchen.'
+        throw new Error(STILL_EDIT_IMAGE_TIMEOUT_DE)
       }
-      if (isGeminiImageUnavailable(lastError)) continue
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+
+    let data: GeminiImageResponse = {}
+    const bodyText = await res.text()
+    if (!bodyText.trim()) {
+      throw new Error(`[${res.status}] Kein Standbild erhalten.`)
+    }
+    try {
+      data = JSON.parse(bodyText) as GeminiImageResponse
+    } catch {
+      throw new Error(`[${res.status}] Kein Standbild erhalten.`)
+    }
+    recordGeminiResponse('still', model, data)
+    const status = Number(data.error?.code) || res.status
+    if (data.error?.message || !res.ok) {
+      const dump = data.error?.message || bodyText.slice(0, 180)
+      throw new Error(`[${status}] ${dump}`)
+    }
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`[${status}] Kein Standbild erhalten.`)
+    }
+    const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
+    if (!img?.data) throw new Error('Kein Standbild erhalten.')
+    return Buffer.from(img.data, 'base64')
+  }
+
+  for (const model of geminiImageModelCandidates()) {
+    try {
+      return await withStillEditImage429Retry(() => callModel(model), {
+        budgetMs: Math.max(8_000, STILL_EDIT_IMAGE_HTTP_BUDGET_MS - (Date.now() - started)),
+      })
+    } catch (err) {
+      lastError = stillEditImageErrorDe(err)
+      if (isGeminiImageUnavailable(err instanceof Error ? err.message : lastError)) continue
       throw new Error(lastError)
     }
   }
