@@ -71,7 +71,10 @@ import {
   stillEditPlannerErrorDe,
   stillEditPlannerMessages,
   stillEditPlannerRetryUser,
+  withStillEditPlannerQuotaRetries,
+  STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
+  STILL_EDIT_PLANNER_MODEL,
   STILL_EDIT_PLANNER_TIMEOUT_DE,
   STILL_EDIT_PLANNER_TIMEOUT_MS,
   STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
@@ -122,10 +125,21 @@ function requireGeminiKey(): string {
   return key
 }
 
-function getTextModel(temperature = 0.7) {
+function stillEditPlannerModelId(): string {
+  const fromEnv = process.env.GEMINI_PACKZETTEL_MODEL?.trim()
+  const candidate = fromEnv || STILL_EDIT_PLANNER_MODEL
+  if (/tts|image/i.test(candidate)) return STILL_EDIT_PLANNER_MODEL
+  return candidate
+}
+
+function clipPlannerTimeoutMs(remainingMs: number, cap: number): number {
+  return Math.min(cap, Math.max(5_000, remainingMs))
+}
+
+function getTextModel(temperature = 0.7, model = TEXT_MODEL) {
   const genAI = new GoogleGenerativeAI(requireGeminiKey())
   return genAI.getGenerativeModel({
-    model: TEXT_MODEL,
+    model,
     generationConfig: {
       responseMimeType: 'application/json',
       temperature,
@@ -145,13 +159,18 @@ const LENGTH_HINTS: Record<DialogLength, string> = {
   long: '14–20 Zeilen',
 }
 
-function geminiErrorMessage(err: unknown): string {
+function isGeminiModelMissing(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  return /is not found|NOT_FOUND|404 Not Found|UNKNOWN_MODEL|nicht verfügbar/i.test(msg)
+}
+
+function geminiErrorMessage(err: unknown, model = TEXT_MODEL): string {
   if (err instanceof Error) {
     if (err.message.includes('API_KEY_INVALID') || err.message.includes('API key')) {
       return 'Ungültiger GEMINI_API_KEY. Bitte in Vercel prüfen und neu deployen.'
     }
-    if (err.message.includes('is not found') || err.message.includes('404 Not Found')) {
-      return `Gemini-Modell „${TEXT_MODEL}“ ist nicht verfügbar. Setze GEMINI_MODEL auf z. B. gemini-2.5-flash in Vercel und deploye neu.`
+    if (isGeminiModelMissing(err)) {
+      return `Gemini-Modell „${model}“ ist nicht verfügbar. Setze GEMINI_MODEL auf z. B. gemini-2.5-flash in Vercel und deploye neu.`
     }
     if (
       err.message.includes('FUNCTION_INVOCATION_FAILED') ||
@@ -185,7 +204,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 export async function chatJson<T>(
   system: string,
   user: string,
-  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string },
+  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string; model?: string },
 ): Promise<T> {
   return chatJsonWithImages<T>(system, user, [], opts)
 }
@@ -194,11 +213,12 @@ export async function chatJsonWithImages<T>(
   system: string,
   user: string,
   images: Array<{ mimeType: string; data: string }> = [],
-  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string },
+  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string; model?: string },
 ): Promise<T> {
   await assertAiAllowed()
+  const modelId = opts?.model?.trim() || TEXT_MODEL
   try {
-    const model = getTextModel(opts?.temperature ?? 0.7)
+    const model = getTextModel(opts?.temperature ?? 0.7, modelId)
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
       { text: `${system}\n\n---\n\n${user}` },
     ]
@@ -212,13 +232,13 @@ export async function chatJsonWithImages<T>(
       opts?.timeoutMs ?? TEXT_GEN_TIMEOUT_MS,
       opts?.timeoutMessage ?? 'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen.',
     )
-    recordGeminiUsage(images.length ? 'text-with-images' : 'text', TEXT_MODEL, result.response.usageMetadata)
+    recordGeminiUsage(images.length ? 'text-with-images' : 'text', modelId, result.response.usageMetadata)
 
     const content = result.response.text()
     if (!content) throw new Error('Keine Antwort von der KI erhalten.')
     return parseJson<T>(content)
   } catch (err) {
-    throw new Error(geminiErrorMessage(err))
+    throw new Error(geminiErrorMessage(err, modelId))
   }
 }
 
@@ -435,13 +455,23 @@ async function requestStillEditPackzettel(
   system: string,
   user: string,
   timeoutMs: number,
+  model = stillEditPlannerModelId(),
 ): Promise<StillEditPackzettel> {
-  const raw = await chatJson<unknown>(system, user, {
-    temperature: 0.2,
-    timeoutMs,
-    timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
-  })
-  return parseStillEditPackzettel(raw)
+  try {
+    const raw = await chatJson<unknown>(system, user, {
+      temperature: 0.2,
+      timeoutMs,
+      timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
+      model,
+    })
+    return parseStillEditPackzettel(raw)
+  } catch (err) {
+    const fallback = TEXT_MODEL
+    if (model !== fallback && isGeminiModelMissing(err) && !/tts|image/i.test(fallback)) {
+      return requestStillEditPackzettel(system, user, timeoutMs, fallback)
+    }
+    throw err
+  }
 }
 
 /** Bild ändern: kurze Drehbuch-KI, nur JSON-Packzettel, malt nicht. Keine Fotos an diesen Aufruf. */
@@ -451,18 +481,26 @@ export async function planStillEditPackzettel(
   const catalog = catalogForPlanner(input.catalog)
   const planned: StillEditPlannerInput = { ...input, catalog }
   const { system, user } = stillEditPlannerMessages(planned)
+  const started = Date.now()
+  const remaining = () => STILL_EDIT_PLANNER_HTTP_BUDGET_MS - (Date.now() - started)
   try {
-    const pack = await requestStillEditPackzettel(system, user, STILL_EDIT_PLANNER_TIMEOUT_MS)
-    if (pack.imageIds.length > 0 || catalog.length === 0) return pack
-    const retried = await requestStillEditPackzettel(
-      system,
-      stillEditPlannerRetryUser(planned),
-      STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
-    )
-    if (retried.imageIds.length === 0) {
-      throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
-    }
-    return retried
+    return await withStillEditPlannerQuotaRetries(async () => {
+      const pack = await requestStillEditPackzettel(
+        system,
+        user,
+        clipPlannerTimeoutMs(remaining() - 2_000, STILL_EDIT_PLANNER_TIMEOUT_MS),
+      )
+      if (pack.imageIds.length > 0 || catalog.length === 0) return pack
+      const retried = await requestStillEditPackzettel(
+        system,
+        stillEditPlannerRetryUser(planned),
+        clipPlannerTimeoutMs(remaining() - 1_000, STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS),
+      )
+      if (retried.imageIds.length === 0) {
+        throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
+      }
+      return retried
+    })
   } catch (err) {
     throw new Error(stillEditPlannerErrorDe(err))
   }

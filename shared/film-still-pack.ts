@@ -68,11 +68,27 @@ export const STILL_EDIT_PLANNER_EMPTY_DE =
 export const STILL_EDIT_PLANNER_INVALID_DE =
   'Die Drehbuch-KI hat den Packzettel nicht geliefert (ungültiger Packzettel). Bitte noch einmal «Bild ändern».'
 
-/** Text-JSON only — keep well under a 60 s HTTP budget (retry uses a shorter second ask). */
+/** Same shape as Probe — no English quota URL. */
+export const STILL_EDIT_PLANNER_QUOTA_DE =
+  'Google ist gerade voll. In einer Minute nochmal «Bild ändern».'
+
+/** Status under the button while this click waits out a 429. */
+export const STILL_EDIT_PLANNER_WAIT_DE = 'Google voll, warte kurz …'
+export const STILL_EDIT_PLANNER_WAIT_AFTER_MS = 8_000
+
+/**
+ * Cheap text Flash for the Packzettel — not TTS, not image.
+ * Own per-base-model RPM vs gemini-2.5-flash, gemini-2.5-flash-tts, *-flash-image.
+ */
+export const STILL_EDIT_PLANNER_MODEL = 'gemini-2.5-flash-lite'
+
+/** Text-JSON only — keep well under a 60 s HTTP budget (quota wait is in this same call). */
 export const STILL_EDIT_PLANNER_TIMEOUT_MS = 30_000
 export const STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS = 12_000
-export const STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS =
-  STILL_EDIT_PLANNER_TIMEOUT_MS + STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS + 8_000
+export const STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS = 16_000
+export const STILL_EDIT_PLANNER_QUOTA_RETRIES = 2
+export const STILL_EDIT_PLANNER_HTTP_BUDGET_MS = 55_000
+export const STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS = STILL_EDIT_PLANNER_HTTP_BUDGET_MS + 3_000
 
 function httpUrl(u?: string): u is string {
   return Boolean(u && u.startsWith('http'))
@@ -510,9 +526,65 @@ function stripVendorUrls(text: string): string {
   return text.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim()
 }
 
+const PLANNER_QUOTA_HINTS = [
+  'quota',
+  'resource_exhausted',
+  'resource exhausted',
+  'rate limit',
+  'rate_limit',
+  'generate_content_requests_per_minute',
+  'overloaded',
+  'überlast',
+  'gerade voll',
+]
+
+/** Real 429/quota — a Google URL alone is not enough (SDK errors always contain one). */
+export function isStillEditPlannerQuotaError(raw: string): boolean {
+  const text = raw.trim()
+  if (/\b429\b/.test(text)) return true
+  const lower = text.toLowerCase()
+  return PLANNER_QUOTA_HINTS.some((hint) => lower.includes(hint))
+}
+
+export async function withStillEditPlannerQuotaRetries<T>(
+  run: () => Promise<T>,
+  opts?: {
+    sleep?: (ms: number) => Promise<void>
+    now?: () => number
+    retries?: number
+    backoffMs?: number
+    budgetMs?: number
+  },
+): Promise<T> {
+  const sleep = opts?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  const now = opts?.now ?? Date.now
+  const retries = opts?.retries ?? STILL_EDIT_PLANNER_QUOTA_RETRIES
+  const backoffMs = opts?.backoffMs ?? STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS
+  const budgetMs = opts?.budgetMs ?? STILL_EDIT_PLANNER_HTTP_BUDGET_MS
+  const started = now()
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await run()
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err ?? '')
+      if (!isStillEditPlannerQuotaError(msg)) throw err
+      if (attempt >= retries) break
+      const remaining = budgetMs - (now() - started)
+      if (remaining < backoffMs + 6_000) break
+      await sleep(backoffMs)
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr ?? STILL_EDIT_PLANNER_QUOTA_DE))
+}
+
 export function stillEditPlannerErrorDe(err: unknown): string {
   const original = err instanceof Error ? err.message : String(err ?? '')
   const raw = stripVendorUrls(original)
+  if (raw === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(original) || isStillEditPlannerQuotaError(raw)) {
+    return STILL_EDIT_PLANNER_QUOTA_DE
+  }
   if (
     raw === STILL_EDIT_PLANNER_TIMEOUT_DE ||
     raw === STILL_EDIT_PLANNER_EMPTY_DE ||
@@ -521,13 +593,7 @@ export function stillEditPlannerErrorDe(err: unknown): string {
   ) {
     return raw
   }
-  if (
-    /quota|überlast|overloaded|resource.?exhausted|429/i.test(raw) ||
-    /ai\.google\.dev|googleapis\.com|generativelanguage/i.test(original)
-  ) {
-    return 'Die Drehbuch-KI ist gerade voll. Bitte noch einmal «Bild ändern».'
-  }
-  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort/i.test(raw)) {
+  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|504/i.test(raw)) {
     return STILL_EDIT_PLANNER_TIMEOUT_DE
   }
   if (
@@ -547,6 +613,9 @@ export function stillEditPlannerErrorDe(err: unknown): string {
 /** Fehler von «Bild ändern» — nicht auf «Diese Szene erzeugen» umbiegen. */
 export function stillEditTimeoutHintDe(message: string): string {
   const clean = stripVendorUrls(message)
+  if (clean === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(clean)) {
+    return STILL_EDIT_PLANNER_QUOTA_DE
+  }
   if (/bild ändern|packzettel/i.test(clean)) return clean || STILL_EDIT_PLANNER_ERROR_DE
   if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION|zeitüberschreitung|504/i.test(clean)) {
     return STILL_EDIT_PLANNER_TIMEOUT_DE
