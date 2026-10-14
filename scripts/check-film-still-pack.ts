@@ -20,13 +20,22 @@ import {
   stillNumberInScene,
   stillPackzettelAttachEn,
   stillEditTimeoutHintDe,
+  isStillEditPlannerQuotaError,
+  withStillEditPlannerQuotaRetries,
   STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
   STILL_EDIT_PLANNER_EMPTY_DE,
   STILL_EDIT_PLANNER_ERROR_DE,
+  STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
+  STILL_EDIT_PLANNER_MODEL,
+  STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS,
+  STILL_EDIT_PLANNER_QUOTA_DE,
+  STILL_EDIT_PLANNER_QUOTA_RETRIES,
   STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
   STILL_EDIT_PLANNER_TIMEOUT_DE,
   STILL_EDIT_PLANNER_TIMEOUT_MS,
+  STILL_EDIT_PLANNER_WAIT_AFTER_MS,
+  STILL_EDIT_PLANNER_WAIT_DE,
   type StillCatalogItem,
 } from '../shared/film-still-pack.ts'
 import { clientTimeoutMessage } from '../shared/api-timeout.ts'
@@ -314,9 +323,16 @@ if (emptyIds.imagePrompt !== 'Ramo at the stove' || emptyIds.imageIds.length !==
 }
 
 if (STILL_EDIT_PLANNER_TIMEOUT_MS < 25_000 || STILL_EDIT_PLANNER_TIMEOUT_MS > 35_000) {
-  fail('Planner-Timeout 25–35 s, nicht 18 s')
+  fail('Planner-Timeout 25–35 s, nicht 18 s — Quota-Warten kürzt über das HTTP-Budget')
 }
 if (STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS > 20_000) fail('Zweiter Ask kürzer als der erste')
+if (STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS < 15_000 || STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS > 25_000) {
+  fail('Quota-Warten 15–25 s')
+}
+if (STILL_EDIT_PLANNER_QUOTA_RETRIES < 1 || STILL_EDIT_PLANNER_QUOTA_RETRIES > 2) {
+  fail('Quota 1–2 Wiederholungen im gleichen Klick')
+}
+if (STILL_EDIT_PLANNER_HTTP_BUDGET_MS >= 60_000) fail('Packzettel-HTTP unter 60 s')
 if (STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS >= 60_000) fail('Client bleibt unter 60 s')
 if (!STILL_EDIT_PLANNER_TIMEOUT_DE.includes('Zeitlimit')) fail('Zeitlimit-Satz auf Deutsch')
 if (!STILL_EDIT_PLANNER_EMPTY_DE.includes('leere Antwort')) fail('Leere-Antwort-Satz auf Deutsch')
@@ -332,13 +348,82 @@ if (stillEditPlannerErrorDe(new Error('Keine Antwort von der KI erhalten.')) !==
 if (stillEditPlannerErrorDe(new Error('JSON der KI war ungültig.')) !== STILL_EDIT_PLANNER_INVALID_DE) {
   fail('Kaputtes JSON wird als ungültiger Packzettel erklärt')
 }
-const quota = stillEditPlannerErrorDe(
-  new Error('Quota exceeded https://ai.google.dev/gemini-api/docs/rate-limits'),
-)
-if (quota.includes('http') || quota.includes('google')) fail('Keine Google-Quota-URL in der UI')
+const quotaRaw =
+  'Quota exceeded for aiplatform.googleapis.com/generate_content_requests_per_minute_per_project_per_base_model with base model: gemini-2.5-flash. Please submit a quota increase request. https://cloud.google.com/vertex-ai/docs/generative-ai/quotas-genai'
+if (!isStillEditPlannerQuotaError(quotaRaw)) fail('Vertex-Quota ist echte Quota')
+if (!isStillEditPlannerQuotaError('429 Too Many Requests')) fail('429 ist Quota')
+if (!isStillEditPlannerQuotaError('RESOURCE_EXHAUSTED')) fail('RESOURCE_EXHAUSTED ist Quota')
+const sdk500 =
+  '[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent: [500 Internal Server Error]'
+if (isStillEditPlannerQuotaError(sdk500)) fail('Google-URL allein ist keine Quota')
+if (stillEditPlannerErrorDe(new Error(sdk500)) === STILL_EDIT_PLANNER_QUOTA_DE) {
+  fail('500 nicht als gerade voll zeigen')
+}
+const deadline =
+  'Error fetching from https://generativelanguage.googleapis.com/v1beta: Deadline Exceeded'
+if (stillEditPlannerErrorDe(new Error(deadline)) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+  fail('Deadline Exceeded ist Zeitlimit, nicht voll')
+}
+if (
+  /tts|image/i.test(STILL_EDIT_PLANNER_MODEL) ||
+  !STILL_EDIT_PLANNER_MODEL.includes('flash-lite')
+) {
+  fail('Planner ist günstiges Text-Flash, nicht TTS und nicht Bild')
+}
+const quota = stillEditPlannerErrorDe(new Error(quotaRaw))
+if (quota !== STILL_EDIT_PLANNER_QUOTA_DE) fail('Quota wie Probe, ohne URL')
+if (quota.includes('http') || quota.includes('ai.google') || quota.includes('cloud.google')) {
+  fail('Keine Google-Quota-URL in der UI')
+}
 if (!quota.includes('Bild ändern')) fail('Quota bleibt «Bild ändern»')
+if (!quota.includes('Google ist gerade voll')) fail('Quota-Satz wie bei Probe')
+if (stillEditPlannerErrorDe(new Error('Die Drehbuch-KI ist gerade voll. Bitte noch einmal «Bild ändern».')) !== STILL_EDIT_PLANNER_QUOTA_DE) {
+  fail('Alter Voll-Satz wird auf Probe-Satz gemappt')
+}
+if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_QUOTA_DE) !== STILL_EDIT_PLANNER_QUOTA_DE) {
+  fail('Quota-Satz nicht auf Zeitlimit umbiegen')
+}
 if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_PLANNER_ERROR_DE) {
   fail('Der kurze Satz bleibt, wenn wir nichts Genaueres wissen')
+}
+if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_TIMEOUT_DE)) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+  fail('Zeitlimit bleibt Zeitlimit, nicht Quota')
+}
+
+{
+  const sleeps: number[] = []
+  let n = 0
+  const recovered = await withStillEditPlannerQuotaRetries(
+    async () => {
+      n += 1
+      if (n < 3) throw new Error('429 Too Many Requests')
+      return 'ok'
+    },
+    { sleep: async (ms) => { sleeps.push(ms) } },
+  )
+  if (recovered !== 'ok' || n !== 3) fail('Nach zwei 429 noch einmal im gleichen Klick')
+  if (
+    sleeps.length !== 2 ||
+    sleeps.some((ms) => ms !== STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS)
+  ) {
+    fail('Quota-Backoff 15–25 s, zweimal')
+  }
+  let timed = 0
+  try {
+    await withStillEditPlannerQuotaRetries(
+      async () => {
+        timed += 1
+        throw new Error(STILL_EDIT_PLANNER_TIMEOUT_DE)
+      },
+      { sleep: async () => { fail('Timeout nicht als Quota warten') } },
+    )
+    fail('Timeout muss den Fehler weitergeben')
+  } catch (err) {
+    if (!(err instanceof Error) || err.message !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+      fail('Timeout bleibt Zeitlimit')
+    }
+  }
+  if (timed !== 1) fail('Timeout nicht wiederholen')
 }
 
 const attach = stillPackzettelAttachEn(onlyListed.map((it) => it.label))
@@ -411,6 +496,9 @@ if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel is
 if (!aiSrc.includes('STILL_EDIT_PLANNER_TIMEOUT_MS')) fail('Planner ist ein kurzer Text-Aufruf')
 if (!aiSrc.includes('catalogForPlanner')) fail('Planner bekommt den Text-Katalog, nicht die PNGs')
 if (!aiSrc.includes('stillEditPlannerRetryUser')) fail('Leere imageIds: einmal kürzer nachfragen')
+if (!aiSrc.includes('STILL_EDIT_PLANNER_MODEL')) fail('Packzettel-Planner ist das günstige Text-Flash, nicht TTS')
+if (!aiSrc.includes('withStillEditPlannerQuotaRetries')) fail('429 wartet und versucht denselben Klick nochmal')
+if (!aiSrc.includes('clipPlannerTimeoutMs')) fail('Quota-Retry bleibt unter dem 60s-HTTP-Budget')
 const planStart = aiSrc.indexOf('async function requestStillEditPackzettel')
 const planEnd = aiSrc.indexOf('export async function planFilmPanelRefNeeds')
 const planFn = aiSrc.slice(planStart, planEnd > planStart ? planEnd : undefined)
@@ -418,6 +506,8 @@ if (!planFn.includes('planStillEditPackzettel')) fail('Planner-Funktionen hänge
 if (planFn.includes('chatJsonWithImages')) {
   fail('Packzettel-Planner darf keine Bilder an Gemini hängen')
 }
+if (planFn.includes('gemini-2.5-flash-tts')) fail('Planner teilt kein TTS-Kontingent')
+if (/flash-image|imagen/i.test(planFn)) fail('Planner ist kein Bildmodell')
 if (!stillFnSrc.includes('catalogForPlanner')) {
   fail('Storyboard schickt der Drehbuch-KI den Text-Katalog')
 }
@@ -432,6 +522,16 @@ if (!hookSrc.includes('stillEditTimeoutHintDe')) {
 if (!hookSrc.includes('filmStillPlan')) fail('Bild ändern holt zuerst den Packzettel')
 if (!hookSrc.includes('Drehbuch-KI schreibt den Packzettel')) {
   fail('Während des Packzettels steht ein Satz unter dem Knopf')
+}
+if (!hookSrc.includes('STILL_EDIT_PLANNER_WAIT_DE')) {
+  fail('Wenn Google voll ist, steht unter dem Knopf: warte kurz')
+}
+if (!hookSrc.includes('STILL_EDIT_PLANNER_WAIT_AFTER_MS')) {
+  fail('Warte-Satz erst wenn der Packzettel länger braucht als ein schnelles JSON')
+}
+if (!STILL_EDIT_PLANNER_WAIT_DE.includes('Google voll')) fail('Warte-Satz nennt Google voll')
+if (STILL_EDIT_PLANNER_WAIT_AFTER_MS < 5_000 || STILL_EDIT_PLANNER_WAIT_AFTER_MS >= STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS) {
+  fail('Warte-Satz während der 429-Pause, nicht sofort')
 }
 
 const uxSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')

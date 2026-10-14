@@ -3,7 +3,11 @@ import { api } from '../api/client'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { panelsNeedingStills, stillTimeoutHintDe } from '../../shared/film-stills'
-import { stillEditTimeoutHintDe } from '../../shared/film-still-pack'
+import {
+  stillEditTimeoutHintDe,
+  STILL_EDIT_PLANNER_WAIT_AFTER_MS,
+  STILL_EDIT_PLANNER_WAIT_DE,
+} from '../../shared/film-still-pack'
 
 export async function generateSceneStills(opts: {
   dialogId: string
@@ -119,10 +123,16 @@ export function useSceneStills(
     )
     setErrors((prev) => ({ ...prev, [sceneId]: '', [panel.id]: '' }))
     setProgress({ sceneId, current: 0, total: 1 })
+    const waitHint =
+      hint &&
+      window.setTimeout(() => {
+        setStatus(STILL_EDIT_PLANNER_WAIT_DE)
+      }, STILL_EDIT_PLANNER_WAIT_AFTER_MS)
     try {
       let result: { dialog: Dialog; board: FilmStoryboard }
       if (hint) {
         const planned = await api.ai.filmStillPlan(dialogId, panel.id, styleId, hint)
+        if (waitHint) window.clearTimeout(waitHint)
         setStatus('Bild wird neu gemalt … das dauert etwa eine Minute.')
         result = await api.ai.filmStill(
           dialogId,
@@ -141,6 +151,7 @@ export function useSceneStills(
       const shown = stillEditTimeoutHintDe(raw)
       setErrors((prev) => ({ ...prev, [sceneId]: shown, [panel.id]: shown }))
     } finally {
+      if (waitHint) window.clearTimeout(waitHint)
       setBusySceneId(null)
       setBusyPanelId(null)
       setStatus('')
