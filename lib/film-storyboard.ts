@@ -1,9 +1,9 @@
-import { chatJson, generateFilmSceneDialog, planFilmPanelRefNeeds } from './ai.js'
+import { chatJson, generateFilmSceneDialog, planStillEditPackzettel } from './ai.js'
 import { newLineId } from './ids.js'
 import { listStoryAssets, saveStoryAsset } from './story-library.js'
 import { getDialog, updateDialog, type UserProfile } from './firestore.js'
 import { isStageSpeaker, type Dialog, type FilmInventory } from '../shared/types.js'
-import { deriveFilmInventory, mergeRefNeeds } from '../shared/film-inventory.js'
+import { deriveFilmInventory } from '../shared/film-inventory.js'
 import {
   alignCueImageWithStillFix,
   alignDialogLineCueAfterStill,
@@ -52,6 +52,7 @@ import {
   previousStillUrlInScene,
   replaceStillUrl,
   sceneContinuityBlock,
+  panelPlaceKey,
   placeGrundbildPanel,
   stillReferencePack,
 } from '../shared/film-stills.js'
@@ -60,7 +61,15 @@ import {
   type ArrangeLayerUpdate,
 } from '../shared/film-still-arrange.js'
 import { ensurePanelPieces } from './film-panel-pieces.js'
-import { DEFAULT_STORY_ART_STYLE, isStoryArtStyleId } from '../shared/story-art-styles.js'
+import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId } from '../shared/story-art-styles.js'
+import {
+  pickStillCatalogImages,
+  stillEditCatalog,
+  stillEditFigures,
+  stillEditHarvestNoteDe,
+  stillEditLineDe,
+  stillNumberInScene,
+} from '../shared/film-still-pack.js'
 import { speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
 
@@ -725,41 +734,42 @@ export async function stillFilmPanel(
       }
     }
     if (correction) {
-      try {
-        const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
-        const planned = await planFilmPanelRefNeeds({
-          inventory,
-          panels: [
-            {
-              id: panelForGen.id,
-              caption: panelForGen.caption,
-              imageCue: panelForGen.imageCue,
-              settingHint: panelForGen.settingHint,
-              shot: panelForGen.shot,
-              people: panelForGen.placements.map((pl) => pl.name.trim()).filter(Boolean),
-              propIds: panelForGen.propIds,
-            },
-          ],
-        })
-        const extra = planned[panelForGen.id]
-        if (extra) {
-          const merged = mergeRefNeeds(panelForGen.refNeeds, extra)
-          panelForGen = {
-            ...panelForGen,
-            refNeeds: merged,
-            propIds: mergeRefNeeds(
-              { people: [], places: [], propIds: panelForGen.propIds ?? [] },
-              extra,
-            ).propIds,
-          }
-          boardForGen = {
-            ...boardForGen,
-            panels: boardForGen.panels.map((p) => (p.id === panelId ? panelForGen : p)),
-          }
-        }
-      } catch {
-        /* Vorlagen-Check fehlgeschlagen: vorhandene Vorlagen nehmen. */
-      }
+      const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
+      const catalog = stillEditCatalog({
+        board: boardForGen,
+        panel: panelForGen,
+        inventory,
+      })
+      const packzettel = await planStillEditPackzettel({
+        stillNumber: stillNumberInScene(boardForGen, panelForGen),
+        panelId: panelForGen.id,
+        userHint: correction,
+        dialogDe: stillEditLineDe(panelForGen, dialog),
+        figures: stillEditFigures(boardForGen, panelForGen, inventory),
+        place: panelForGen.settingHint || panelPlaceKey(panelForGen),
+        catalog,
+        styleLabel: getStoryArtStyle(resolvedStyle).label,
+      })
+      const picked = pickStillCatalogImages(catalog, packzettel.imageIds)
+      const url = await generateFilmPanelStillImage({
+        panel: panelForGen,
+        scene,
+        styleId: resolvedStyle,
+        packzettel: {
+          prompt: packzettel.imagePrompt,
+          urls: picked.map((it) => it.url),
+          labels: picked.map((it) => it.label),
+        },
+      })
+      const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+      const notedBoard = finishAfterCorrection(withStill, panelForGen)
+      const withNote = applyPanelHarvestNote(
+        notedBoard,
+        panelId,
+        stillEditHarvestNoteDe(correction, picked),
+      )
+      const updated = await persist(withNote)
+      return { dialog: updated, board: withNote }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
     const isInsert = (panelForGen.shot ?? 'wide') === 'insert'

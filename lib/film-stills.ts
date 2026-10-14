@@ -12,6 +12,7 @@ import {
   cropWideStillToSpeaker,
 } from './film-closeup-crop.js'
 import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
+import { stillPackzettelAttachEn } from '../shared/film-still-pack.js'
 import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
@@ -87,6 +88,7 @@ async function generateStillPng(
   rewritePerson = false,
   insert = false,
   packInstruction = '',
+  packzettelLabels?: string[],
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   await assertAiAllowed()
@@ -96,13 +98,15 @@ async function generateStillPng(
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
     }
     parts.push({
-      text: stillAttachmentInstruction({
-        correctingExisting,
-        closeup,
-        insert,
-        rewritePerson,
-        packInstruction,
-      }),
+      text: packzettelLabels
+        ? stillPackzettelAttachEn(packzettelLabels)
+        : stillAttachmentInstruction({
+            correctingExisting,
+            closeup,
+            insert,
+            rewritePerson,
+            packInstruction,
+          }),
     })
   }
   parts.push({ text: prompt })
@@ -201,7 +205,22 @@ export async function generateFilmPanelStillImage(opts: {
   continuityEn?: string
   board?: FilmStoryboard
   inventory?: FilmInventory | null
+  packzettel?: { prompt: string; urls: string[]; labels: string[] }
 }): Promise<string> {
+  if (opts.packzettel) {
+    const refs = await loadRefs(opts.packzettel.urls)
+    const buffer = await generateStillPng(
+      opts.packzettel.prompt,
+      refs,
+      false,
+      false,
+      false,
+      false,
+      '',
+      opts.packzettel.labels,
+    )
+    return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
+  }
   const pack = stillReferencePack(opts.panel, {
     previousStillUrl: opts.previousStillUrl,
     correctFromUrl: opts.correctFromUrl,
