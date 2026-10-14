@@ -251,21 +251,22 @@ const packCorrect = stillReferencePack(
   { ...stoveNow, stillCorrection: 'Kessel näher', directorNote: 'Kessel näher' },
   { board: painted, inventory },
 )
-if (packCorrect.urls.join('|') !== packFirstStove.urls.join('|')) {
-  fail('Bild ändern schickt dasselbe Paket wie das erste Malen')
+if (packCorrect.items.some((it) => it.name.startsWith('vorige'))) {
+  fail('Bild ändern hängt vorige Küche nicht als Komposition an')
 }
-if (!packCorrect.urls.includes('https://example.com/kitchen-kettle.png')) {
-  fail('Insert bekommt das vorige Küchenbild wie beim ersten Malen')
+if (!packFirstStove.urls.includes('https://example.com/kitchen-kettle.png')) {
+  fail('Erstes Malen schickt die vorige Kanne mit')
 }
 if (packCorrect.items.some((it) => it.name === 'aktuelles Bild')) {
   fail('aktuelles Still nicht als GROUNDBILD mitschicken')
 }
 if (
   !packCorrect.instruction.includes('PROP') &&
-  !packCorrect.instruction.includes('PREVIOUS') &&
+  !packCorrect.instruction.includes('PLACE') &&
+  !packCorrect.instruction.includes('PERSON') &&
   !packCorrect.instruction.includes('GROUNDBILD')
 ) {
-  fail('Bild ändern beschriftet Vorlagen wie das erste Malen')
+  fail('Bild ändern beschriftet Vorlagen')
 }
 
 const firstKitchen = painted.panels.find((p) => p.lineIds.includes('k-fill'))!

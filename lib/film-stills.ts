@@ -22,6 +22,7 @@ import {
   correctionRewritesPerson,
   stillAttachmentInstruction,
   stillReferencePack,
+  type StillPackLibraryAsset,
 } from '../shared/film-stills.js'
 import { editImageWithKontext, fluxLockAvailable } from './story-stills-gen.js'
 import type { FilmScene, FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.js'
@@ -88,6 +89,7 @@ async function generateStillPng(
   rewritePerson = false,
   insert = false,
   packInstruction = '',
+  directorHint = false,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   await assertAiAllowed()
@@ -103,6 +105,7 @@ async function generateStillPng(
         insert,
         rewritePerson,
         packInstruction,
+        directorHint,
       }),
     })
   }
@@ -224,6 +227,7 @@ export async function generateFilmPanelStillImage(opts: {
   continuityEn?: string
   board?: FilmStoryboard
   inventory?: FilmInventory | null
+  library?: StillPackLibraryAsset[]
 }): Promise<string> {
   const pack = stillReferencePack(opts.panel, {
     previousStillUrl: opts.previousStillUrl,
@@ -231,6 +235,7 @@ export async function generateFilmPanelStillImage(opts: {
     sceneWideStillUrl: opts.sceneWideStillUrl,
     board: opts.board,
     inventory: opts.inventory,
+    library: opts.library,
   })
   const refs = await loadRefs(pack.urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {
@@ -250,6 +255,7 @@ export async function generateFilmPanelStillImage(opts: {
   if (
     isCloseup &&
     !faceOnly &&
+    !opts.panel.stillCorrection?.trim() &&
     opts.sceneWideStillUrl &&
     fluxLockAvailable()
   ) {
@@ -268,6 +274,7 @@ export async function generateFilmPanelStillImage(opts: {
       /* Gemini nur wenn FLUX die Kamera nicht versetzen konnte */
     }
   }
+  const directorHint = Boolean(opts.panel.stillCorrection?.trim()) && !rewritePerson
   let buffer = await generateStillPng(
     prompt,
     refs,
@@ -276,6 +283,7 @@ export async function generateFilmPanelStillImage(opts: {
     rewritePerson,
     isInsert,
     pack.instruction,
+    directorHint,
   )
   const shouldCatchCrop =
     isCloseup && Boolean(opts.sceneWideStillUrl) && !faceOnly
@@ -297,6 +305,7 @@ export async function generateFilmPanelStillImage(opts: {
             rewritePerson,
             false,
             pack.instruction,
+            directorHint,
           )
         }
       } catch {

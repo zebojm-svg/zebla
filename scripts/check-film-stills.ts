@@ -31,6 +31,7 @@ import {
   markLaterPanelsStaleAfterCorrection,
   stillAttachmentInstruction,
   stillLibraryHintDe,
+  stillEditHintPriorityEn,
   stillReferencePack,
   stillTimeoutHintDe,
   speakerIdentityUrl,
@@ -634,7 +635,7 @@ const contig = sceneContinuityBlock({
   hasGrundbild: true,
 })
 if (!contig.includes('GROUNDBILD')) fail('Kontinuität: Grundbild')
-if (!contig.includes('SEATING LOCK')) fail('Kontinuität: Sitzplan')
+if (!contig.includes('SEATING')) fail('Kontinuität: Sitzplan')
 if (!contig.includes('GAZE LOCK')) fail('Kontinuität: Blick')
 if (!contig.includes('CAST LOCK')) fail('Kontinuität: wer wer ist')
 if (!contig.toLowerCase().includes('male')) fail('Kontinuität: Schöme männlich')
@@ -992,16 +993,16 @@ if (scenePanels.length >= 2) {
     { ...second, stillCorrection: 'Ramo allein am Herd', directorNote: 'Ramo allein am Herd' },
     { board: kitchenBoard },
   )
-  if (packFix.urls.join('|') !== packFirst.urls.join('|')) {
-    fail('Bild ändern schickt dasselbe Vorlagenpaket wie das erste Malen')
-  }
   if (packFix.urls.includes(second.stillUrl || '') && packFirst.urls.includes(second.stillUrl || '') === false) {
     fail('Bild ändern hängt das aktuelle Tischbild nicht extra an')
   }
   if (packFix.items.some((it) => it.name === 'aktuelles Bild')) {
     fail('aktuelles Still ist keine GROUNDBILD-Sperre')
   }
-  if (packFix.urls.length > 4) fail('Bild ändern: kleines Paket wie erstes Malen')
+  if (packFix.items.some((it) => it.name.startsWith('vorige'))) {
+    fail('Bild ändern hängt keine vorigen Ortsbilder als Komposition an')
+  }
+  if (packFix.urls.length > 4) fail('Bild ändern: kleines Paket')
   if (
     !packFix.instruction.includes('GROUNDBILD') &&
     !packFix.instruction.includes('PREVIOUS') &&
@@ -1011,16 +1012,24 @@ if (scenePanels.length >= 2) {
   ) {
     fail('Bild ändern beschriftet Vorlagen (PROP/PLACE/PERSON/GROUNDBILD)')
   }
+  const guestsHint = 'Ramo allein am Herd'
   const editPrompt = buildFilmStillPrompt({
     caption: second.caption,
     imageCue: second.imageCue,
     settingHint: second.settingHint,
     hasLibraryRefs: true,
-    stillCorrection: 'Ramo allein am Herd',
-    directorNote: 'Ramo allein am Herd',
+    stillCorrection: guestsHint,
+    directorNote: guestsHint,
     names: second.placements.map((p) => p.name),
+    continuityEn: 'SEATING LOCK: Julien sits on the left; guests stay in frame.',
   })
-  if (!editPrompt.includes('Ramo allein am Herd')) fail('Hinweis wörtlich im Prompt')
+  if (!editPrompt.startsWith(stillEditHintPriorityEn(guestsHint))) {
+    fail('Hinweis steht am Anfang des Bild-Prompts')
+  }
+  if (editPrompt.indexOf(guestsHint) > editPrompt.indexOf('SEATING LOCK')) {
+    fail('Hinweis steht vor dem Board-Sitzplan')
+  }
+  if (!editPrompt.includes(guestsHint)) fail('Hinweis wörtlich im Prompt')
   if (!editPrompt.includes(STILL_EDIT_DIRECTOR_DE)) fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
   if (/MUST be visible/.test(editPrompt)) fail('Hinweis entscheidet wer im Bild ist, nicht die Gästeliste')
 
@@ -1051,7 +1060,7 @@ const stillFn = stillGenSrc.slice(
   stillGenSrc.indexOf('export async function saveFilmPlan'),
 )
 if (!stillFn.includes('stillReferencePack')) {
-  fail('Bild ändern nutzt stillReferencePack wie das erste Malen')
+  fail('Bild ändern nutzt stillReferencePack, nicht den Packzettel')
 }
 if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCatalog')) {
   fail('Bild ändern schickt nicht den Filmkatalog')

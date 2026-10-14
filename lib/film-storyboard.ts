@@ -864,22 +864,31 @@ export async function stillFilmPanel(
     }
     const placeWideUrl = isInsert ? undefined : grund?.stillUrl
     const prevPlaceUrl = previousPlaceStillUrl(boardForGen, panelForGen)
+    let editLibrary: ReturnType<typeof libraryForCompose> | undefined
+    if (correction) {
+      try {
+        editLibrary = libraryForCompose(await listStoryAssets(userId))
+      } catch {
+        /* ohne Bibliothek: isolierte Requisite, leeres Ortsbild */
+      }
+    }
     const pack = stillReferencePack(panelForGen, {
-      previousStillUrl: prevPlaceUrl,
+      previousStillUrl: correction ? undefined : prevPlaceUrl,
       correctFromUrl,
-      sceneWideStillUrl: placeWideUrl,
+      sceneWideStillUrl: correction ? undefined : placeWideUrl,
       board: boardForGen,
       inventory: dialog.filmInventory,
+      library: editLibrary,
     })
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
       styleId: resolvedStyle,
-      previousStillUrl: prevPlaceUrl,
+      previousStillUrl: correction ? undefined : prevPlaceUrl,
       correctFromUrl,
       targetLanguage,
       beatTotal,
-      sceneWideStillUrl: placeWideUrl,
+      sceneWideStillUrl: correction ? undefined : placeWideUrl,
       speakerGender:
         genderFromPictureNote(correction) ??
         speakerGender(dialog, speaker) ??
@@ -889,6 +898,7 @@ export async function stillFilmPanel(
       continuityEn: continuityForShot,
       board: boardForGen,
       inventory: dialog.filmInventory,
+      library: editLibrary,
     })
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
