@@ -2015,12 +2015,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { dialogId, panelId, styleId, note, packzettel } = req.body as {
+      const { dialogId, panelId, styleId, note } = req.body as {
         dialogId?: string
         panelId?: string
         styleId?: string
         note?: string
-        packzettel?: { imagePrompt?: string; imageIds?: string[] }
       }
       if (!dialogId?.trim() || !panelId?.trim()) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
@@ -2033,7 +2032,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         styleId?.trim(),
         profile,
         note?.trim(),
-        packzettel,
       )
       res.json(result)
       return

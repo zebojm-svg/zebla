@@ -1,5 +1,6 @@
 /**
- * Bild ändern: Packzettel nice-to-have, Bild-KI malt immer. Keine Stichwörter.
+ * Bild ändern: dasselbe Vorlagenpaket wie erstes Malen + Hinweis wörtlich.
+ * Kein Katalog, kein Packzettel-Tor. Keine Stichwörter.
  * Aufruf: npx tsx scripts/check-film-still-pack.ts
  */
 import { readFileSync } from 'node:fs'
@@ -51,6 +52,7 @@ import {
   type StillCatalogItem,
 } from '../shared/film-still-pack.ts'
 import { clientTimeoutMessage } from '../shared/api-timeout.ts'
+import { buildFilmStillPrompt, stillReferencePack } from '../shared/film-stills.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -197,6 +199,51 @@ const figures = stillEditFigures(board, table, inventory)
 if (!figures.includes('Ramo') || !figures.includes('Khan')) fail('Figuren stehen im Planner-Request')
 
 const hint = 'mach dass ramo alleine am Herd steht'
+
+{
+  const firstPack = stillReferencePack(table, { board, inventory })
+  const editPack = stillReferencePack(
+    { ...table, stillCorrection: hint, directorNote: hint },
+    { board, inventory },
+  )
+  if (editPack.urls.join('|') !== firstPack.urls.join('|')) {
+    fail('Bild ändern schickt dieselben Fotos wie das erste Malen')
+  }
+  if (editPack.urls.includes(table.stillUrl || '')) {
+    fail('aktuelles Tischbild nicht mitschicken — das hat die Gäste kopiert')
+  }
+  if (editPack.urls.length > 4) fail('kleines Paket wie erstes Malen, kein Filmkatalog')
+  if (editPack.items.some((it) => it.name === 'aktuelles Bild')) {
+    fail('kein GROUNDBILD-Lock auf dem aktuellen Still')
+  }
+  const editPrompt = buildFilmStillPrompt({
+    caption: table.caption,
+    imageCue: table.imageCue,
+    settingHint: table.settingHint,
+    hasLibraryRefs: true,
+    stillCorrection: hint,
+    directorNote: hint,
+    names: table.placements.map((p) => p.name),
+    spokenLine: table.caption,
+  })
+  if (!editPrompt.includes(hint)) fail('Hinweis wörtlich an die Bild-KI')
+  if (!editPrompt.includes(STILL_EDIT_DIRECTOR_DE)) {
+    fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
+  }
+  if (/MUST be visible/.test(editPrompt)) {
+    fail('Hinweis entscheidet wer im Bild ist')
+  }
+  const firstPrompt = buildFilmStillPrompt({
+    caption: table.caption,
+    imageCue: table.imageCue,
+    settingHint: table.settingHint,
+    hasLibraryRefs: true,
+    names: table.placements.map((p) => p.name),
+    spokenLine: table.caption,
+  })
+  if (!firstPrompt.includes(table.caption)) fail('Erstes Malen hat die deutsche Zeile')
+  if (firstPrompt.includes(hint)) fail('Erstes Malen hat keinen Änderungshinweis')
+}
 const { system, user } = stillEditPlannerMessages({
   stillNumber: stillNumberInScene(board, table),
   panelId: table.id,
@@ -608,27 +655,30 @@ if (
 ) {
   fail('Bild-Quota wie Probe, ohne URL')
 }
-if (!STILL_EDIT_PLAN_STATUS_DE.includes('Packzettel') || !STILL_EDIT_PAINT_STATUS_DE.includes('neu gemalt')) {
-  fail('Status: Packzettel … dann wird neu gemalt …')
+if (!STILL_EDIT_PAINT_STATUS_DE.includes('neu gemalt')) {
+  fail('Status: wird neu gemalt …')
 }
 
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
-if (!stillFnSrc.includes('planFilmPanelStillEdit')) {
-  fail('Packzettel hat eine eigene optionale Funktion')
-}
 const stillFn = stillFnSrc.slice(
   stillFnSrc.indexOf('export async function stillFilmPanel'),
   stillFnSrc.indexOf('export async function saveFilmPlan'),
 )
 if (stillFn.includes('planStillEditPackzettel')) {
-  fail('Bild-Aufruf plant nicht nochmal — Packzettel ist kein hartes Tor')
+  fail('Bild-Aufruf plant nicht — ein Bild-Call wie erstes Malen')
 }
-if (!stillFn.includes('resolveStillEditPaint')) {
-  fail('Bild ändern entscheidet Packzettel oder direkt malen')
+if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCatalog')) {
+  fail('Bild ändern schickt nicht den Filmkatalog')
 }
-if (!stillFn.includes('packFromClient')) fail('Bild-Aufruf nimmt den fertigen Packzettel wenn er da ist')
-if (!stillFn.includes('stillEditCatalog')) fail('Bild ändern legt den Katalog an')
-if (!stillFn.includes('packzettel')) fail('Bild ändern übergibt Prompt und Fotos an die Bild-KI')
+if (stillFn.includes('packFromClient') || stillFn.includes('packzettel')) {
+  fail('Bild ändern nimmt keinen Packzettel')
+}
+if (!stillFn.includes('stillReferencePack')) {
+  fail('Bild ändern ruft stillReferencePack wie das erste Malen')
+}
+if (stillFn.includes('correctFromUrlForPanel')) {
+  fail('Bild ändern hängt das aktuelle Still nicht als GROUNDBILD an')
+}
 if (stillFn.includes('planFilmPanelRefNeeds')) {
   fail('Bild ändern wartet nicht auf den alten Vorlagen-Check')
 }
@@ -642,13 +692,13 @@ if (/\ballein\b|\bam Herd\b|keine Gäste/.test(stillFn)) {
 }
 
 const pngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
-if (!pngSrc.includes('packzettel')) fail('Bild-KI-Aufruf hat den Packzettel-Pfad')
-if (!pngSrc.includes('attachOverride') && !pngSrc.includes('opts.packzettel.attach')) {
-  fail('Direkt-Malen kann den Katalog-Anhang mitschicken')
+if (pngSrc.includes('opts.packzettel') || pngSrc.includes('if (opts.packzettel)')) {
+  fail('Bild-KI-Aufruf hat keinen Packzettel-Pfad')
 }
 const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPanelStillImage'))
-if (!genFn.includes('if (opts.packzettel)')) fail('Packzettel/Direkt umgeht stillReferencePack')
-if (!genFn.includes('attach')) fail('Bild-KI bekommt den beschrifteten Anhang')
+if (!genFn.includes('stillReferencePack')) fail('Bild-KI nutzt stillReferencePack')
+if (!pngSrc.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
+if (!pngSrc.includes('STILL_EDIT_IMAGE_TIMEOUT_DE')) fail('Zeitlimit kommt in der roten Box')
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die optionale Drehbuch-KI')
@@ -687,20 +737,15 @@ const hookSrc = readFileSync(new URL('../src/story/generateSceneStills.ts', impo
 if (hookSrc.includes('confirmCost')) fail('Bild ändern nicht hinter Kosten-Dialog verstecken')
 if (!hookSrc.includes('finally')) fail('Busy nach Fehler zurücksetzen')
 if (!hookSrc.includes('stillEditImageErrorDe')) {
-  fail('Rot nur nach Bild-Fehler, nicht nach Packzettel')
+  fail('Rot nur nach Bild-Fehler')
 }
-if (!hookSrc.includes('filmStillPlan')) fail('Bild ändern versucht den Packzettel')
-if (!hookSrc.includes('STILL_EDIT_PLAN_STATUS_DE')) fail('Status Packzettel …')
+if (hookSrc.includes('filmStillPlan')) fail('Bild ändern ruft nicht den Packzettel-Planner')
+if (hookSrc.includes('STILL_EDIT_PLAN_STATUS_DE')) fail('kein Status Packzettel …')
 if (!hookSrc.includes('STILL_EDIT_PAINT_STATUS_DE')) fail('Status wird neu gemalt …')
-if (!hookSrc.includes('tryStillEditPackzettel')) fail('Nur gültiges Packzettel-JSON an den Bild-Aufruf')
+if (hookSrc.includes('tryStillEditPackzettel')) fail('kein Packzettel-JSON an den Bild-Aufruf')
 const genOne = hookSrc.slice(hookSrc.indexOf('const generateOne'), hookSrc.indexOf('return { busySceneId'))
-if (!genOne.includes('catch')) fail('Packzettel-Fehler fängt und malt weiter')
-if (genOne.includes('setErrors') && genOne.indexOf('filmStillPlan') < genOne.indexOf('setErrors')) {
-  const planCatch = genOne.slice(genOne.indexOf('filmStillPlan'), genOne.indexOf('setStatus(STILL_EDIT_PAINT_STATUS_DE)'))
-  if (planCatch.includes('setErrors')) {
-    fail('402 am Packzettel setzt keine rote Box')
-  }
-}
+if (!genOne.includes('filmStill(')) fail('Bild ändern malt in einem Aufruf')
+if (genOne.includes('packzettel')) fail('Bild ändern schickt keinen Packzettel')
 
 const uxSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
 if (!uxSrc.includes('Bild ändern')) fail('Knopf Bild ändern bleibt')
@@ -711,16 +756,19 @@ if (!uxSrc.includes('Schreib zuerst einen kurzen Hinweis')) {
 }
 
 const apiSrc = readFileSync(new URL('../api/[...slug].ts', import.meta.url), 'utf8')
-if (!apiSrc.includes('film-storyboard-still-plan')) {
-  fail('Packzettel hat eine eigene API-Route')
-}
-if (!apiSrc.includes('planFilmPanelStillEdit')) fail('API ruft planFilmPanelStillEdit')
+const stillRoute = apiSrc.slice(
+  apiSrc.indexOf("route === 'film-storyboard-still'"),
+  apiSrc.indexOf("route === 'film-panel-layout'"),
+)
+if (stillRoute.includes('packzettel')) fail('Bild-API nimmt keinen Packzettel')
+if (!stillRoute.includes('stillFilmPanel')) fail('Bild-API ruft stillFilmPanel')
 
 const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
-if (!clientSrc.includes('/film-storyboard-still-plan')) fail('Client ruft den Packzettel extra')
-if (!clientSrc.includes('STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS')) {
-  fail('Client-Wartezeit für den kurzen Packzettel')
-}
+const filmStillClient = clientSrc.slice(
+  clientSrc.indexOf('filmStill:'),
+  clientSrc.indexOf('filmPanelLayout:'),
+)
+if (filmStillClient.includes('packzettel')) fail('Client schickt keinen Packzettel mit Bild ändern')
 if (!clientSrc.includes('fromServer') || !clientSrc.includes('err.error')) {
   fail('Client zeigt den Server-error-Text, keinen eigenen Satz ohne Grund')
 }
@@ -737,11 +785,11 @@ if (!boardSrc.includes('stills.errors[panel.id]')) {
 }
 
 const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), 'utf8')
-if (!planMd.includes('Packzettel ist nice-to-have') && !planMd.includes('nice-to-have')) {
-  fail('ZEBLA_PLAN: Packzettel nice-to-have')
+if (!planMd.includes('erstes Paket') && !planMd.includes('stillReferencePack')) {
+  fail('ZEBLA_PLAN: Bild ändern = erstes Paket + Hinweis')
 }
-if (!planMd.includes('malt immer') && !/Bild ändern.*malt immer/s.test(planMd)) {
-  fail('ZEBLA_PLAN: Bild ändern malt immer')
+if (!planMd.includes('Hinweis ist die Regie')) {
+  fail('ZEBLA_PLAN: Hinweis ist die Regie; Fotos sind Aussehen')
 }
 
-console.log('OK: Bild ändern malt auch ohne Packzettel, ohne Stichwort-Denken')
+console.log('OK: Bild ändern = erstes Paket + Hinweis, ohne Katalog')

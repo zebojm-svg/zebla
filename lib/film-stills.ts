@@ -12,7 +12,10 @@ import {
   cropWideStillToSpeaker,
 } from './film-closeup-crop.js'
 import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
-import { stillPackzettelAttachEn } from '../shared/film-still-pack.js'
+import {
+  stillEditImageErrorDe,
+  STILL_EDIT_IMAGE_TIMEOUT_DE,
+} from '../shared/film-still-pack.js'
 import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
@@ -35,7 +38,8 @@ type GeminiImageResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }
   }>
-  error?: { message?: string }
+  promptFeedback?: { blockReason?: string }
+  error?: { message?: string; code?: number; status?: string }
 }
 
 type InlineImage = { mimeType: string; data: string }
@@ -84,8 +88,6 @@ async function generateStillPng(
   rewritePerson = false,
   insert = false,
   packInstruction = '',
-  packzettelLabels?: string[],
-  attachOverride?: string,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   await assertAiAllowed()
@@ -94,18 +96,15 @@ async function generateStillPng(
     for (const img of refs) {
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
     }
-    const attach = attachOverride?.trim()
-      ? attachOverride.trim()
-      : packzettelLabels
-        ? stillPackzettelAttachEn(packzettelLabels)
-        : stillAttachmentInstruction({
-            correctingExisting,
-            closeup,
-            insert,
-            rewritePerson,
-            packInstruction,
-          })
-    parts.push({ text: attach })
+    parts.push({
+      text: stillAttachmentInstruction({
+        correctingExisting,
+        closeup,
+        insert,
+        rewritePerson,
+        packInstruction,
+      }),
+    })
   }
   parts.push({ text: prompt })
 
@@ -113,35 +112,57 @@ async function generateStillPng(
   for (const model of geminiImageModelCandidates()) {
     try {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 90_000)
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: {
-              responseModalities: ['TEXT', 'IMAGE'],
-              imageConfig: { aspectRatio: '16:9' },
-            },
-          }),
-          signal: controller.signal,
-        },
-      )
-      clearTimeout(timer)
-      const data = (await res.json()) as GeminiImageResponse
+      const timer = setTimeout(() => controller.abort(), 55_000)
+      let res: Response
+      try {
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: {
+                responseModalities: ['TEXT', 'IMAGE'],
+                imageConfig: { aspectRatio: '16:9' },
+              },
+            }),
+            signal: controller.signal,
+          },
+        )
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error(STILL_EDIT_IMAGE_TIMEOUT_DE)
+        }
+        throw err
+      } finally {
+        clearTimeout(timer)
+      }
+      const bodyText = await res.text()
+      let data: GeminiImageResponse = {}
+      if (!bodyText.trim()) {
+        throw new Error(`[${res.status}] Kein Standbild erhalten.`)
+      }
+      try {
+        data = JSON.parse(bodyText) as GeminiImageResponse
+      } catch {
+        throw new Error(`[${res.status}] Kein Standbild erhalten.`)
+      }
       recordGeminiResponse('still', model, data)
-      if (data.error?.message) throw new Error(data.error.message)
+      const status = Number(data.error?.code) || res.status
+      if (data.error?.message || !res.ok) {
+        const dump = data.error?.message || bodyText.slice(0, 180)
+        throw new Error(`[${status}] ${dump}`)
+      }
+      if (data.promptFeedback?.blockReason) {
+        throw new Error(`[${status}] Kein Standbild erhalten.`)
+      }
       const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
-      if (!img?.data) throw new Error('Kein Standbild erhalten.')
+      if (!img?.data) throw new Error(`[${status}] Kein Standbild erhalten.`)
       return Buffer.from(img.data, 'base64')
     } catch (err) {
-      lastError = err instanceof Error ? err.message : lastError
-      if (err instanceof Error && err.name === 'AbortError') {
-        lastError = 'Das Standbild hat zu lange gedauert. Bitte noch einmal versuchen.'
-      }
-      if (isGeminiImageUnavailable(lastError)) continue
+      lastError = stillEditImageErrorDe(err)
+      if (isGeminiImageUnavailable(err instanceof Error ? err.message : lastError)) continue
       throw new Error(lastError)
     }
   }
@@ -203,23 +224,7 @@ export async function generateFilmPanelStillImage(opts: {
   continuityEn?: string
   board?: FilmStoryboard
   inventory?: FilmInventory | null
-  packzettel?: { prompt: string; urls: string[]; labels: string[]; attach?: string }
 }): Promise<string> {
-  if (opts.packzettel) {
-    const refs = await loadRefs(opts.packzettel.urls)
-    const buffer = await generateStillPng(
-      opts.packzettel.prompt,
-      refs,
-      false,
-      false,
-      false,
-      false,
-      '',
-      opts.packzettel.labels,
-      opts.packzettel.attach,
-    )
-    return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
-  }
   const pack = stillReferencePack(opts.panel, {
     previousStillUrl: opts.previousStillUrl,
     correctFromUrl: opts.correctFromUrl,
