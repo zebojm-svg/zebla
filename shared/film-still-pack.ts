@@ -72,6 +72,11 @@ export const STILL_EDIT_PLANNER_INVALID_DE =
 export const STILL_EDIT_PLANNER_GOOGLE_DE =
   'Die Drehbuch-KI hat den Packzettel nicht geliefert (Google-Fehler). Bitte noch einmal «Bild ändern».'
 
+/** Google HTTP status in the German sentence — no English payload, no quota URL. */
+export function stillEditPlannerStatusDe(status: number): string {
+  return `Die Drehbuch-KI hat den Packzettel nicht geliefert (${status}). Bitte noch einmal «Bild ändern».`
+}
+
 /** Same shape as Probe — no English quota URL. */
 export const STILL_EDIT_PLANNER_QUOTA_DE =
   'Google ist gerade voll. In einer Minute nochmal «Bild ändern».'
@@ -533,6 +538,46 @@ function stripVendorUrls(text: string): string {
   return text.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * chatJson options for the Packzettel.
+ * JSON mime is already the default. Do not send SDK responseSchema —
+ * Google 400 Invalid JSON payload on both lite and flash (#79).
+ */
+export function stillEditPlannerChatJsonOpts(model: string, timeoutMs: number): {
+  temperature: number
+  timeoutMs: number
+  timeoutMessage: string
+  model: string
+} {
+  return {
+    temperature: 0.2,
+    timeoutMs,
+    timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
+    model,
+  }
+}
+
+/** Parse [400 Bad Request] / "code":500 / (500) from a Google/SDK dump. */
+export function stillEditPlannerGoogleHttpStatus(raw: string): number | null {
+  const text = stripVendorUrls(raw)
+  const patterns = [
+    /\[(\d{3})\b[^\]]*\]/,
+    /"code"\s*:\s*(\d{3})/,
+    /\bHTTP\/?\d?(?:\.\d)?\s+(\d{3})\b/i,
+    /\((4\d{2}|5\d{2})\)/,
+    /\bstatus(?:Code)?["'\s:=]+(\d{3})\b/i,
+  ]
+  for (const re of patterns) {
+    const m = text.match(re)
+    if (!m) continue
+    const n = Number(m[1])
+    if (n >= 400 && n < 600) return n
+  }
+  if (/invalid json payload|invalid.?argument|\bbad request\b/i.test(text)) return 400
+  if (/\binternal server error\b/i.test(text)) return 500
+  return null
+}
+
 const PLANNER_QUOTA_HINTS = [
   'quota',
   'resource_exhausted',
@@ -670,9 +715,14 @@ export function stillEditPlannerErrorDe(err: unknown): string {
     return raw
   }
   if (raw === STILL_EDIT_PLANNER_ERROR_DE) return STILL_EDIT_PLANNER_GOOGLE_DE
-  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|504/i.test(raw)) {
+  if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
+    return raw || STILL_EDIT_PLANNER_GOOGLE_DE
+  }
+  const status = stillEditPlannerGoogleHttpStatus(raw)
+  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline/i.test(raw) || status === 504) {
     return STILL_EDIT_PLANNER_TIMEOUT_DE
   }
+  if (status === 429) return STILL_EDIT_PLANNER_QUOTA_DE
   if (
     /leere antwort|keine antwort|empty|no candidate|blocked|SAFETY|nicht erhalten|prompt.?feedback/i.test(
       raw,
@@ -681,17 +731,15 @@ export function stillEditPlannerErrorDe(err: unknown): string {
     return STILL_EDIT_PLANNER_EMPTY_DE
   }
   if (
-    /ungültig|unexpected token|not valid json|invalid json|syntaxerror|JSON der KI|invalid.?argument|bad request|\b400\b/i.test(
-      raw,
-    )
+    /JSON der KI|unexpected token|not valid json|syntaxerror|ungültiger packzettel/i.test(raw)
   ) {
     return STILL_EDIT_PLANNER_INVALID_DE
   }
-  if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
-    return raw || STILL_EDIT_PLANNER_GOOGLE_DE
+  if (status && status >= 400 && status < 600) {
+    return stillEditPlannerStatusDe(status)
   }
   if (
-    /\b500\b|\b502\b|\b503\b|internal server|google.?fehler|failed to fetch|fetch failed|networkerror|KI-Anfrage fehlgeschlagen|Anfrage fehlgeschlagen/i.test(
+    /google.?fehler|failed to fetch|fetch failed|networkerror|KI-Anfrage fehlgeschlagen|Anfrage fehlgeschlagen/i.test(
       raw,
     )
   ) {
@@ -716,13 +764,6 @@ export function stillEditTimeoutHintDe(message: string): string {
     return STILL_EDIT_PLANNER_TIMEOUT_DE
   }
   if (/leere antwort/i.test(clean)) return STILL_EDIT_PLANNER_EMPTY_DE
-  if (
-    /\b500\b|\b502\b|\b503\b|failed to fetch|fetch failed|networkerror|Anfrage fehlgeschlagen|GEMINI_API_KEY auf Vercel/i.test(
-      clean,
-    )
-  ) {
-    return STILL_EDIT_PLANNER_GOOGLE_DE
-  }
   if (!clean.trim()) return STILL_EDIT_PLANNER_GOOGLE_DE
   return stillEditPlannerErrorDe(clean)
 }
