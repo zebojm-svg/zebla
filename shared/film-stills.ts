@@ -930,6 +930,7 @@ export function markLaterPanelsStaleAfterCorrection(
 }
 
 export function stillTimeoutHintDe(message: string): string {
+  if (/bild ändern|packzettel/i.test(message)) return message
   if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION/i.test(message)) {
     return 'Das hat zu lange gedauert. Die fertigen Bilder bleiben. Noch einmal auf «Diese Szene erzeugen» — es macht nur die fehlenden Bilder.'
   }

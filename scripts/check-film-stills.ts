@@ -391,6 +391,10 @@ if (freshPanel?.stillUrl) fail('Vom Text neu darf keine alten Standbilder behalt
 const timeoutDe = stillTimeoutHintDe('Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.')
 if (!timeoutDe.includes('fertigen Bilder bleiben')) fail('Timeout-Text: fertige Bilder bleiben')
 if (!timeoutDe.includes('Diese Szene erzeugen')) fail('Timeout-Text nennt den Knopf')
+const packFail = stillTimeoutHintDe(
+  'Die Drehbuch-KI hat den Packzettel nicht geliefert. Bitte noch einmal «Bild ändern».',
+)
+if (!packFail.includes('Bild ändern')) fail('Planner-Fehler bleibt «Bild ändern», nicht Szene erzeugen')
 
 const talk = panelDialogueLines(s1[0]!, dialog)
 if (
@@ -1015,8 +1019,8 @@ if (scenePanels.length >= 2) {
 }
 
 const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
-if (!stillGenSrc.includes('planFilmPanelRefNeeds')) {
-  fail('Bild ändern führt denselben Vorlagen-Check aus wie das erste Malen')
+if (!stillGenSrc.includes('planStillEditPackzettel')) {
+  fail('Bild ändern holt den Packzettel von der Drehbuch-KI')
 }
 if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
   fail('Nach Bild ändern werden spätere Bilder der Szene markiert')

@@ -64,6 +64,15 @@ import type { DialogVisualScript } from '../shared/types.js'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
 import { genderFromKnownName } from './speaker-gender.js'
 import { dropRepeatedDialogSections } from '../shared/film-storyboard.js'
+import {
+  parseStillEditPackzettel,
+  stillEditPlannerErrorDe,
+  stillEditPlannerMessages,
+  STILL_EDIT_PLANNER_ERROR_DE,
+  STILL_EDIT_PLANNER_TIMEOUT_MS,
+  type StillEditPackzettel,
+  type StillEditPlannerInput,
+} from '../shared/film-still-pack.js'
 
 const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
@@ -174,7 +183,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 export async function chatJson<T>(
   system: string,
   user: string,
-  opts?: { temperature?: number },
+  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string },
 ): Promise<T> {
   return chatJsonWithImages<T>(system, user, [], opts)
 }
@@ -183,7 +192,7 @@ export async function chatJsonWithImages<T>(
   system: string,
   user: string,
   images: Array<{ mimeType: string; data: string }> = [],
-  opts?: { temperature?: number },
+  opts?: { temperature?: number; timeoutMs?: number; timeoutMessage?: string },
 ): Promise<T> {
   await assertAiAllowed()
   try {
@@ -198,8 +207,8 @@ export async function chatJsonWithImages<T>(
       model.generateContent({
         contents: [{ role: 'user', parts }],
       }),
-      TEXT_GEN_TIMEOUT_MS,
-      'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen.',
+      opts?.timeoutMs ?? TEXT_GEN_TIMEOUT_MS,
+      opts?.timeoutMessage ?? 'Die KI hat zu lange gebraucht. Bitte noch einmal versuchen.',
     )
     recordGeminiUsage(images.length ? 'text-with-images' : 'text', TEXT_MODEL, result.response.usageMetadata)
 
@@ -417,6 +426,23 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
     soundDirection: result.soundDirection?.trim(),
     speechDirection: result.speechDirection?.trim(),
     filmInventory,
+  }
+}
+
+/** Bild ändern: kurze Drehbuch-KI, nur JSON-Packzettel, malt nicht. */
+export async function planStillEditPackzettel(
+  input: StillEditPlannerInput,
+): Promise<StillEditPackzettel> {
+  const { system, user } = stillEditPlannerMessages(input)
+  try {
+    const raw = await chatJson<{ imagePrompt?: string; imageIds?: string[] }>(system, user, {
+      temperature: 0.2,
+      timeoutMs: STILL_EDIT_PLANNER_TIMEOUT_MS,
+      timeoutMessage: STILL_EDIT_PLANNER_ERROR_DE,
+    })
+    return parseStillEditPackzettel(raw)
+  } catch (err) {
+    throw new Error(stillEditPlannerErrorDe(err))
   }
 }
 
