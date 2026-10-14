@@ -1,5 +1,5 @@
 /**
- * Bild ändern: dasselbe Vorlagenpaket wie erstes Malen + Hinweis wörtlich.
+ * Bild ändern: Hinweis zuerst (höchste Priorität), keine vorigen Orts-Stills.
  * Kein Katalog, kein Packzettel-Tor. Keine Stichwörter.
  * Aufruf: npx tsx scripts/check-film-still-pack.ts
  */
@@ -52,7 +52,11 @@ import {
   type StillCatalogItem,
 } from '../shared/film-still-pack.ts'
 import { clientTimeoutMessage } from '../shared/api-timeout.ts'
-import { buildFilmStillPrompt, stillReferencePack } from '../shared/film-stills.ts'
+import {
+  buildFilmStillPrompt,
+  stillEditHintPriorityEn,
+  stillReferencePack,
+} from '../shared/film-stills.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -206,16 +210,79 @@ const hint = 'mach dass ramo alleine am Herd steht'
     { ...table, stillCorrection: hint, directorNote: hint },
     { board, inventory },
   )
-  if (editPack.urls.join('|') !== firstPack.urls.join('|')) {
-    fail('Bild ändern schickt dieselben Fotos wie das erste Malen')
-  }
   if (editPack.urls.includes(table.stillUrl || '')) {
-    fail('aktuelles Tischbild nicht mitschicken — das hat die Gäste kopiert')
+    fail('aktuelles Still nicht als GROUNDBILD mitschicken')
   }
   if (editPack.urls.length > 4) fail('kleines Paket wie erstes Malen, kein Filmkatalog')
   if (editPack.items.some((it) => it.name === 'aktuelles Bild')) {
     fail('kein GROUNDBILD-Lock auf dem aktuellen Still')
   }
+  if (editPack.items.some((it) => it.name.startsWith('vorige'))) {
+    fail('Bild ändern hängt keine vorigen Szenen-Bilder als Komposition an')
+  }
+  if (editPack.urls.includes(stove.stillUrl || '')) {
+    fail('Bild ändern hängt kein Szenen-Still als Requisite an')
+  }
+  if (!editPack.urls.includes('https://example.com/ramo.png')) {
+    fail('Stammbild bleibt')
+  }
+  if (!editPack.urls.includes('https://example.com/kitchen-empty.png')) {
+    fail('Orts-Grundbild bleibt')
+  }
+  if (!firstPack.urls.includes('https://example.com/ramo.png')) {
+    fail('Erstes Malen schickt Stammbilder')
+  }
+
+  const prevWide = panel({
+    id: 'prev-wide',
+    panelIndex: 0,
+    caption: 'Vorige Szene am selben Ort',
+    imageCue: 'ganzer Raum',
+    stillUrl: 'https://example.com/prev-scene.png',
+    shot: 'wide',
+    placements: table.placements,
+    background: table.background,
+  })
+  const insertAfter = { ...stove, panelIndex: 1 }
+  const seqBoard: FilmStoryboard = {
+    ...board,
+    panels: [prevWide, insertAfter, table],
+  }
+  const firstInsert = stillReferencePack(insertAfter, { board: seqBoard, inventory })
+  const editInsert = stillReferencePack(
+    { ...insertAfter, stillCorrection: hint, directorNote: hint },
+    { board: seqBoard, inventory },
+  )
+  if (!firstInsert.urls.includes(prevWide.stillUrl || '')) {
+    fail('Erstes Malen darf voriges Ortsbild zur Kontinuität schicken')
+  }
+  if (editInsert.urls.includes(prevWide.stillUrl || '')) {
+    fail('Bild ändern hängt kein voriges Szenen-Bild desselben Ortes an')
+  }
+  if (editInsert.urls.includes(table.stillUrl || '')) {
+    fail('anderes Szenen-Still nicht als Vorlage auf Bild ändern')
+  }
+  if (editInsert.items.some((it) => it.name === 'aktuelles Bild')) {
+    fail('kein GROUNDBILD current still auf Bild ändern')
+  }
+  const editWithLib = stillReferencePack(
+    { ...table, stillCorrection: hint, directorNote: hint },
+    {
+      board: seqBoard,
+      inventory,
+      library: [{ type: 'prop', name: 'Kanne', imageUrl: 'https://example.com/prop-plate.png' }],
+    },
+  )
+  if (!editWithLib.urls.includes('https://example.com/prop-plate.png')) {
+    fail('Bibliotheks-Platte der Requisite statt Szenen-Still')
+  }
+  if (editWithLib.urls.includes(table.stillUrl || '')) {
+    fail('Szenen-Still nicht als Requisiten-Platte')
+  }
+  if (editWithLib.urls.includes(prevWide.stillUrl || '')) {
+    fail('voriges Szenen-Bild nicht als Requisite')
+  }
+
   const editPrompt = buildFilmStillPrompt({
     caption: table.caption,
     imageCue: table.imageCue,
@@ -225,8 +292,28 @@ const hint = 'mach dass ramo alleine am Herd steht'
     directorNote: hint,
     names: table.placements.map((p) => p.name),
     spokenLine: table.caption,
+    continuityEn: 'SEATING LOCK: Ramo sits on the center; Khan sits on the left; Ubai sits on the right.',
   })
-  if (!editPrompt.includes(hint)) fail('Hinweis wörtlich an die Bild-KI')
+  const priority = stillEditHintPriorityEn(hint)
+  if (!priority || !editPrompt.startsWith(priority)) {
+    fail('Hinweis steht am Anfang des Bild-Prompts, als höchste Priorität')
+  }
+  const hintAt = editPrompt.indexOf(hint)
+  const blockingAt = editPrompt.indexOf('SEATING LOCK')
+  if (hintAt < 0) fail('Hinweis wörtlich an die Bild-KI')
+  if (blockingAt >= 0 && hintAt > blockingAt) {
+    fail('Hinweis steht vor dem Board-Sitzplan')
+  }
+  const captionAt = editPrompt.indexOf(table.caption)
+  if (captionAt >= 0 && hintAt > captionAt) fail('Hinweis steht vor der Board-Zeile')
+  if ((editPrompt.split(hint).length - 1) < 2) fail('Hinweis einmal wiederholt')
+  if (!editPrompt.includes('HIGHEST PRIORITY DIRECTOR NOTE')) {
+    fail('Hinweis als höchste Priorität beschriftet')
+  }
+  if (!editPrompt.includes('FOLLOW THE HINT')) fail('Bei Konflikt gilt der Hinweis')
+  if (!editPrompt.includes('fallback only when the hint is silent')) {
+    fail('Board-Stellung nur wenn der Hinweis schweigt')
+  }
   if (!editPrompt.includes(STILL_EDIT_DIRECTOR_DE)) {
     fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
   }
@@ -243,6 +330,9 @@ const hint = 'mach dass ramo alleine am Herd steht'
   })
   if (!firstPrompt.includes(table.caption)) fail('Erstes Malen hat die deutsche Zeile')
   if (firstPrompt.includes(hint)) fail('Erstes Malen hat keinen Änderungshinweis')
+  if (firstPrompt.includes('HIGHEST PRIORITY DIRECTOR NOTE')) {
+    fail('Erstes Malen hat keine Änderungspriorität')
+  }
 }
 const { system, user } = stillEditPlannerMessages({
   stillNumber: stillNumberInScene(board, table),
@@ -674,7 +764,7 @@ if (stillFn.includes('packFromClient') || stillFn.includes('packzettel')) {
   fail('Bild ändern nimmt keinen Packzettel')
 }
 if (!stillFn.includes('stillReferencePack')) {
-  fail('Bild ändern ruft stillReferencePack wie das erste Malen')
+  fail('Bild ändern ruft stillReferencePack, nicht den Packzettel')
 }
 if (stillFn.includes('correctFromUrlForPanel')) {
   fail('Bild ändern hängt das aktuelle Still nicht als GROUNDBILD an')
@@ -785,11 +875,20 @@ if (!boardSrc.includes('stills.errors[panel.id]')) {
 }
 
 const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), 'utf8')
-if (!planMd.includes('erstes Paket') && !planMd.includes('stillReferencePack')) {
-  fail('ZEBLA_PLAN: Bild ändern = erstes Paket + Hinweis')
+if (!planMd.includes('stillReferencePack')) {
+  fail('ZEBLA_PLAN: Bild ändern nutzt stillReferencePack')
 }
 if (!planMd.includes('Hinweis ist die Regie')) {
   fail('ZEBLA_PLAN: Hinweis ist die Regie; Fotos sind Aussehen')
 }
+if (!planMd.includes('höchste Priorität')) {
+  fail('ZEBLA_PLAN: Hinweis hat höchste Priorität')
+}
 
-console.log('OK: Bild ändern = erstes Paket + Hinweis, ohne Katalog')
+const stillsSrc = readFileSync(new URL('../shared/film-stills.ts', import.meta.url), 'utf8')
+if (!stillsSrc.includes('stillEditHintPriorityEn')) fail('Hinweis-Priorität im Bild-Prompt')
+if (stillsSrc.includes('stillShowsExtraPeople')) {
+  fail('Bild ändern rät nicht extra Leute aus dem Szenen-Still')
+}
+
+console.log('OK: Bild ändern = Hinweis zuerst, ohne vorige Szenen-Bilder')
