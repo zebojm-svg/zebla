@@ -68,6 +68,10 @@ export const STILL_EDIT_PLANNER_EMPTY_DE =
 export const STILL_EDIT_PLANNER_INVALID_DE =
   'Die Drehbuch-KI hat den Packzettel nicht geliefert (ungültiger Packzettel). Bitte noch einmal «Bild ändern».'
 
+/** Unclassified Google/SDK dump — never show the sentence without a reason. */
+export const STILL_EDIT_PLANNER_GOOGLE_DE =
+  'Die Drehbuch-KI hat den Packzettel nicht geliefert (Google-Fehler). Bitte noch einmal «Bild ändern».'
+
 /** Same shape as Probe — no English quota URL. */
 export const STILL_EDIT_PLANNER_QUOTA_DE =
   'Google ist gerade voll. In einer Minute nochmal «Bild ändern».'
@@ -81,6 +85,9 @@ export const STILL_EDIT_PLANNER_WAIT_AFTER_MS = 8_000
  * Own per-base-model RPM vs gemini-2.5-flash, gemini-2.5-flash-tts, *-flash-image.
  */
 export const STILL_EDIT_PLANNER_MODEL = 'gemini-2.5-flash-lite'
+
+/** Same text Flash as the rest of Zebla — if lite is empty/invalid/404/500. */
+export const STILL_EDIT_PLANNER_FALLBACK_MODEL = 'gemini-2.5-flash'
 
 /** Text-JSON only — keep well under a 60 s HTTP budget (quota wait is in this same call). */
 export const STILL_EDIT_PLANNER_TIMEOUT_MS = 30_000
@@ -579,6 +586,75 @@ export async function withStillEditPlannerQuotaRetries<T>(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr ?? STILL_EDIT_PLANNER_QUOTA_DE))
 }
 
+const PLANNER_AUTH_OR_KEY =
+  /nicht freigeschaltet|KI-Punkte konnten nicht|GEMINI_API_KEY ist nicht gesetzt|Ungültiger GEMINI_API_KEY|nicht angemeldet|sitzung abgelaufen/i
+
+const PLANNER_APP_PASS_THROUGH =
+  /kein storyboard|bild nicht gefunden|schreib zuerst|dialogId|panelId fehlt/i
+
+/** Lite failed in a way that the same prompt on gemini-2.5-flash can still deliver a packzettel. */
+export function isStillEditPlannerFlashFallbackError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  if (!msg.trim()) return true
+  if (PLANNER_AUTH_OR_KEY.test(msg)) return false
+  if (PLANNER_APP_PASS_THROUGH.test(msg)) return false
+  return true
+}
+
+export function stillEditPackNeedsFlashFallback(
+  pack: StillEditPackzettel | null | undefined,
+  catalogLen: number,
+): boolean {
+  if (!pack?.imagePrompt?.trim()) return true
+  return catalogLen > 0 && pack.imageIds.length === 0
+}
+
+/**
+ * First gemini-2.5-flash-lite; if empty/invalid/404/500 (not only 404), same prompt on flash.
+ */
+export async function runStillEditPlannerModelAttempts<T extends StillEditPackzettel>(opts: {
+  catalogLen: number
+  primary?: string
+  fallback?: string
+  call: (model: string) => Promise<T>
+  log?: (cause: unknown, model: string) => void
+}): Promise<T> {
+  const primary = opts.primary?.trim() || STILL_EDIT_PLANNER_MODEL
+  const fallback = opts.fallback?.trim() || STILL_EDIT_PLANNER_FALLBACK_MODEL
+  const tryModel = async (model: string): Promise<{ pack?: T; err?: unknown }> => {
+    try {
+      return { pack: await opts.call(model) }
+    } catch (err) {
+      opts.log?.(err, model)
+      return { err }
+    }
+  }
+
+  const first = await tryModel(primary)
+  const firstNeedsFlash = first.err
+    ? isStillEditPlannerFlashFallbackError(first.err)
+    : stillEditPackNeedsFlashFallback(first.pack, opts.catalogLen)
+  const canFlash =
+    firstNeedsFlash &&
+    primary !== fallback &&
+    !/tts|image/i.test(fallback)
+
+  if (canFlash) {
+    const second = await tryModel(fallback)
+    if (second.pack) {
+      if (!stillEditPackNeedsFlashFallback(second.pack, opts.catalogLen) || !first.pack) {
+        return second.pack
+      }
+      return second.pack.imagePrompt ? second.pack : first.pack
+    }
+    if (first.pack) return first.pack
+    throw second.err ?? first.err ?? new Error(STILL_EDIT_PLANNER_EMPTY_DE)
+  }
+
+  if (first.pack) return first.pack
+  throw first.err ?? new Error(STILL_EDIT_PLANNER_EMPTY_DE)
+}
+
 export function stillEditPlannerErrorDe(err: unknown): string {
   const original = err instanceof Error ? err.message : String(err ?? '')
   const raw = stripVendorUrls(original)
@@ -589,10 +665,11 @@ export function stillEditPlannerErrorDe(err: unknown): string {
     raw === STILL_EDIT_PLANNER_TIMEOUT_DE ||
     raw === STILL_EDIT_PLANNER_EMPTY_DE ||
     raw === STILL_EDIT_PLANNER_INVALID_DE ||
-    raw === STILL_EDIT_PLANNER_ERROR_DE
+    raw === STILL_EDIT_PLANNER_GOOGLE_DE
   ) {
     return raw
   }
+  if (raw === STILL_EDIT_PLANNER_ERROR_DE) return STILL_EDIT_PLANNER_GOOGLE_DE
   if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|504/i.test(raw)) {
     return STILL_EDIT_PLANNER_TIMEOUT_DE
   }
@@ -603,11 +680,26 @@ export function stillEditPlannerErrorDe(err: unknown): string {
   ) {
     return STILL_EDIT_PLANNER_EMPTY_DE
   }
-  if (/ungültig|unexpected token|not valid json|syntaxerror|JSON der KI/i.test(raw)) {
+  if (
+    /ungültig|unexpected token|not valid json|invalid json|syntaxerror|JSON der KI|invalid.?argument|bad request|\b400\b/i.test(
+      raw,
+    )
+  ) {
     return STILL_EDIT_PLANNER_INVALID_DE
   }
-  if (/bild ändern/i.test(raw)) return raw || STILL_EDIT_PLANNER_ERROR_DE
-  return STILL_EDIT_PLANNER_ERROR_DE
+  if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
+    return raw || STILL_EDIT_PLANNER_GOOGLE_DE
+  }
+  if (
+    /\b500\b|\b502\b|\b503\b|internal server|google.?fehler|failed to fetch|fetch failed|networkerror|KI-Anfrage fehlgeschlagen|Anfrage fehlgeschlagen/i.test(
+      raw,
+    )
+  ) {
+    return STILL_EDIT_PLANNER_GOOGLE_DE
+  }
+  if (/bild ändern/i.test(raw) && /\(.*\)/.test(raw)) return raw
+  if (/bild ändern/i.test(raw)) return STILL_EDIT_PLANNER_GOOGLE_DE
+  return STILL_EDIT_PLANNER_GOOGLE_DE
 }
 
 /** Fehler von «Bild ändern» — nicht auf «Diese Szene erzeugen» umbiegen. */
@@ -616,12 +708,23 @@ export function stillEditTimeoutHintDe(message: string): string {
   if (clean === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(clean)) {
     return STILL_EDIT_PLANNER_QUOTA_DE
   }
-  if (/bild ändern|packzettel/i.test(clean)) return clean || STILL_EDIT_PLANNER_ERROR_DE
+  if (clean === STILL_EDIT_PLANNER_ERROR_DE) return STILL_EDIT_PLANNER_GOOGLE_DE
+  if (/bild ändern|packzettel/i.test(clean) && clean !== STILL_EDIT_PLANNER_ERROR_DE) {
+    return stillEditPlannerErrorDe(clean)
+  }
   if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION|zeitüberschreitung|504/i.test(clean)) {
     return STILL_EDIT_PLANNER_TIMEOUT_DE
   }
   if (/leere antwort/i.test(clean)) return STILL_EDIT_PLANNER_EMPTY_DE
-  return clean
+  if (
+    /\b500\b|\b502\b|\b503\b|failed to fetch|fetch failed|networkerror|Anfrage fehlgeschlagen|GEMINI_API_KEY auf Vercel/i.test(
+      clean,
+    )
+  ) {
+    return STILL_EDIT_PLANNER_GOOGLE_DE
+  }
+  if (!clean.trim()) return STILL_EDIT_PLANNER_GOOGLE_DE
+  return stillEditPlannerErrorDe(clean)
 }
 
 export function stillEditHarvestNoteDe(

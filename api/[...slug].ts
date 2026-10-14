@@ -1993,15 +1993,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'Schreib zuerst einen kurzen Hinweis, dann «Bild ändern».' })
         return
       }
-      const packzettel = await planFilmPanelStillEdit(
-        dialogId.trim(),
-        user.uid,
-        panelId.trim(),
-        note.trim(),
-        profile,
-        styleId?.trim(),
-      )
-      res.json({ packzettel })
+      try {
+        const packzettel = await planFilmPanelStillEdit(
+          dialogId.trim(),
+          user.uid,
+          panelId.trim(),
+          note.trim(),
+          profile,
+          styleId?.trim(),
+        )
+        res.json({ packzettel })
+      } catch (err) {
+        if (err instanceof HttpError) throw err
+        console.error('[film-storyboard-still-plan]', err)
+        throw err
+      }
       return
     }
 
