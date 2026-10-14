@@ -13,9 +13,12 @@ import {
   stillEditFigures,
   stillEditHarvestNoteDe,
   stillEditLineDe,
+  stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
+  stillEditPlannerGoogleHttpStatus,
   stillEditPlannerMessages,
   stillEditPlannerRetryUser,
+  stillEditPlannerStatusDe,
   stillEditPlannerSystem,
   stillNumberInScene,
   stillPackzettelAttachEn,
@@ -293,11 +296,33 @@ try {
   }
 }
 
+{
+  const opts = stillEditPlannerChatJsonOpts(STILL_EDIT_PLANNER_MODEL, STILL_EDIT_PLANNER_TIMEOUT_MS)
+  if ('responseSchema' in opts) {
+    fail('Planner-Request an chatJson darf kein responseSchema schicken')
+  }
+  const encoded = JSON.stringify(opts)
+  if (encoded.includes('responseSchema') || encoded.includes('SchemaType')) {
+    fail('chatJson-Opts ohne SDK-Schema — Google 400 auf lite und flash')
+  }
+  if (opts.model !== STILL_EDIT_PLANNER_MODEL || opts.timeoutMessage !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+    fail('Planner-Opts bleiben kurzes JSON, Timeout auf Deutsch')
+  }
+}
 const fromFence = parseStillEditPackzettel(
   'Klar.\n```json\n{"imagePrompt":"Ramo at the stove","imageIds":["person-ramo"]}\n```\n',
 )
 if (fromFence.imagePrompt !== 'Ramo at the stove' || fromFence.imageIds[0] !== 'person-ramo') {
   fail('Packzettel aus Markdown-Zaun lesen')
+}
+const fromFenceNoLang = parseStillEditPackzettel(
+  '```\n{"imagePrompt":"Ramo alone at the stove","imageIds":["person-ramo","still-stove"]}\n```',
+)
+if (
+  fromFenceNoLang.imagePrompt !== 'Ramo alone at the stove' ||
+  fromFenceNoLang.imageIds.length !== 2
+) {
+  fail('Packzettel aus Zaun ohne json-Marke lesen')
 }
 const fromAlias = parseStillEditPackzettel({
   prompt: 'Ramo alone, no guests.',
@@ -352,8 +377,20 @@ if (stillEditPlannerErrorDe(new Error('Keine Antwort von der KI erhalten.')) !==
 if (stillEditPlannerErrorDe(new Error('JSON der KI war ungültig.')) !== STILL_EDIT_PLANNER_INVALID_DE) {
   fail('Kaputtes JSON wird als ungültiger Packzettel erklärt')
 }
-if (stillEditPlannerErrorDe(new Error('Invalid JSON payload received. Unknown name responseMimeType')) !== STILL_EDIT_PLANNER_INVALID_DE) {
-  fail('Invalid JSON payload ist ungültiger Packzettel, nicht der Satz ohne Klammer')
+const sdk400 =
+  '[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent: [400 Bad Request] Invalid JSON payload received. Unknown name "responseSchema" at \'generation_config\': Cannot find field.'
+if (stillEditPlannerGoogleHttpStatus(sdk400) !== 400) fail('SDK 400 aus [400 Bad Request]')
+if (stillEditPlannerErrorDe(new Error(sdk400)) !== stillEditPlannerStatusDe(400)) {
+  fail('Google 400 ist (400), nicht ungültiger Packzettel und nicht englische Payload')
+}
+if (stillEditPlannerErrorDe(new Error(sdk400)).includes('payload') || stillEditPlannerErrorDe(new Error(sdk400)).includes('http')) {
+  fail('Keine englische Google-Meldung und keine URL in der UI')
+}
+if (
+  stillEditPlannerErrorDe(new Error('Invalid JSON payload received. Unknown name responseMimeType')) !==
+  stillEditPlannerStatusDe(400)
+) {
+  fail('Invalid JSON payload ohne Klammer-Status ist (400)')
 }
 const quotaRaw =
   'Quota exceeded for aiplatform.googleapis.com/generate_content_requests_per_minute_per_project_per_base_model with base model: gemini-2.5-flash. Please submit a quota increase request. https://cloud.google.com/vertex-ai/docs/generative-ai/quotas-genai'
@@ -366,8 +403,12 @@ if (isStillEditPlannerQuotaError(sdk500)) fail('Google-URL allein ist keine Quot
 if (stillEditPlannerErrorDe(new Error(sdk500)) === STILL_EDIT_PLANNER_QUOTA_DE) {
   fail('500 nicht als gerade voll zeigen')
 }
-if (stillEditPlannerErrorDe(new Error(sdk500)) !== STILL_EDIT_PLANNER_GOOGLE_DE) {
-  fail('500 ist Google-Fehler mit Grund, nicht der Satz ohne Klammer')
+if (stillEditPlannerGoogleHttpStatus(sdk500) !== 500) fail('SDK 500 aus [500 Internal Server Error]')
+if (stillEditPlannerErrorDe(new Error(sdk500)) !== stillEditPlannerStatusDe(500)) {
+  fail('500 ist (500), nicht der Satz ohne Klammer')
+}
+if (stillEditPlannerErrorDe(new Error(sdk500)).includes('Internal Server')) {
+  fail('Keine englische 500-Meldung in der UI')
 }
 if (stillEditPlannerErrorDe(new Error(sdk500)) === STILL_EDIT_PLANNER_ERROR_DE) {
   fail('Unklassifizierter Google-Dump darf nicht den Satz ohne Grund zeigen')
@@ -463,6 +504,9 @@ if (!isStillEditPlannerFlashFallbackError(new Error('404 Not Found models/gemini
 if (!isStillEditPlannerFlashFallbackError(new Error(sdk500))) {
   fail('500 lite → Flash')
 }
+if (!isStillEditPlannerFlashFallbackError(new Error(sdk400))) {
+  fail('400 lite → Flash')
+}
 if (isStillEditPlannerFlashFallbackError(new Error('GEMINI_API_KEY ist nicht gesetzt. Bitte in Vercel einen Google AI Studio Key eintragen.'))) {
   fail('Fehlender Schlüssel nicht auf Flash umbiegen')
 }
@@ -554,8 +598,11 @@ if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_TIMEOUT_DE) !== STILL_EDIT_PLANNER
 if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_EMPTY_DE) !== STILL_EDIT_PLANNER_EMPTY_DE) {
   fail('Leere-Antwort-Satz nicht umbiegen')
 }
-if (stillEditTimeoutHintDe('Anfrage fehlgeschlagen (500). Prüfe GEMINI_API_KEY auf Vercel.') !== STILL_EDIT_PLANNER_GOOGLE_DE) {
-  fail('500 ohne Server-Text ist Google-Fehler, nicht der Satz ohne Klammer')
+if (
+  stillEditTimeoutHintDe('Anfrage fehlgeschlagen (500). Prüfe GEMINI_API_KEY auf Vercel.') !==
+  stillEditPlannerStatusDe(500)
+) {
+  fail('500 ohne Server-Text ist (500), nicht der Satz ohne Klammer')
 }
 
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
@@ -603,8 +650,9 @@ if (!aiSrc.includes('stillEditPlannerRetryUser')) fail('Leere imageIds: einmal k
 if (!aiSrc.includes('STILL_EDIT_PLANNER_MODEL')) fail('Packzettel-Planner ist das günstige Text-Flash, nicht TTS')
 if (!aiSrc.includes('STILL_EDIT_PLANNER_FALLBACK_MODEL')) fail('Nach lite kommt gemini-2.5-flash')
 if (!aiSrc.includes('runStillEditPlannerModelAttempts')) fail('Leere/ungültige lite-Antwort versucht Flash')
-if (!aiSrc.includes('responseSchema')) fail('Packzettel verlangt strukturiertes JSON')
-if (!aiSrc.includes('SchemaType')) fail('SDK-responseSchema für den Packzettel')
+if (!aiSrc.includes('stillEditPlannerChatJsonOpts')) fail('Planner-Request an chatJson ist eine prüfbare Opts-Funktion')
+if (aiSrc.includes('SchemaType')) fail('Kein SDK-SchemaType — Google 400 auf lite und flash')
+if (aiSrc.includes('STILL_EDIT_PACK_SCHEMA')) fail('Kein Packzettel-responseSchema')
 if (!aiSrc.includes('[still-edit-packzettel]')) fail('Roh-Ursache des Packzettels serverseitig loggen')
 if (!aiSrc.includes('withStillEditPlannerQuotaRetries')) fail('429 wartet und versucht denselben Klick nochmal')
 if (!aiSrc.includes('clipPlannerTimeoutMs')) fail('Quota-Retry bleibt unter dem 60s-HTTP-Budget')
@@ -612,8 +660,11 @@ const planStart = aiSrc.indexOf('async function requestStillEditPackzettel')
 const planEnd = aiSrc.indexOf('export async function planFilmPanelRefNeeds')
 const planFn = aiSrc.slice(planStart, planEnd > planStart ? planEnd : undefined)
 if (!planFn.includes('planStillEditPackzettel')) fail('Planner-Funktionen hängen zusammen')
-if (!planFn.includes('STILL_EDIT_PACK_SCHEMA') && !planFn.includes('responseSchema')) {
-  fail('Planner-Aufruf setzt das JSON-Schema')
+if (planFn.includes('responseSchema') || planFn.includes('STILL_EDIT_PACK_SCHEMA')) {
+  fail('Planner-Aufruf an chatJson ohne responseSchema')
+}
+if (!planFn.includes('stillEditPlannerChatJsonOpts')) {
+  fail('Planner reicht stillEditPlannerChatJsonOpts an chatJson')
 }
 if (planFn.includes('chatJsonWithImages')) {
   fail('Packzettel-Planner darf keine Bilder an Gemini hängen')

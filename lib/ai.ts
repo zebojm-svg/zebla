@@ -1,5 +1,5 @@
 import { assertAiAllowed } from './ai-authorize.js'
-import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { randomUUID } from 'crypto'
 import type {
   CharacterVisual,
@@ -69,6 +69,7 @@ import {
   extractJsonValue,
   parseStillEditPackzettel,
   runStillEditPlannerModelAttempts,
+  stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
   stillEditPlannerMessages,
   stillEditPlannerRetryUser,
@@ -77,7 +78,6 @@ import {
   STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
   STILL_EDIT_PLANNER_MODEL,
-  STILL_EDIT_PLANNER_TIMEOUT_DE,
   STILL_EDIT_PLANNER_TIMEOUT_MS,
   STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
   type StillEditPackzettel,
@@ -138,23 +138,13 @@ function clipPlannerTimeoutMs(remainingMs: number, cap: number): number {
   return Math.min(cap, Math.max(5_000, remainingMs))
 }
 
-const STILL_EDIT_PACK_SCHEMA: ResponseSchema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    imagePrompt: { type: SchemaType.STRING },
-    imageIds: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-  },
-  required: ['imagePrompt', 'imageIds'],
-}
-
-function getTextModel(temperature = 0.7, model = TEXT_MODEL, responseSchema?: ResponseSchema) {
+function getTextModel(temperature = 0.7, model = TEXT_MODEL) {
   const genAI = new GoogleGenerativeAI(requireGeminiKey())
   return genAI.getGenerativeModel({
     model,
     generationConfig: {
       responseMimeType: 'application/json',
       temperature,
-      ...(responseSchema ? { responseSchema } : {}),
     },
   })
 }
@@ -218,7 +208,6 @@ type ChatJsonOpts = {
   timeoutMs?: number
   timeoutMessage?: string
   model?: string
-  responseSchema?: ResponseSchema
 }
 
 export async function chatJson<T>(
@@ -238,7 +227,7 @@ export async function chatJsonWithImages<T>(
   await assertAiAllowed()
   const modelId = opts?.model?.trim() || TEXT_MODEL
   try {
-    const model = getTextModel(opts?.temperature ?? 0.7, modelId, opts?.responseSchema)
+    const model = getTextModel(opts?.temperature ?? 0.7, modelId)
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
       { text: `${system}\n\n---\n\n${user}` },
     ]
@@ -482,13 +471,7 @@ async function requestStillEditPackzettel(
   timeoutMs: number,
   model = stillEditPlannerModelId(),
 ): Promise<StillEditPackzettel> {
-  const raw = await chatJson<unknown>(system, user, {
-    temperature: 0.2,
-    timeoutMs,
-    timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
-    model,
-    responseSchema: STILL_EDIT_PACK_SCHEMA,
-  })
+  const raw = await chatJson<unknown>(system, user, stillEditPlannerChatJsonOpts(model, timeoutMs))
   return parseStillEditPackzettel(raw)
 }
 
