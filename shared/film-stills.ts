@@ -29,6 +29,9 @@ import {
   type FilmStoryboardPanel,
 } from './film-storyboard.js'
 
+/** Stehender Regie-Satz an die Bild-KI — kein Stichwort-Denken im Werkzeug. */
+export const STILL_EDIT_DIRECTOR_DE = 'Hinweis ist die Regie; Fotos sind Aussehen.'
+
 export function panelsForScene(
   board: FilmStoryboard | null | undefined,
   sceneId: string,
@@ -396,7 +399,9 @@ export function previousPropStillUrl(
 
 /**
  * Welche Vorlagen die Bild-KI bekommt: Raum dieses Ortes, Stammbilder der Figuren,
- * Grundbild nur wenn es derselbe Ort ist.
+ * Grundbild nur wenn es derselbe Ort ist, letztes Foto derselben Requisite.
+ * Erstes Malen und Bild ändern rufen dieselbe Funktion. Bild ändern hängt
+ * kein correctFromUrl an — das aktuelle Tischbild ist keine GROUNDBILD-Sperre.
  */
 export function stillReferencePack(
   panel: FilmStoryboardPanel,
@@ -834,6 +839,8 @@ export function buildFilmStillPrompt(opts: {
         ? insertCameraLine(opts.imageCue || opts.caption)
         : rewritePerson
         ? `WIDE shot of the SAME gathering. Keep this camera, this table and these seats. Apply the director fix to the named person only. Everyone else stays where they are. Sitting people stay sitting, hips on the seat.`
+        : opts.stillCorrection
+        ? `WIDE shot. Paint ONE coherent illustration of this place. ${STILL_EDIT_DIRECTOR_DE} The director hint decides who is in THIS frame and how they stand. Photos are appearance only — not a seating lock.`
         : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people. FORBIDDEN: an empty room with no guests if people are named.`,
     opts.correctingExisting
       ? ''
@@ -873,14 +880,17 @@ export function buildFilmStillPrompt(opts: {
     people
       ? isInsert
         ? `People in frame (exactly these, each ONCE, no twins): ${people}.`
-        : `People in frame — they MUST be visible, not an empty room: ${people}. Only these people. Do not invent a girl or an extra guest.`
+        : opts.stillCorrection
+          ? `People named in this scene: ${people}. ${STILL_EDIT_DIRECTOR_DE} The director hint decides who appears in THIS frame.`
+          : `People in frame — they MUST be visible, not an empty room: ${people}. Only these people. Do not invent a girl or an extra guest.`
       : isInsert
         ? 'No extra people in this insert unless the cue names them.'
         : '',
     poses ? `Poses: ${poses}.` : '',
     opts.directorNote ? `Director note: ${opts.directorNote}.` : '',
+    opts.stillCorrection ? STILL_EDIT_DIRECTOR_DE : '',
     opts.stillCorrection
-      ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}.`
+      ? `DIRECTOR FIX — change only this: ${opts.stillCorrection}. User hint (verbatim): ${opts.stillCorrection}.`
       : '',
     isCloseup
       ? `Widescreen 16:9. Close-up crop of the same gathering. Face large. Hair not cut off at the top. Opaque eyes with iris and pupil. No legs, no floating torso, no studio cut-out, no second person, no glassy see-through eyes.`

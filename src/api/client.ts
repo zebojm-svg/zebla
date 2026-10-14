@@ -609,14 +609,13 @@ export const api = {
       panelId: string,
       styleId?: string,
       note?: string,
-      packzettel?: { imagePrompt: string; imageIds: string[] },
     ) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
       }>(
         '/film-storyboard-still',
-        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, packzettel }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
         120_000,
       ),
     filmPanelLayout: (

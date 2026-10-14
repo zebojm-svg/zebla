@@ -5,9 +5,7 @@ import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-stor
 import { panelsNeedingStills, stillTimeoutHintDe } from '../../shared/film-stills'
 import {
   stillEditImageErrorDe,
-  tryStillEditPackzettel,
   STILL_EDIT_PAINT_STATUS_DE,
-  STILL_EDIT_PLAN_STATUS_DE,
 } from '../../shared/film-still-pack'
 
 export async function generateSceneStills(opts: {
@@ -117,21 +115,13 @@ export function useSceneStills(
     }
     setBusySceneId(sceneId)
     setBusyPanelId(panel.id)
-    setStatus(hint ? STILL_EDIT_PLAN_STATUS_DE : STILL_EDIT_PAINT_STATUS_DE)
+    setStatus(STILL_EDIT_PAINT_STATUS_DE)
     setErrors((prev) => ({ ...prev, [sceneId]: '', [panel.id]: '' }))
     setProgress({ sceneId, current: 0, total: 1 })
     try {
       let result: { dialog: Dialog; board: FilmStoryboard }
       if (hint) {
-        let packzettel: { imagePrompt: string; imageIds: string[] } | undefined
-        try {
-          const planned = await api.ai.filmStillPlan(dialogId, panel.id, styleId, hint)
-          packzettel = tryStillEditPackzettel(planned.packzettel) ?? undefined
-        } catch {
-          /* 402/400/429/leer: Packzettel optional — sofort malen. */
-        }
-        setStatus(STILL_EDIT_PAINT_STATUS_DE)
-        result = await api.ai.filmStill(dialogId, panel.id, styleId, hint, packzettel)
+        result = await api.ai.filmStill(dialogId, panel.id, styleId, hint)
       } else {
         result = await api.ai.filmStill(dialogId, panel.id, styleId)
       }

@@ -44,7 +44,6 @@ import {
   applyPanelStillError,
   correctionIsFaceOnly,
   correctionRewritesPerson,
-  correctFromUrlForPanel,
   genderFromPictureNote,
   markLaterPanelsStaleAfterCorrection,
   personNamedInCorrection,
@@ -64,10 +63,9 @@ import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId } from '../shared/story-art-styles.js'
 import {
   catalogForPlanner,
-  resolveStillEditPaint,
   stillEditCatalog,
   stillEditFigures,
-  stillEditHarvestNoteForPaint,
+  stillEditImageErrorDe,
   stillEditLineDe,
   stillNumberInScene,
   type StillEditPackzettel,
@@ -681,7 +679,6 @@ export async function stillFilmPanel(
   styleId: string | undefined,
   profile?: UserProfile | null,
   note?: string,
-  packFromClient?: { imagePrompt?: string; imageIds?: string[] } | null,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
@@ -705,7 +702,8 @@ export async function stillFilmPanel(
       }
     : board
   const targetLanguage = dialog.filmPlan?.targetLanguage || dialog.targetLanguage
-  let correctFromUrl = correctFromUrlForPanel(working, panel, correction)
+  /** Bild ändern = erstes Paket, ohne das aktuelle Tischbild als GROUNDBILD. */
+  let correctFromUrl: string | undefined
 
   const planScenes = [...(dialog.filmPlan?.scenes ?? [])]
   const planIdx = planScenes.findIndex((s) => s.sceneId === panel.sceneId)
@@ -781,43 +779,6 @@ export async function stillFilmPanel(
       } catch {
         /* Ohne neue Teile: vorhandene Vorlagen nehmen. */
       }
-    }
-    if (correction) {
-      const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
-      const catalog = stillEditCatalog({
-        board: boardForGen,
-        panel: panelForGen,
-        inventory,
-      })
-      const paint = resolveStillEditPaint({
-        packFromClient,
-        catalog,
-        userHint: correction,
-        dialogDe: stillEditLineDe(panelForGen, dialog),
-        figures: stillEditFigures(boardForGen, panelForGen, inventory),
-        place: panelForGen.settingHint || panelPlaceKey(panelForGen),
-        styleLabel: getStoryArtStyle(resolvedStyle).label,
-      })
-      const url = await generateFilmPanelStillImage({
-        panel: panelForGen,
-        scene,
-        styleId: resolvedStyle,
-        packzettel: {
-          prompt: paint.prompt,
-          urls: paint.picked.map((it) => it.url),
-          labels: paint.picked.map((it) => it.label),
-          attach: paint.attach,
-        },
-      })
-      const withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
-      const notedBoard = finishAfterCorrection(withStill, panelForGen)
-      const withNote = applyPanelHarvestNote(
-        notedBoard,
-        panelId,
-        stillEditHarvestNoteForPaint(correction, paint),
-      )
-      const updated = await persist(withNote)
-      return { dialog: updated, board: withNote }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
     const isInsert = (panelForGen.shot ?? 'wide') === 'insert'
@@ -940,7 +901,7 @@ export async function stillFilmPanel(
       [
         pack.noteDe,
         correction
-          ? `Neu gemalt: ${correction} — gleicher Ort, gleiche Plätze.`
+          ? `Neu gemalt nach Hinweis: ${correction}`
           : isCloseup
             ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
             : isInsert
@@ -955,7 +916,8 @@ export async function stillFilmPanel(
     const updated = await persist(withNote)
     return { dialog: updated, board: withNote }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+    const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+    const message = correction ? stillEditImageErrorDe(err) : raw
     const failed = applyPanelStillError(working, panelId, message)
     try {
       await saveBoard(dialogId, userId, failed, profile)

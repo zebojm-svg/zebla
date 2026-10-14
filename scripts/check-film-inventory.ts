@@ -246,22 +246,26 @@ if (packCarry.urls[0] === 'https://example.com/living-wide.png') {
 if (packCarry.urls.length > 4) fail('Höchstens 4 Vorlagen')
 
 const stoveNow = painted.panels.find((p) => p.lineIds.includes('k-stove'))!
-const packCorrect = stillReferencePack(stoveNow, {
-  correctFromUrl: stoveNow.stillUrl,
-  board: painted,
-  inventory,
-})
-if (!packCorrect.urls.includes('https://example.com/kitchen-kettle.png')) {
-  fail('Bild ändern hängt das vorige Küchenbild an, nicht nur das aktuelle')
+const packFirstStove = stillReferencePack(stoveNow, { board: painted, inventory })
+const packCorrect = stillReferencePack(
+  { ...stoveNow, stillCorrection: 'Kessel näher', directorNote: 'Kessel näher' },
+  { board: painted, inventory },
+)
+if (packCorrect.urls.join('|') !== packFirstStove.urls.join('|')) {
+  fail('Bild ändern schickt dasselbe Paket wie das erste Malen')
 }
-if (packCorrect.urls.length < 2) {
-  fail('Bild ändern schickt mehr als nur das aktuelle Standbild')
+if (!packCorrect.urls.includes('https://example.com/kitchen-kettle.png')) {
+  fail('Insert bekommt das vorige Küchenbild wie beim ersten Malen')
+}
+if (packCorrect.items.some((it) => it.name === 'aktuelles Bild')) {
+  fail('aktuelles Still nicht als GROUNDBILD mitschicken')
 }
 if (
-  !packCorrect.instruction.includes('GROUNDBILD') ||
-  !packCorrect.instruction.includes('PROP')
+  !packCorrect.instruction.includes('PROP') &&
+  !packCorrect.instruction.includes('PREVIOUS') &&
+  !packCorrect.instruction.includes('GROUNDBILD')
 ) {
-  fail('Bild ändern beschriftet Vorlagen PROP und GROUNDBILD')
+  fail('Bild ändern beschriftet Vorlagen wie das erste Malen')
 }
 
 const firstKitchen = painted.panels.find((p) => p.lineIds.includes('k-fill'))!

@@ -1,9 +1,8 @@
 /**
- * Bild ändern = Förderband, kein Mitdenken.
- * Packzettel ist nice-to-have: wenn die Drehbuch-KI schnell
- * { imagePrompt, imageIds } liefert, hängen wir nur diese Fotos an.
- * Jeder Planner-Fehler (402/400/429/leer/Schema) malt trotzdem —
- * Hinweis wörtlich + Katalog an die Bild-KI. Keine Stichwörter.
+ * Bild ändern = dasselbe Vorlagenpaket wie beim ersten Malen
+ * (stillReferencePack) plus den Hinweis wörtlich. Kein Katalog,
+ * kein Packzettel-Tor, kein aktuelles Tischbild als GROUNDBILD.
+ * Hinweis ist die Regie; Fotos sind Aussehen. Keine Stichwörter.
  */
 
 import {
@@ -12,6 +11,7 @@ import {
   panelPlaceKey,
   placeGrundbildPanel,
   previousPropStillUrl,
+  STILL_EDIT_DIRECTOR_DE,
 } from './film-stills.js'
 import { placeLabelDe, type FilmPlaceKey } from './film-place.js'
 import { propLabelDe, slugPropId, uniqueStable } from './film-inventory.js'
@@ -22,6 +22,8 @@ import {
   type FilmStoryboardPanel,
 } from './film-storyboard.js'
 import type { Dialog, FilmInventory } from './types.js'
+
+export { STILL_EDIT_DIRECTOR_DE }
 
 export type StillCatalogKind = 'current' | 'still' | 'person' | 'place' | 'prop'
 
@@ -60,10 +62,6 @@ export const STILL_EDIT_PACK_MAX = 4
 
 /** Ohne Packzettel: Katalog-Arten an die Bild-KI (current, Gesicht, Ort, Requisite, andere Stills). */
 export const STILL_EDIT_DIRECT_PACK_MAX = 8
-
-/** Stehender Regie-Satz an die Bild-KI — kein Stichwort-Denken im Werkzeug. */
-export const STILL_EDIT_DIRECTOR_DE =
-  'Der Hinweis des Users ist die Regie. Die mitgeschickten Fotos sind Aussehen (Gesicht, Kleidung, Kanne, Herd). Wenn der Hinweis die Stellung oder wer im Bild ist ändert, NICHT die Sitzordnung/Gäste vom aktuellen Foto kopieren.'
 
 export const STILL_EDIT_PLAN_STATUS_DE = 'Packzettel …'
 export const STILL_EDIT_PAINT_STATUS_DE = 'wird neu gemalt …'
@@ -793,7 +791,7 @@ export const STILL_EDIT_IMAGE_ERROR_DE =
   'Das Bild konnte nicht neu gemalt werden. Bitte noch einmal «Bild ändern».'
 
 export const STILL_EDIT_IMAGE_TIMEOUT_DE =
-  'Das Bild hat zu lange gedauert. Bitte noch einmal «Bild ändern».'
+  'Das Bild konnte nicht neu gemalt werden (Zeitlimit). Bitte noch einmal «Bild ändern».'
 
 /** Red box only after the IMAGE call fails — never Packzettel, no Google URL. */
 export function stillEditImageErrorDe(err: unknown): string {

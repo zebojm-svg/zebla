@@ -35,6 +35,7 @@ import {
   stillTimeoutHintDe,
   speakerIdentityUrl,
   STALE_STILL_NOTE_DE,
+  STILL_EDIT_DIRECTOR_DE,
 } from '../shared/film-stills.ts'
 import { stillEditTimeoutHintDe } from '../shared/film-still-pack.ts'
 import { genderFromKnownName, guessSpeakerGenderFromName } from '../lib/speaker-gender.ts'
@@ -986,24 +987,42 @@ if (scenePanels.length >= 2) {
       return p
     }).concat(scenePanels[2] ? [] : [third]),
   }
-  const packFix = stillReferencePack(second, {
-    correctFromUrl: second.stillUrl,
-    board: kitchenBoard,
-  })
-  if (!packFix.urls.includes('https://example.com/scene-p1.png')) {
-    fail('Bild ändern hängt das vorige Bild an, nicht nur das aktuelle')
+  const packFirst = stillReferencePack(second, { board: kitchenBoard })
+  const packFix = stillReferencePack(
+    { ...second, stillCorrection: 'Ramo allein am Herd', directorNote: 'Ramo allein am Herd' },
+    { board: kitchenBoard },
+  )
+  if (packFix.urls.join('|') !== packFirst.urls.join('|')) {
+    fail('Bild ändern schickt dasselbe Vorlagenpaket wie das erste Malen')
   }
-  if (packFix.urls.length < 2) fail('Bild ändern: mehr als nur das aktuelle Foto')
+  if (packFix.urls.includes(second.stillUrl || '') && packFirst.urls.includes(second.stillUrl || '') === false) {
+    fail('Bild ändern hängt das aktuelle Tischbild nicht extra an')
+  }
+  if (packFix.items.some((it) => it.name === 'aktuelles Bild')) {
+    fail('aktuelles Still ist keine GROUNDBILD-Sperre')
+  }
+  if (packFix.urls.length > 4) fail('Bild ändern: kleines Paket wie erstes Malen')
   if (
     !packFix.instruction.includes('GROUNDBILD') &&
     !packFix.instruction.includes('PREVIOUS') &&
     !packFix.instruction.includes('PROP') &&
-    !packFix.instruction.includes('PERSON')
+    !packFix.instruction.includes('PERSON') &&
+    !packFix.instruction.includes('PLACE')
   ) {
     fail('Bild ändern beschriftet Vorlagen (PROP/PLACE/PERSON/GROUNDBILD)')
   }
-  const onlyCurrent = packFix.urls.length === 1 && packFix.urls[0] === second.stillUrl
-  if (onlyCurrent) fail('Bild ändern darf nicht nur das aktuelle Standbild schicken')
+  const editPrompt = buildFilmStillPrompt({
+    caption: second.caption,
+    imageCue: second.imageCue,
+    settingHint: second.settingHint,
+    hasLibraryRefs: true,
+    stillCorrection: 'Ramo allein am Herd',
+    directorNote: 'Ramo allein am Herd',
+    names: second.placements.map((p) => p.name),
+  })
+  if (!editPrompt.includes('Ramo allein am Herd')) fail('Hinweis wörtlich im Prompt')
+  if (!editPrompt.includes(STILL_EDIT_DIRECTOR_DE)) fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
+  if (/MUST be visible/.test(editPrompt)) fail('Hinweis entscheidet wer im Bild ist, nicht die Gästeliste')
 
   const stale = markLaterPanelsStaleAfterCorrection(kitchenBoard, second.id)
   const later = stale.panels.find((p) => p.id === third.id)
@@ -1027,8 +1046,15 @@ if (scenePanels.length >= 2) {
 }
 
 const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
-if (!stillGenSrc.includes('resolveStillEditPaint')) {
-  fail('Bild ändern malt mit Packzettel oder direkt mit Katalog')
+const stillFn = stillGenSrc.slice(
+  stillGenSrc.indexOf('export async function stillFilmPanel'),
+  stillGenSrc.indexOf('export async function saveFilmPlan'),
+)
+if (!stillFn.includes('stillReferencePack')) {
+  fail('Bild ändern nutzt stillReferencePack wie das erste Malen')
+}
+if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCatalog')) {
+  fail('Bild ändern schickt nicht den Filmkatalog')
 }
 if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
   fail('Nach Bild ändern werden spätere Bilder der Szene markiert')
