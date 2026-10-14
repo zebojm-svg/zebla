@@ -417,37 +417,62 @@ export function FilmPanelDialogue({
 export function FilmStillFixBar({
   panel,
   busy,
+  error,
+  status,
   onCorrect,
   onInsert,
 }: {
   panel: FilmStoryboardPanel
   busy: boolean
+  error?: string
+  status?: string
   onCorrect?: (note: string) => void
   onInsert?: (text: string) => void
 }) {
   const [note, setNote] = useState(panel.stillCorrection ?? '')
   const [insertText, setInsertText] = useState('')
+  const [localError, setLocalError] = useState('')
   if (!onCorrect && !onInsert) return null
+  const shownError = error || localError
   return (
     <div className="film-still-fix">
       {onCorrect ? (
-        <div className="film-tweak">
-          <input
-            className="input"
-            value={note}
-            disabled={busy}
-            placeholder="z.B. Schöme ist ein Mann, Ramo steht auf"
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={busy || !note.trim()}
-            onClick={() => onCorrect(note.trim())}
-          >
-            Bild ändern
-          </button>
-        </div>
+        <>
+          <div className="film-tweak">
+            <input
+              className="input"
+              value={note}
+              disabled={busy}
+              placeholder="z.B. Schöme ist ein Mann, Ramo steht auf"
+              onChange={(e) => {
+                setNote(e.target.value)
+                if (localError) setLocalError('')
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={busy}
+              onClick={() => {
+                const hint = note.trim()
+                if (!hint) {
+                  setLocalError('Schreib zuerst einen kurzen Hinweis, dann «Bild ändern».')
+                  return
+                }
+                setLocalError('')
+                onCorrect(hint)
+              }}
+            >
+              {busy && status ? 'Läuft …' : 'Bild ändern'}
+            </button>
+          </div>
+          {busy && status ? (
+            <p className="film-panel-painting" aria-live="polite">
+              {status}
+            </p>
+          ) : null}
+          {!busy && shownError ? <div className="alert alert-error">{shownError}</div> : null}
+        </>
       ) : null}
       {onInsert ? (
         <div className="film-tweak">
@@ -482,6 +507,8 @@ export function FilmStillStrip({
   sceneTitle,
   busy,
   busyPanelId,
+  errors,
+  status,
   onCorrect,
   onInsert,
   onLayout,
@@ -492,6 +519,8 @@ export function FilmStillStrip({
   sceneTitle?: string
   busy?: boolean
   busyPanelId?: string | null
+  errors?: Record<string, string>
+  status?: string
   onCorrect?: (panel: FilmStoryboardPanel, note: string) => void
   onInsert?: (panel: FilmStoryboardPanel, text: string) => void
   onLayout?: (dialog: Dialog, board: import('../../shared/film-storyboard').FilmStoryboard) => void
@@ -518,6 +547,8 @@ export function FilmStillStrip({
                 <FilmStillFixBar
                   panel={panel}
                   busy={Boolean(busy)}
+                  error={errors?.[panel.id]}
+                  status={busyPanelId === panel.id ? status : undefined}
                   onCorrect={onCorrect ? (note) => onCorrect(panel, note) : undefined}
                 />
               }

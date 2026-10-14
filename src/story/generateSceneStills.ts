@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import { panelsNeedingStills, stillTimeoutHintDe } from '../../shared/film-stills'
+import { stillEditTimeoutHintDe } from '../../shared/film-still-pack'
 
 export async function generateSceneStills(opts: {
   dialogId: string
@@ -43,6 +44,7 @@ export function useSceneStills(
 ) {
   const [busySceneId, setBusySceneId] = useState<string | null>(null)
   const [busyPanelId, setBusyPanelId] = useState<string | null>(null)
+  const [status, setStatus] = useState('')
   const [progress, setProgress] = useState<{
     sceneId: string
     current: number
@@ -56,10 +58,18 @@ export function useSceneStills(
     styleId: string,
     force: boolean,
   ) => {
-    if (!dialogId || busySceneId) return
+    if (!dialogId) return
+    if (busySceneId) {
+      setErrors((prev) => ({
+        ...prev,
+        [sceneId]: 'Ein Bild läuft schon. Bitte warten.',
+      }))
+      return
+    }
     const queue = panelsNeedingStills(panels, styleId, force)
     setBusySceneId(sceneId)
     setBusyPanelId(null)
+    setStatus('Erzeuge Szene …')
     setErrors((prev) => ({ ...prev, [sceneId]: '' }))
     setProgress({ sceneId, current: 0, total: queue.length })
     try {
@@ -79,6 +89,7 @@ export function useSceneStills(
     } finally {
       setBusySceneId(null)
       setBusyPanelId(null)
+      setStatus('')
       setProgress(null)
     }
   }
@@ -89,24 +100,53 @@ export function useSceneStills(
     styleId: string,
     note?: string,
   ) => {
-    if (!dialogId || busySceneId) return
+    if (!dialogId) return
+    const hint = note?.trim() ?? ''
+    if (busySceneId) {
+      setErrors((prev) => ({
+        ...prev,
+        [sceneId]: 'Ein Bild läuft schon. Bitte warten.',
+        [panel.id]: 'Ein Bild läuft schon. Bitte warten.',
+      }))
+      return
+    }
     setBusySceneId(sceneId)
     setBusyPanelId(panel.id)
-    setErrors((prev) => ({ ...prev, [sceneId]: '' }))
+    setStatus(
+      hint
+        ? 'Drehbuch-KI schreibt den Packzettel …'
+        : 'Bild wird neu gemalt … das dauert etwa eine Minute.',
+    )
+    setErrors((prev) => ({ ...prev, [sceneId]: '', [panel.id]: '' }))
     setProgress({ sceneId, current: 0, total: 1 })
     try {
-      const result = await api.ai.filmStill(dialogId, panel.id, styleId, note)
+      let result: { dialog: Dialog; board: FilmStoryboard }
+      if (hint) {
+        const planned = await api.ai.filmStillPlan(dialogId, panel.id, styleId, hint)
+        setStatus('Bild wird neu gemalt … das dauert etwa eine Minute.')
+        result = await api.ai.filmStill(
+          dialogId,
+          panel.id,
+          styleId,
+          hint,
+          planned.packzettel,
+        )
+      } else {
+        result = await api.ai.filmStill(dialogId, panel.id, styleId)
+      }
       apply(result.dialog, result.board)
       setProgress({ sceneId, current: 1, total: 1 })
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
-      setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
+      const shown = stillEditTimeoutHintDe(raw)
+      setErrors((prev) => ({ ...prev, [sceneId]: shown, [panel.id]: shown }))
     } finally {
       setBusySceneId(null)
       setBusyPanelId(null)
+      setStatus('')
       setProgress(null)
     }
   }
 
-  return { busySceneId, busyPanelId, progress, errors, generate, generateOne }
+  return { busySceneId, busyPanelId, status, progress, errors, generate, generateOne }
 }

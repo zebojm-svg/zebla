@@ -127,7 +127,7 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
@@ -1975,7 +1975,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    if (route === 'film-storyboard-still' && req.method === 'POST') {
+    if (route === 'film-storyboard-still-plan' && req.method === 'POST') {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
@@ -1989,6 +1989,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
         return
       }
+      if (!note?.trim()) {
+        res.status(400).json({ error: 'Schreib zuerst einen kurzen Hinweis, dann «Bild ändern».' })
+        return
+      }
+      const packzettel = await planFilmPanelStillEdit(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        note.trim(),
+        profile,
+        styleId?.trim(),
+      )
+      res.json({ packzettel })
+      return
+    }
+
+    if (route === 'film-storyboard-still' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, panelId, styleId, note, packzettel } = req.body as {
+        dialogId?: string
+        panelId?: string
+        styleId?: string
+        note?: string
+        packzettel?: { imagePrompt?: string; imageIds?: string[] }
+      }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
       const result = await stillFilmPanel(
         dialogId.trim(),
         user.uid,
@@ -1996,6 +2027,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         styleId?.trim(),
         profile,
         note?.trim(),
+        packzettel,
       )
       res.json(result)
       return

@@ -44,6 +44,8 @@ function PanelCard({
   scenePanels,
   busy,
   painting,
+  error,
+  status,
   onComment,
   onInsert,
   onCorrect,
@@ -58,6 +60,8 @@ function PanelCard({
   scenePanels: FilmStoryboardPanel[]
   busy: boolean
   painting?: boolean
+  error?: string
+  status?: string
   onComment: (comment: string) => void
   onInsert: (text: string) => void
   onCorrect: (note: string) => void
@@ -109,12 +113,13 @@ function PanelCard({
         }
         underPicture={
           <>
-            {painting ? (
-              <p className="film-panel-painting" aria-live="polite">
-                Bild wird neu gemalt … das dauert etwa eine Minute.
-              </p>
-            ) : null}
-            <FilmStillFixBar panel={panel} busy={busy} onCorrect={onCorrect} />
+            <FilmStillFixBar
+              panel={panel}
+              busy={busy}
+              error={error}
+              status={painting ? status : undefined}
+              onCorrect={onCorrect}
+            />
             <p className="muted film-tweak-hint">Kurzer Hinweis reicht.</p>
           </>
         }
@@ -478,6 +483,8 @@ export function FilmStoryboardPage() {
                       busy={locked}
                       onLayout={apply}
                       painting={stills.busyPanelId === panel.id}
+                      error={stills.errors[panel.id]}
+                      status={stills.status}
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
                       }

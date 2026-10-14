@@ -63,12 +63,14 @@ import {
 import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId } from '../shared/story-art-styles.js'
 import {
+  parseStillEditPackzettel,
   pickStillCatalogImages,
   stillEditCatalog,
   stillEditFigures,
   stillEditHarvestNoteDe,
   stillEditLineDe,
   stillNumberInScene,
+  type StillEditPackzettel,
 } from '../shared/film-still-pack.js'
 import { speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
@@ -626,6 +628,52 @@ export async function sketchFilmPanel(
   return { dialog: updated, board: next }
 }
 
+/** Nur Packzettel — eigener Request, damit Bild ändern nicht Planner+Bild in 60 s stopft. */
+export async function planFilmPanelStillEdit(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  note: string,
+  profile?: UserProfile | null,
+  styleId?: string,
+): Promise<StillEditPackzettel> {
+  const correction = note.trim()
+  if (!correction) {
+    throw new Error('Schreib zuerst einen kurzen Hinweis, dann «Bild ändern».')
+  }
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const found = board.panels.find((p) => p.id === panelId)
+  if (!found) throw new Error('Bild nicht gefunden.')
+  const panel = { ...found, stillCorrection: correction, directorNote: correction }
+  const working: FilmStoryboard = {
+    ...board,
+    panels: board.panels.map((p) => (p.id === panelId ? panel : p)),
+  }
+  const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === found.sceneId)?.styleId
+  const resolvedStyle =
+    (styleId && isStoryArtStyleId(styleId) ? styleId : undefined) ||
+    (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
+    DEFAULT_STORY_ART_STYLE
+  const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
+  const catalog = stillEditCatalog({
+    board: working,
+    panel,
+    inventory,
+  })
+  return planStillEditPackzettel({
+    stillNumber: stillNumberInScene(working, panel),
+    panelId: panel.id,
+    userHint: correction,
+    dialogDe: stillEditLineDe(panel, dialog),
+    figures: stillEditFigures(working, panel, inventory),
+    place: panel.settingHint || panelPlaceKey(panel),
+    catalog,
+    styleLabel: getStoryArtStyle(resolvedStyle).label,
+  })
+}
+
 export async function stillFilmPanel(
   dialogId: string,
   userId: string,
@@ -633,6 +681,7 @@ export async function stillFilmPanel(
   styleId: string | undefined,
   profile?: UserProfile | null,
   note?: string,
+  packFromClient?: { imagePrompt?: string; imageIds?: string[] } | null,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
@@ -740,16 +789,18 @@ export async function stillFilmPanel(
         panel: panelForGen,
         inventory,
       })
-      const packzettel = await planStillEditPackzettel({
-        stillNumber: stillNumberInScene(boardForGen, panelForGen),
-        panelId: panelForGen.id,
-        userHint: correction,
-        dialogDe: stillEditLineDe(panelForGen, dialog),
-        figures: stillEditFigures(boardForGen, panelForGen, inventory),
-        place: panelForGen.settingHint || panelPlaceKey(panelForGen),
-        catalog,
-        styleLabel: getStoryArtStyle(resolvedStyle).label,
-      })
+      const packzettel = packFromClient?.imagePrompt
+        ? parseStillEditPackzettel(packFromClient)
+        : await planStillEditPackzettel({
+            stillNumber: stillNumberInScene(boardForGen, panelForGen),
+            panelId: panelForGen.id,
+            userHint: correction,
+            dialogDe: stillEditLineDe(panelForGen, dialog),
+            figures: stillEditFigures(boardForGen, panelForGen, inventory),
+            place: panelForGen.settingHint || panelPlaceKey(panelForGen),
+            catalog,
+            styleLabel: getStoryArtStyle(resolvedStyle).label,
+          })
       const picked = pickStillCatalogImages(catalog, packzettel.imageIds)
       const url = await generateFilmPanelStillImage({
         panel: panelForGen,

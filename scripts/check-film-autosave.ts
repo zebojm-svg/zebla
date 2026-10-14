@@ -9,6 +9,7 @@ import {
   TEXT_AI_TIMEOUT_MS,
   isBoardPlanPath,
   isImageGenPath,
+  isStillEditPlanPath,
   isTextAiPath,
 } from '../shared/api-timeout.ts'
 import {
@@ -55,6 +56,11 @@ if (!clientSrc.includes('FUNCTION_INVOCATION_FAILED')) {
 if (!isImageGenPath('/image')) fail('/image ist Bild')
 if (!isImageGenPath('/story-generate-character')) fail('Figur-Zeichnen ist Bild')
 if (!isImageGenPath('/film-storyboard-still')) fail('Szenen-Standbild ist Bild')
+if (isImageGenPath('/film-storyboard-still-plan')) fail('Packzettel-Plan ist kein Bild')
+if (!isStillEditPlanPath('/film-storyboard-still-plan')) fail('Packzettel-Plan ist Bild-ändern-Plan')
+const packAbort = clientTimeoutMessage('/film-storyboard-still-plan', 'abort')
+if (!packAbort.includes('Bild ändern')) fail('Packzettel-Timeout nennt Bild ändern')
+if (packAbort.includes('Diese Szene erzeugen')) fail('Packzettel-Timeout nicht Szene erzeugen')
 if (isImageGenPath('/film-from-prompt')) fail('Film-Prompt ist kein Bild')
 if (isImageGenPath('/film-storyboard')) fail('Storyboard-Plan ist kein Bild')
 if (isImageGenPath('/film-storyboard-reset')) fail('Vom-Text-neu ist kein Bild')

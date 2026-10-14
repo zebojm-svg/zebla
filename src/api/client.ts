@@ -4,6 +4,9 @@ import {
   FILM_PLAN_TIMEOUT_MS,
   TEXT_AI_TIMEOUT_MS,
 } from '../../shared/api-timeout'
+import { STILL_EDIT_PLANNER_TIMEOUT_MS } from '../../shared/film-still-pack'
+
+const STILL_EDIT_PLAN_TIMEOUT_MS = STILL_EDIT_PLANNER_TIMEOUT_MS + 7_000
 
 const API_BASE = '/api'
 
@@ -576,13 +579,25 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
         120_000,
       ),
-    filmStill: (dialogId: string, panelId: string, styleId?: string, note?: string) =>
+    filmStillPlan: (dialogId: string, panelId: string, styleId: string | undefined, note: string) =>
+      request<{ packzettel: { imagePrompt: string; imageIds: string[] } }>(
+        '/film-storyboard-still-plan',
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
+        STILL_EDIT_PLAN_TIMEOUT_MS,
+      ),
+    filmStill: (
+      dialogId: string,
+      panelId: string,
+      styleId?: string,
+      note?: string,
+      packzettel?: { imagePrompt: string; imageIds: string[] },
+    ) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
       }>(
         '/film-storyboard-still',
-        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, packzettel }) },
         120_000,
       ),
     filmPanelLayout: (
