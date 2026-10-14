@@ -6,20 +6,30 @@ import { readFileSync } from 'node:fs'
 import type { Dialog, FilmInventory } from '../shared/types.ts'
 import type { FilmPlacement, FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.ts'
 import {
+  catalogForPlanner,
   parseStillEditPackzettel,
   pickStillCatalogImages,
   stillEditCatalog,
   stillEditFigures,
   stillEditHarvestNoteDe,
   stillEditLineDe,
+  stillEditPlannerErrorDe,
   stillEditPlannerMessages,
+  stillEditPlannerRetryUser,
   stillEditPlannerSystem,
   stillNumberInScene,
   stillPackzettelAttachEn,
   stillEditTimeoutHintDe,
+  STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
+  STILL_EDIT_PLANNER_EMPTY_DE,
   STILL_EDIT_PLANNER_ERROR_DE,
+  STILL_EDIT_PLANNER_INVALID_DE,
+  STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
+  STILL_EDIT_PLANNER_TIMEOUT_DE,
+  STILL_EDIT_PLANNER_TIMEOUT_MS,
   type StillCatalogItem,
 } from '../shared/film-still-pack.ts'
+import { clientTimeoutMessage } from '../shared/api-timeout.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -185,6 +195,52 @@ if (!user.includes('aktuelles Still')) fail('Planner-Request listet Katalog-Labe
 if (!user.includes('person-ramo') && !user.includes('Ramo Gesicht')) {
   fail('Planner-Request zeigt Ramo im Katalog')
 }
+if (/https?:\/\//i.test(user) || /data:image/i.test(user) || /base64,/i.test(user)) {
+  fail('Planner-Request darf keine Bild-URLs oder Bytes enthalten')
+}
+const plannerOnly = catalogForPlanner(catalog)
+if (plannerOnly.some((it) => 'url' in it && (it as { url?: string }).url)) {
+  fail('catalogForPlanner darf keine url-Felder behalten')
+}
+if (JSON.stringify(plannerOnly).includes('example.com')) {
+  fail('Planner-Katalog ist Text (id/label), keine Foto-Adresse')
+}
+const hugePng = `${'A'.repeat(4000)}`
+const withBytes: StillCatalogItem[] = [
+  {
+    id: 'person-ramo',
+    label: `Ramo Gesicht https://cdn.example.com/ramo.png data:image/png;base64,${hugePng}`,
+    url: `data:image/png;base64,${hugePng}`,
+    kind: 'person',
+  },
+]
+const bytesUser = stillEditPlannerMessages({
+  stillNumber: 2,
+  panelId: table.id,
+  userHint: hint,
+  dialogDe: stillEditLineDe(table, dialog),
+  figures,
+  place: table.settingHint,
+  catalog: withBytes,
+  styleLabel: 'lebendige Illustration',
+}).user
+if (bytesUser.includes(hugePng) || bytesUser.includes('base64') || bytesUser.includes('data:image')) {
+  fail('Planner bekommt keine PNG-Bytes, auch wenn der Katalog eine data-URL hat')
+}
+if (!bytesUser.includes('id=person-ramo')) fail('Planner sieht die id trotz gestrippter URL')
+const retryAsk = stillEditPlannerRetryUser({
+  stillNumber: 2,
+  panelId: table.id,
+  userHint: hint,
+  dialogDe: stillEditLineDe(table, dialog),
+  figures,
+  place: table.settingHint,
+  catalog,
+})
+if (!retryAsk.includes('imageIds') || !retryAsk.includes('person-ramo')) {
+  fail('Zweiter Planner-Ask verlangt ids aus dem Katalog')
+}
+if (/https?:\/\//i.test(retryAsk)) fail('Zweiter Ask ohne Foto-URLs')
 if (!system.includes('"imagePrompt"') || !system.includes('"imageIds"')) {
   fail('Drehbuch-KI soll { imagePrompt, imageIds } liefern')
 }
@@ -219,9 +275,70 @@ try {
   parseStillEditPackzettel({ imageIds: ['person-ramo'] })
   fail('Packzettel ohne imagePrompt ist ein Fehler')
 } catch (err) {
-  if (!(err instanceof Error) || err.message !== STILL_EDIT_PLANNER_ERROR_DE) {
-    fail('Planner-Fehler auf Deutsch, denselben Satz')
+  if (!(err instanceof Error) || err.message !== STILL_EDIT_PLANNER_INVALID_DE) {
+    fail('Fehlender Prompt ist ungültiger Packzettel auf Deutsch')
   }
+}
+
+const fromFence = parseStillEditPackzettel(
+  'Klar.\n```json\n{"imagePrompt":"Ramo at the stove","imageIds":["person-ramo"]}\n```\n',
+)
+if (fromFence.imagePrompt !== 'Ramo at the stove' || fromFence.imageIds[0] !== 'person-ramo') {
+  fail('Packzettel aus Markdown-Zaun lesen')
+}
+const fromAlias = parseStillEditPackzettel({
+  prompt: 'Ramo alone, no guests.',
+  ids: ['person-ramo', 'prop-kanne-1'],
+})
+if (!fromAlias.imagePrompt.includes('Ramo') || fromAlias.imageIds.length !== 2) {
+  fail('Aliase prompt/ids auf imagePrompt/imageIds normieren')
+}
+const fromSnake = parseStillEditPackzettel({
+  packzettel: { image_prompt: 'same kettle', image_ids: ['still-stove'] },
+})
+if (fromSnake.imagePrompt !== 'same kettle' || fromSnake.imageIds[0] !== 'still-stove') {
+  fail('Aliase image_prompt/image_ids und packzettel-Hülle')
+}
+const extraKeys = parseStillEditPackzettel({
+  imagePrompt: 'ok',
+  imageIds: ['person-ramo'],
+  note: 'ignore me',
+  temperature: 0.2,
+})
+if (extraKeys.imagePrompt !== 'ok' || extraKeys.imageIds[0] !== 'person-ramo') {
+  fail('Zusätzliche JSON-Felder stören den Packzettel nicht')
+}
+const emptyIds = parseStillEditPackzettel({ imagePrompt: 'Ramo at the stove', imageIds: [] })
+if (emptyIds.imagePrompt !== 'Ramo at the stove' || emptyIds.imageIds.length !== 0) {
+  fail('Prompt ohne ids bleibt parsebar — Retry macht der Planner')
+}
+
+if (STILL_EDIT_PLANNER_TIMEOUT_MS < 25_000 || STILL_EDIT_PLANNER_TIMEOUT_MS > 35_000) {
+  fail('Planner-Timeout 25–35 s, nicht 18 s')
+}
+if (STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS > 20_000) fail('Zweiter Ask kürzer als der erste')
+if (STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS >= 60_000) fail('Client bleibt unter 60 s')
+if (!STILL_EDIT_PLANNER_TIMEOUT_DE.includes('Zeitlimit')) fail('Zeitlimit-Satz auf Deutsch')
+if (!STILL_EDIT_PLANNER_EMPTY_DE.includes('leere Antwort')) fail('Leere-Antwort-Satz auf Deutsch')
+if (!STILL_EDIT_PLANNER_INVALID_DE.includes('ungültiger Packzettel')) {
+  fail('Ungültiger-Packzettel-Satz auf Deutsch')
+}
+if (stillEditPlannerErrorDe(new Error('Zeitüberschreitung bei der KI')) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+  fail('Timeout wird als Zeitlimit erklärt')
+}
+if (stillEditPlannerErrorDe(new Error('Keine Antwort von der KI erhalten.')) !== STILL_EDIT_PLANNER_EMPTY_DE) {
+  fail('Leere KI-Antwort wird erklärt')
+}
+if (stillEditPlannerErrorDe(new Error('JSON der KI war ungültig.')) !== STILL_EDIT_PLANNER_INVALID_DE) {
+  fail('Kaputtes JSON wird als ungültiger Packzettel erklärt')
+}
+const quota = stillEditPlannerErrorDe(
+  new Error('Quota exceeded https://ai.google.dev/gemini-api/docs/rate-limits'),
+)
+if (quota.includes('http') || quota.includes('google')) fail('Keine Google-Quota-URL in der UI')
+if (!quota.includes('Bild ändern')) fail('Quota bleibt «Bild ändern»')
+if (stillEditPlannerErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_PLANNER_ERROR_DE) {
+  fail('Der kurze Satz bleibt, wenn wir nichts Genaueres wissen')
 }
 
 const attach = stillPackzettelAttachEn(onlyListed.map((it) => it.label))
@@ -240,12 +357,16 @@ const timeoutHint = stillEditTimeoutHintDe('Leere Antwort vom Server (504).')
 if (!timeoutHint.includes('Bild ändern')) {
   fail('Leere Server-Antwort bei Bild ändern nennt den Knopf, nicht Szene erzeugen')
 }
+if (!timeoutHint.includes('Zeitlimit')) fail('504 bei Bild ändern nennt Zeitlimit')
 if (timeoutHint.includes('Diese Szene erzeugen')) {
   fail('Bild-ändern-Timeout darf nicht auf Diese Szene erzeugen zeigen')
 }
 const packHint = stillEditTimeoutHintDe(STILL_EDIT_PLANNER_ERROR_DE)
 if (packHint !== STILL_EDIT_PLANNER_ERROR_DE) {
   fail('Packzettel-Fehler bleibt der gleiche Satz')
+}
+if (stillEditTimeoutHintDe(STILL_EDIT_PLANNER_TIMEOUT_DE) !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+  fail('Zeitlimit-Satz nicht umbiegen')
 }
 
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
@@ -288,6 +409,18 @@ if (!genFn.includes('if (opts.packzettel)')) fail('Packzettel umgeht stillRefere
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die Drehbuch-KI')
 if (!aiSrc.includes('STILL_EDIT_PLANNER_TIMEOUT_MS')) fail('Planner ist ein kurzer Text-Aufruf')
+if (!aiSrc.includes('catalogForPlanner')) fail('Planner bekommt den Text-Katalog, nicht die PNGs')
+if (!aiSrc.includes('stillEditPlannerRetryUser')) fail('Leere imageIds: einmal kürzer nachfragen')
+const planStart = aiSrc.indexOf('async function requestStillEditPackzettel')
+const planEnd = aiSrc.indexOf('export async function planFilmPanelRefNeeds')
+const planFn = aiSrc.slice(planStart, planEnd > planStart ? planEnd : undefined)
+if (!planFn.includes('planStillEditPackzettel')) fail('Planner-Funktionen hängen zusammen')
+if (planFn.includes('chatJsonWithImages')) {
+  fail('Packzettel-Planner darf keine Bilder an Gemini hängen')
+}
+if (!stillFnSrc.includes('catalogForPlanner')) {
+  fail('Storyboard schickt der Drehbuch-KI den Text-Katalog')
+}
 
 const hookSrc = readFileSync(new URL('../src/story/generateSceneStills.ts', import.meta.url), 'utf8')
 if (hookSrc.includes('confirmCost')) fail('Bild ändern nicht hinter Kosten-Dialog verstecken')
@@ -317,6 +450,12 @@ if (!apiSrc.includes('planFilmPanelStillEdit')) fail('API ruft planFilmPanelStil
 
 const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
 if (!clientSrc.includes('/film-storyboard-still-plan')) fail('Client ruft den Packzettel extra')
+if (!clientSrc.includes('STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS')) {
+  fail('Client-Wartezeit deckt Planner plus einen kurzen zweiten Ask')
+}
+if (clientTimeoutMessage('/film-storyboard-still-plan', 'abort') !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
+  fail('Client-Timeout am Packzettel sagt Zeitlimit, nicht nur den kurzen Satz')
+}
 
 const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', import.meta.url), 'utf8')
 if (!boardSrc.includes('stills.errors[panel.id]')) {

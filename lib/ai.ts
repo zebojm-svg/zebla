@@ -65,11 +65,16 @@ import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-i
 import { genderFromKnownName } from './speaker-gender.js'
 import { dropRepeatedDialogSections } from '../shared/film-storyboard.js'
 import {
+  catalogForPlanner,
+  extractJsonValue,
   parseStillEditPackzettel,
   stillEditPlannerErrorDe,
   stillEditPlannerMessages,
-  STILL_EDIT_PLANNER_ERROR_DE,
+  stillEditPlannerRetryUser,
+  STILL_EDIT_PLANNER_INVALID_DE,
+  STILL_EDIT_PLANNER_TIMEOUT_DE,
   STILL_EDIT_PLANNER_TIMEOUT_MS,
+  STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
   type StillEditPackzettel,
   type StillEditPlannerInput,
 } from '../shared/film-still-pack.js'
@@ -129,12 +134,9 @@ function getTextModel(temperature = 0.7) {
 }
 
 function parseJson<T>(text: string): T {
-  const cleaned = text
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim()
-  return JSON.parse(cleaned) as T
+  const value = extractJsonValue(text)
+  if (value !== undefined) return value as T
+  throw new Error('JSON der KI war ungültig.')
 }
 
 const LENGTH_HINTS: Record<DialogLength, string> = {
@@ -429,18 +431,38 @@ Figuren mit klaren Namen. Länge unbegrenzt — so viel wie die Geschichte brauc
   }
 }
 
-/** Bild ändern: kurze Drehbuch-KI, nur JSON-Packzettel, malt nicht. */
+async function requestStillEditPackzettel(
+  system: string,
+  user: string,
+  timeoutMs: number,
+): Promise<StillEditPackzettel> {
+  const raw = await chatJson<unknown>(system, user, {
+    temperature: 0.2,
+    timeoutMs,
+    timeoutMessage: STILL_EDIT_PLANNER_TIMEOUT_DE,
+  })
+  return parseStillEditPackzettel(raw)
+}
+
+/** Bild ändern: kurze Drehbuch-KI, nur JSON-Packzettel, malt nicht. Keine Fotos an diesen Aufruf. */
 export async function planStillEditPackzettel(
   input: StillEditPlannerInput,
 ): Promise<StillEditPackzettel> {
-  const { system, user } = stillEditPlannerMessages(input)
+  const catalog = catalogForPlanner(input.catalog)
+  const planned: StillEditPlannerInput = { ...input, catalog }
+  const { system, user } = stillEditPlannerMessages(planned)
   try {
-    const raw = await chatJson<{ imagePrompt?: string; imageIds?: string[] }>(system, user, {
-      temperature: 0.2,
-      timeoutMs: STILL_EDIT_PLANNER_TIMEOUT_MS,
-      timeoutMessage: STILL_EDIT_PLANNER_ERROR_DE,
-    })
-    return parseStillEditPackzettel(raw)
+    const pack = await requestStillEditPackzettel(system, user, STILL_EDIT_PLANNER_TIMEOUT_MS)
+    if (pack.imageIds.length > 0 || catalog.length === 0) return pack
+    const retried = await requestStillEditPackzettel(
+      system,
+      stillEditPlannerRetryUser(planned),
+      STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
+    )
+    if (retried.imageIds.length === 0) {
+      throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
+    }
+    return retried
   } catch (err) {
     throw new Error(stillEditPlannerErrorDe(err))
   }

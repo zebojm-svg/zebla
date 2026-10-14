@@ -35,6 +35,13 @@ export type StillEditPackzettel = {
   imageIds: string[]
 }
 
+/** Catalog text for the Drehbuch-KI — ids and labels, never image bytes. */
+export type StillEditPlannerCatalogItem = {
+  id: string
+  label: string
+  kind?: StillCatalogKind
+}
+
 export type StillEditPlannerInput = {
   stillNumber: number
   panelId: string
@@ -42,7 +49,7 @@ export type StillEditPlannerInput = {
   dialogDe: string
   figures: string[]
   place: string
-  catalog: StillCatalogItem[]
+  catalog: StillEditPlannerCatalogItem[]
   styleLabel?: string
 }
 
@@ -52,7 +59,20 @@ export const STILL_EDIT_PACK_MAX = 4
 export const STILL_EDIT_PLANNER_ERROR_DE =
   'Die Drehbuch-KI hat den Packzettel nicht geliefert. Bitte noch einmal «Bild ändern».'
 
-export const STILL_EDIT_PLANNER_TIMEOUT_MS = 18_000
+export const STILL_EDIT_PLANNER_TIMEOUT_DE =
+  'Die Drehbuch-KI hat den Packzettel nicht geliefert (Zeitlimit). Bitte noch einmal «Bild ändern».'
+
+export const STILL_EDIT_PLANNER_EMPTY_DE =
+  'Die Drehbuch-KI hat den Packzettel nicht geliefert (leere Antwort). Bitte noch einmal «Bild ändern».'
+
+export const STILL_EDIT_PLANNER_INVALID_DE =
+  'Die Drehbuch-KI hat den Packzettel nicht geliefert (ungültiger Packzettel). Bitte noch einmal «Bild ändern».'
+
+/** Text-JSON only — keep well under a 60 s HTTP budget (retry uses a shorter second ask). */
+export const STILL_EDIT_PLANNER_TIMEOUT_MS = 30_000
+export const STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS = 12_000
+export const STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS =
+  STILL_EDIT_PLANNER_TIMEOUT_MS + STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS + 8_000
 
 function httpUrl(u?: string): u is string {
   return Boolean(u && u.startsWith('http'))
@@ -259,11 +279,41 @@ Regeln:
 - imagePrompt sagt der Bild-KI was zu sehen ist. Zebla hängt keine Extra-Sperre «keep these EXACT people / same seats» an.`
 }
 
+const PLANNER_LABEL_MAX = 180
+
+function plannerCatalogLabel(label: string): string {
+  return label
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/data:[^;\s]+;base64,[A-Za-z0-9+/=]+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, PLANNER_LABEL_MAX)
+}
+
+/** Planner gets id + label (+ kind). URLs and PNG bytes stay off this call. */
+export function catalogForPlanner(
+  catalog: Array<{ id: string; label: string; kind?: StillCatalogKind; url?: string }>,
+): StillEditPlannerCatalogItem[] {
+  return catalog.map((it) => ({
+    id: it.id,
+    label: plannerCatalogLabel(it.label),
+    ...(it.kind ? { kind: it.kind } : {}),
+  }))
+}
+
+export function stillEditPlannerCatalogLines(catalog: StillEditPlannerCatalogItem[]): string {
+  const items = catalogForPlanner(catalog)
+  if (items.length === 0) return '(leer)'
+  return items
+    .map((it) => {
+      const cue = it.kind ? ` art=${it.kind}` : ''
+      return `- id=${it.id}${cue} label=${it.label}`
+    })
+    .join('\n')
+}
+
 export function stillEditPlannerUser(input: StillEditPlannerInput): string {
-  const catalogLines =
-    input.catalog.length === 0
-      ? '(leer)'
-      : input.catalog.map((it) => `- id=${it.id} label=${it.label}`).join('\n')
+  const catalogLines = stillEditPlannerCatalogLines(input.catalog)
   const figures = input.figures.filter(Boolean).join(', ') || '—'
   return [
     `Der User möchte Bild Nummer ${input.stillNumber} (id ${input.panelId}) verändern wie folgt: ${input.userHint}`,
@@ -273,7 +323,7 @@ export function stillEditPlannerUser(input: StillEditPlannerInput): string {
     `Ort: ${input.place || '—'}`,
     input.styleLabel ? `Stil: ${input.styleLabel}` : '',
     '',
-    'Katalog der vorhandenen Bilder:',
+    'Katalog der vorhandenen Bilder (nur id und Label, keine Fotos):',
     catalogLines,
     '',
     'Erstelle einen Prompt für die Bild-KI und sag welche Bild-ids ich mitschicken muss, damit das gut kommt.',
@@ -283,6 +333,21 @@ export function stillEditPlannerUser(input: StillEditPlannerInput): string {
     .join('\n')
 }
 
+/** Second ask when the KI wrote a prompt but listed no catalog ids. */
+export function stillEditPlannerRetryUser(input: StillEditPlannerInput): string {
+  const ids = catalogForPlanner(input.catalog)
+    .map((it) => it.id)
+    .filter(Boolean)
+  return [
+    'Noch einmal, kürzer. Nur JSON, keine Erklärung:',
+    '{ "imagePrompt": "englischer Prompt", "imageIds": ["id"] }',
+    `Hinweis: ${input.userHint}`,
+    `Bild Nummer ${input.stillNumber} (id ${input.panelId})`,
+    `ids aus dem Katalog (mindestens eine): ${ids.join(', ') || '—'}`,
+    'imageIds nicht leer. Nur ids aus dieser Liste.',
+  ].join('\n')
+}
+
 export function stillEditPlannerMessages(input: StillEditPlannerInput): {
   system: string
   user: string
@@ -290,15 +355,130 @@ export function stillEditPlannerMessages(input: StillEditPlannerInput): {
   return { system: stillEditPlannerSystem(), user: stillEditPlannerUser(input) }
 }
 
+function sliceFirstJsonValue(text: string): string | null {
+  const startBrace = text.indexOf('{')
+  const startBracket = text.indexOf('[')
+  let start = -1
+  if (startBrace >= 0 && (startBracket < 0 || startBrace < startBracket)) start = startBrace
+  else if (startBracket >= 0) start = startBracket
+  if (start < 0) return null
+
+  const stack: string[] = []
+  let inStr = false
+  let escape = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]!
+    if (inStr) {
+      if (escape) {
+        escape = false
+        continue
+      }
+      if (c === '\\') {
+        escape = true
+        continue
+      }
+      if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') {
+      inStr = true
+      continue
+    }
+    if (c === '{') stack.push('}')
+    else if (c === '[') stack.push(']')
+    else if (c === '}' || c === ']') {
+      if (stack.pop() !== c) return null
+      if (stack.length === 0) return text.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
+/** Fence-strip and first {…} / […] — Flash often wraps JSON in markdown. */
+export function extractJsonValue(raw: unknown): unknown {
+  if (raw !== null && typeof raw === 'object') return raw
+  if (typeof raw !== 'string') return undefined
+  const text = raw.replace(/^\uFEFF/, '').trim()
+  if (!text) return undefined
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const body = (fenced?.[1] ?? text).trim()
+  const sliced = sliceFirstJsonValue(body)
+  const candidates = [body, sliced].filter((c, i, all): c is string => Boolean(c) && all.indexOf(c) === i)
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      /* next */
+    }
+  }
+  return undefined
+}
+
+export function extractJsonObject(raw: unknown): Record<string, unknown> | null {
+  const value = extractJsonValue(raw)
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return null
+}
+
+function readPrompt(obj: Record<string, unknown>): string {
+  for (const key of ['imagePrompt', 'prompt', 'image_prompt', 'imagePromptText']) {
+    const v = obj[key]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return ''
+}
+
+function asIdList(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return value
+      .split(/[,;\s]+/)
+      .map((id) => id.trim())
+      .filter(Boolean)
+  }
+  if (!Array.isArray(value)) return []
+  const out: string[] = []
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) {
+      out.push(item.trim())
+      continue
+    }
+    if (item && typeof item === 'object') {
+      const rec = item as Record<string, unknown>
+      const id = rec.id ?? rec.imageId ?? rec.ref
+      if (typeof id === 'string' && id.trim()) out.push(id.trim())
+    }
+  }
+  return out
+}
+
+function readIds(obj: Record<string, unknown>): string[] {
+  for (const key of ['imageIds', 'image_ids', 'ids', 'images', 'refs', 'refIds', 'references']) {
+    const ids = asIdList(obj[key])
+    if (ids.length) return ids
+  }
+  return []
+}
+
+function unwrapPackzettel(obj: Record<string, unknown>): Record<string, unknown> {
+  for (const key of ['packzettel', 'pack', 'result']) {
+    const nested = obj[key]
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      const inner = nested as Record<string, unknown>
+      if (readPrompt(inner) || readIds(inner).length) return inner
+    }
+  }
+  return obj
+}
+
 export function parseStillEditPackzettel(raw: unknown): StillEditPackzettel {
-  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
-  const imagePrompt = typeof obj.imagePrompt === 'string' ? obj.imagePrompt.trim() : ''
-  if (!imagePrompt) throw new Error(STILL_EDIT_PLANNER_ERROR_DE)
-  const ids = Array.isArray(obj.imageIds) ? obj.imageIds : []
-  const imageIds = ids
-    .filter((id): id is string => typeof id === 'string' && Boolean(id.trim()))
-    .map((id) => id.trim())
-  return { imagePrompt, imageIds }
+  const obj = extractJsonObject(raw)
+  if (!obj) throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
+  const source = unwrapPackzettel(obj)
+  const imagePrompt = readPrompt(source)
+  if (!imagePrompt) throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
+  return { imagePrompt, imageIds: uniqueStable(readIds(source)) }
 }
 
 export function pickStillCatalogImages(
@@ -326,22 +506,53 @@ export function stillPackzettelAttachEn(labels: string[]): string {
   return `Attached photos in this order: ${listed}. Use each photo only as that label says. Follow the image prompt.`
 }
 
+function stripVendorUrls(text: string): string {
+  return text.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim()
+}
+
 export function stillEditPlannerErrorDe(err: unknown): string {
-  const raw = err instanceof Error ? err.message : ''
-  if (/bild ändern/i.test(raw)) return raw
-  if (/quota|limit|überlast|overloaded/i.test(raw)) {
+  const original = err instanceof Error ? err.message : String(err ?? '')
+  const raw = stripVendorUrls(original)
+  if (
+    raw === STILL_EDIT_PLANNER_TIMEOUT_DE ||
+    raw === STILL_EDIT_PLANNER_EMPTY_DE ||
+    raw === STILL_EDIT_PLANNER_INVALID_DE ||
+    raw === STILL_EDIT_PLANNER_ERROR_DE
+  ) {
+    return raw
+  }
+  if (
+    /quota|überlast|overloaded|resource.?exhausted|429/i.test(raw) ||
+    /ai\.google\.dev|googleapis\.com|generativelanguage/i.test(original)
+  ) {
     return 'Die Drehbuch-KI ist gerade voll. Bitte noch einmal «Bild ändern».'
   }
+  if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort/i.test(raw)) {
+    return STILL_EDIT_PLANNER_TIMEOUT_DE
+  }
+  if (
+    /leere antwort|keine antwort|empty|no candidate|blocked|SAFETY|nicht erhalten|prompt.?feedback/i.test(
+      raw,
+    )
+  ) {
+    return STILL_EDIT_PLANNER_EMPTY_DE
+  }
+  if (/ungültig|unexpected token|not valid json|syntaxerror|JSON der KI/i.test(raw)) {
+    return STILL_EDIT_PLANNER_INVALID_DE
+  }
+  if (/bild ändern/i.test(raw)) return raw || STILL_EDIT_PLANNER_ERROR_DE
   return STILL_EDIT_PLANNER_ERROR_DE
 }
 
 /** Fehler von «Bild ändern» — nicht auf «Diese Szene erzeugen» umbiegen. */
 export function stillEditTimeoutHintDe(message: string): string {
-  if (/bild ändern|packzettel/i.test(message)) return message
-  if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION|leere antwort|zeitüberschreitung/i.test(message)) {
-    return 'Das hat zu lange gedauert. Bitte noch einmal «Bild ändern».'
+  const clean = stripVendorUrls(message)
+  if (/bild ändern|packzettel/i.test(clean)) return clean || STILL_EDIT_PLANNER_ERROR_DE
+  if (/zeitlimit|zu lange|timeout|FUNCTION_INVOCATION|zeitüberschreitung|504/i.test(clean)) {
+    return STILL_EDIT_PLANNER_TIMEOUT_DE
   }
-  return message
+  if (/leere antwort/i.test(clean)) return STILL_EDIT_PLANNER_EMPTY_DE
+  return clean
 }
 
 export function stillEditHarvestNoteDe(

@@ -60,6 +60,7 @@ if (isImageGenPath('/film-storyboard-still-plan')) fail('Packzettel-Plan ist kei
 if (!isStillEditPlanPath('/film-storyboard-still-plan')) fail('Packzettel-Plan ist Bild-ändern-Plan')
 const packAbort = clientTimeoutMessage('/film-storyboard-still-plan', 'abort')
 if (!packAbort.includes('Bild ändern')) fail('Packzettel-Timeout nennt Bild ändern')
+if (!packAbort.includes('Zeitlimit')) fail('Packzettel-Timeout nennt Zeitlimit')
 if (packAbort.includes('Diese Szene erzeugen')) fail('Packzettel-Timeout nicht Szene erzeugen')
 if (isImageGenPath('/film-from-prompt')) fail('Film-Prompt ist kein Bild')
 if (isImageGenPath('/film-storyboard')) fail('Storyboard-Plan ist kein Bild')

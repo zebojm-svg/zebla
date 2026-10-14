@@ -51,7 +51,7 @@ export function isStillEditPlanPath(path: string): boolean {
 
 export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): string {
   if (isStillEditPlanPath(path)) {
-    return 'Die Drehbuch-KI hat den Packzettel nicht geliefert. Bitte noch einmal «Bild ändern».'
+    return 'Die Drehbuch-KI hat den Packzettel nicht geliefert (Zeitlimit). Bitte noch einmal «Bild ändern».'
   }
   if (isImageGenPath(path)) {
     return reason === 'server'
