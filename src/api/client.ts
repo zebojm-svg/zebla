@@ -4,9 +4,9 @@ import {
   FILM_PLAN_TIMEOUT_MS,
   TEXT_AI_TIMEOUT_MS,
 } from '../../shared/api-timeout'
-import { STILL_EDIT_PLANNER_TIMEOUT_MS } from '../../shared/film-still-pack'
+import { STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS } from '../../shared/film-still-pack'
 
-const STILL_EDIT_PLAN_TIMEOUT_MS = STILL_EDIT_PLANNER_TIMEOUT_MS + 7_000
+const STILL_EDIT_PLAN_TIMEOUT_MS = STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS
 
 const API_BASE = '/api'
 

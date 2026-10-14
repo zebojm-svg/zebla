@@ -63,6 +63,7 @@ import {
 import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId } from '../shared/story-art-styles.js'
 import {
+  catalogForPlanner,
   parseStillEditPackzettel,
   pickStillCatalogImages,
   stillEditCatalog,
@@ -669,7 +670,7 @@ export async function planFilmPanelStillEdit(
     dialogDe: stillEditLineDe(panel, dialog),
     figures: stillEditFigures(working, panel, inventory),
     place: panel.settingHint || panelPlaceKey(panel),
-    catalog,
+    catalog: catalogForPlanner(catalog),
     styleLabel: getStoryArtStyle(resolvedStyle).label,
   })
 }
@@ -798,7 +799,7 @@ export async function stillFilmPanel(
             dialogDe: stillEditLineDe(panelForGen, dialog),
             figures: stillEditFigures(boardForGen, panelForGen, inventory),
             place: panelForGen.settingHint || panelPlaceKey(panelForGen),
-            catalog,
+            catalog: catalogForPlanner(catalog),
             styleLabel: getStoryArtStyle(resolvedStyle).label,
           })
       const picked = pickStillCatalogImages(catalog, packzettel.imageIds)
