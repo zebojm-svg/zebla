@@ -1027,8 +1027,8 @@ if (scenePanels.length >= 2) {
 }
 
 const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
-if (!stillGenSrc.includes('planStillEditPackzettel')) {
-  fail('Bild ändern holt den Packzettel von der Drehbuch-KI')
+if (!stillGenSrc.includes('resolveStillEditPaint')) {
+  fail('Bild ändern malt mit Packzettel oder direkt mit Katalog')
 }
 if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
   fail('Nach Bild ändern werden spätere Bilder der Szene markiert')

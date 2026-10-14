@@ -85,6 +85,7 @@ async function generateStillPng(
   insert = false,
   packInstruction = '',
   packzettelLabels?: string[],
+  attachOverride?: string,
 ): Promise<Buffer> {
   const apiKey = requireGeminiKey()
   await assertAiAllowed()
@@ -93,8 +94,9 @@ async function generateStillPng(
     for (const img of refs) {
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
     }
-    parts.push({
-      text: packzettelLabels
+    const attach = attachOverride?.trim()
+      ? attachOverride.trim()
+      : packzettelLabels
         ? stillPackzettelAttachEn(packzettelLabels)
         : stillAttachmentInstruction({
             correctingExisting,
@@ -102,8 +104,8 @@ async function generateStillPng(
             insert,
             rewritePerson,
             packInstruction,
-          }),
-    })
+          })
+    parts.push({ text: attach })
   }
   parts.push({ text: prompt })
 
@@ -201,7 +203,7 @@ export async function generateFilmPanelStillImage(opts: {
   continuityEn?: string
   board?: FilmStoryboard
   inventory?: FilmInventory | null
-  packzettel?: { prompt: string; urls: string[]; labels: string[] }
+  packzettel?: { prompt: string; urls: string[]; labels: string[]; attach?: string }
 }): Promise<string> {
   if (opts.packzettel) {
     const refs = await loadRefs(opts.packzettel.urls)
@@ -214,6 +216,7 @@ export async function generateFilmPanelStillImage(opts: {
       false,
       '',
       opts.packzettel.labels,
+      opts.packzettel.attach,
     )
     return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
   }

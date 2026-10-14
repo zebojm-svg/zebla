@@ -68,18 +68,12 @@ import {
   catalogForPlanner,
   extractJsonValue,
   parseStillEditPackzettel,
-  runStillEditPlannerModelAttempts,
   stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
   stillEditPlannerMessages,
-  stillEditPlannerRetryUser,
-  withStillEditPlannerQuotaRetries,
-  STILL_EDIT_PLANNER_FALLBACK_MODEL,
-  STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
   STILL_EDIT_PLANNER_MODEL,
   STILL_EDIT_PLANNER_TIMEOUT_MS,
-  STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
   type StillEditPackzettel,
   type StillEditPlannerInput,
 } from '../shared/film-still-pack.js'
@@ -127,15 +121,12 @@ function requireGeminiKey(): string {
   return key
 }
 
+/** Same model as Dialog (`TEXT_MODEL` / GEMINI_MODEL). Never lite/tts/image. */
 function stillEditPlannerModelId(): string {
-  const fromEnv = process.env.GEMINI_PACKZETTEL_MODEL?.trim()
+  const fromEnv = process.env.GEMINI_MODEL?.trim()
   const candidate = fromEnv || STILL_EDIT_PLANNER_MODEL
-  if (/tts|image/i.test(candidate)) return STILL_EDIT_PLANNER_MODEL
+  if (/tts|image|lite/i.test(candidate)) return STILL_EDIT_PLANNER_MODEL
   return candidate
-}
-
-function clipPlannerTimeoutMs(remainingMs: number, cap: number): number {
-  return Math.min(cap, Math.max(5_000, remainingMs))
 }
 
 function getTextModel(temperature = 0.7, model = TEXT_MODEL) {
@@ -475,52 +466,27 @@ async function requestStillEditPackzettel(
   return parseStillEditPackzettel(raw)
 }
 
-function stillEditPlannerAsk(
-  system: string,
-  user: string,
-  timeoutMs: number,
-  catalogLen: number,
-): Promise<StillEditPackzettel> {
-  return runStillEditPlannerModelAttempts({
-    catalogLen,
-    primary: stillEditPlannerModelId(),
-    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
-    log: logStillEditPlannerCause,
-    call: (model) => requestStillEditPackzettel(system, user, timeoutMs, model),
-  })
-}
-
-/** Bild ändern: kurze Drehbuch-KI, nur JSON-Packzettel, malt nicht. Keine Fotos an diesen Aufruf. */
+/** Optional short Packzettel — same chatJson as Dialog. Caller must not hard-gate painting. */
 export async function planStillEditPackzettel(
   input: StillEditPlannerInput,
 ): Promise<StillEditPackzettel> {
   const catalog = catalogForPlanner(input.catalog)
   const planned: StillEditPlannerInput = { ...input, catalog }
   const { system, user } = stillEditPlannerMessages(planned)
-  const started = Date.now()
-  const remaining = () => STILL_EDIT_PLANNER_HTTP_BUDGET_MS - (Date.now() - started)
+  const model = stillEditPlannerModelId()
   try {
-    return await withStillEditPlannerQuotaRetries(async () => {
-      const pack = await stillEditPlannerAsk(
-        system,
-        user,
-        clipPlannerTimeoutMs(remaining() - 2_000, STILL_EDIT_PLANNER_TIMEOUT_MS),
-        catalog.length,
-      )
-      if (pack.imageIds.length > 0 || catalog.length === 0) return pack
-      const retried = await stillEditPlannerAsk(
-        system,
-        stillEditPlannerRetryUser(planned),
-        clipPlannerTimeoutMs(remaining() - 1_000, STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS),
-        catalog.length,
-      )
-      if (retried.imageIds.length === 0) {
-        throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
-      }
-      return retried
-    })
+    const pack = await requestStillEditPackzettel(
+      system,
+      user,
+      STILL_EDIT_PLANNER_TIMEOUT_MS,
+      model,
+    )
+    if (pack.imageIds.length === 0 && catalog.length > 0) {
+      throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
+    }
+    return pack
   } catch (err) {
-    logStillEditPlannerCause(err, stillEditPlannerModelId())
+    logStillEditPlannerCause(err, model)
     throw new Error(stillEditPlannerErrorDe(err))
   }
 }

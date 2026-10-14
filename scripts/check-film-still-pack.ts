@@ -1,5 +1,5 @@
 /**
- * Bild ändern: Dumb conveyor — Katalog, Hinweis, Packzettel. Keine Stichwörter.
+ * Bild ändern: Packzettel nice-to-have, Bild-KI malt immer. Keine Stichwörter.
  * Aufruf: npx tsx scripts/check-film-still-pack.ts
  */
 import { readFileSync } from 'node:fs'
@@ -8,10 +8,16 @@ import type { FilmPlacement, FilmStoryboard, FilmStoryboardPanel } from '../shar
 import {
   catalogForPlanner,
   parseStillEditPackzettel,
+  pickStillCatalogForDirectPaint,
   pickStillCatalogImages,
+  resolveStillEditPaint,
   stillEditCatalog,
+  stillEditDirectAttachEn,
+  stillEditDirectPaintPrompt,
   stillEditFigures,
   stillEditHarvestNoteDe,
+  stillEditHarvestNoteForPaint,
+  stillEditImageErrorDe,
   stillEditLineDe,
   stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
@@ -23,26 +29,25 @@ import {
   stillNumberInScene,
   stillPackzettelAttachEn,
   stillEditTimeoutHintDe,
-  isStillEditPlannerFlashFallbackError,
+  tryStillEditPackzettel,
   isStillEditPlannerQuotaError,
-  runStillEditPlannerModelAttempts,
   withStillEditPlannerQuotaRetries,
+  STILL_EDIT_DIRECTOR_DE,
+  STILL_EDIT_IMAGE_ERROR_DE,
+  STILL_EDIT_IMAGE_TIMEOUT_DE,
+  STILL_EDIT_PAINT_STATUS_DE,
   STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
+  STILL_EDIT_PLAN_STATUS_DE,
   STILL_EDIT_PLANNER_EMPTY_DE,
   STILL_EDIT_PLANNER_ERROR_DE,
-  STILL_EDIT_PLANNER_FALLBACK_MODEL,
   STILL_EDIT_PLANNER_GOOGLE_DE,
   STILL_EDIT_PLANNER_HTTP_BUDGET_MS,
   STILL_EDIT_PLANNER_INVALID_DE,
   STILL_EDIT_PLANNER_MODEL,
-  STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS,
   STILL_EDIT_PLANNER_QUOTA_DE,
   STILL_EDIT_PLANNER_QUOTA_RETRIES,
-  STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS,
   STILL_EDIT_PLANNER_TIMEOUT_DE,
   STILL_EDIT_PLANNER_TIMEOUT_MS,
-  STILL_EDIT_PLANNER_WAIT_AFTER_MS,
-  STILL_EDIT_PLANNER_WAIT_DE,
   type StillCatalogItem,
 } from '../shared/film-still-pack.ts'
 import { clientTimeoutMessage } from '../shared/api-timeout.ts'
@@ -351,18 +356,14 @@ if (emptyIds.imagePrompt !== 'Ramo at the stove' || emptyIds.imageIds.length !==
   fail('Prompt ohne ids bleibt parsebar — Retry macht der Planner')
 }
 
-if (STILL_EDIT_PLANNER_TIMEOUT_MS < 25_000 || STILL_EDIT_PLANNER_TIMEOUT_MS > 35_000) {
-  fail('Planner-Timeout 25–35 s, nicht 18 s — Quota-Warten kürzt über das HTTP-Budget')
+if (STILL_EDIT_PLANNER_TIMEOUT_MS < 8_000 || STILL_EDIT_PLANNER_TIMEOUT_MS > 20_000) {
+  fail('Packzettel ist ein kurzer Ask, dann malt die Bild-KI')
 }
-if (STILL_EDIT_PLANNER_RETRY_TIMEOUT_MS > 20_000) fail('Zweiter Ask kürzer als der erste')
-if (STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS < 15_000 || STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS > 25_000) {
-  fail('Quota-Warten 15–25 s')
+if (STILL_EDIT_PLANNER_QUOTA_RETRIES !== 0) {
+  fail('Planner wartet nicht auf 429 — Bild ändern malt trotzdem')
 }
-if (STILL_EDIT_PLANNER_QUOTA_RETRIES < 1 || STILL_EDIT_PLANNER_QUOTA_RETRIES > 2) {
-  fail('Quota 1–2 Wiederholungen im gleichen Klick')
-}
-if (STILL_EDIT_PLANNER_HTTP_BUDGET_MS >= 60_000) fail('Packzettel-HTTP unter 60 s')
-if (STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS >= 60_000) fail('Client bleibt unter 60 s')
+if (STILL_EDIT_PLANNER_HTTP_BUDGET_MS >= 30_000) fail('Packzettel-HTTP kurz, damit Malen startet')
+if (STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS >= 30_000) fail('Client wartet nicht minutenlang auf den Packzettel')
 if (!STILL_EDIT_PLANNER_TIMEOUT_DE.includes('Zeitlimit')) fail('Zeitlimit-Satz auf Deutsch')
 if (!STILL_EDIT_PLANNER_EMPTY_DE.includes('leere Antwort')) fail('Leere-Antwort-Satz auf Deutsch')
 if (!STILL_EDIT_PLANNER_INVALID_DE.includes('ungültiger Packzettel')) {
@@ -419,16 +420,16 @@ if (stillEditPlannerErrorDe(new Error(deadline)) !== STILL_EDIT_PLANNER_TIMEOUT_
   fail('Deadline Exceeded ist Zeitlimit, nicht voll')
 }
 if (
-  /tts|image/i.test(STILL_EDIT_PLANNER_MODEL) ||
-  !STILL_EDIT_PLANNER_MODEL.includes('flash-lite')
+  /tts|image|lite/i.test(STILL_EDIT_PLANNER_MODEL) ||
+  STILL_EDIT_PLANNER_MODEL !== 'gemini-2.5-flash'
 ) {
-  fail('Planner ist günstiges Text-Flash, nicht TTS und nicht Bild')
+  fail('Planner ist dasselbe Dialog-Textmodell, nicht flash-lite')
 }
-if (
-  /tts|image|lite/i.test(STILL_EDIT_PLANNER_FALLBACK_MODEL) ||
-  STILL_EDIT_PLANNER_FALLBACK_MODEL !== 'gemini-2.5-flash'
-) {
-  fail('Fallback nach lite ist gemini-2.5-flash')
+const sdk402 =
+  '[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent: [402 Payment Required]'
+if (stillEditPlannerGoogleHttpStatus(sdk402) !== 402) fail('Google 402 Payment Required erkennen')
+if (stillEditPlannerErrorDe(new Error(sdk402)).includes('http') || stillEditPlannerErrorDe(new Error(sdk402)).includes('googleapis')) {
+  fail('402 ohne Google-URL in der Meldung')
 }
 const quota = stillEditPlannerErrorDe(new Error(quotaRaw))
 if (quota !== STILL_EDIT_PLANNER_QUOTA_DE) fail('Quota wie Probe, ohne URL')
@@ -457,115 +458,20 @@ if (stillEditPlannerErrorDe(new Error('Failed to fetch')) !== STILL_EDIT_PLANNER
 }
 
 {
-  const sleeps: number[] = []
   let n = 0
-  const recovered = await withStillEditPlannerQuotaRetries(
-    async () => {
-      n += 1
-      if (n < 3) throw new Error('429 Too Many Requests')
-      return 'ok'
-    },
-    { sleep: async (ms) => { sleeps.push(ms) } },
-  )
-  if (recovered !== 'ok' || n !== 3) fail('Nach zwei 429 noch einmal im gleichen Klick')
-  if (
-    sleeps.length !== 2 ||
-    sleeps.some((ms) => ms !== STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS)
-  ) {
-    fail('Quota-Backoff 15–25 s, zweimal')
-  }
-  let timed = 0
   try {
     await withStillEditPlannerQuotaRetries(
       async () => {
-        timed += 1
-        throw new Error(STILL_EDIT_PLANNER_TIMEOUT_DE)
+        n += 1
+        throw new Error('429 Too Many Requests')
       },
-      { sleep: async () => { fail('Timeout nicht als Quota warten') } },
+      { sleep: async () => { fail('429 am optionalen Packzettel nicht warten') } },
     )
-    fail('Timeout muss den Fehler weitergeben')
+    fail('429 ohne Retry muss werfen')
   } catch (err) {
-    if (!(err instanceof Error) || err.message !== STILL_EDIT_PLANNER_TIMEOUT_DE) {
-      fail('Timeout bleibt Zeitlimit')
-    }
+    if (!(err instanceof Error) || !/429/.test(err.message)) fail('429 bleibt der Fehler')
   }
-  if (timed !== 1) fail('Timeout nicht wiederholen')
-}
-
-if (!isStillEditPlannerFlashFallbackError(new Error(STILL_EDIT_PLANNER_EMPTY_DE))) {
-  fail('Leere lite-Antwort → Flash')
-}
-if (!isStillEditPlannerFlashFallbackError(new Error(STILL_EDIT_PLANNER_INVALID_DE))) {
-  fail('Ungültiger lite-Packzettel → Flash')
-}
-if (!isStillEditPlannerFlashFallbackError(new Error('404 Not Found models/gemini-2.5-flash-lite is not found'))) {
-  fail('404 lite → Flash')
-}
-if (!isStillEditPlannerFlashFallbackError(new Error(sdk500))) {
-  fail('500 lite → Flash')
-}
-if (!isStillEditPlannerFlashFallbackError(new Error(sdk400))) {
-  fail('400 lite → Flash')
-}
-if (isStillEditPlannerFlashFallbackError(new Error('GEMINI_API_KEY ist nicht gesetzt. Bitte in Vercel einen Google AI Studio Key eintragen.'))) {
-  fail('Fehlender Schlüssel nicht auf Flash umbiegen')
-}
-if (isStillEditPlannerFlashFallbackError(new Error('Kein Storyboard.'))) {
-  fail('Kein Storyboard nicht auf Flash umbiegen')
-}
-
-{
-  const order: string[] = []
-  const fromEmpty = await runStillEditPlannerModelAttempts({
-    catalogLen: 3,
-    primary: STILL_EDIT_PLANNER_MODEL,
-    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
-    call: async (model) => {
-      order.push(model)
-      if (model.includes('lite')) {
-        return { imagePrompt: 'Ramo at the stove', imageIds: [] }
-      }
-      return { imagePrompt: 'Ramo alone at the stove', imageIds: ['person-ramo'] }
-    },
-  })
-  if (fromEmpty.imageIds[0] !== 'person-ramo') fail('Leere ids von lite: gleicher Prompt auf Flash')
-  if (order.join(',') !== `${STILL_EDIT_PLANNER_MODEL},${STILL_EDIT_PLANNER_FALLBACK_MODEL}`) {
-    fail('Erst lite, dann flash')
-  }
-}
-
-{
-  const order: string[] = []
-  const fromInvalid = await runStillEditPlannerModelAttempts({
-    catalogLen: 3,
-    primary: STILL_EDIT_PLANNER_MODEL,
-    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
-    call: async (model) => {
-      order.push(model)
-      if (model.includes('lite')) throw new Error(STILL_EDIT_PLANNER_INVALID_DE)
-      return { imagePrompt: 'Ramo alone at the stove', imageIds: ['person-ramo', 'still-stove'] }
-    },
-  })
-  if (fromInvalid.imageIds.length !== 2) fail('Ungültiges lite-JSON: gleicher Prompt auf Flash')
-  if (order[0] !== STILL_EDIT_PLANNER_MODEL || order[1] !== STILL_EDIT_PLANNER_FALLBACK_MODEL) {
-    fail('Ungültig: lite dann flash')
-  }
-}
-
-{
-  const order: string[] = []
-  const from404 = await runStillEditPlannerModelAttempts({
-    catalogLen: 1,
-    primary: STILL_EDIT_PLANNER_MODEL,
-    fallback: STILL_EDIT_PLANNER_FALLBACK_MODEL,
-    call: async (model) => {
-      order.push(model)
-      if (model.includes('lite')) throw new Error('404 Not Found is not found')
-      return { imagePrompt: 'ok', imageIds: ['person-ramo'] }
-    },
-  })
-  if (from404.imagePrompt !== 'ok') fail('404 lite: Flash liefert den Packzettel')
-  if (order.length !== 2) fail('404 lite ruft Flash')
+  if (n !== 1) fail('Packzettel versucht 429 nicht nochmal — Bild-KI malt')
 }
 
 const attach = stillPackzettelAttachEn(onlyListed.map((it) => it.label))
@@ -605,23 +511,124 @@ if (
   fail('500 ohne Server-Text ist (500), nicht der Satz ohne Klammer')
 }
 
+{
+  const after402 = resolveStillEditPaint({
+    packFromClient: null,
+    catalog,
+    userHint: hint,
+    dialogDe: stillEditLineDe(table, dialog),
+    figures,
+    place: table.settingHint,
+    styleLabel: 'lebendige Illustration',
+  })
+  if (after402.mode !== 'direct') fail('Planner 402/kein Packzettel → Bild-KI direkt')
+  if (!after402.prompt.includes(hint)) fail('Hinweis wörtlich an die Bild-KI')
+  if (!after402.prompt.includes(STILL_EDIT_DIRECTOR_DE)) fail('Regie-Satz an die Bild-KI')
+  if (!after402.prompt.includes('So, das Wasser kann kochen')) fail('Deutsche Zeile an die Bild-KI')
+  if (!after402.picked.some((it) => it.kind === 'current')) fail('aktuelles Still beschriftet mitschicken')
+  if (!after402.picked.some((it) => it.kind === 'person')) fail('Gesicht/Kleidung mitschicken')
+  if (!after402.picked.some((it) => it.kind === 'place' || /Küche|Herd/.test(it.label))) {
+    fail('Ort/Herd mitschicken')
+  }
+  if (!after402.picked.some((it) => it.kind === 'prop')) fail('Kanne/Requisite mitschicken')
+  if (!after402.attach.includes('current')) fail('aktuelles Still als current beschriften')
+  if (/exact people|same seats/i.test(after402.attach)) {
+    fail('Direkt-Malen hängt keine Sitzplan-Sperre an')
+  }
+  const harvest402 = stillEditHarvestNoteForPaint(hint, after402)
+  if (harvest402.includes('Packzettel:')) fail('Ohne Packzettel nicht Packzettel auf das Bild schreiben')
+  if (!harvest402.includes(hint)) fail('Ernte-Notiz nennt den Hinweis')
+}
+
+{
+  const packed = resolveStillEditPaint({
+    packFromClient: {
+      imagePrompt: 'Ramo alone at the stove, same kettle, new blocking, no guests.',
+      imageIds: ['person-ramo', 'prop-kanne-1'],
+    },
+    catalog,
+    userHint: hint,
+    dialogDe: stillEditLineDe(table, dialog),
+    figures,
+    place: table.settingHint,
+  })
+  if (packed.mode !== 'packzettel') fail('gültiger Packzettel wird benutzt')
+  if (packed.prompt !== 'Ramo alone at the stove, same kettle, new blocking, no guests.') {
+    fail('Packzettel-Prompt unverändert an die Bild-KI')
+  }
+  if (!packed.picked.some((it) => it.id === 'person-ramo')) fail('Packzettel-ids an die Bild-KI')
+  if (packed.picked.some((it) => it.id === 'current-table')) {
+    fail('nur gelistete Packzettel-ids, nicht von allein das Tischbild')
+  }
+  if (tryStillEditPackzettel({ imagePrompt: 'ok', imageIds: [] }) !== null) {
+    fail('Packzettel ohne ids zählt nicht — direkt malen')
+  }
+  if (tryStillEditPackzettel(null) !== null) fail('kein Packzettel nach 402')
+}
+
+{
+  const directPicked = pickStillCatalogForDirectPaint(catalog)
+  if (!directPicked.some((it) => it.kind === 'current')) fail('Direkt-Katalog hat current')
+  const attachDirect = stillEditDirectAttachEn(directPicked)
+  if (!attachDirect.includes('current')) fail('Direkt-Anhang sagt current')
+  const promptDirect = stillEditDirectPaintPrompt({
+    userHint: hint,
+    dialogDe: stillEditLineDe(table, dialog),
+    figures,
+    place: 'Küche',
+  })
+  if (promptDirect !== stillEditDirectPaintPrompt({
+    userHint: hint,
+    dialogDe: stillEditLineDe(table, dialog),
+    figures,
+    place: 'Küche',
+  })) {
+    fail('Direkt-Prompt ist determiniert, kein Stichwort-Zweig')
+  }
+  if (!promptDirect.includes(hint) || !promptDirect.includes(STILL_EDIT_DIRECTOR_DE)) {
+    fail('Direkt-Prompt = Hinweis + Regie')
+  }
+}
+
+if (stillEditImageErrorDe(new Error(sdk402)).includes('Packzettel')) {
+  fail('Bild-Fehler sagt nicht Packzettel — 402 am Planner ist kein rotes Tor')
+}
+if (stillEditImageErrorDe(new Error(sdk402)) !== 'Das Bild konnte nicht neu gemalt werden (402). Bitte noch einmal «Bild ändern».') {
+  fail('402 an der Bild-KI ist (402) auf Deutsch, ohne URL')
+}
+if (stillEditImageErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_IMAGE_ERROR_DE) {
+  fail('Packzettel-Satz nicht als Bild-Fehler zeigen')
+}
+if (stillEditImageErrorDe(new Error('Zeitüberschreitung bei der KI')) !== STILL_EDIT_IMAGE_TIMEOUT_DE) {
+  fail('Bild-Timeout auf Deutsch')
+}
+if (
+  stillEditImageErrorDe(new Error(quotaRaw)) !== STILL_EDIT_PLANNER_QUOTA_DE ||
+  stillEditImageErrorDe(new Error(quotaRaw)).includes('http')
+) {
+  fail('Bild-Quota wie Probe, ohne URL')
+}
+if (!STILL_EDIT_PLAN_STATUS_DE.includes('Packzettel') || !STILL_EDIT_PAINT_STATUS_DE.includes('neu gemalt')) {
+  fail('Status: Packzettel … dann wird neu gemalt …')
+}
+
 const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 if (!stillFnSrc.includes('planFilmPanelStillEdit')) {
-  fail('Packzettel hat eine eigene Funktion, nicht nur im Bild-Aufruf')
+  fail('Packzettel hat eine eigene optionale Funktion')
 }
 const stillFn = stillFnSrc.slice(
   stillFnSrc.indexOf('export async function stillFilmPanel'),
   stillFnSrc.indexOf('export async function saveFilmPlan'),
 )
-if (!stillFn.includes('planStillEditPackzettel')) {
-  fail('Bild ändern ruft die Drehbuch-KI für den Packzettel')
+if (stillFn.includes('planStillEditPackzettel')) {
+  fail('Bild-Aufruf plant nicht nochmal — Packzettel ist kein hartes Tor')
 }
-if (!stillFn.includes('packFromClient') || !stillFn.includes('parseStillEditPackzettel')) {
-  fail('Bild-Aufruf nimmt den fertigen Packzettel, statt nochmal zu planen')
+if (!stillFn.includes('resolveStillEditPaint')) {
+  fail('Bild ändern entscheidet Packzettel oder direkt malen')
 }
+if (!stillFn.includes('packFromClient')) fail('Bild-Aufruf nimmt den fertigen Packzettel wenn er da ist')
 if (!stillFn.includes('stillEditCatalog')) fail('Bild ändern legt den Katalog an')
-if (!stillFn.includes('pickStillCatalogImages')) fail('Bild ändern schickt nur gelistete ids')
-if (!stillFn.includes('packzettel')) fail('Bild ändern übergibt den Packzettel an die Bild-KI')
+if (!stillFn.includes('packzettel')) fail('Bild ändern übergibt Prompt und Fotos an die Bild-KI')
 if (stillFn.includes('planFilmPanelRefNeeds')) {
   fail('Bild ändern wartet nicht auf den alten Vorlagen-Check')
 }
@@ -636,26 +643,27 @@ if (/\ballein\b|\bam Herd\b|keine Gäste/.test(stillFn)) {
 
 const pngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
 if (!pngSrc.includes('packzettel')) fail('Bild-KI-Aufruf hat den Packzettel-Pfad')
-if (!pngSrc.includes('stillPackzettelAttachEn')) {
-  fail('Packzettel-Fotos ohne EXACT-people-Sperre')
+if (!pngSrc.includes('attachOverride') && !pngSrc.includes('opts.packzettel.attach')) {
+  fail('Direkt-Malen kann den Katalog-Anhang mitschicken')
 }
 const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPanelStillImage'))
-if (!genFn.includes('if (opts.packzettel)')) fail('Packzettel umgeht stillReferencePack')
+if (!genFn.includes('if (opts.packzettel)')) fail('Packzettel/Direkt umgeht stillReferencePack')
+if (!genFn.includes('attach')) fail('Bild-KI bekommt den beschrifteten Anhang')
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
-if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die Drehbuch-KI')
+if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die optionale Drehbuch-KI')
 if (!aiSrc.includes('STILL_EDIT_PLANNER_TIMEOUT_MS')) fail('Planner ist ein kurzer Text-Aufruf')
 if (!aiSrc.includes('catalogForPlanner')) fail('Planner bekommt den Text-Katalog, nicht die PNGs')
-if (!aiSrc.includes('stillEditPlannerRetryUser')) fail('Leere imageIds: einmal kürzer nachfragen')
-if (!aiSrc.includes('STILL_EDIT_PLANNER_MODEL')) fail('Packzettel-Planner ist das günstige Text-Flash, nicht TTS')
-if (!aiSrc.includes('STILL_EDIT_PLANNER_FALLBACK_MODEL')) fail('Nach lite kommt gemini-2.5-flash')
-if (!aiSrc.includes('runStillEditPlannerModelAttempts')) fail('Leere/ungültige lite-Antwort versucht Flash')
-if (!aiSrc.includes('stillEditPlannerChatJsonOpts')) fail('Planner-Request an chatJson ist eine prüfbare Opts-Funktion')
-if (aiSrc.includes('SchemaType')) fail('Kein SDK-SchemaType — Google 400 auf lite und flash')
+if (!aiSrc.includes('GEMINI_MODEL')) fail('Planner nutzt dasselbe Modell wie Dialog')
+if (!aiSrc.includes('STILL_EDIT_PLANNER_MODEL')) fail('Packzettel-Planner ist Dialog-Flash, nicht TTS')
+if (aiSrc.includes('flash-lite')) fail('Kein flash-lite — 402-Magnet')
+if (!aiSrc.includes('stillEditPlannerChatJsonOpts')) fail('Planner-Request an chatJson wie Dialog')
+if (aiSrc.includes('SchemaType')) fail('Kein SDK-SchemaType')
 if (aiSrc.includes('STILL_EDIT_PACK_SCHEMA')) fail('Kein Packzettel-responseSchema')
 if (!aiSrc.includes('[still-edit-packzettel]')) fail('Roh-Ursache des Packzettels serverseitig loggen')
-if (!aiSrc.includes('withStillEditPlannerQuotaRetries')) fail('429 wartet und versucht denselben Klick nochmal')
-if (!aiSrc.includes('clipPlannerTimeoutMs')) fail('Quota-Retry bleibt unter dem 60s-HTTP-Budget')
+if (aiSrc.includes('withStillEditPlannerQuotaRetries')) {
+  fail('Planner wartet nicht auf Quota — Bild ändern malt')
+}
 const planStart = aiSrc.indexOf('async function requestStillEditPackzettel')
 const planEnd = aiSrc.indexOf('export async function planFilmPanelRefNeeds')
 const planFn = aiSrc.slice(planStart, planEnd > planStart ? planEnd : undefined)
@@ -678,23 +686,20 @@ if (!stillFnSrc.includes('catalogForPlanner')) {
 const hookSrc = readFileSync(new URL('../src/story/generateSceneStills.ts', import.meta.url), 'utf8')
 if (hookSrc.includes('confirmCost')) fail('Bild ändern nicht hinter Kosten-Dialog verstecken')
 if (!hookSrc.includes('finally')) fail('Busy nach Fehler zurücksetzen')
-if (!hookSrc.includes('stillTimeoutHintDe')) fail('Planner-Fehler auf Deutsch zeigen, nicht schlucken')
-if (!hookSrc.includes('stillEditTimeoutHintDe')) {
-  fail('Bild ändern zeigt eigenen Timeout-Text, nicht Diese Szene erzeugen')
+if (!hookSrc.includes('stillEditImageErrorDe')) {
+  fail('Rot nur nach Bild-Fehler, nicht nach Packzettel')
 }
-if (!hookSrc.includes('filmStillPlan')) fail('Bild ändern holt zuerst den Packzettel')
-if (!hookSrc.includes('Drehbuch-KI schreibt den Packzettel')) {
-  fail('Während des Packzettels steht ein Satz unter dem Knopf')
-}
-if (!hookSrc.includes('STILL_EDIT_PLANNER_WAIT_DE')) {
-  fail('Wenn Google voll ist, steht unter dem Knopf: warte kurz')
-}
-if (!hookSrc.includes('STILL_EDIT_PLANNER_WAIT_AFTER_MS')) {
-  fail('Warte-Satz erst wenn der Packzettel länger braucht als ein schnelles JSON')
-}
-if (!STILL_EDIT_PLANNER_WAIT_DE.includes('Google voll')) fail('Warte-Satz nennt Google voll')
-if (STILL_EDIT_PLANNER_WAIT_AFTER_MS < 5_000 || STILL_EDIT_PLANNER_WAIT_AFTER_MS >= STILL_EDIT_PLANNER_QUOTA_BACKOFF_MS) {
-  fail('Warte-Satz während der 429-Pause, nicht sofort')
+if (!hookSrc.includes('filmStillPlan')) fail('Bild ändern versucht den Packzettel')
+if (!hookSrc.includes('STILL_EDIT_PLAN_STATUS_DE')) fail('Status Packzettel …')
+if (!hookSrc.includes('STILL_EDIT_PAINT_STATUS_DE')) fail('Status wird neu gemalt …')
+if (!hookSrc.includes('tryStillEditPackzettel')) fail('Nur gültiges Packzettel-JSON an den Bild-Aufruf')
+const genOne = hookSrc.slice(hookSrc.indexOf('const generateOne'), hookSrc.indexOf('return { busySceneId'))
+if (!genOne.includes('catch')) fail('Packzettel-Fehler fängt und malt weiter')
+if (genOne.includes('setErrors') && genOne.indexOf('filmStillPlan') < genOne.indexOf('setErrors')) {
+  const planCatch = genOne.slice(genOne.indexOf('filmStillPlan'), genOne.indexOf('setStatus(STILL_EDIT_PAINT_STATUS_DE)'))
+  if (planCatch.includes('setErrors')) {
+    fail('402 am Packzettel setzt keine rote Box')
+  }
 }
 
 const uxSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
@@ -714,7 +719,7 @@ if (!apiSrc.includes('planFilmPanelStillEdit')) fail('API ruft planFilmPanelStil
 const clientSrc = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
 if (!clientSrc.includes('/film-storyboard-still-plan')) fail('Client ruft den Packzettel extra')
 if (!clientSrc.includes('STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS')) {
-  fail('Client-Wartezeit deckt Planner plus einen kurzen zweiten Ask')
+  fail('Client-Wartezeit für den kurzen Packzettel')
 }
 if (!clientSrc.includes('fromServer') || !clientSrc.includes('err.error')) {
   fail('Client zeigt den Server-error-Text, keinen eigenen Satz ohne Grund')
@@ -731,4 +736,12 @@ if (!boardSrc.includes('stills.errors[panel.id]')) {
   fail('Bilder-Seite zeigt den Fehler am Bild, nicht nur in Szenen anpassen')
 }
 
-console.log('OK: Bild ändern als Packzettel-Förderband, ohne Stichwort-Denken')
+const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), 'utf8')
+if (!planMd.includes('Packzettel ist nice-to-have') && !planMd.includes('nice-to-have')) {
+  fail('ZEBLA_PLAN: Packzettel nice-to-have')
+}
+if (!planMd.includes('malt immer') && !/Bild ändern.*malt immer/s.test(planMd)) {
+  fail('ZEBLA_PLAN: Bild ändern malt immer')
+}
+
+console.log('OK: Bild ändern malt auch ohne Packzettel, ohne Stichwort-Denken')
