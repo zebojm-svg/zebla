@@ -798,7 +798,7 @@ export const STILL_EDIT_IMAGE_TIMEOUT_DE =
 
 /** Google 402 Payment Required on the image model — Konto/Kontingent, no URL, no retry. */
 export const STILL_EDIT_IMAGE_BILLING_DE =
-  'Google lässt das Malen gerade nicht zu (Konto/Kontingent). Bitte später noch einmal «Bild ändern».'
+  'Google lässt das Malen gerade nicht zu (Konto/Kontingent). Bitte nicht nochmal klicken.'
 
 /** 402 / paid-plan on the IMAGE call — not 429 rate-limit, not Packzettel. */
 export function isStillEditImageBillingError(raw: string): boolean {

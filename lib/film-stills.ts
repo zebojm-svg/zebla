@@ -6,14 +6,20 @@ import { assertAiAllowed } from './ai-authorize.js'
  */
 
 import { randomUUID } from 'crypto'
-import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
+import {
+  geminiImageModelCandidates,
+  isGeminiImageBillingError,
+  shouldTryNextGeminiImageModel,
+} from './gemini-image-model.js'
 import {
   closeupLooksLikeWideCrop,
   cropWideStillToSpeaker,
 } from './film-closeup-crop.js'
 import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
 import {
+  isStillEditImageBillingError,
   stillEditImageErrorDe,
+  STILL_EDIT_IMAGE_BILLING_DE,
   STILL_EDIT_IMAGE_TIMEOUT_DE,
 } from '../shared/film-still-pack.js'
 import {
@@ -81,7 +87,7 @@ async function uploadPng(buffer: Buffer, path: string): Promise<string> {
   return `https://storage.googleapis.com/${bucket.name}/${path}`
 }
 
-async function generateStillPng(
+export async function generateStillPng(
   prompt: string,
   refs: InlineImage[],
   correctingExisting = false,
@@ -161,12 +167,18 @@ async function generateStillPng(
       }
       const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
       if (!img?.data) throw new Error(`[${status}] Kein Standbild erhalten.`)
+      const png = Buffer.from(img.data, 'base64')
+      if (png.length < 32) throw new Error(`[${status}] Kein Standbild erhalten.`)
+      // KI-Punkte erst wenn ein PNG da ist — nicht bei 402/400/Zeitlimit/leer.
       recordGeminiResponse('still', model, data)
-      return Buffer.from(img.data, 'base64')
+      return png
     } catch (err) {
       lastError = stillEditImageErrorDe(err)
       const raw = err instanceof Error ? err.message : lastError
-      if (isGeminiImageUnavailable(raw)) continue
+      if (isGeminiImageBillingError(raw) || isStillEditImageBillingError(raw)) {
+        throw new Error(STILL_EDIT_IMAGE_BILLING_DE)
+      }
+      if (shouldTryNextGeminiImageModel(raw)) continue
       throw new Error(lastError)
     }
   }
