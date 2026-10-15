@@ -765,6 +765,9 @@ export function stillEditTimeoutHintDe(message: string): string {
   if (clean === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(clean)) {
     return STILL_EDIT_PLANNER_QUOTA_DE
   }
+  if (clean === STILL_EDIT_IMAGE_BILLING_DE || isStillEditImageBillingError(clean)) {
+    return STILL_EDIT_IMAGE_BILLING_DE
+  }
   if (clean === STILL_EDIT_PLANNER_ERROR_DE) return STILL_EDIT_PLANNER_GOOGLE_DE
   if (/bild ändern|packzettel/i.test(clean) && clean !== STILL_EDIT_PLANNER_ERROR_DE) {
     return stillEditPlannerErrorDe(clean)
@@ -793,6 +796,20 @@ export const STILL_EDIT_IMAGE_ERROR_DE =
 export const STILL_EDIT_IMAGE_TIMEOUT_DE =
   'Das Bild konnte nicht neu gemalt werden (Zeitlimit). Bitte noch einmal «Bild ändern».'
 
+/** Google 402 Payment Required on the image model — Konto/Kontingent, no URL, no retry. */
+export const STILL_EDIT_IMAGE_BILLING_DE =
+  'Google lässt das Malen gerade nicht zu (Konto/Kontingent). Bitte später noch einmal «Bild ändern».'
+
+/** 402 / paid-plan on the IMAGE call — not 429 rate-limit, not Packzettel. */
+export function isStillEditImageBillingError(raw: string): boolean {
+  if (stillEditPlannerGoogleHttpStatus(raw) === 402) return true
+  const lower = raw.toLowerCase()
+  if (/\bpayment required\b/.test(lower)) return true
+  if (/\bpaid plans?\b/.test(lower) || /upgrade your account/.test(lower)) return true
+  if (/billing/.test(lower) && /required|enable|account|not enabled/.test(lower)) return true
+  return false
+}
+
 /** Red box only after the IMAGE call fails — never Packzettel, no Google URL. */
 export function stillEditImageErrorDe(err: unknown): string {
   const original = err instanceof Error ? err.message : String(err ?? '')
@@ -801,12 +818,18 @@ export function stillEditImageErrorDe(err: unknown): string {
   if (raw === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(original) || isStillEditPlannerQuotaError(raw)) {
     return STILL_EDIT_PLANNER_QUOTA_DE
   }
+  if (raw === STILL_EDIT_IMAGE_BILLING_DE || isStillEditImageBillingError(original) || isStillEditImageBillingError(raw)) {
+    return STILL_EDIT_IMAGE_BILLING_DE
+  }
   if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
     return raw
   }
   const status = stillEditPlannerGoogleHttpStatus(raw)
   if (/zeitlimit|zu lange|timeout|zeitüberschreitung|abort|deadline|FUNCTION_INVOCATION/i.test(raw) || status === 504) {
     return STILL_EDIT_IMAGE_TIMEOUT_DE
+  }
+  if (status === 402 || isStillEditImageBillingError(raw)) {
+    return STILL_EDIT_IMAGE_BILLING_DE
   }
   if (status && status >= 400 && status < 600) {
     return `Das Bild konnte nicht neu gemalt werden (${status}). Bitte noch einmal «Bild ändern».`

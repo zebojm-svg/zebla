@@ -151,7 +151,6 @@ async function generateStillPng(
       } catch {
         throw new Error(`[${res.status}] Kein Standbild erhalten.`)
       }
-      recordGeminiResponse('still', model, data)
       const status = Number(data.error?.code) || res.status
       if (data.error?.message || !res.ok) {
         const dump = data.error?.message || bodyText.slice(0, 180)
@@ -162,10 +161,12 @@ async function generateStillPng(
       }
       const img = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
       if (!img?.data) throw new Error(`[${status}] Kein Standbild erhalten.`)
+      recordGeminiResponse('still', model, data)
       return Buffer.from(img.data, 'base64')
     } catch (err) {
       lastError = stillEditImageErrorDe(err)
-      if (isGeminiImageUnavailable(err instanceof Error ? err.message : lastError)) continue
+      const raw = err instanceof Error ? err.message : lastError
+      if (isGeminiImageUnavailable(raw)) continue
       throw new Error(lastError)
     }
   }

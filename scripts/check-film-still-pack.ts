@@ -19,6 +19,7 @@ import {
   stillEditHarvestNoteDe,
   stillEditHarvestNoteForPaint,
   stillEditImageErrorDe,
+  isStillEditImageBillingError,
   stillEditLineDe,
   stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
@@ -34,6 +35,7 @@ import {
   isStillEditPlannerQuotaError,
   withStillEditPlannerQuotaRetries,
   STILL_EDIT_DIRECTOR_DE,
+  STILL_EDIT_IMAGE_BILLING_DE,
   STILL_EDIT_IMAGE_ERROR_DE,
   STILL_EDIT_IMAGE_TIMEOUT_DE,
   STILL_EDIT_PAINT_STATUS_DE,
@@ -57,6 +59,12 @@ import {
   stillEditHintPriorityEn,
   stillReferencePack,
 } from '../shared/film-stills.ts'
+import {
+  GEMINI_IMAGE_FALLBACK,
+  GEMINI_IMAGE_PREFERRED,
+  isGeminiImageBillingError,
+  isGeminiImageUnavailable,
+} from '../lib/gemini-image-model.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -730,9 +738,25 @@ if (
 if (stillEditImageErrorDe(new Error(sdk402)).includes('Packzettel')) {
   fail('Bild-Fehler sagt nicht Packzettel — 402 am Planner ist kein rotes Tor')
 }
-if (stillEditImageErrorDe(new Error(sdk402)) !== 'Das Bild konnte nicht neu gemalt werden (402). Bitte noch einmal «Bild ändern».') {
-  fail('402 an der Bild-KI ist (402) auf Deutsch, ohne URL')
+if (stillEditImageErrorDe(new Error(sdk402)) !== STILL_EDIT_IMAGE_BILLING_DE) {
+  fail('402 an der Bild-KI ist Konto/Kontingent, ohne URL')
 }
+if (
+  stillEditImageErrorDe(new Error(sdk402)).includes('http') ||
+  stillEditImageErrorDe(new Error(sdk402)).includes('googleapis')
+) {
+  fail('402-Satz ohne Google-URL')
+}
+if (!isStillEditImageBillingError(sdk402)) fail('402 Payment Required ist Billing')
+if (isStillEditImageBillingError('429 Too Many Requests')) fail('429 ist voll, nicht Konto')
+if (stillEditTimeoutHintDe(sdk402) !== STILL_EDIT_IMAGE_BILLING_DE) {
+  fail('402-Hinweis bleibt Konto/Kontingent')
+}
+if (!STILL_EDIT_IMAGE_BILLING_DE.includes('Konto/Kontingent')) {
+  fail('402-Satz nennt Konto/Kontingent')
+}
+if (!STILL_EDIT_IMAGE_BILLING_DE.includes('Bild ändern')) fail('402-Satz bleibt «Bild ändern»')
+if (/https?:\/\//.test(STILL_EDIT_IMAGE_BILLING_DE)) fail('402-Satz ohne URL')
 if (stillEditImageErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_IMAGE_ERROR_DE) {
   fail('Packzettel-Satz nicht als Bild-Fehler zeigen')
 }
@@ -789,6 +813,28 @@ const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPan
 if (!genFn.includes('stillReferencePack')) fail('Bild-KI nutzt stillReferencePack')
 if (!pngSrc.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
 if (!pngSrc.includes('STILL_EDIT_IMAGE_TIMEOUT_DE')) fail('Zeitlimit kommt in der roten Box')
+if (!pngSrc.includes('geminiImageModelCandidates')) {
+  fail('Erstes Malen und Bild ändern nutzen dieselben Bildmodelle')
+}
+if (!pngSrc.includes('generativelanguage.googleapis.com')) fail('Standbilder über AI Studio')
+if (pngSrc.includes('aiplatform.googleapis.com') || pngSrc.includes('vertexai')) {
+  fail('Kein Vertex für Standbilder')
+}
+const genPng = pngSrc.slice(
+  pngSrc.indexOf('async function generateStillPng'),
+  pngSrc.indexOf('export function stillPromptForPanel'),
+)
+if (genPng.indexOf('recordGeminiResponse') < genPng.indexOf('if (!img?.data)')) {
+  fail('KI-Punkte erst nach erfolgreichem Bild, nicht bei 402')
+}
+if (GEMINI_IMAGE_PREFERRED !== 'gemini-3.1-flash-image') fail('Bevorzugtes Bildmodell 3.1-flash-image')
+if (GEMINI_IMAGE_FALLBACK !== 'gemini-2.5-flash-image') fail('Notnagel 2.5-flash-image')
+if (!isGeminiImageBillingError('[402] Payment Required')) fail('402 ist Billing')
+if (isGeminiImageUnavailable('[402] Payment Required')) fail('402 nicht aufs nächste Modell')
+if (isGeminiImageUnavailable('429 Too Many Requests')) fail('429 nicht aufs nächste Modell')
+if (!isGeminiImageUnavailable('NOT_FOUND: gemini-3.1-flash-image is not found for API version')) {
+  fail('fehlendes Modell darf auf 2.5 fallen')
+}
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die optionale Drehbuch-KI')
@@ -883,6 +929,12 @@ if (!planMd.includes('Hinweis ist die Regie')) {
 }
 if (!planMd.includes('höchste Priorität')) {
   fail('ZEBLA_PLAN: Hinweis hat höchste Priorität')
+}
+if (!planMd.includes('Google lässt das Malen gerade nicht zu')) {
+  fail('ZEBLA_PLAN: 402-Satz Konto/Kontingent')
+}
+if (!planMd.includes('generateStillPng')) {
+  fail('ZEBLA_PLAN: dieselbe Bild-KI wie erstes Malen')
 }
 
 const stillsSrc = readFileSync(new URL('../shared/film-stills.ts', import.meta.url), 'utf8')
