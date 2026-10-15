@@ -33,8 +33,8 @@ Zebla malt nicht selbst und überlegt nicht selbst. Es hängt Prompts und Fotos 
 
 1. **Drehbuch-KI** liest die Geschichte und schreibt Inventar: Figuren, Räume, **jede wiederkehrende Sache** mit fester id. Wenn Khan Blumen mitbringt und sie später auf dem Tisch stehen — dieselben Blumen (`blumen-1`). Gleiche Regel für Kanne, Tablett, Mantel, Zeitung.
 2. **Vorlagen-Check** (zweite KI, nur JSON, malt nicht): für jedes **neue** Standbild, welche Fotos mitmüssen.
-3. **Bild ändern** = **Hinweis zuerst** (höchste Priorität, einmal wiederholt), dann `stillReferencePack` ohne vorige Szenen-Bilder desselben Ortes. Stehender Satz: **Hinweis ist die Regie; Fotos sind Aussehen.** Widerspricht der Board-Sitzplan/Kamera/wer-im-Bild dem Hinweis — gilt der Hinweis. Board-Stellung nur wenn der Hinweis dazu schweigt. Fotos: Stammbilder, Orts-Grundbild, Requisite nur als Bibliotheks-Platte (kein gemaltes Szenen-Still). Kein aktuelles Still als GROUNDBILD. Kein Packzettel, kein Filmkatalog. Keine Stichwörter — PR #74 nicht das Produkt. UX: ein Hinweis + «Bild ändern». Rot nur wenn das **Malen** scheitert, mit Grund (402 / Zeitlimit).
-4. **Bild-KI** beim ersten Malen: kleines Paket (höchstens vier Fotos), voriges Bild wo **diese** Sache sichtbar war, Ort, Gesicht. Beim Ändern: Hinweis zuerst, dann Stammbilder + Orts-Grundbild + Inventar-Platte — nicht vorige Szenen-Bilder, nicht das aktuelle Still.
+3. **Bild ändern** = **FLUX Kontext** auf das **aktuelle Bild** plus den Hinweis wörtlich (höchste Priorität, einmal wiederholt). Stehender Satz: **Hinweis ist die Regie; Fotos sind Aussehen.** Kein Gemini, kein Packzettel, keine Stichwörter — PR #74 nicht das Produkt. UX: ein Hinweis + «Bild ändern». Rot: FLUX-Konto/Kontingent auf Replicate, oder Zeitlimit. Ohne FLUX-Key malt Google das nicht.
+4. **Bild-KI** beim ersten Malen: Gemini + `stillReferencePack` (höchstens vier Fotos), voriges Bild wo **diese** Sache sichtbar war, Ort, Gesicht. Beim Ändern: FLUX nimmt das vorhandene Still und folgt dem Satz.
 
 ## Design (die «gleiche Holzart»)
 
@@ -52,8 +52,8 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 | Was | Wo |
 |---|---|
 | Cursor-Tokens | [cursor.com/dashboard/spending](https://cursor.com/dashboard/spending) |
-| Standbilder (aktuell Gemini) | [Google AI Studio](https://aistudio.google.com) → Usage / Billing |
-| FLUX-Reserve | [Replicate Billing](https://replicate.com/account/billing) (Guthaben kann unberührt sein, wenn Gemini malt) |
+| Weit-Bilder / erstes Malen (Gemini) | [Google AI Studio](https://aistudio.google.com) → Usage / Billing |
+| Bild ändern + Nahaufnahmen (FLUX) | [Replicate Billing](https://replicate.com/account/billing) |
 | Live/Deploy | [Vercel Zebla](https://vercel.com/zebojm-svgs-projects/zebla) · Anmeldung nur auf [zebla.zebotools.ch](https://zebla.zebotools.ch) — Vercel-Git-Vorschau (`…-git-….vercel.app`) darf Google nicht |
 | Zebla intern | App oben **Pro** (Master = fast kein Limit) |
 
@@ -61,7 +61,7 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder, Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler), **Drehbuch → Inventar → Vorlagen** (jede wiederkehrende Sache behält dieselbe id und wandert mit dem vorigen Foto **dieser** Sache: Blumen an der Tür, später auf dem Tisch; Kanne/Tablett derselbe Mechanismus, keine Extra-Tee-Logik), Zwischenbilder auf Augenhöhe, **Bild ändern als Packzettel** (`planStillEditPackzettel` → `{ imagePrompt, imageIds[] }`: Katalog + Hinweis an die Drehbuch-KI, genau diese Fotos an die Bild-KI; keine Stichwörter `allein`/`am Herd` — PR #74 nicht mergen), **Bild ändern mit Vorlagen-Check** (voriges Ortsbild, Requisiten, Personen — spätere Bilder der Szene neu), **Dialog zuerst Muttersprache** («Dialog daraus machen» schreibt Deutsch; Zielsprache, Lautschrift und Birkenbihl erst mit «Zielsprache machen» unter Text), **drei Sprachzeilen** (Deutsch · Zielsprache · Birkenbihl · Lautschrift), **Anmeldung / API-Boot** (Hub-Kachel, sso_mint, `/api/health` — kaputter Typ in `lib/ai.ts` behoben), **Zielsprache in Paketen** (ein Klick «Zielsprache machen»: Abschnitt oder ~8 Zeilen plus Birkenbihl; Knopf «läuft», dann «noch X Zeilen»; fertige Zeilen bleiben), **ein Knopf «Bilder planen»** auf Bilder (kein zweiter Zielsprache-Knopf dort; fehlt die Übersetzung, Satz «Zielsprache machst du unter Text»), **erster Bildplan lokal** (`planBoardWithoutAi`, sofort gespeichert, ohne auf Gemini zu warten — kein 60s-Loch auf der leeren Seite). Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): alte Filme ohne Deutsch **«Deutsch unter die Zeilen»**; neue Filme **Dialog daraus machen**, unter Text **Zielsprache machen**, auf Bilder **Bilder planen**.
 
-**In Arbeit:** «Bild ändern» — Hinweis zuerst (höchste Priorität, einmal wiederholt); keine vorigen Szenen-Bilder desselben Ortes. Noch nicht mergen, bis Jean-Marie «ok mergen» sagt. Keine Stichwörter. #74 nicht mergen.
+**In Arbeit:** «Bild ändern» über **FLUX Kontext** (aktuelles Bild + Hinweis). Kein Gemini auf diesem Knopf. Jean-Marie: ja so bauen und mergen. #74 nicht mergen.
 
 **Nächste Baustellen (noch nicht hier):**
 

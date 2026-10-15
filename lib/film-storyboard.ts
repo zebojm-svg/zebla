@@ -911,7 +911,7 @@ export async function stillFilmPanel(
       [
         pack.noteDe,
         correction
-          ? `Neu gemalt nach Hinweis: ${correction}`
+          ? `Neu gemalt mit FLUX nach Hinweis: ${correction}`
           : isCloseup
             ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
             : isInsert

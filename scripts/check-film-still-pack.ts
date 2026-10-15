@@ -19,6 +19,8 @@ import {
   stillEditHarvestNoteDe,
   stillEditHarvestNoteForPaint,
   stillEditImageErrorDe,
+  STILL_EDIT_FLUX_BILLING_DE,
+  STILL_EDIT_FLUX_MISSING_DE,
   stillEditLineDe,
   stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
@@ -55,6 +57,7 @@ import { clientTimeoutMessage } from '../shared/api-timeout.ts'
 import {
   buildFilmStillPrompt,
   stillEditHintPriorityEn,
+  stillEditKontextPrompt,
   stillReferencePack,
 } from '../shared/film-stills.ts'
 
@@ -316,6 +319,23 @@ const hint = 'mach dass ramo alleine am Herd steht'
   }
   if (!editPrompt.includes(STILL_EDIT_DIRECTOR_DE)) {
     fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
+  }
+  const fluxPrompt = stillEditKontextPrompt(hint)
+  if (!fluxPrompt.startsWith(stillEditHintPriorityEn(hint))) {
+    fail('FLUX-Prompt: Hinweis zuerst')
+  }
+  if (!fluxPrompt.includes('Edit this existing 16:9 illustration')) {
+    fail('FLUX-Prompt ändert das vorhandene Bild')
+  }
+  if (!fluxPrompt.includes(hint)) fail('FLUX-Prompt enthält den Hinweis wörtlich')
+  if (/\ballein\b|\bam Herd\b|keine Gäste/.test(stillEditKontextPrompt.toString())) {
+    fail('FLUX-Prompt-Funktion erkennt keine Stichwörter')
+  }
+  if (stillEditImageErrorDe(new Error('Replicate FLUX Kontext: Insufficient credit')) !== STILL_EDIT_FLUX_BILLING_DE) {
+    fail('Replicate ohne Guthaben sagt FLUX Konto, nicht Google')
+  }
+  if (stillEditImageErrorDe(new Error(STILL_EDIT_FLUX_MISSING_DE)) !== STILL_EDIT_FLUX_MISSING_DE) {
+    fail('Ohne FLUX-Key bleibt der FLUX-Satz')
   }
   if (/MUST be visible/.test(editPrompt)) {
     fail('Hinweis entscheidet wer im Bild ist')
@@ -786,7 +806,15 @@ if (pngSrc.includes('opts.packzettel') || pngSrc.includes('if (opts.packzettel)'
   fail('Bild-KI-Aufruf hat keinen Packzettel-Pfad')
 }
 const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPanelStillImage'))
-if (!genFn.includes('stillReferencePack')) fail('Bild-KI nutzt stillReferencePack')
+if (!genFn.includes('stillReferencePack')) fail('Erstes Malen nutzt stillReferencePack')
+if (!genFn.includes('editImageWithKontext')) fail('Bild ändern nutzt FLUX Kontext')
+if (!genFn.includes('stillEditKontextPrompt')) fail('FLUX-Prompt aus dem Hinweis')
+if (genFn.indexOf('editImageWithKontext') > genFn.indexOf('generateStillPng')) {
+  fail('Bild ändern: FLUX vor Gemini')
+}
+if (!genFn.includes('STILL_EDIT_FLUX_MISSING_DE')) {
+  fail('Ohne FLUX-Key kein Google-Malen auf Bild ändern')
+}
 if (!pngSrc.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
 if (!pngSrc.includes('STILL_EDIT_IMAGE_TIMEOUT_DE')) fail('Zeitlimit kommt in der roten Box')
 
@@ -876,7 +904,10 @@ if (!boardSrc.includes('stills.errors[panel.id]')) {
 
 const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), 'utf8')
 if (!planMd.includes('stillReferencePack')) {
-  fail('ZEBLA_PLAN: Bild ändern nutzt stillReferencePack')
+  fail('ZEBLA_PLAN: erstes Malen nutzt stillReferencePack')
+}
+if (!planMd.includes('FLUX')) {
+  fail('ZEBLA_PLAN: Bild ändern über FLUX Kontext')
 }
 if (!planMd.includes('Hinweis ist die Regie')) {
   fail('ZEBLA_PLAN: Hinweis ist die Regie; Fotos sind Aussehen')
@@ -887,6 +918,7 @@ if (!planMd.includes('höchste Priorität')) {
 
 const stillsSrc = readFileSync(new URL('../shared/film-stills.ts', import.meta.url), 'utf8')
 if (!stillsSrc.includes('stillEditHintPriorityEn')) fail('Hinweis-Priorität im Bild-Prompt')
+if (!stillsSrc.includes('stillEditKontextPrompt')) fail('FLUX-Kontext-Prompt für Bild ändern')
 if (stillsSrc.includes('stillShowsExtraPeople')) {
   fail('Bild ändern rät nicht extra Leute aus dem Szenen-Still')
 }

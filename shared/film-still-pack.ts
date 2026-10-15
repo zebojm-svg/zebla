@@ -793,6 +793,21 @@ export const STILL_EDIT_IMAGE_ERROR_DE =
 export const STILL_EDIT_IMAGE_TIMEOUT_DE =
   'Das Bild konnte nicht neu gemalt werden (Zeitlimit). Bitte noch einmal «Bild ändern».'
 
+export const STILL_EDIT_FLUX_BILLING_DE =
+  'FLUX lässt das Malen gerade nicht zu (Konto/Kontingent auf Replicate). Bitte nicht nochmal klicken.'
+
+export const STILL_EDIT_FLUX_MISSING_DE =
+  'Bild ändern braucht FLUX (Replicate-Guthaben). Google malt das nicht.'
+
+export function isStillEditFluxBillingError(raw: string): boolean {
+  const lower = raw.toLowerCase()
+  if (/insufficient credit|out of credit|not enough credit/.test(lower)) return true
+  if (/replicate|fal\.ai|\bflux\b/.test(lower) && (/\b402\b|\bpayment required\b|billing/.test(lower))) {
+    return true
+  }
+  return false
+}
+
 /** Red box only after the IMAGE call fails — never Packzettel, no Google URL. */
 export function stillEditImageErrorDe(err: unknown): string {
   const original = err instanceof Error ? err.message : String(err ?? '')
@@ -800,6 +815,10 @@ export function stillEditImageErrorDe(err: unknown): string {
   if (!raw.trim()) return STILL_EDIT_IMAGE_ERROR_DE
   if (raw === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(original) || isStillEditPlannerQuotaError(raw)) {
     return STILL_EDIT_PLANNER_QUOTA_DE
+  }
+  if (raw === STILL_EDIT_FLUX_MISSING_DE) return STILL_EDIT_FLUX_MISSING_DE
+  if (raw === STILL_EDIT_FLUX_BILLING_DE || isStillEditFluxBillingError(original) || isStillEditFluxBillingError(raw)) {
+    return STILL_EDIT_FLUX_BILLING_DE
   }
   if (PLANNER_AUTH_OR_KEY.test(raw) || PLANNER_APP_PASS_THROUGH.test(raw)) {
     return raw
