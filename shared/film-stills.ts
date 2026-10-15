@@ -48,6 +48,21 @@ export function stillEditHintPriorityEn(hint?: string): string {
   )
 }
 
+/**
+ * Bild ändern über FLUX Kontext: aktuelles Still + Hinweis.
+ * Kein Stichwort-Parser — der wörtliche Hinweis ist die Regie.
+ */
+export function stillEditKontextPrompt(hint: string): string {
+  const h = hint.trim()
+  return (
+    `${stillEditHintPriorityEn(h)} ` +
+    `Edit this existing 16:9 illustration. Follow the director note. ` +
+    `Keep the same drawing style, the same room, and the same faces and clothes of whoever remains. ` +
+    `If the director changes who is in the frame or where they stand, do that — do not keep the old blocking. ` +
+    `No text, no subtitles, no speech bubbles on the image.`
+  )
+}
+
 /** Bibliotheks-Freisteller einer Requisite — Typ + Name, kein Stichwort aus dem Hinweis. */
 export type StillPackLibraryAsset = {
   type?: string

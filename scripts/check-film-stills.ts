@@ -1060,7 +1060,11 @@ const stillFn = stillGenSrc.slice(
   stillGenSrc.indexOf('export async function saveFilmPlan'),
 )
 if (!stillFn.includes('stillReferencePack')) {
-  fail('Bild ändern nutzt stillReferencePack, nicht den Packzettel')
+  fail('Erstes Malen nutzt stillReferencePack')
+}
+const stillPngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
+if (!stillPngSrc.includes('stillEditKontextPrompt') || !stillPngSrc.includes('editImageWithKontext')) {
+  fail('Bild ändern nutzt FLUX Kontext auf das aktuelle Still')
 }
 if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCatalog')) {
   fail('Bild ändern schickt nicht den Filmkatalog')

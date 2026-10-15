@@ -14,6 +14,7 @@ import {
 import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
 import {
   stillEditImageErrorDe,
+  STILL_EDIT_FLUX_MISSING_DE,
   STILL_EDIT_IMAGE_TIMEOUT_DE,
 } from '../shared/film-still-pack.js'
 import {
@@ -21,6 +22,7 @@ import {
   correctionIsFaceOnly,
   correctionRewritesPerson,
   stillAttachmentInstruction,
+  stillEditKontextPrompt,
   stillReferencePack,
   type StillPackLibraryAsset,
 } from '../shared/film-stills.js'
@@ -229,6 +231,23 @@ export async function generateFilmPanelStillImage(opts: {
   inventory?: FilmInventory | null
   library?: StillPackLibraryAsset[]
 }): Promise<string> {
+  const hint = opts.panel.stillCorrection?.trim()
+  const currentUrl = opts.panel.stillUrl?.trim()
+  if (hint && currentUrl) {
+    if (!fluxLockAvailable()) {
+      throw new Error(STILL_EDIT_FLUX_MISSING_DE)
+    }
+    try {
+      const moved = await editImageWithKontext({
+        prompt: stillEditKontextPrompt(hint),
+        imageUrl: currentUrl,
+        aspectRatio: '16:9',
+      })
+      return await uploadPng(moved.buffer, `film-stills/${randomUUID()}.png`)
+    } catch (err) {
+      throw new Error(stillEditImageErrorDe(err))
+    }
+  }
   const pack = stillReferencePack(opts.panel, {
     previousStillUrl: opts.previousStillUrl,
     correctFromUrl: opts.correctFromUrl,
