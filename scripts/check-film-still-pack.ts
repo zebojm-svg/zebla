@@ -19,6 +19,7 @@ import {
   stillEditHarvestNoteDe,
   stillEditHarvestNoteForPaint,
   stillEditImageErrorDe,
+  isStillEditImageBillingError,
   stillEditLineDe,
   stillEditPlannerChatJsonOpts,
   stillEditPlannerErrorDe,
@@ -34,6 +35,7 @@ import {
   isStillEditPlannerQuotaError,
   withStillEditPlannerQuotaRetries,
   STILL_EDIT_DIRECTOR_DE,
+  STILL_EDIT_IMAGE_BILLING_DE,
   STILL_EDIT_IMAGE_ERROR_DE,
   STILL_EDIT_IMAGE_TIMEOUT_DE,
   STILL_EDIT_PAINT_STATUS_DE,
@@ -57,6 +59,14 @@ import {
   stillEditHintPriorityEn,
   stillReferencePack,
 } from '../shared/film-stills.ts'
+import {
+  GEMINI_IMAGE_FALLBACK,
+  GEMINI_IMAGE_PREFERRED,
+  isGeminiImageBillingError,
+  isGeminiImageUnavailable,
+  shouldTryNextGeminiImageModel,
+} from '../lib/gemini-image-model.ts'
+import { generateStillPng } from '../lib/film-stills.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -730,9 +740,30 @@ if (
 if (stillEditImageErrorDe(new Error(sdk402)).includes('Packzettel')) {
   fail('Bild-Fehler sagt nicht Packzettel — 402 am Planner ist kein rotes Tor')
 }
-if (stillEditImageErrorDe(new Error(sdk402)) !== 'Das Bild konnte nicht neu gemalt werden (402). Bitte noch einmal «Bild ändern».') {
-  fail('402 an der Bild-KI ist (402) auf Deutsch, ohne URL')
+if (stillEditImageErrorDe(new Error(sdk402)) !== STILL_EDIT_IMAGE_BILLING_DE) {
+  fail('402 an der Bild-KI ist Konto/Kontingent, ohne URL')
 }
+if (
+  stillEditImageErrorDe(new Error(sdk402)).includes('http') ||
+  stillEditImageErrorDe(new Error(sdk402)).includes('googleapis')
+) {
+  fail('402-Satz ohne Google-URL')
+}
+if (!isStillEditImageBillingError(sdk402)) fail('402 Payment Required ist Billing')
+if (isStillEditImageBillingError('429 Too Many Requests')) fail('429 ist voll, nicht Konto')
+if (stillEditTimeoutHintDe(sdk402) !== STILL_EDIT_IMAGE_BILLING_DE) {
+  fail('402-Hinweis bleibt Konto/Kontingent')
+}
+if (!STILL_EDIT_IMAGE_BILLING_DE.includes('Konto/Kontingent')) {
+  fail('402-Satz nennt Konto/Kontingent')
+}
+if (!STILL_EDIT_IMAGE_BILLING_DE.includes('nicht nochmal klicken')) {
+  fail('402-Satz: nicht nochmal klicken')
+}
+if (STILL_EDIT_IMAGE_BILLING_DE.includes('Bitte später')) {
+  fail('402 nicht zum Nochmalklicken einladen')
+}
+if (/https?:\/\//.test(STILL_EDIT_IMAGE_BILLING_DE)) fail('402-Satz ohne URL')
 if (stillEditImageErrorDe(new Error(STILL_EDIT_PLANNER_ERROR_DE)) !== STILL_EDIT_IMAGE_ERROR_DE) {
   fail('Packzettel-Satz nicht als Bild-Fehler zeigen')
 }
@@ -789,6 +820,44 @@ const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPan
 if (!genFn.includes('stillReferencePack')) fail('Bild-KI nutzt stillReferencePack')
 if (!pngSrc.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
 if (!pngSrc.includes('STILL_EDIT_IMAGE_TIMEOUT_DE')) fail('Zeitlimit kommt in der roten Box')
+if (!pngSrc.includes('geminiImageModelCandidates')) {
+  fail('Erstes Malen und Bild ändern nutzen dieselben Bildmodelle')
+}
+if (!pngSrc.includes('generativelanguage.googleapis.com')) fail('Standbilder über AI Studio')
+if (pngSrc.includes('aiplatform.googleapis.com') || pngSrc.includes('vertexai')) {
+  fail('Kein Vertex für Standbilder')
+}
+const genPng = pngSrc.slice(
+  pngSrc.indexOf('async function generateStillPng'),
+  pngSrc.indexOf('export function stillPromptForPanel'),
+)
+if (genPng.indexOf('recordGeminiResponse') < genPng.indexOf('if (!img?.data)')) {
+  fail('KI-Punkte erst nach erfolgreichem Bild, nicht bei 402')
+}
+if (!genPng.includes('KI-Punkte erst wenn ein PNG da ist')) {
+  fail('Kommentar: KI-Punkte erst nach PNG')
+}
+if (!genPng.includes('isGeminiImageBillingError') || !genPng.includes('STILL_EDIT_IMAGE_BILLING_DE')) {
+  fail('402 wirft hart, ohne zweites Modell')
+}
+if (!genPng.includes('shouldTryNextGeminiImageModel')) {
+  fail('nur fehlendes Modell darf das nächste versuchen')
+}
+if (GEMINI_IMAGE_PREFERRED !== 'gemini-3.1-flash-image') fail('Bevorzugtes Bildmodell 3.1-flash-image')
+if (GEMINI_IMAGE_FALLBACK !== 'gemini-2.5-flash-image') fail('Notnagel 2.5-flash-image')
+if (!isGeminiImageBillingError('[402] Payment Required')) fail('402 ist Billing')
+if (isGeminiImageUnavailable('[402] Payment Required')) fail('402 nicht aufs nächste Modell')
+if (shouldTryNextGeminiImageModel('[402] Payment Required')) fail('402 ruft kein zweites Modell')
+if (shouldTryNextGeminiImageModel('[400] Invalid argument')) fail('400 ruft kein zweites Modell')
+if (shouldTryNextGeminiImageModel(STILL_EDIT_IMAGE_TIMEOUT_DE)) fail('Zeitlimit ruft kein zweites Modell')
+if (shouldTryNextGeminiImageModel('[200] Kein Standbild erhalten.')) fail('leeres Bild ruft kein zweites Modell')
+if (isGeminiImageUnavailable('429 Too Many Requests')) fail('429 nicht aufs nächste Modell')
+if (!isGeminiImageUnavailable('NOT_FOUND: gemini-3.1-flash-image is not found for API version')) {
+  fail('fehlendes Modell darf auf 2.5 fallen')
+}
+if (!shouldTryNextGeminiImageModel('NOT_FOUND: gemini-3.1-flash-image is not found for API version')) {
+  fail('fehlendes Modell darf weitergehen')
+}
 
 const aiSrc = readFileSync(new URL('../lib/ai.ts', import.meta.url), 'utf8')
 if (!aiSrc.includes('planStillEditPackzettel')) fail('planStillEditPackzettel ist die optionale Drehbuch-KI')
@@ -884,6 +953,21 @@ if (!planMd.includes('Hinweis ist die Regie')) {
 if (!planMd.includes('höchste Priorität')) {
   fail('ZEBLA_PLAN: Hinweis hat höchste Priorität')
 }
+if (!planMd.includes('Google lässt das Malen gerade nicht zu')) {
+  fail('ZEBLA_PLAN: 402-Satz Konto/Kontingent')
+}
+if (!planMd.includes('Bitte nicht nochmal klicken')) {
+  fail('ZEBLA_PLAN: 402 nicht nochmal klicken')
+}
+if (!planMd.includes('Google-Guthaben können wir nicht')) {
+  fail('ZEBLA_PLAN: Google-Guthaben nicht erstattbar')
+}
+if (!planMd.includes('nur nach gespeichertem PNG') && !planMd.includes('KI-Punkte nur nach PNG')) {
+  fail('ZEBLA_PLAN: KI-Punkte nur nach PNG')
+}
+if (!planMd.includes('generateStillPng')) {
+  fail('ZEBLA_PLAN: dieselbe Bild-KI wie erstes Malen')
+}
 
 const stillsSrc = readFileSync(new URL('../shared/film-stills.ts', import.meta.url), 'utf8')
 if (!stillsSrc.includes('stillEditHintPriorityEn')) fail('Hinweis-Priorität im Bild-Prompt')
@@ -891,4 +975,141 @@ if (stillsSrc.includes('stillShowsExtraPeople')) {
   fail('Bild ändern rät nicht extra Leute aus dem Szenen-Still')
 }
 
+const PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+
+function tick(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+type PaintFetchReply = {
+  google?: { status: number; body: unknown } | 'abort'
+}
+
+async function withPaintFetch<T>(
+  reply: PaintFetchReply,
+  run: (stats: { google: string[]; ledger: number }) => Promise<T>,
+): Promise<T> {
+  const stats = { google: [] as string[], ledger: 0 }
+  const original = globalThis.fetch
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const href = String(url)
+    if (href.includes('/api/ai-usage') || href.includes('/api/ai/')) {
+      stats.ledger += 1
+      return new Response(JSON.stringify({ ok: true, allowed: true }), { status: 200 })
+    }
+    if (href.includes('generativelanguage.googleapis.com')) {
+      const model = href.includes(GEMINI_IMAGE_PREFERRED)
+        ? GEMINI_IMAGE_PREFERRED
+        : href.includes(GEMINI_IMAGE_FALLBACK)
+          ? GEMINI_IMAGE_FALLBACK
+          : href
+      stats.google.push(model)
+      if (reply.google === 'abort') {
+        const err = new Error('The operation was aborted')
+        err.name = 'AbortError'
+        throw err
+      }
+      const g = reply.google ?? { status: 200, body: {} }
+      return new Response(JSON.stringify(g.body), { status: g.status })
+    }
+    return new Response('{}', { status: 404 })
+  }) as typeof fetch
+  try {
+    return await run(stats)
+  } finally {
+    globalThis.fetch = original
+  }
+}
+
+async function checkStillPaintCharges(): Promise<void> {
+  process.env.GEMINI_API_KEY = 'test-key'
+  process.env.AI_USAGE_INGEST_SECRET = 'test-secret'
+  process.env.AI_USAGE_ENDPOINT = 'https://hub.test/api/ai-usage'
+  delete process.env.VERCEL
+  delete process.env.GEMINI_IMAGE_MODEL
+
+  await withPaintFetch(
+    { google: { status: 402, body: { error: { code: 402, message: 'Payment Required' } } } },
+    async (stats) => {
+      try {
+        await generateStillPng('Ramo allein am Herd', [])
+        fail('402 muss das Malen abbrechen')
+      } catch (err) {
+        if ((err instanceof Error ? err.message : String(err)) !== STILL_EDIT_IMAGE_BILLING_DE) {
+          fail('402-Satz hart, ohne zweites Modell')
+        }
+      }
+      await tick(80)
+      if (stats.google.length !== 1) fail('402 ruft nicht das zweite Bildmodell')
+      if (stats.google[0] !== GEMINI_IMAGE_PREFERRED) fail('402 stoppt beim ersten Modell')
+      if (stats.ledger !== 0) fail('402 zieht keine KI-Punkte')
+    },
+  )
+
+  await withPaintFetch(
+    { google: { status: 400, body: { error: { code: 400, message: 'Invalid argument' } } } },
+    async (stats) => {
+      try {
+        await generateStillPng('Ramo allein am Herd', [])
+        fail('400 muss das Malen abbrechen')
+      } catch {
+        /* erwartet */
+      }
+      await tick(80)
+      if (stats.google.length !== 1) fail('400 ruft nicht das zweite Bildmodell')
+      if (stats.ledger !== 0) fail('400 zieht keine KI-Punkte')
+    },
+  )
+
+  await withPaintFetch({ google: 'abort' }, async (stats) => {
+    try {
+      await generateStillPng('Ramo allein am Herd', [])
+      fail('Zeitlimit muss das Malen abbrechen')
+    } catch (err) {
+      if ((err instanceof Error ? err.message : String(err)) !== STILL_EDIT_IMAGE_TIMEOUT_DE) {
+        fail('Zeitlimit-Satz, keine KI-Punkte')
+      }
+    }
+    await tick(80)
+    if (stats.google.length !== 1) fail('Zeitlimit ruft nicht das zweite Bildmodell')
+    if (stats.ledger !== 0) fail('Zeitlimit zieht keine KI-Punkte')
+  })
+
+  await withPaintFetch(
+    { google: { status: 200, body: { candidates: [{ content: { parts: [{ text: 'kein bild' }] } }] } } },
+    async (stats) => {
+      try {
+        await generateStillPng('Ramo allein am Herd', [])
+        fail('leeres Bild muss abbrechen')
+      } catch {
+        /* erwartet */
+      }
+      await tick(80)
+      if (stats.google.length !== 1) fail('leeres Bild ruft nicht das zweite Modell')
+      if (stats.ledger !== 0) fail('leeres Bild zieht keine KI-Punkte')
+    },
+  )
+
+  await withPaintFetch(
+    {
+      google: {
+        status: 200,
+        body: {
+          candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG_B64 } }] } }],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4 },
+        },
+      },
+    },
+    async (stats) => {
+      const png = await generateStillPng('Ramo allein am Herd', [])
+      await tick(200)
+      if (png.length < 32) fail('gelungenes PNG zurück')
+      if (stats.google.length !== 1) fail('gelungenes PNG: ein Bild-Call')
+      if (stats.ledger !== 1) fail('KI-Punkte nur nach gelungenem PNG')
+    },
+  )
+}
+
+await checkStillPaintCharges()
 console.log('OK: Bild ändern = Hinweis zuerst, ohne vorige Szenen-Bilder')

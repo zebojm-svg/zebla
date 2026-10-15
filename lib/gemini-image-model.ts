@@ -31,8 +31,22 @@ export function geminiImageModelCandidates(): string[] {
   return [...new Set(out.filter(Boolean))]
 }
 
+/** 402 burns Google credit if we try the next model — stop, do not fall through. */
+export function isGeminiImageBillingError(message: string): boolean {
+  if (/\b402\b|payment required|billing/i.test(message)) return true
+  return /konto\/kontingent/i.test(message)
+}
+
 export function isGeminiImageUnavailable(message: string): boolean {
-  if (/\b402\b|payment required|billing/i.test(message)) return false
+  if (isGeminiImageBillingError(message)) return false
   if (/\b429\b|quota|resource_exhausted|resource exhausted/i.test(message)) return false
   return /not found|NOT_FOUND|UNKNOWN_MODEL|is not found for/i.test(message)
+}
+
+/**
+ * Only a missing model may try the next candidate.
+ * 402 / 400 / timeout / empty PNG: hard stop — no second Google call.
+ */
+export function shouldTryNextGeminiImageModel(message: string): boolean {
+  return isGeminiImageUnavailable(message)
 }
