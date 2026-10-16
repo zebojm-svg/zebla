@@ -2,7 +2,7 @@ import { chatJson, generateFilmSceneDialog, planStillEditPackzettel } from './ai
 import { newLineId } from './ids.js'
 import { listStoryAssets, saveStoryAsset } from './story-library.js'
 import { getDialog, updateDialog, type UserProfile } from './firestore.js'
-import { isStageSpeaker, type Dialog, type FilmInventory } from '../shared/types.js'
+import { isNarratorName, isStageSpeaker, type Dialog, type DialogLine, type FilmInventory } from '../shared/types.js'
 import { deriveFilmInventory } from '../shared/film-inventory.js'
 import {
   alignCueImageWithStillFix,
@@ -20,8 +20,11 @@ import {
   ensureCoverageDrafts,
   resolveDraftSectionId,
   panelWantsOwnStill,
+  applyPanelDirectorNote,
   insertPanelAfter,
   insertSceneAfter,
+  reindexFilmPanels,
+  removePanel,
   removeScene,
   removeScenesAfter,
   isFilmStoryboard,
@@ -67,10 +70,10 @@ import {
   stillEditFigures,
   stillEditImageErrorDe,
   stillEditLineDe,
-  stillNumberInScene,
+  stillPackNumber,
   type StillEditPackzettel,
 } from '../shared/film-still-pack.js'
-import { speakerGender } from '../shared/speakers.js'
+import { applyLineSpeaker, speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
 
 function sittingFromPlacement(pl: FilmPlacement | undefined): boolean {
@@ -422,6 +425,35 @@ export async function noteFilmScene(
   return { dialog: updated, board }
 }
 
+function insertDialogLineAfter(
+  dialog: Dialog,
+  sectionId: string,
+  afterLineId: string | undefined,
+  line: DialogLine,
+): Dialog {
+  const hasSection = dialog.sections.some((s) => s.id === sectionId)
+  if (!hasSection) {
+    return {
+      ...dialog,
+      sections: [
+        ...dialog.sections,
+        { id: sectionId, title: sectionId, lines: [line] },
+      ],
+    }
+  }
+  return {
+    ...dialog,
+    sections: dialog.sections.map((section) => {
+      if (section.id !== sectionId) return section
+      const lines = [...section.lines]
+      const at = afterLineId ? lines.findIndex((l) => l.id === afterLineId) : -1
+      if (at >= 0) lines.splice(at + 1, 0, line)
+      else lines.push(line)
+      return { ...section, lines }
+    }),
+  }
+}
+
 export async function insertFilmPanel(
   dialogId: string,
   userId: string,
@@ -432,9 +464,189 @@ export async function insertFilmPanel(
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const library = libraryForCompose(await listStoryAssets(userId))
-  const board = insertPanelAfter(dialog.filmStoryboard, afterPanelId, text, library)
-  const updated = await saveBoard(dialogId, userId, board, profile)
-  return { dialog: updated, board }
+  const current = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const after = current.panels.find((p) => p.id === afterPanelId) ?? current.panels[current.panels.length - 1]
+  if (!after) throw new Error('Bild nicht gefunden.')
+  const lineId = newLineId()
+  const line = applyNativeFirstDraftLine({
+    id: lineId,
+    speaker: '',
+    kind: 'action',
+    text: text.trim(),
+    nativeText: text.trim(),
+    cueImage: text.trim(),
+  })
+  const afterLineId = after.lineIds?.[after.lineIds.length - 1]
+  const nextDialog = insertDialogLineAfter(
+    dialog,
+    after.sectionId || after.sceneId,
+    afterLineId,
+    line,
+  )
+  const board = reindexFilmPanels(
+    insertPanelAfter(current, afterPanelId, text, library, { lineIds: [lineId] }),
+  )
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: board, sections: nextDialog.sections },
+    profile,
+  )
+  if (!updated) throw new Error('Storyboard konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
+}
+
+export async function removeFilmPanel(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const current = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const found = current.panels.find((p) => p.id === panelId)
+  if (!found) throw new Error('Bild nicht gefunden.')
+  if (current.panels.length <= 1) {
+    throw new Error('Das letzte Bild kann man nicht löschen.')
+  }
+  const board = removePanel(current, panelId)
+  if (board.panels.length === current.panels.length) {
+    throw new Error('Bild nicht gefunden.')
+  }
+  const removedPanels = current.panels.filter((p) => p.id === panelId)
+  const sections = pruneUnusedSections(dialog, board, removedPanels)
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: normalizeFilmStoryboard(board), sections },
+    profile,
+  )
+  if (!updated) throw new Error('Bild konnte nicht gelöscht werden.')
+  return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
+}
+
+export async function saveFilmPack(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  fields: {
+    speaker?: string | null
+    imageCue?: string
+    directorNote?: string
+    soundCue?: string
+    nativeText?: string
+  },
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  let board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const found = board.panels.find((p) => p.id === panelId)
+  if (!found) throw new Error('Bild nicht gefunden.')
+  let sections = dialog.sections
+  let lineId = found.lineIds?.[0]
+  const wantsLine =
+    fields.speaker !== undefined || fields.nativeText !== undefined || fields.imageCue !== undefined
+
+  if (wantsLine && !lineId) {
+    lineId = newLineId()
+    const speaker = (fields.speaker ?? '').trim()
+    const spoken = (fields.nativeText ?? found.caption ?? fields.imageCue ?? '').trim()
+    const line = applyLineSpeaker(
+      applyNativeFirstDraftLine({
+        id: lineId,
+        speaker,
+        text: spoken,
+        nativeText: spoken,
+        cueImage: fields.imageCue ?? found.imageCue,
+      }),
+      speaker,
+    )
+    const afterLineId = undefined
+    const nextDialog = insertDialogLineAfter(
+      { ...dialog, sections },
+      found.sectionId || found.sceneId,
+      afterLineId,
+      line,
+    )
+    sections = nextDialog.sections
+    board = {
+      ...board,
+      panels: board.panels.map((p) => (p.id === panelId ? { ...p, lineIds: [lineId!] } : p)),
+    }
+  } else if (lineId && (fields.speaker !== undefined || fields.nativeText !== undefined)) {
+    sections = sections.map((section) => ({
+      ...section,
+      lines: section.lines.map((line) => {
+        if (line.id !== lineId) return line
+        let next = line
+        if (fields.speaker !== undefined) {
+          next = applyLineSpeaker(next, fields.speaker ?? '')
+        }
+        if (fields.nativeText !== undefined) {
+          const native = fields.nativeText.trim()
+          if (next.kind === 'action' || !next.kind) {
+            next = { ...next, text: native, nativeText: native, audioUrl: undefined }
+          } else {
+            next = { ...next, nativeText: native, audioUrl: undefined }
+          }
+        }
+        return next
+      }),
+    }))
+  }
+
+  if (fields.imageCue !== undefined) {
+    board = applyPanelCues(board, panelId, { imageCue: fields.imageCue })
+    const cue = fields.imageCue.trim()
+    board = {
+      ...board,
+      panels: board.panels.map((p) => {
+        if (p.id !== panelId) return p
+        const silent = !p.closeupSpeaker && !(fields.speaker ?? '').trim()
+        return silent && cue ? { ...p, caption: p.caption?.trim() ? p.caption : cue } : p
+      }),
+    }
+    if (lineId) {
+      sections = sections.map((section) => ({
+        ...section,
+        lines: section.lines.map((line) =>
+          line.id === lineId ? { ...line, cueImage: fields.imageCue!.trim() } : line,
+        ),
+      }))
+    }
+  }
+  if (fields.soundCue !== undefined) {
+    board = applyPanelCues(board, panelId, { soundCue: fields.soundCue })
+  }
+  if (fields.directorNote !== undefined) {
+    board = applyPanelDirectorNote(board, panelId, fields.directorNote)
+  }
+  if (fields.speaker !== undefined) {
+    const speaker = (fields.speaker || '').trim()
+    const spoken = speaker && !isStageSpeaker(speaker) && !isNarratorName(speaker) ? speaker : speaker && isNarratorName(speaker) ? 'Erzähler' : undefined
+    board = {
+      ...board,
+      panels: board.panels.map((p) =>
+        p.id === panelId
+          ? {
+              ...p,
+              closeupSpeaker: spoken,
+            }
+          : p,
+      ),
+    }
+  }
+
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: normalizeFilmStoryboard(board), sections },
+    profile,
+  )
+  if (!updated) throw new Error('Päckchen konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard as FilmStoryboard }
 }
 
 export async function insertFilmScene(
@@ -661,7 +873,7 @@ export async function planFilmPanelStillEdit(
     inventory,
   })
   return planStillEditPackzettel({
-    stillNumber: stillNumberInScene(working, panel),
+    stillNumber: stillPackNumber(working, panel),
     panelId: panel.id,
     userHint: correction,
     dialogDe: stillEditLineDe(panel, dialog),

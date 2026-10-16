@@ -5,10 +5,13 @@ import { FilmProjectNav } from './FilmProjectNav'
 import {
   FilmBeatColumns,
   FilmBeatNotes,
-  FilmCueFields,
+  FilmPackActions,
+  FilmPackFields,
+  FilmPackSpeakerSelect,
   FilmSceneGenerateBar,
   FilmStillFixBar,
 } from './FilmSceneGenerate'
+import { stillPackNumber } from '../../shared/film-still-pack'
 import { FilmCastVoices } from './FilmCastVoices'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { FilmStillPicture } from './FilmStillArrange'
@@ -37,35 +40,55 @@ function matchClass(kind: string) {
   return 'is-missing'
 }
 
+function packIsSilent(
+  lines: ReturnType<typeof panelDialogueLines>,
+  panel: FilmStoryboardPanel,
+): boolean {
+  const line = lines[0]
+  if (!line) return !panel.closeupSpeaker
+  return line.kind === 'action' || !line.speaker?.trim() || line.speaker === 'Handlung'
+}
+
 function PanelCard({
   panel,
   dialog,
+  board,
   sceneTitle,
   scenePanels,
   busy,
   painting,
   error,
   status,
+  canRemove,
   onComment,
   onInsert,
+  onRemove,
   onCorrect,
-  onCues,
+  onPack,
   onRewrite,
   onSketch,
   onLayout,
 }: {
   panel: FilmStoryboardPanel
   dialog: Dialog
+  board: FilmStoryboard
   sceneTitle: string
   scenePanels: FilmStoryboardPanel[]
   busy: boolean
   painting?: boolean
   error?: string
   status?: string
+  canRemove: boolean
   onComment: (comment: string) => void
   onInsert: (text: string) => void
+  onRemove: () => void
   onCorrect: (note: string) => void
-  onCues: (cues: { soundCue?: string; imageCue?: string; speechCue?: string }) => void
+  onPack: (fields: {
+    speaker?: string | null
+    imageCue?: string
+    directorNote?: string
+    soundCue?: string
+  }) => void
   onRewrite: (lineId: string, nativeText: string) => Promise<void>
   onSketch: () => void
   onLayout: (dialog: Dialog, board: FilmStoryboard) => void
@@ -73,6 +96,8 @@ function PanelCard({
   const [comment, setComment] = useState(panel.comment ?? '')
   const [nativeBusy, setNativeBusy] = useState(false)
   const bg = panel.background
+  const lines = panelDialogueLines(panel, dialog, scenePanels, sceneTitle)
+  const silent = packIsSilent(lines, panel)
 
   useEffect(() => {
     setComment(panel.comment ?? '')
@@ -92,6 +117,7 @@ function PanelCard({
   return (
     <article className="film-panel">
       <FilmBeatColumns
+        packNumber={stillPackNumber(board, panel)}
         picture={
           panel.stillUrl || panel.background.imageUrl ? (
             <FilmStillPicture
@@ -112,31 +138,42 @@ function PanelCard({
           )
         }
         underPicture={
-          <>
-            <FilmStillFixBar
-              panel={panel}
-              busy={busy}
-              error={error}
-              status={painting ? status : undefined}
-              onCorrect={onCorrect}
-            />
-            <p className="muted film-tweak-hint">Kurzer Hinweis reicht.</p>
-          </>
+          <FilmStillFixBar
+            panel={panel}
+            busy={busy}
+            error={error}
+            status={painting ? status : undefined}
+            onCorrect={onCorrect}
+          />
         }
-        lines={panelDialogueLines(panel, dialog, scenePanels, sceneTitle)}
+        lines={lines}
+        silent={silent}
+        speakerRow={
+          <FilmPackSpeakerSelect
+            dialog={dialog}
+            panel={panel}
+            lines={lines}
+            busy={busy}
+            onChange={(speaker) => onPack({ speaker })}
+          />
+        }
+        extraFields={<FilmPackFields panel={panel} busy={busy} onSave={onPack} />}
+        packActions={
+          <FilmPackActions
+            busy={busy}
+            canRemove={canRemove}
+            onRemove={onRemove}
+            onInsert={onInsert}
+          />
+        }
         targetLanguage={dialog.targetLanguage}
         sourceLanguage={dialog.sourceLanguage}
         nativeBusy={nativeBusy}
         onConfirmNative={(lineId, nativeText) => void confirmNative(lineId, nativeText)}
         notes={
           <>
-            <p className="film-beat-count">
-              Bild {panel.panelIndex}
-              {painting ? <span> · wird neu gemalt …</span> : null}
-            </p>
+            {painting ? <p className="film-beat-count">wird neu gemalt …</p> : null}
             <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
-            <FilmCueFields panel={panel} busy={busy} onSave={onCues} />
-            <FilmStillFixBar panel={panel} busy={busy} onInsert={onInsert} />
             <div className="film-tweak">
               <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
                 {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
@@ -478,9 +515,11 @@ export function FilmStoryboardPage() {
                       key={panel.id}
                       panel={panel}
                       dialog={dialog}
+                      board={board}
                       sceneTitle={scene.title}
                       scenePanels={panels}
                       busy={locked}
+                      canRemove={board.panels.length > 1}
                       onLayout={apply}
                       painting={stills.busyPanelId === panel.id}
                       error={stills.errors[panel.id]}
@@ -488,8 +527,8 @@ export function FilmStoryboardPage() {
                       onComment={(comment) =>
                         void run(() => api.ai.filmStoryboardComment(id, panel.id, comment))
                       }
-                      onCues={(cues) =>
-                        void run(() => api.ai.filmStoryboardCues(id, panel.id, cues))
+                      onPack={(fields) =>
+                        void run(() => api.ai.filmPack(id, panel.id, fields))
                       }
                       onRewrite={async (lineId, nativeText) => {
                         setError('')
@@ -509,6 +548,7 @@ export function FilmStoryboardPage() {
                           note,
                         )
                       }
+                      onRemove={() => void run(() => api.ai.filmRemovePanel(id, panel.id))}
                       onInsert={(text) =>
                         void (async () => {
                           setBusy(true)

@@ -30,6 +30,10 @@ import {
   stillEditPlannerStatusDe,
   stillEditPlannerSystem,
   stillNumberInScene,
+  stillPackNumber,
+  parseStillPackRefs,
+  stillUrlForPackRef,
+  panelByStillPackNumber,
   stillPackzettelAttachEn,
   stillEditTimeoutHintDe,
   tryStillEditPackzettel,
@@ -175,6 +179,23 @@ const dialog: Dialog = {
 }
 
 if (stillNumberInScene(board, table) !== 2) fail('Bildnummer ist die Stelle in der Szene (2)')
+if (stillPackNumber(board, stove) !== 1) fail('Päckchen-Nummer 1 ist das erste Bild')
+if (stillPackNumber(board, table) !== 2) fail('Päckchen-Nummer 2 ist das zweite Bild')
+if (panelByStillPackNumber(board, 1)?.id !== 'stove') fail('Bild 1 ist das Herd-Päckchen')
+if (JSON.stringify(parseStillPackRefs('wie in Bild 3, Ramo steht am Herd')) !== JSON.stringify([3])) {
+  fail('«wie in Bild 3» liest nur die Nummer')
+}
+if (parseStillPackRefs('Bild 1 und Bild 2').join(',') !== '1,2') fail('mehrere Bild-Nummern')
+if (parseStillPackRefs('#3').join(',') !== '3') fail('#3 ist Bild 3')
+if (parseStillPackRefs('Ramo allein am Herd').length !== 0) {
+  fail('ohne Zahl kein Bild-Verweis — kein Stichwort allein/Herd')
+}
+if (stillUrlForPackRef(board, 'wie in Bild 1, Ramo allein', table.stillUrl) !== stove.stillUrl) {
+  fail('FLUX nimmt das Still von Bild 1, nicht das aktuelle Tischbild')
+}
+if (stillUrlForPackRef(board, 'Ramo allein am Herd', table.stillUrl) !== table.stillUrl) {
+  fail('ohne Bild-Nummer bleibt das aktuelle Still')
+}
 
 const catalog = stillEditCatalog({ board, panel: table, inventory })
 const byKind = (kind: StillCatalogItem['kind']) => catalog.filter((it) => it.kind === kind)
@@ -322,6 +343,16 @@ const hint = 'mach dass ramo alleine am Herd steht'
     fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
   }
   const fluxPrompt = stillEditKontextPrompt(hint)
+  const fluxFromKitchen = stillEditKontextPrompt(hint, {
+    packNumber: 2,
+    sourcePackNumber: 1,
+    speaker: 'Ramo',
+    spokenDe: table.caption,
+    handlung: table.imageCue,
+  })
+  if (!fluxFromKitchen.includes('Bild 1')) fail('FLUX-Prompt nennt das Quell-Päckchen')
+  if (!fluxFromKitchen.includes('Bild 2')) fail('FLUX-Prompt nennt dieses Päckchen')
+  if (!fluxFromKitchen.includes('Ramo')) fail('FLUX-Prompt enthält den Sprecher')
   if (!fluxPrompt.startsWith('Change the picture')) {
     fail('FLUX-Prompt: Change, nicht nur keep')
   }
@@ -822,6 +853,7 @@ const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPan
 if (!genFn.includes('stillReferencePack')) fail('Erstes Malen nutzt stillReferencePack')
 if (!genFn.includes('editImageWithKontext')) fail('Bild ändern nutzt FLUX Kontext')
 if (!genFn.includes('stillEditKontextPrompt')) fail('FLUX-Prompt aus dem Hinweis')
+if (!genFn.includes('stillUrlForPackRef')) fail('FLUX nimmt das genannte Bild-Päckchen als Foto')
 if (!genFn.includes('STILL_EDIT_FLUX_MODEL')) fail('Bild ändern ruft FLUX Max')
 if (genFn.indexOf('editImageWithKontext') > genFn.indexOf('generateStillPng')) {
   fail('Bild ändern: FLUX vor Gemini')
@@ -881,6 +913,11 @@ if (genOne.includes('packzettel')) fail('Bild ändern schickt keinen Packzettel'
 
 const uxSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
 if (!uxSrc.includes('Bild ändern')) fail('Knopf Bild ändern bleibt')
+if (!uxSrc.includes('keiner (stumm)')) fail('Sprecher kann keiner sein')
+if (!uxSrc.includes('Handlung')) fail('Päckchen hat das Feld Handlung')
+if (!uxSrc.includes('wie in Bild 3')) fail('Hinweis erklärt «wie in Bild 3»')
+if (!uxSrc.includes('Danach einfügen')) fail('Päckchen dazwischen einfügen')
+if (!uxSrc.includes('Löschen')) fail('Päckchen löschen')
 if (!uxSrc.includes('placeholder=')) fail('Kurzer Hinweis bleibt das Eingabefeld')
 if (!uxSrc.includes('alert-error')) fail('Fehler neben Bild ändern zeigen, nicht nur unter Bilder erzeugen')
 if (!uxSrc.includes('Schreib zuerst einen kurzen Hinweis')) {
@@ -915,6 +952,18 @@ const boardSrc = readFileSync(new URL('../src/story/FilmStoryboardPage.tsx', imp
 if (!boardSrc.includes('stills.errors[panel.id]')) {
   fail('Bilder-Seite zeigt den Fehler am Bild, nicht nur in Szenen anpassen')
 }
+if (!boardSrc.includes('filmRemovePanel') || !boardSrc.includes('filmPack')) {
+  fail('Bilder-Seite kann Päckchen löschen und Sprecher/Handlung speichern')
+}
+if (!clientSrc.includes('filmRemovePanel') || !clientSrc.includes('filmPack')) {
+  fail('Client hat Löschen und Päckchen-Speichern')
+}
+if (!apiSrc.includes('film-storyboard-remove-panel') || !apiSrc.includes('removeFilmPanel')) {
+  fail('API löscht ein Bild-Päckchen')
+}
+if (!apiSrc.includes('film-storyboard-pack') || !apiSrc.includes('saveFilmPack')) {
+  fail('API speichert Sprecher, Handlung und Regie')
+}
 
 const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), 'utf8')
 if (!planMd.includes('stillReferencePack')) {
@@ -928,6 +977,12 @@ if (!planMd.includes('Hinweis ist die Regie')) {
 }
 if (!planMd.includes('höchste Priorität')) {
   fail('ZEBLA_PLAN: Hinweis hat höchste Priorität')
+}
+if (!planMd.includes('wie in Bild')) {
+  fail('ZEBLA_PLAN: «wie in Bild n» nimmt dieses Foto mit')
+}
+if (!planMd.includes('Bild-Päckchen')) {
+  fail('ZEBLA_PLAN: nummerierte Bild-Päckchen')
 }
 
 const stillsSrc = readFileSync(new URL('../shared/film-stills.ts', import.meta.url), 'utf8')

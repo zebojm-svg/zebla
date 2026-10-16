@@ -18,6 +18,8 @@ import {
   inferPoseId,
   insertPanelAfter,
   insertSceneAfter,
+  reindexFilmPanels,
+  removePanel,
   matchBackground,
   matchCharacterPose,
   matchDialogSection,
@@ -185,6 +187,21 @@ if (inserted.panels.length !== 2) fail('Zeile einfügen')
 if (!inserted.panels[1]?.expressionHint) fail('Ausdruck an neuer Zeile')
 if (inserted.panels[1]?.imageCue !== 'Julien springt in die Luft und ruft Juhe') {
   fail('Eingefügtes Bild trägt die Bild-Notiz')
+}
+if (inserted.panels[0]?.panelIndex !== 1 || inserted.panels[1]?.panelIndex !== 2) {
+  fail('Nach dem Einfügen sind die Bild-Nummern 1, 2')
+}
+const withLine = insertPanelAfter(board, panel.id, 'Ramo am Herd', [julienSit, park], {
+  lineIds: ['line-new'],
+})
+if (withLine.panels[1]?.lineIds?.[0] !== 'line-new') fail('Neues Päckchen hängt an einer Dialogzeile')
+const gone = removePanel(inserted, inserted.panels[1]!.id)
+if (gone.panels.length !== 1) fail('Päckchen löschen')
+if (gone.panels[0]?.panelIndex !== 1) fail('Nach dem Löschen bleibt Bild 1')
+const last = removePanel(gone, gone.panels[0]!.id)
+if (last.panels.length !== 1) fail('Das letzte Päckchen bleibt')
+if (reindexFilmPanels(inserted).panels.map((p) => p.panelIndex).join(',') !== '1,2') {
+  fail('reindex zählt durch')
 }
 
 const four: Dialog = {

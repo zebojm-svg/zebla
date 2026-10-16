@@ -135,6 +135,58 @@ export function stillNumberInScene(
   return Math.max(1, panel.panelIndex || 1)
 }
 
+/** Bild 1, Bild 2, … — durchlaufend über das ganze Board, wie auf der Karte. */
+export function stillPackNumber(
+  board: FilmStoryboard,
+  panel: Pick<FilmStoryboardPanel, 'id'>,
+): number {
+  const idx = normalizeFilmStoryboard(board).panels.findIndex((p) => p.id === panel.id)
+  return idx >= 0 ? idx + 1 : 0
+}
+
+export function panelByStillPackNumber(
+  board: FilmStoryboard,
+  n: number,
+): FilmStoryboardPanel | undefined {
+  if (!Number.isInteger(n) || n < 1) return undefined
+  return normalizeFilmStoryboard(board).panels[n - 1]
+}
+
+/**
+ * «wie in Bild 3», «Bild 3», «#3» — nur die Nummer, kein Stichwort-Restage.
+ * Zebla versteht den Satz nicht; die Zahl wählt das Foto.
+ */
+export function parseStillPackRefs(hint: string): number[] {
+  const out: number[] = []
+  const seen = new Set<number>()
+  const re = /(?:wie\s+in\s+)?bild\s*(\d+)|#\s*(\d+)/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(hint))) {
+    const n = Number(m[1] || m[2])
+    if (!Number.isInteger(n) || n < 1 || seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+  }
+  return out
+}
+
+/** FLUX-Eingangsfoto: erstes genanntes Bild-Päckchen mit Still, sonst das aktuelle. */
+export function stillUrlForPackRef(
+  board: FilmStoryboard | undefined,
+  hint: string,
+  currentUrl?: string,
+): string | undefined {
+  const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
+  if (board) {
+    for (const n of parseStillPackRefs(hint)) {
+      const url = panelByStillPackNumber(board, n)?.stillUrl?.trim()
+      if (http(url)) return url
+    }
+  }
+  const current = currentUrl?.trim()
+  return http(current) ? current : undefined
+}
+
 export function stillEditLineDe(
   panel: FilmStoryboardPanel,
   dialog?: Dialog | null,
@@ -212,7 +264,7 @@ export function stillEditCatalog(opts: {
     items.push(item)
   }
 
-  const n = stillNumberInScene(board, panel)
+  const n = stillPackNumber(board, panel)
   const place = panelPlaceKey(panel)
   const currentUrl = panel.stillUrl
   if (httpUrl(currentUrl)) {

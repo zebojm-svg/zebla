@@ -127,7 +127,7 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
@@ -1854,6 +1854,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         user.uid,
         afterPanelId.trim(),
         text.trim(),
+        profile,
+      )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-remove-panel' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId } = req.body as {
+        dialogId?: string
+        panelId?: string
+      }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await removeFilmPanel(dialogId.trim(), user.uid, panelId.trim(), profile)
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-pack' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, panelId, speaker, imageCue, directorNote, soundCue, nativeText } = req.body as {
+        dialogId?: string
+        panelId?: string
+        speaker?: string | null
+        imageCue?: string
+        directorNote?: string
+        soundCue?: string
+        nativeText?: string
+      }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await saveFilmPack(
+        dialogId.trim(),
+        user.uid,
+        panelId.trim(),
+        { speaker, imageCue, directorNote, soundCue, nativeText },
         profile,
       )
       res.json(result)

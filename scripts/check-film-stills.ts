@@ -1063,8 +1063,12 @@ if (!stillFn.includes('stillReferencePack')) {
   fail('Erstes Malen nutzt stillReferencePack')
 }
 const stillPngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
-if (!stillPngSrc.includes('stillEditKontextPrompt') || !stillPngSrc.includes('editImageWithKontext')) {
-  fail('Bild ändern nutzt FLUX Kontext auf das aktuelle Still')
+if (
+  !stillPngSrc.includes('stillEditKontextPrompt') ||
+  !stillPngSrc.includes('editImageWithKontext') ||
+  !stillPngSrc.includes('stillUrlForPackRef')
+) {
+  fail('Bild ändern nutzt FLUX Kontext auf das genannte oder aktuelle Still')
 }
 if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCatalog')) {
   fail('Bild ändern schickt nicht den Filmkatalog')
