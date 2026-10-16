@@ -13,7 +13,10 @@ import {
 } from './film-closeup-crop.js'
 import { closeupKontextPrompt } from '../shared/film-closeup-space.js'
 import {
+  parseStillPackRefs,
   stillEditImageErrorDe,
+  stillPackNumber,
+  stillUrlForPackRef,
   STILL_EDIT_FLUX_MISSING_DE,
   STILL_EDIT_IMAGE_TIMEOUT_DE,
 } from '../shared/film-still-pack.js'
@@ -234,14 +237,29 @@ export async function generateFilmPanelStillImage(opts: {
 }): Promise<string> {
   const hint = opts.panel.stillCorrection?.trim()
   const currentUrl = opts.panel.stillUrl?.trim()
-  if (hint && currentUrl) {
+  const fluxInput = hint
+    ? stillUrlForPackRef(opts.board, hint, currentUrl)
+    : undefined
+  if (hint && fluxInput) {
     if (!fluxLockAvailable()) {
       throw new Error(STILL_EDIT_FLUX_MISSING_DE)
     }
     try {
+      const refs = parseStillPackRefs(hint)
       const moved = await editImageWithKontext({
-        prompt: stillEditKontextPrompt(hint),
-        imageUrl: currentUrl,
+        prompt: stillEditKontextPrompt(hint, {
+          packNumber: opts.board
+            ? stillPackNumber(opts.board, opts.panel)
+            : opts.panel.panelIndex,
+          sourcePackNumber: refs[0],
+          speaker:
+            opts.panel.closeupSpeaker ||
+            (opts.panel.shot === 'insert' ? undefined : opts.panel.placements[0]?.name),
+          spokenDe: opts.panel.caption,
+          handlung: opts.panel.imageCue || opts.panel.caption,
+          regie: opts.panel.directorNote,
+        }),
+        imageUrl: fluxInput,
         aspectRatio: '16:9',
         model: STILL_EDIT_FLUX_MODEL,
       })

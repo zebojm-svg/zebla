@@ -55,11 +55,39 @@ export function stillEditHintPriorityEn(hint?: string): string {
 /** Replicate-Modell für Bild ändern: Max folgt dem Satz besser als Pro (Pro hält die alte Stellung). */
 export const STILL_EDIT_FLUX_MODEL = 'black-forest-labs/flux-kontext-max'
 
-export function stillEditKontextPrompt(hint: string): string {
+/** Felder des Bild-Päckchens — nur Text an FLUX, keine Stichwort-Logik. */
+export type StillEditPackContext = {
+  packNumber?: number
+  sourcePackNumber?: number
+  speaker?: string
+  spokenDe?: string
+  handlung?: string
+  regie?: string
+}
+
+export function stillEditKontextPrompt(hint: string, pack?: StillEditPackContext): string {
   const h = hint.trim()
+  const source =
+    pack?.sourcePackNumber && pack.sourcePackNumber > 0
+      ? `The input photo is still pack Bild ${pack.sourcePackNumber}. `
+      : ''
+  const packBits = [
+    pack?.packNumber ? `This still is Bild ${pack.packNumber}.` : '',
+    pack?.speaker?.trim()
+      ? `Speaker in this pack: ${pack.speaker.trim()}. Spoken (German): ${pack.spokenDe?.trim() || '—'}.`
+      : pack?.spokenDe?.trim()
+        ? `Spoken (German): ${pack.spokenDe.trim()}.`
+        : '',
+    pack?.handlung?.trim() ? `Action / what we see: ${pack.handlung.trim()}.` : '',
+    pack?.regie?.trim() ? `Director notes: ${pack.regie.trim()}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
     `Change the picture so it matches this instruction (verbatim): ${h} ` +
     `Repeat: ${h} ` +
+    source +
+    (packBits ? `${packBits} ` : '') +
     `This is a full restage if the instruction asks for different people, a different place in the room, or a different camera — not a small color tweak. ` +
     `Do not keep people, seats, or camera from the input photo when they conflict with the instruction. ` +
     `Keep the drawing style. Keep face and clothes of whoever the instruction still wants in the shot. ` +

@@ -141,6 +141,37 @@ export function FilmExportPage() {
     }
   }
 
+  const removePack = async (panelId: string) => {
+    if (!id || !board) return
+    setError('')
+    setBusy(true)
+    try {
+      const result = await api.ai.filmRemovePanel(id, panelId)
+      applyBoard(result.dialog, result.board)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const savePack = async (
+    panel: FilmStoryboardPanel,
+    fields: { speaker?: string | null; imageCue?: string; directorNote?: string; soundCue?: string },
+  ) => {
+    if (!id) return
+    setError('')
+    setBusy(true)
+    try {
+      const result = await api.ai.filmPack(id, panel.id, fields)
+      applyBoard(result.dialog, result.board)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <p className="muted" style={{ padding: '2rem' }}>Laden …</p>
   if (!dialog) {
     return (
@@ -200,13 +231,17 @@ export function FilmExportPage() {
                   dialogId={dialog.id}
                   panels={panels}
                   dialog={dialog}
+                  board={board}
                   sceneTitle={scene.title}
                   busy={sceneBusy || busy}
                   busyPanelId={stills.busyPanelId}
                   errors={stills.errors}
                   status={stills.status}
+                  canRemove={board.panels.length > 1}
                   onCorrect={(panel, note) => void correctStill(scene.id, panel, note)}
                   onInsert={(panel, text) => void insertAfter(scene.id, panel.id, text)}
+                  onRemove={(panel) => void removePack(panel.id)}
+                  onPack={(panel, fields) => void savePack(panel, fields)}
                   onLayout={applyBoard}
                 />
                 <FilmSceneGenerateBar

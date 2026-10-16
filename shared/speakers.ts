@@ -3,6 +3,7 @@ import {
   isNarratorName,
   isStageSpeaker,
   type Dialog,
+  type DialogLine,
 } from './types.js'
 
 /** Schöme = Schoeme, Erzähler = Erzaehler — für Stimmen und Bilder. */
@@ -104,6 +105,39 @@ export function uniqueSpeakersInDialog(dialog: Dialog): string[] {
     }
   }
   return order
+}
+
+/** Sprecher-Menü am Bild-Päckchen — plus Erzähler und Namen aus dem Bild. */
+export function packSpeakerChoices(
+  dialog: Dialog,
+  extraNames: string[] = [],
+): string[] {
+  const order: string[] = []
+  const seen = new Set<string>()
+  const add = (raw?: string) => {
+    const name = canonicalSpeakerName(raw || '')
+    if (!name || isStageSpeaker(name)) return
+    const fold = foldSpeakerName(name)
+    if (seen.has(fold)) return
+    seen.add(fold)
+    order.push(name)
+  }
+  for (const name of uniqueSpeakersInDialog(dialog)) add(name)
+  add('Erzähler')
+  for (const name of extraNames) add(name)
+  return order
+}
+
+/** Sprecher setzen oder leeren (stumm = Handlung, kein Audio). */
+export function applyLineSpeaker(line: DialogLine, speaker: string): DialogLine {
+  const name = speaker.trim()
+  if (!name) {
+    return { ...line, speaker: '', kind: 'action', audioUrl: undefined, birkenbihl: undefined }
+  }
+  if (isNarratorName(name)) {
+    return { ...line, speaker: 'Erzähler', kind: 'narrator', audioUrl: undefined }
+  }
+  return { ...line, speaker: name, kind: 'speech', audioUrl: undefined }
 }
 
 export function speakerGender(

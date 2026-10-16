@@ -3295,6 +3295,49 @@ html[dir='rtl'] .slideshow-topbar {
   }
 }
 
+.film-beat-pack-num,
+.film-pack-actions {
+  grid-column: 1 / -1;
+}
+
+.film-beat-pack-num {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--text-h);
+}
+
+.film-pack-fields,
+.film-pack-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.film-pack-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.film-pack-field .input,
+.film-pack-field textarea {
+  width: 100%;
+}
+
+.film-pack-silent {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.film-pack-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.15rem 0 0.35rem;
+}
+
 .film-beat-regie {
   grid-column: 1 / -1;
   margin: 0.15rem 0 0.35rem;

@@ -546,6 +546,32 @@ export const api = {
         },
         FILM_PLAN_TIMEOUT_MS,
       ),
+    filmRemovePanel: (dialogId: string, panelId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-remove-panel', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId }),
+      }),
+    filmPack: (
+      dialogId: string,
+      panelId: string,
+      fields: {
+        speaker?: string | null
+        imageCue?: string
+        directorNote?: string
+        soundCue?: string
+        nativeText?: string
+      },
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-pack', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, panelId, ...fields }),
+      }),
     filmInsertScene: (dialogId: string, afterSceneId: string | null, title: string) =>
       request<{
         dialog: import('../types').Dialog

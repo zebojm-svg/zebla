@@ -1142,11 +1142,51 @@ export function removeScenesAfter(board: FilmStoryboard, sceneId: string): FilmS
   }
 }
 
+/** Bild 1, Bild 2, … in der Reihenfolge auf dem Board. */
+export function reindexFilmPanels(board: FilmStoryboard): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  const sceneIndexById = new Map(next.scenes.map((s, i) => [s.id, i]))
+  return {
+    ...next,
+    panels: next.panels.map((p, i) => ({
+      ...p,
+      panelIndex: i + 1,
+      sceneIndex: sceneIndexById.get(p.sceneId) ?? p.sceneIndex,
+    })),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export function removePanel(board: FilmStoryboard, panelId: string): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  if (next.panels.length <= 1) return next
+  const panels = next.panels.filter((p) => p.id !== panelId)
+  if (panels.length === next.panels.length) return next
+  return reindexFilmPanels({ ...next, panels })
+}
+
+export function applyPanelDirectorNote(
+  board: FilmStoryboard,
+  panelId: string,
+  note: string,
+): FilmStoryboard {
+  const next = normalizeFilmStoryboard(board)
+  const text = note.trim()
+  return {
+    ...next,
+    panels: next.panels.map((p) =>
+      p.id === panelId ? { ...p, directorNote: text || undefined } : p,
+    ),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 export function insertPanelAfter(
   board: FilmStoryboard,
   afterPanelId: string,
   text: string,
   library: StoryLibraryAsset[],
+  opts?: { lineIds?: string[] },
 ): FilmStoryboard {
   const next = normalizeFilmStoryboard(board)
   const after = next.panels.find((p) => p.id === afterPanelId) ?? next.panels[next.panels.length - 1]
@@ -1192,7 +1232,7 @@ export function insertPanelAfter(
     sceneIndex: after.sceneIndex,
     panelIndex: after.panelIndex + 1,
     sectionId: after.sectionId,
-    lineIds: [],
+    lineIds: opts?.lineIds?.length ? [...opts.lineIds] : [],
     caption: text.trim(),
     imageCue: text.trim(),
     soundCue: '',
@@ -1207,7 +1247,7 @@ export function insertPanelAfter(
   const at = next.panels.findIndex((p) => p.id === after.id)
   const panels = [...next.panels]
   panels.splice(at + 1, 0, panel)
-  return { ...next, panels, updatedAt: new Date().toISOString() }
+  return reindexFilmPanels({ ...next, panels })
 }
 
 function guessNames(text: string): string[] {

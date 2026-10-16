@@ -5,8 +5,9 @@ import {
   type StoryArtStyleId,
 } from '../../shared/story-art-styles'
 import type { Dialog } from '../types'
+import { inferDialogLineKind, isStageSpeaker } from '../types'
 import { LineLanguageLayers } from '../components/LineLanguageLayers'
-import type { FilmScene, FilmStoryboardPanel } from '../../shared/film-storyboard'
+import type { FilmScene, FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
   isFilmStoryboard,
   normalizeFilmStoryboard,
@@ -14,6 +15,8 @@ import {
   panelDialogueLines,
   type FilmPanelDialogueLine,
 } from '../../shared/film-storyboard'
+import { stillPackNumber } from '../../shared/film-still-pack'
+import { packSpeakerChoices } from '../../shared/speakers'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
 import {
   gazeNoteDe,
@@ -148,11 +151,13 @@ export function FilmBeatText({
   targetLanguage,
   sourceLanguage,
   nativeSlotFor,
+  hideSpeaker,
 }: {
   lines: FilmPanelDialogueLine[]
   targetLanguage?: string
   sourceLanguage?: string
   nativeSlotFor?: (line: FilmPanelDialogueLine) => ReactNode
+  hideSpeaker?: boolean
 }) {
   if (lines.length === 0) {
     return <p className="muted">Kein Dialog zu diesem Bild</p>
@@ -168,7 +173,7 @@ export function FilmBeatText({
             targetLanguage={targetLanguage}
             sourceLanguage={sourceLanguage}
             kind={line.kind}
-            speaker={line.speaker}
+            speaker={hideSpeaker ? undefined : line.speaker}
             nativeSlot={nativeSlotFor?.(line)}
             missingNativeHint="Noch kein Deutsch — oben «Deutsch unter die Zeilen»."
             missingTargetHint="Zielsprache machst du unter Text"
@@ -279,6 +284,177 @@ export function FilmCueFields({
   )
 }
 
+function packIsSilent(lines: FilmPanelDialogueLine[], panel: FilmStoryboardPanel): boolean {
+  const line = lines[0]
+  if (!line) return !panel.closeupSpeaker
+  const kind = line.kind ?? inferDialogLineKind({
+    speaker: line.speaker,
+    text: line.text,
+    kind: line.kind,
+  })
+  return kind === 'action' || isStageSpeaker(line.speaker)
+}
+
+export function FilmPackSpeakerSelect({
+  dialog,
+  panel,
+  lines,
+  busy,
+  onChange,
+}: {
+  dialog: Dialog
+  panel: FilmStoryboardPanel
+  lines: FilmPanelDialogueLine[]
+  busy?: boolean
+  onChange: (speaker: string) => void
+}) {
+  const silent = packIsSilent(lines, panel)
+  const current = silent ? '' : (lines[0]?.speaker || panel.closeupSpeaker || '').trim()
+  const extras = [
+    current,
+    panel.closeupSpeaker,
+    ...panel.placements.map((pl) => pl.name),
+  ].filter(Boolean) as string[]
+  const choices = packSpeakerChoices(dialog, extras)
+  return (
+    <label className="film-pack-field">
+      <span className="film-beat-col-label">Sprecher</span>
+      <select
+        className="input"
+        value={current}
+        disabled={busy}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">keiner (stumm)</option>
+        {choices.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+export function FilmPackFields({
+  panel,
+  busy,
+  onSave,
+}: {
+  panel: FilmStoryboardPanel
+  busy?: boolean
+  onSave?: (fields: { imageCue?: string; directorNote?: string; soundCue?: string }) => void
+}) {
+  const [handlung, setHandlung] = useState(panel.imageCue ?? '')
+  const [regie, setRegie] = useState(panel.directorNote ?? '')
+  const [soundCue, setSoundCue] = useState(panel.soundCue ?? '')
+  useEffect(() => {
+    setHandlung(panel.imageCue ?? '')
+    setRegie(panel.directorNote ?? '')
+    setSoundCue(panel.soundCue ?? '')
+  }, [panel.id, panel.imageCue, panel.directorNote, panel.soundCue])
+  if (!onSave) return null
+  return (
+    <div className="film-pack-fields">
+      <label className="film-pack-field">
+        <span className="film-beat-col-label">Handlung</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={handlung}
+          disabled={busy}
+          placeholder="z.B. Ramo stellt Teetassen und ein Tablett bereit"
+          onChange={(e) => setHandlung(e.target.value)}
+          onBlur={() => {
+            if (handlung.trim() !== (panel.imageCue ?? '').trim()) onSave({ imageCue: handlung })
+          }}
+        />
+      </label>
+      <label className="film-pack-field">
+        <span className="film-beat-col-label">Regie</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={regie}
+          disabled={busy}
+          placeholder="z.B. Kamera auf den Herd, Ramo von der Seite"
+          onChange={(e) => setRegie(e.target.value)}
+          onBlur={() => {
+            if (regie.trim() !== (panel.directorNote ?? '').trim()) onSave({ directorNote: regie })
+          }}
+        />
+      </label>
+      <label className="film-pack-field">
+        <span className="film-beat-col-label">Ton</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={soundCue}
+          disabled={busy}
+          placeholder="z.B. Wasser läuft, Kessel pfeift"
+          onChange={(e) => setSoundCue(e.target.value)}
+          onBlur={() => {
+            if (soundCue.trim() !== (panel.soundCue ?? '').trim()) onSave({ soundCue })
+          }}
+        />
+      </label>
+    </div>
+  )
+}
+
+export function FilmPackActions({
+  busy,
+  canRemove,
+  onRemove,
+  onInsert,
+}: {
+  busy?: boolean
+  canRemove?: boolean
+  onRemove?: () => void
+  onInsert?: (text: string) => void
+}) {
+  const [insertText, setInsertText] = useState('')
+  if (!onRemove && !onInsert) return null
+  return (
+    <div className="film-pack-actions">
+      {onInsert ? (
+        <div className="film-tweak">
+          <input
+            className="input"
+            value={insertText}
+            disabled={busy}
+            placeholder="Neues Päckchen danach, z.B. Ramo am Herd"
+            onChange={(e) => setInsertText(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy || !insertText.trim()}
+            onClick={() => {
+              onInsert(insertText.trim())
+              setInsertText('')
+            }}
+          >
+            Danach einfügen
+          </button>
+        </div>
+      ) : null}
+      {onRemove ? (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={busy || canRemove === false}
+          onClick={() => {
+            if (window.confirm('Dieses Bild-Päckchen löschen?')) onRemove()
+          }}
+        >
+          Löschen
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function FilmBeatNotes({
   panel,
   dialog,
@@ -343,19 +519,29 @@ export function FilmBeatNotes({
 }
 
 export function FilmBeatColumns({
+  packNumber,
   picture,
   underPicture,
   lines,
+  speakerRow,
+  extraFields,
+  packActions,
   notes,
+  silent,
   targetLanguage,
   sourceLanguage,
   nativeBusy,
   onConfirmNative,
 }: {
+  packNumber?: number
   picture: ReactNode
   underPicture?: ReactNode
   lines: FilmPanelDialogueLine[]
+  speakerRow?: ReactNode
+  extraFields?: ReactNode
+  packActions?: ReactNode
   notes?: ReactNode
+  silent?: boolean
   targetLanguage?: string
   sourceLanguage?: string
   nativeBusy?: boolean
@@ -363,33 +549,47 @@ export function FilmBeatColumns({
 }) {
   return (
     <div className="film-beat">
+      {packNumber ? (
+        <p className="film-beat-pack-num">Bild {packNumber}</p>
+      ) : null}
       <div className="film-beat-pic">
         <p className="film-beat-col-label">Bild</p>
         {picture}
         {underPicture}
       </div>
       <div className="film-beat-text">
-        <FilmBeatText
-          lines={lines}
-          targetLanguage={targetLanguage}
-          sourceLanguage={sourceLanguage}
-          nativeSlotFor={
-            onConfirmNative
-              ? (line) => (
-                  <FilmNativeEditor
-                    lines={[line]}
-                    sourceLanguage={sourceLanguage}
-                    busy={nativeBusy}
-                    onConfirm={onConfirmNative}
-                  />
-                )
-              : undefined
-          }
-        />
+        {speakerRow}
+        {silent ? (
+          <p className="muted film-pack-silent">Kein Text — stumm (kein Audio)</p>
+        ) : (
+          <div className="film-pack-text">
+            <p className="film-beat-col-label">Text</p>
+            <FilmBeatText
+              lines={lines}
+              targetLanguage={targetLanguage}
+              sourceLanguage={sourceLanguage}
+              hideSpeaker={Boolean(speakerRow)}
+              nativeSlotFor={
+                onConfirmNative
+                  ? (line) => (
+                      <FilmNativeEditor
+                        lines={[line]}
+                        sourceLanguage={sourceLanguage}
+                        busy={nativeBusy}
+                        onConfirm={onConfirmNative}
+                      />
+                    )
+                  : undefined
+              }
+            />
+          </div>
+        )}
+        {extraFields}
       </div>
+      {packActions}
       {notes ? (
         <details className="film-beat-regie">
-          <summary>Regie</summary>
+          <summary>Mehr</summary>
           {notes}
         </details>
       ) : null}
@@ -420,82 +620,56 @@ export function FilmStillFixBar({
   error,
   status,
   onCorrect,
-  onInsert,
 }: {
   panel: FilmStoryboardPanel
   busy: boolean
   error?: string
   status?: string
   onCorrect?: (note: string) => void
-  onInsert?: (text: string) => void
 }) {
   const [note, setNote] = useState(panel.stillCorrection ?? '')
-  const [insertText, setInsertText] = useState('')
   const [localError, setLocalError] = useState('')
-  if (!onCorrect && !onInsert) return null
+  if (!onCorrect) return null
   const shownError = error || localError
   return (
     <div className="film-still-fix">
-      {onCorrect ? (
-        <>
-          <div className="film-tweak">
-            <input
-              className="input"
-              value={note}
-              disabled={busy}
-              placeholder="z.B. Schöme ist ein Mann, Ramo steht auf"
-              onChange={(e) => {
-                setNote(e.target.value)
-                if (localError) setLocalError('')
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              disabled={busy}
-              onClick={() => {
-                const hint = note.trim()
-                if (!hint) {
-                  setLocalError('Schreib zuerst einen kurzen Hinweis, dann «Bild ändern».')
-                  return
-                }
-                setLocalError('')
-                onCorrect(hint)
-              }}
-            >
-              {busy && status ? 'Läuft …' : 'Bild ändern'}
-            </button>
-          </div>
-          {busy && status ? (
-            <p className="film-panel-painting" aria-live="polite">
-              {status}
-            </p>
-          ) : null}
-          {!busy && shownError ? <div className="alert alert-error">{shownError}</div> : null}
-        </>
+      <div className="film-tweak">
+        <input
+          className="input"
+          value={note}
+          disabled={busy}
+          placeholder="z.B. wie in Bild 3, Ramo steht am Herd"
+          onChange={(e) => {
+            setNote(e.target.value)
+            if (localError) setLocalError('')
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={busy}
+          onClick={() => {
+            const hint = note.trim()
+            if (!hint) {
+              setLocalError('Schreib zuerst einen kurzen Hinweis, dann «Bild ändern».')
+              return
+            }
+            setLocalError('')
+            onCorrect(hint)
+          }}
+        >
+          {busy && status ? 'Läuft …' : 'Bild ändern'}
+        </button>
+      </div>
+      {busy && status ? (
+        <p className="film-panel-painting" aria-live="polite">
+          {status}
+        </p>
       ) : null}
-      {onInsert ? (
-        <div className="film-tweak">
-          <input
-            className="input"
-            value={insertText}
-            disabled={busy}
-            placeholder="z.B. Es klingelt, Ramo geht zur Tür"
-            onChange={(e) => setInsertText(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={busy || !insertText.trim()}
-            onClick={() => {
-              onInsert(insertText.trim())
-              setInsertText('')
-            }}
-          >
-            Bild danach einfügen
-          </button>
-        </div>
-      ) : null}
+      {!busy && shownError ? <div className="alert alert-error">{shownError}</div> : null}
+      <p className="muted film-tweak-hint">
+        Nummer steht am Bild. «wie in Bild 3» nimmt genau dieses Foto mit.
+      </p>
     </div>
   )
 }
@@ -504,36 +678,52 @@ export function FilmStillStrip({
   dialogId,
   panels,
   dialog,
+  board,
   sceneTitle,
   busy,
   busyPanelId,
   errors,
   status,
+  canRemove,
   onCorrect,
   onInsert,
+  onRemove,
+  onPack,
+  onRewrite,
   onLayout,
 }: {
   dialogId: string
   panels: FilmStoryboardPanel[]
   dialog?: Dialog | null
+  board?: FilmStoryboard | null
   sceneTitle?: string
   busy?: boolean
   busyPanelId?: string | null
   errors?: Record<string, string>
   status?: string
+  canRemove?: boolean
   onCorrect?: (panel: FilmStoryboardPanel, note: string) => void
   onInsert?: (panel: FilmStoryboardPanel, text: string) => void
+  onRemove?: (panel: FilmStoryboardPanel) => void
+  onPack?: (
+    panel: FilmStoryboardPanel,
+    fields: { speaker?: string | null; imageCue?: string; directorNote?: string; soundCue?: string },
+  ) => void
+  onRewrite?: (lineId: string, nativeText: string) => Promise<void>
   onLayout?: (dialog: Dialog, board: import('../../shared/film-storyboard').FilmStoryboard) => void
 }) {
   if (panels.length === 0) return null
   return (
     <div className="film-still-strip">
-      {panels.map((panel) => {
+      {panels.map((panel, i) => {
         const panelBusy = Boolean(busy && busyPanelId === panel.id)
         const lines = panelDialogueLines(panel, dialog, panels, sceneTitle)
+        const silent = packIsSilent(lines, panel)
+        const packNumber = board ? stillPackNumber(board, panel) : i + 1
         return (
           <article key={panel.id} className="film-panel">
             <FilmBeatColumns
+              packNumber={packNumber}
               picture={
                 panel.stillUrl || panel.background.imageUrl ? (
                   <FilmStillPicture dialogId={dialogId} panel={panel} onUpdated={onLayout} />
@@ -553,21 +743,48 @@ export function FilmStillStrip({
                 />
               }
               lines={lines}
+              silent={silent}
+              speakerRow={
+                dialog && onPack ? (
+                  <FilmPackSpeakerSelect
+                    dialog={dialog}
+                    panel={panel}
+                    lines={lines}
+                    busy={busy}
+                    onChange={(speaker) => onPack(panel, { speaker })}
+                  />
+                ) : null
+              }
+              extraFields={
+                onPack ? (
+                  <FilmPackFields
+                    panel={panel}
+                    busy={busy}
+                    onSave={(fields) => onPack(panel, fields)}
+                  />
+                ) : null
+              }
+              packActions={
+                <FilmPackActions
+                  busy={busy}
+                  canRemove={canRemove}
+                  onRemove={onRemove ? () => onRemove(panel) : undefined}
+                  onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
+                />
+              }
               targetLanguage={dialog?.targetLanguage}
               sourceLanguage={dialog?.sourceLanguage}
+              onConfirmNative={
+                onRewrite
+                  ? (lineId, nativeText) => {
+                      void onRewrite(lineId, nativeText)
+                    }
+                  : undefined
+              }
               notes={
                 <>
-                  <p className="film-beat-count">
-                    Bild {panel.panelIndex}
-                    {panel.stillError ? <span className="film-still-err"> · Fehler</span> : null}
-                    {panelBusy ? <span> · wird korrigiert …</span> : null}
-                  </p>
-                  <FilmBeatNotes panel={panel} dialog={dialog} />
-                  <FilmStillFixBar
-                    panel={panel}
-                    busy={Boolean(busy)}
-                    onInsert={onInsert ? (text) => onInsert(panel, text) : undefined}
-                  />
+                  {panelBusy ? <p className="film-beat-count">wird neu gemalt …</p> : null}
+                  <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
                   {panel.harvestNoteDe ? (
                     <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
                   ) : null}
