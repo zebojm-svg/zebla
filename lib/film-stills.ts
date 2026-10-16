@@ -23,6 +23,7 @@ import {
   correctionRewritesPerson,
   stillAttachmentInstruction,
   stillEditKontextPrompt,
+  STILL_EDIT_FLUX_MODEL,
   stillReferencePack,
   type StillPackLibraryAsset,
 } from '../shared/film-stills.js'
@@ -242,6 +243,7 @@ export async function generateFilmPanelStillImage(opts: {
         prompt: stillEditKontextPrompt(hint),
         imageUrl: currentUrl,
         aspectRatio: '16:9',
+        model: STILL_EDIT_FLUX_MODEL,
       })
       return await uploadPng(moved.buffer, `film-stills/${randomUUID()}.png`)
     } catch (err) {

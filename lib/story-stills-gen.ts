@@ -98,6 +98,7 @@ async function runReplicate(opts: {
   imageUrl: string
   imagePng?: Buffer | null
   aspectRatio?: '16:9' | '9:16'
+  model?: string
 }): Promise<Buffer> {
   const token = process.env.REPLICATE_API_TOKEN?.trim()
   if (!token) throw new Error('REPLICATE_API_TOKEN fehlt.')
@@ -109,7 +110,7 @@ async function runReplicate(opts: {
     throw new Error('Stamm-Bild fehlt für FLUX Kontext.')
   }
 
-  const model = replicateModelId()
+  const model = opts.model?.trim() || replicateModelId()
   const created = await fetchWithTimeout(
     `https://api.replicate.com/v1/models/${model}/predictions`,
     {
@@ -179,6 +180,7 @@ async function runFal(opts: {
   imageUrl: string
   imagePng?: Buffer | null
   aspectRatio?: '16:9' | '9:16'
+  model?: string
 }): Promise<Buffer> {
   const key = process.env.FAL_KEY?.trim()
   if (!key) throw new Error('FAL_KEY fehlt.')
@@ -190,7 +192,7 @@ async function runFal(opts: {
     throw new Error('Stamm-Bild fehlt für FLUX Kontext.')
   }
 
-  const model = falModelId()
+  const model = opts.model?.trim() || falModelId()
   const res = await fetchWithTimeout(
     `https://fal.run/${model}`,
     {
@@ -230,7 +232,13 @@ async function runFal(opts: {
   return downloadPng(url)
 }
 
-type KontextOpts = { prompt: string; imageUrl: string; imagePng?: Buffer | null; aspectRatio?: '16:9' | '9:16' }
+type KontextOpts = {
+  prompt: string
+  imageUrl: string
+  imagePng?: Buffer | null
+  aspectRatio?: '16:9' | '9:16'
+  model?: string
+}
 
 /** Name für das Hub-Verbrauchsbuch (Preis pro Bild: flux-kontext-pro / flux-kontext-max). */
 function ledgerFluxModel(modelId: string): string {
@@ -246,11 +254,12 @@ async function billedFlux(modelId: string, run: () => Promise<Buffer>): Promise<
 }
 
 function generateWithReplicate(opts: KontextOpts): Promise<Buffer> {
-  return billedFlux(replicateModelId(), () => runReplicate(opts))
+  return billedFlux(opts.model?.trim() || replicateModelId(), () => runReplicate(opts))
 }
 
 function generateWithFal(opts: KontextOpts): Promise<Buffer> {
-  return billedFlux(falModelId(), () => runFal(opts))
+  const falOnly = opts.model?.includes('fal-ai/') ? opts.model.trim() : falModelId()
+  return billedFlux(falOnly, () => runFal({ ...opts, model: falOnly }))
 }
 
 export async function generateLockedStillPng(opts: {
@@ -313,6 +322,7 @@ export async function editImageWithKontext(opts: {
   imageUrl: string
   imagePng?: Buffer | null
   aspectRatio?: '16:9' | '9:16'
+  model?: string
 }): Promise<{ buffer: Buffer; engine: StillsEngineId }> {
   const errors: string[] = []
   if (process.env.REPLICATE_API_TOKEN?.trim()) {

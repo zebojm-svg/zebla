@@ -52,14 +52,19 @@ export function stillEditHintPriorityEn(hint?: string): string {
  * Bild ändern über FLUX Kontext: aktuelles Still + Hinweis.
  * Kein Stichwort-Parser — der wörtliche Hinweis ist die Regie.
  */
+/** Replicate-Modell für Bild ändern: Max folgt dem Satz besser als Pro (Pro hält die alte Stellung). */
+export const STILL_EDIT_FLUX_MODEL = 'black-forest-labs/flux-kontext-max'
+
 export function stillEditKontextPrompt(hint: string): string {
   const h = hint.trim()
   return (
-    `${stillEditHintPriorityEn(h)} ` +
-    `Edit this existing 16:9 illustration. Follow the director note. ` +
-    `Keep the same drawing style, the same room, and the same faces and clothes of whoever remains. ` +
-    `If the director changes who is in the frame or where they stand, do that — do not keep the old blocking. ` +
-    `No text, no subtitles, no speech bubbles on the image.`
+    `Change the picture so it matches this instruction (verbatim): ${h} ` +
+    `Repeat: ${h} ` +
+    `This is a full restage if the instruction asks for different people, a different place in the room, or a different camera — not a small color tweak. ` +
+    `Do not keep people, seats, or camera from the input photo when they conflict with the instruction. ` +
+    `Keep the drawing style. Keep face and clothes of whoever the instruction still wants in the shot. ` +
+    `No text, no subtitles, no speech bubbles on the image. ` +
+    `${STILL_EDIT_DIRECTOR_DE}`
   )
 }
 

@@ -58,6 +58,7 @@ import {
   buildFilmStillPrompt,
   stillEditHintPriorityEn,
   stillEditKontextPrompt,
+  STILL_EDIT_FLUX_MODEL,
   stillReferencePack,
 } from '../shared/film-stills.ts'
 
@@ -321,13 +322,25 @@ const hint = 'mach dass ramo alleine am Herd steht'
     fail('Regie-Satz: Hinweis ist die Regie; Fotos sind Aussehen')
   }
   const fluxPrompt = stillEditKontextPrompt(hint)
-  if (!fluxPrompt.startsWith(stillEditHintPriorityEn(hint))) {
-    fail('FLUX-Prompt: Hinweis zuerst')
+  if (!fluxPrompt.startsWith('Change the picture')) {
+    fail('FLUX-Prompt: Change, nicht nur keep')
   }
-  if (!fluxPrompt.includes('Edit this existing 16:9 illustration')) {
-    fail('FLUX-Prompt ändert das vorhandene Bild')
+  if (fluxPrompt.indexOf(hint) < 0 || fluxPrompt.indexOf(hint) > 120) {
+    fail('FLUX-Prompt: Hinweis früh und wörtlich')
+  }
+  if (!fluxPrompt.includes('full restage')) {
+    fail('FLUX-Prompt erlaubt eine neue Stellung, nicht nur Farbe')
+  }
+  if (!fluxPrompt.includes('Do not keep people, seats, or camera')) {
+    fail('FLUX-Prompt hält die alte Stellung nicht fest')
+  }
+  if (/maintain the original composition/i.test(fluxPrompt)) {
+    fail('FLUX-Prompt sagt nicht composition beibehalten')
   }
   if (!fluxPrompt.includes(hint)) fail('FLUX-Prompt enthält den Hinweis wörtlich')
+  if (STILL_EDIT_FLUX_MODEL !== 'black-forest-labs/flux-kontext-max') {
+    fail('Bild ändern nutzt FLUX Kontext Max')
+  }
   if (/\ballein\b|\bam Herd\b|keine Gäste/.test(stillEditKontextPrompt.toString())) {
     fail('FLUX-Prompt-Funktion erkennt keine Stichwörter')
   }
@@ -809,6 +822,7 @@ const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPan
 if (!genFn.includes('stillReferencePack')) fail('Erstes Malen nutzt stillReferencePack')
 if (!genFn.includes('editImageWithKontext')) fail('Bild ändern nutzt FLUX Kontext')
 if (!genFn.includes('stillEditKontextPrompt')) fail('FLUX-Prompt aus dem Hinweis')
+if (!genFn.includes('STILL_EDIT_FLUX_MODEL')) fail('Bild ändern ruft FLUX Max')
 if (genFn.indexOf('editImageWithKontext') > genFn.indexOf('generateStillPng')) {
   fail('Bild ändern: FLUX vor Gemini')
 }
@@ -906,8 +920,8 @@ const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), '
 if (!planMd.includes('stillReferencePack')) {
   fail('ZEBLA_PLAN: erstes Malen nutzt stillReferencePack')
 }
-if (!planMd.includes('FLUX')) {
-  fail('ZEBLA_PLAN: Bild ändern über FLUX Kontext')
+if (!planMd.includes('FLUX Kontext Max')) {
+  fail('ZEBLA_PLAN: Bild ändern über FLUX Kontext Max')
 }
 if (!planMd.includes('Hinweis ist die Regie')) {
   fail('ZEBLA_PLAN: Hinweis ist die Regie; Fotos sind Aussehen')
