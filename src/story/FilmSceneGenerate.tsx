@@ -28,6 +28,40 @@ import {
 } from '../../shared/film-stills'
 import { FilmStillPicture } from './FilmStillArrange'
 
+export function FilmStyleTabs({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string
+  disabled?: boolean
+  onChange: (id: StoryArtStyleId) => void
+}) {
+  return (
+    <div className="film-style-tabs">
+      <p className="muted film-style-lead">Zeichenstil für neue Szenen</p>
+      <div className="film-style-tab-row" role="tablist" aria-label="Zeichenstil">
+        {STORY_ART_STYLES.map((style) => (
+          <button
+            key={style.id}
+            type="button"
+            role="tab"
+            aria-selected={value === style.id}
+            className={`film-style-tab${value === style.id ? ' is-active' : ''}`}
+            disabled={disabled}
+            onClick={() => {
+              rememberStyleChoice()
+              onChange(style.id)
+            }}
+          >
+            {style.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 type Props = {
   dialogId: string
   scene: FilmScene
@@ -50,7 +84,6 @@ export function FilmSceneGenerateBar({
   scene,
   panels,
   styleId,
-  onStyleChange,
   busy,
   extraDisabled,
   progress,
@@ -80,23 +113,6 @@ export function FilmSceneGenerateBar({
 
   return (
     <div className="film-scene-generate">
-      <label className="film-scene-style">
-        <span>Stil dieser Szene</span>
-        <select
-          value={styleId}
-          disabled={busy || extraDisabled}
-          onChange={(e) => {
-            rememberStyleChoice()
-            onStyleChange(e.target.value as StoryArtStyleId)
-          }}
-        >
-          {STORY_ART_STYLES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </label>
       <button
         type="button"
         className="btn btn-story-studio film-scene-make"
