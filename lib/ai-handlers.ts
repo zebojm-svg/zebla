@@ -23,7 +23,7 @@ import {
   generateSectionImage,
   generateUploadedImage,
   isAiConfigured,
-  chatJson,
+  regieJson,
 } from './ai.js'
 import { referenceUrlsForScene } from './reference-image.js'
 import { previousSceneImageUrl } from './visual-script.js'
@@ -110,6 +110,8 @@ export async function handleGenerateChat(req: VercelRequest, res: VercelResponse
     sendError(res, err)
   }
 }
+
+const regieBrief = <T>(system: string, user: string) => regieJson<T>(system, user)
 
 function dialogIdFromRequest(req: VercelRequest, body: { dialogId?: string }): string | undefined {
   return body.dialogId ?? (req.query.dialogId as string | undefined)
@@ -791,7 +793,7 @@ export async function handleVisualBrief(req: VercelRequest, res: VercelResponse)
     }
 
     await consumeQuota(profile, 'aiCalls')
-    const brief = await buildVisualBrief(dialog, chatJson, body.answers)
+    const brief = await buildVisualBrief(dialog, regieBrief, body.answers)
     const updated = await updateDialog(
       dialog.id,
       user.uid,
@@ -832,7 +834,7 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
       return
     }
     if (!dialog.visualBrief) {
-      const brief = await buildVisualBrief(dialog, chatJson)
+      const brief = await buildVisualBrief(dialog, regieBrief)
       const withBrief = await updateDialog(dialog.id, user.uid, { visualBrief: brief }, profile)
       dialog = withBrief ?? { ...dialog, visualBrief: brief }
     }
