@@ -631,6 +631,18 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
         STILL_EDIT_PLAN_TIMEOUT_MS,
       ),
+    filmPrepare: (dialogId: string, styleId?: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+        pending: number
+        didDe: string
+        done: boolean
+      }>(
+        '/film-storyboard-prepare',
+        { method: 'POST', body: JSON.stringify({ dialogId, styleId }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     filmStill: (
       dialogId: string,
       panelId: string,

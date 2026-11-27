@@ -237,6 +237,7 @@ export async function generateFilmPanelStillImage(opts: {
   continuityEn?: string
   situationText?: string
   continuityBriefEn?: string
+  directorRefs?: Array<{ url: string; name: string; role?: 'grundbild' | 'identity' }>
   board?: FilmStoryboard
   inventory?: FilmInventory | null
   library?: StillPackLibraryAsset[]
@@ -281,6 +282,7 @@ export async function generateFilmPanelStillImage(opts: {
     board: opts.board,
     inventory: opts.inventory,
     library: opts.library,
+    directorRefs: opts.directorRefs,
   })
   const refs = await loadRefs(pack.urls)
   const prompt = stillPromptForPanel(opts.panel, opts.scene, opts.styleId, {

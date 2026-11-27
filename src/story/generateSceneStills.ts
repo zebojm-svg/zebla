@@ -19,7 +19,22 @@ export async function generateSceneStills(opts: {
     dialog: Dialog
     board: FilmStoryboard
   }) => void
+  onStatus?: (text: string) => void
+  prepare?: boolean
 }): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  if (opts.prepare !== false) {
+    for (let step = 0; step < 24; step++) {
+      const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId)
+      opts.onStatus?.(prepared.didDe)
+      opts.onProgress({
+        current: 0,
+        total: opts.panels.length,
+        dialog: prepared.dialog,
+        board: prepared.board,
+      })
+      if (prepared.done) break
+    }
+  }
   const queue = panelsNeedingStills(opts.panels, opts.styleId, opts.force)
   if (queue.length === 0) {
     throw new Error('Diese Szene hat schon Standbilder. Für neu: «Szene nochmals erzeugen».')
@@ -81,6 +96,7 @@ export function useSceneStills(
         styleId,
         panels,
         force,
+        onStatus: (text) => setStatus(text),
         onProgress: ({ current, total, dialog, board }) => {
           apply(dialog, board)
           setProgress({ sceneId, current, total })
@@ -120,6 +136,14 @@ export function useSceneStills(
     setProgress({ sceneId, current: 0, total: 1 })
     try {
       let result: { dialog: Dialog; board: FilmStoryboard }
+      if (!hint) {
+        for (let step = 0; step < 24; step++) {
+          const prepared = await api.ai.filmPrepare(dialogId, styleId)
+          setStatus(prepared.didDe)
+          apply(prepared.dialog, prepared.board)
+          if (prepared.done) break
+        }
+      }
       if (hint) {
         result = await api.ai.filmStill(dialogId, panel.id, styleId, hint)
       } else {

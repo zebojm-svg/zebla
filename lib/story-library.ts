@@ -119,6 +119,19 @@ export async function updateStoryAssetRig(
   return { id, ...data, rig, imageUrl: patch.imageUrl ?? data.imageUrl }
 }
 
+export async function setStoryAssetTags(
+  userId: string,
+  id: string,
+  tags: string[],
+): Promise<void> {
+  const ref = adminDb().collection('storyAssets').doc(id)
+  const snap = await ref.get()
+  if (!snap.exists) return
+  const data = snap.data() as StoryLibraryDoc
+  if (data.userId !== userId) return
+  await ref.update({ tags: normalizeTags(tags) })
+}
+
 export async function markStoryAssetReference(
   userId: string,
   id: string,

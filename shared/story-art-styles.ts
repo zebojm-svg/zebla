@@ -1,6 +1,7 @@
 /** Bildstile für Story-Engine (Figuren, Umgebungen, Szenen) */
 
 export type StoryArtStyleId =
+  | 'filmzeichnung'
   | 'illustration-lebendig'
   | 'petit-nicolas'
   | 'kinderbuch-aquarell'
@@ -19,6 +20,20 @@ export interface StoryArtStyle {
 const NO_TEXT = 'NO text, NO speech bubbles, NO labels, NO captions in the image.'
 
 export const STORY_ART_STYLES: StoryArtStyle[] = [
+  {
+    id: 'filmzeichnung',
+    label: 'Filmzeichnung',
+    description:
+      'Warmes Standbild wie aus einem Zeichentrickfilm: klare Linien, weiches Licht, ausdrucksstarke Gesichter, detaillierter Raum.',
+    prompt:
+      `Style: modern cinematic 2D animated-film still, a finished frame from a high-end animated feature. ` +
+      `Clean confident ink outlines, soft cel shading with gentle gradients, warm practical light ` +
+      `(a lamp, small string lights, window glow), rich natural colors, detailed cozy interiors, ` +
+      `expressive faces with readable eyes, semi-realistic teen and adult proportions. ` +
+      `Widescreen composition. ` +
+      `NOT photorealistic, NOT 3D render, NOT anime, NOT flat clipart, NOT watercolor paper, NOT a children's mascot. ` +
+      `NO logos, NO brand names, NO known movie posters, NO celebrity likeness. ${NO_TEXT}`,
+  },
   {
     id: 'illustration-lebendig',
     label: 'Lebendige Illustration',
@@ -93,7 +108,29 @@ export const STORY_ART_STYLES: StoryArtStyle[] = [
   },
 ]
 
-export const DEFAULT_STORY_ART_STYLE: StoryArtStyleId = 'illustration-lebendig'
+export const DEFAULT_STORY_ART_STYLE: StoryArtStyleId = 'filmzeichnung'
+
+const STYLE_CHOSEN_KEY = 'zebla-scene-style-chosen'
+
+/** Der bisherige Automatik-Stil. Eine bewusste Wahl im Menü bleibt. */
+export function preferSceneStyle(saved?: string | null): StoryArtStyleId {
+  if (!saved || !isStoryArtStyleId(saved)) return DEFAULT_STORY_ART_STYLE
+  try {
+    const chosen = localStorage.getItem(STYLE_CHOSEN_KEY) === '1'
+    if (!chosen && saved === 'illustration-lebendig') return DEFAULT_STORY_ART_STYLE
+  } catch {
+    /* Server ohne Speicher: der neue Stil. */
+  }
+  return saved
+}
+
+export function rememberStyleChoice(): void {
+  try {
+    localStorage.setItem(STYLE_CHOSEN_KEY, '1')
+  } catch {
+    /* ignore */
+  }
+}
 
 export function getStoryArtStyle(id?: string | null): StoryArtStyle {
   const found = STORY_ART_STYLES.find((s) => s.id === id)

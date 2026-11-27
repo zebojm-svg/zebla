@@ -13,6 +13,21 @@ export interface FilmContinuityPlace {
   lookEn: string
 }
 
+/** Ein Blick. Spätere Bilder desselben Blicks bekommen das frühere Foto mit. */
+export interface FilmShotLink {
+  panelId: string
+  viewKey: string
+  sendViewKeys: string[]
+  whyDe: string
+}
+
+export interface FilmContinuityPanel {
+  id: string
+  shot?: string
+  settingHint?: string
+  closeupSpeaker?: string
+}
+
 export interface FilmContinuity {
   version: 1
   sourceKey: string
@@ -23,7 +38,18 @@ export interface FilmContinuity {
   people: FilmContinuityPerson[]
   places: FilmContinuityPlace[]
   locksEn: string[]
+  shots: FilmShotLink[]
+  /** Seitenansicht wurde mit dem Stammbild verglichen. */
+  sideChecked?: string[]
+  /** Einmal neu gezeichnet, weil die erste Seitenansicht nicht passte. */
+  sideTries?: string[]
 }
+
+export type FilmRefJob =
+  | { kind: 'person-front'; name: string }
+  | { kind: 'person-side'; name: string }
+  | { kind: 'person-check'; name: string }
+  | { kind: 'place'; name: string }
 
 export function continuitySourceKey(text: string): string {
   let hash = 0
@@ -51,16 +77,45 @@ export function continuityBriefEn(note: FilmContinuity): string {
     people ? `Same people every frame: ${people}.` : '',
     places ? `Same places: ${places}.` : '',
     locks ? `Do not drift: ${locks}` : '',
+    'When an earlier picture of this same camera angle is attached, match that picture. A new angle may move the camera. It must not change faces, clothes, furniture or who is in the room.',
     'Do not turn them into a known character from a book or a film. Keep the face from the attached reference photo.',
   ]
     .filter(Boolean)
     .join(' ')
 }
 
+export function fallbackShots(panels: FilmContinuityPanel[]): FilmShotLink[] {
+  const seen = new Map<string, true>()
+  return panels.map((panel, index) => {
+    const place = (panel.settingHint || 'ort').trim().slice(0, 40).toLowerCase() || 'ort'
+    const shot = panel.shot || 'wide'
+    const viewKey =
+      shot === 'closeup'
+        ? `${place}|nah|${(panel.closeupSpeaker || 'person').trim().toLowerCase()}`
+        : shot === 'insert'
+          ? `${place}|detail|${index}`
+          : `${place}|weit`
+    const send: string[] = []
+    if (seen.has(viewKey)) send.push(viewKey)
+    const wideKey = `${place}|weit`
+    if (shot !== 'wide' && seen.has(wideKey) && !send.includes(wideKey)) send.push(wideKey)
+    seen.set(viewKey, true)
+    const whyDe = send.includes(viewKey)
+      ? 'Gleicher Blick wie ein früheres Bild. Das frühere Bild geht mit.'
+      : shot === 'closeup'
+        ? `Nah auf ${panel.closeupSpeaker || 'die Person'}. Der weite Blick dieses Ortes geht mit, sobald er existiert.`
+        : shot === 'insert'
+          ? 'Neues Detail. Der weite Blick dieses Ortes geht mit, sobald er existiert.'
+          : 'Erster Blick auf diesen Ort. Spätere Bilder dieses Blicks hängen daran.'
+    return { panelId: panel.id, viewKey, sendViewKeys: send, whyDe }
+  })
+}
+
 export function fallbackContinuity(opts: {
   text: string
   people: string[]
   places: string[]
+  panels?: FilmContinuityPanel[]
 }): FilmContinuity {
   const video = /videochat|videogespräch|videogespraech|video-?anruf|video-?call|per video|zoom|facetime|skype/i.test(
     opts.text,
@@ -89,12 +144,69 @@ export function fallbackContinuity(opts: {
       'A mention of a country or a crowd somewhere else does not change the people in this scene.',
       'Clothes, hair, glasses and the room stay as first described.',
     ],
+    shots: fallbackShots(opts.panels ?? []),
   }
+}
+
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+export function directorStillUrls(
+  panels: Array<{ id: string; stillUrl?: string }>,
+  continuity: FilmContinuity | undefined,
+  panelId: string,
+): Array<{ url: string; name: string }> {
+  const shot = continuity?.shots?.find((item) => item.panelId === panelId)
+  if (!shot) return []
+  const index = panels.findIndex((panel) => panel.id === panelId)
+  const earlier = index >= 0 ? panels.slice(0, index) : []
+  const urls: Array<{ url: string; name: string }> = []
+  for (const key of shot.sendViewKeys) {
+    const source = continuity?.shots?.find(
+      (item) => item.viewKey === key && item.panelId !== panelId,
+    )
+    const prev = earlier.find((panel) => panel.id === source?.panelId && panel.stillUrl?.startsWith('http'))
+    if (!prev?.stillUrl) continue
+    if (urls.some((item) => item.url === prev.stillUrl)) continue
+    urls.push({ url: prev.stillUrl, name: source?.whyDe || 'früheres Bild' })
+  }
+  return urls.slice(0, 2)
+}
+
+export function referenceJobs(opts: {
+  continuity: FilmContinuity
+  hasFront: (name: string) => boolean
+  hasSide: (name: string) => boolean
+  hasPlace: (name: string) => boolean
+}): FilmRefJob[] {
+  const jobs: FilmRefJob[] = []
+  const checked = opts.continuity.sideChecked ?? []
+  for (const person of opts.continuity.people) {
+    if (!opts.hasFront(person.name)) {
+      jobs.push({ kind: 'person-front', name: person.name })
+      continue
+    }
+    if (!opts.hasSide(person.name)) {
+      jobs.push({ kind: 'person-side', name: person.name })
+      continue
+    }
+    if (!checked.some((name) => sameName(name, person.name))) {
+      jobs.push({ kind: 'person-check', name: person.name })
+    }
+  }
+  for (const place of opts.continuity.places) {
+    const name = place.name.trim()
+    if (name.length < 2 || name.length > 40) continue
+    if (!opts.hasPlace(name)) jobs.push({ kind: 'place', name })
+  }
+  return jobs
 }
 
 export function sanitizeContinuity(
   raw: unknown,
   text: string,
+  panels: FilmContinuityPanel[] = [],
 ): FilmContinuity | null {
   if (!raw || typeof raw !== 'object') return null
   const row = raw as Record<string, unknown>
@@ -126,6 +238,28 @@ export function sanitizeContinuity(
   const locksEn = Array.isArray(row.locksEn)
     ? row.locksEn.map((line) => clip(line, 200)).filter(Boolean).slice(0, 8)
     : []
+  const known = new Set(panels.map((panel) => panel.id))
+  const fromAi = Array.isArray(row.shots)
+    ? row.shots
+        .map((shot) => {
+          const item = shot as Record<string, unknown>
+          const panelId = clip(item?.panelId, 80)
+          const viewKey = clip(item?.viewKey, 80)
+          if (!panelId || !viewKey || (known.size && !known.has(panelId))) return null
+          const sendViewKeys = Array.isArray(item?.sendViewKeys)
+            ? item.sendViewKeys.map((key) => clip(key, 80)).filter(Boolean).slice(0, 3)
+            : []
+          return {
+            panelId,
+            viewKey,
+            sendViewKeys,
+            whyDe: clip(item?.whyDe, 180) || 'Dieser Blick bleibt.',
+          }
+        })
+        .filter((shot): shot is FilmShotLink => Boolean(shot))
+    : []
+  const fallback = fallbackShots(panels)
+  const shots = fallback.map((shot) => fromAi.find((item) => item.panelId === shot.panelId) ?? shot)
   return {
     version: 1,
     sourceKey: continuitySourceKey(text),
@@ -135,5 +269,6 @@ export function sanitizeContinuity(
     people,
     places,
     locksEn,
+    shots,
   }
 }

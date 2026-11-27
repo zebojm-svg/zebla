@@ -129,7 +129,7 @@ import { buildDialogPdf } from '../lib/dialog-pdf.js'
 import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
@@ -2053,6 +2053,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error('[film-storyboard-still-plan]', err)
         throw err
       }
+      return
+    }
+
+    if (route === 'film-storyboard-prepare' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, styleId } = req.body as { dialogId?: string; styleId?: string }
+      if (!dialogId?.trim()) {
+        res.status(400).json({ error: 'dialogId fehlt.' })
+        return
+      }
+      const result = await prepareFilmReferences(dialogId.trim(), user.uid, styleId?.trim(), profile)
+      res.json(result)
       return
     }
 

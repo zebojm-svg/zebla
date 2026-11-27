@@ -5,7 +5,7 @@ import {
   type StoryArtStyleId,
 } from '../../shared/story-art-styles'
 
-const STORAGE_KEY = 'zebla-story-art-style-v2'
+const STORAGE_KEY = 'zebla-story-art-style-v3'
 
 export function loadStoryArtStyle(): StoryArtStyleId {
   try {

@@ -32,7 +32,7 @@ import {
   repeatedDialogSectionTitles,
   sceneShotPlanDe,
 } from '../../shared/film-storyboard'
-import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
+import { DEFAULT_STORY_ART_STYLE, preferSceneStyle } from '../../shared/story-art-styles'
 
 function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
@@ -235,8 +235,9 @@ export function FilmStoryboardPage() {
       const fromPlan = d.filmPlan
       const next: Record<string, string> = {}
       for (const scene of nextBoard.scenes) {
-        next[scene.id] =
-          fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId ?? DEFAULT_STORY_ART_STYLE
+        next[scene.id] = preferSceneStyle(
+          fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId,
+        )
       }
       setStyles(next)
     }
@@ -256,8 +257,9 @@ export function FilmStoryboardPage() {
       const next = { ...prev }
       for (const scene of normalizeFilmStoryboard(b).scenes) {
         if (!next[scene.id]) {
-          next[scene.id] =
-            fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId ?? DEFAULT_STORY_ART_STYLE
+          next[scene.id] = preferSceneStyle(
+            fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId,
+          )
         }
       }
       return next
@@ -496,6 +498,7 @@ export function FilmStoryboardPage() {
                         : null
                     }
                     error={stills.errors[scene.id]}
+                    status={stills.busySceneId === scene.id ? stills.status : ''}
                     onGenerate={(force) =>
                       void stills.generate(
                         scene.id,
