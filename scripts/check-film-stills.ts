@@ -34,6 +34,7 @@ import {
   stillEditHintPriorityEn,
   stillReferencePack,
   stillTimeoutHintDe,
+  situationLockEn,
   speakerIdentityUrl,
   STALE_STILL_NOTE_DE,
   STILL_EDIT_DIRECTOR_DE,
@@ -1054,6 +1055,24 @@ if (scenePanels.length >= 2) {
   }
 }
 
+const together = situationLockEn('Ramo und Lena sitzen in der Küche und trinken Tee.')
+if (!together.includes('one physical room')) fail('Ohne Videowort bleiben alle im selben Raum')
+if (!together.toLowerCase().includes('forbidden: video call')) fail('Videogespräch ist verboten, wenn die Szene keines ist')
+const call = situationLockEn('Lena und Amir sind per Videogespräch verbunden.')
+if (!call.includes('video call')) fail('Videogespräch bleibt ein Videogespräch')
+if (call.toLowerCase().includes('forbidden: video call')) fail('Ein echtes Videogespräch wird nicht verboten')
+const kitchenPrompt = buildFilmStillPrompt({
+  caption: 'Lena: Hallo.',
+  settingHint: 'Küche',
+  sceneTitle: 'Tee',
+  hasLibraryRefs: false,
+  shot: 'closeup',
+  closeupSpeaker: 'Lena',
+  situationText: 'Ramo und Lena sitzen in der Küche.',
+})
+if (!kitchenPrompt.includes('SITUATION LOCK')) fail('Jedes Bild bekommt die Lage der Szene')
+if (!kitchenPrompt.toLowerCase().includes('forbidden: video call')) fail('Nahaufnahme darf kein Videogespräch erfinden')
+
 const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 const stillFn = stillGenSrc.slice(
   stillGenSrc.indexOf('export async function stillFilmPanel'),
@@ -1061,6 +1080,9 @@ const stillFn = stillGenSrc.slice(
 )
 if (!stillFn.includes('stillReferencePack')) {
   fail('Erstes Malen nutzt stillReferencePack')
+}
+if (!stillFn.includes('situationText')) {
+  fail('Jedes Bild bekommt denselben Satz zur Lage')
 }
 const stillPngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
 if (
