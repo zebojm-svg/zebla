@@ -270,6 +270,8 @@ export interface Dialog {
   filmStoryboard?: FilmStoryboard | null
   /** Film-Schritt: Stil pro Szene, Zielsprache, Timeline-Notizen. */
   filmPlan?: FilmPlan | null
+  /** Personen und Räume aus dem Katalog, die diese Geschichte nehmen soll. */
+  catalogCast?: { personIds: string[]; placeIds: string[] } | null
   /** Bild 0: Cast-Referenz (intern, nicht in Diashow) – Standard für alle weiteren Bilder. */
   referenceImageUrl?: string
   referenceImagePrompt?: string

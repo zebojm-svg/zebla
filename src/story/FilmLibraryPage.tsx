@@ -186,7 +186,7 @@ export function FilmLibraryPage() {
         <p className="muted">Lade Katalog …</p>
       ) : (
         <>
-          <ReferenceCatalog assets={assets} onChange={load} />
+          <ReferenceCatalog assets={assets} onChange={load} dialogId={dialogId} />
           <details className="catalog-archive">
           <summary>Altes Regal</summary>
           <p className="muted">

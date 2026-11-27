@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { buildFilmStillPrompt } from '../shared/film-stills.ts'
 import { DEFAULT_STORY_ART_STYLE, paintingStyleId } from '../shared/story-art-styles.ts'
+import { pickedCastUrl } from '../shared/catalog-cast.ts'
 import { paintingStyleText } from '../lib/ken-burns-style.ts'
 import {
   continuityBriefEn,
@@ -100,6 +101,18 @@ if (!paintingStyleText('photoreal', 'photoreal').includes('Photorealistic')) fai
 if (paintingStyleId('') !== 'filmzeichnung') fail('ohne Wahl gilt die Filmzeichnung')
 if (paintingStyleId('illustration-lebendig') !== 'illustration-lebendig') fail('eine gewählte Illustration bleibt')
 if (paintingStyleId('comic') !== 'comic') fail('Comic bleibt Comic')
+if (
+  pickedCastUrl(
+    [{ id: 'lena', name: 'Lena', imageUrl: 'https://example.com/lena.png' }],
+    ['lena'],
+    'Lena sitzt',
+  ) !== 'https://example.com/lena.png'
+) {
+  fail('eine gewählte Person mit demselben Namen wird genommen')
+}
+if (pickedCastUrl([{ id: 'kueche', name: 'Wohnzimmer', imageUrl: 'https://example.com/room.png' }], ['kueche'], 'Küche')) {
+  fail('ein anderer Raum wird nicht genommen')
+}
 
 const src = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 const fn = src.slice(src.indexOf('export async function stillFilmPanel'), src.indexOf('export async function saveFilmPlan'))

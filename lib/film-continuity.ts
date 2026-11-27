@@ -4,6 +4,7 @@ import { generateStoryCharacter, generateStoryEnvironment } from './story-asset-
 import { CHARACTER_REFERENCE_LINE, REFERENCE_TAG } from '../shared/reference-catalog.js'
 import { characterPlateTags, roomPlateTags } from '../shared/catalog-order.js'
 import { identityReferenceUrl } from '../shared/library-identities.js'
+import { pickedCastUrl, type CatalogCast } from '../shared/catalog-cast.js'
 import { isStoryArtStyleId, type StoryArtStyleId } from '../shared/story-art-styles.js'
 import type { StoryLibraryAsset } from '../shared/story-types.js'
 import { isNarratorName, isStageSpeaker, type Dialog } from '../shared/types.js'
@@ -137,7 +138,10 @@ export async function ensureSpeakerPlate(opts: {
   name: string
   lookEn: string
   styleId?: string
+  pickedIds?: string[]
 }): Promise<{ library: StoryLibraryAsset[]; imageUrl?: string }> {
+  const chosen = pickedCastUrl(opts.library, opts.pickedIds, opts.name)
+  if (chosen) return { library: opts.library, imageUrl: chosen }
   const existing = identityReferenceUrl(opts.library, opts.name)
   if (existing) return { library: opts.library, imageUrl: existing }
   const styleId: StoryArtStyleId | undefined = isStoryArtStyleId(opts.styleId ?? '')
@@ -233,12 +237,13 @@ async function samePerson(frontUrl: string, sideUrl: string): Promise<boolean | 
 export function jobsForLibrary(
   continuity: FilmContinuity,
   library: StoryLibraryAsset[],
+  picks?: CatalogCast | null,
 ): FilmRefJob[] {
   return referenceJobs({
     continuity,
-    hasFront: (name) => Boolean(identityReferenceUrl(library, name)),
+    hasFront: (name) => Boolean(pickedCastUrl(library, picks?.personIds, name) || identityReferenceUrl(library, name)),
     hasSide: (name) => Boolean(sidePlate(library, name)),
-    hasPlace: (name) => Boolean(placePlate(library, name)),
+    hasPlace: (name) => Boolean(pickedCastUrl(library, picks?.placeIds, name) || placePlate(library, name)),
   })
 }
 
@@ -248,8 +253,9 @@ export async function runNextReferenceJob(opts: {
   library: StoryLibraryAsset[]
   continuity: FilmContinuity
   styleId?: string
+  picks?: CatalogCast | null
 }): Promise<{ library: StoryLibraryAsset[]; continuity: FilmContinuity; didDe: string }> {
-  const job = jobsForLibrary(opts.continuity, opts.library)[0]
+  const job = jobsForLibrary(opts.continuity, opts.library, opts.picks)[0]
   if (!job) {
     return { ...opts, didDe: 'Die Referenzen stehen.' }
   }
@@ -263,6 +269,7 @@ export async function runNextReferenceJob(opts: {
       name: job.name,
       lookEn: look,
       styleId,
+      pickedIds: opts.picks?.personIds,
     })
     return {
       library: plated.library,
@@ -271,7 +278,9 @@ export async function runNextReferenceJob(opts: {
     }
   }
   if (job.kind === 'person-side') {
-    const front = identityReferenceUrl(opts.library, job.name)
+    const front =
+      pickedCastUrl(opts.library, opts.picks?.personIds, job.name) ||
+      identityReferenceUrl(opts.library, job.name)
     if (!front) return { ...opts, didDe: `Stammbild von ${job.name} fehlt noch.` }
     const drawn = await generateStoryCharacter(
       `${look}\nSame person as the attached photo. Three-quarter view, full body. Same face, hair and clothes.\n${CHARACTER_REFERENCE_LINE}`,
@@ -305,7 +314,9 @@ export async function runNextReferenceJob(opts: {
     }
   }
   if (job.kind === 'person-check') {
-    const front = identityReferenceUrl(opts.library, job.name)
+    const front =
+      pickedCastUrl(opts.library, opts.picks?.personIds, job.name) ||
+      identityReferenceUrl(opts.library, job.name)
     const side = sidePlate(opts.library, job.name)
     const tried = hasName(opts.continuity.sideTries, job.name)
     const ok = front && side?.imageUrl ? await samePerson(front, side.imageUrl) : true
@@ -360,11 +371,12 @@ export async function runNextReferenceJob(opts: {
 export function stampReferenceFaces(
   panel: FilmStoryboardPanel,
   library: StoryLibraryAsset[],
+  pickedIds?: string[],
 ): FilmStoryboardPanel {
   return {
     ...panel,
     placements: panel.placements.map((placement) => {
-      const url = identityReferenceUrl(library, placement.name)
+      const url = pickedCastUrl(library, pickedIds, placement.name) || identityReferenceUrl(library, placement.name)
       if (!url) return placement
       return { ...placement, imageUrl: url }
     }),

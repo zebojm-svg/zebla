@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import { REFERENCE_TAG, type CatalogKind } from '../../shared/reference-catalog'
 import {
@@ -13,6 +13,7 @@ import type { StoryLibraryAsset } from '../../shared/story-types'
 import { StoryStylePicker, loadStoryArtStyle } from './StoryStylePicker'
 import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
 import { type StoryArtStyleId } from '../../shared/story-art-styles'
+import { emptyCatalogCast, type CatalogCast } from '../../shared/catalog-cast'
 
 const KINDS: Array<{ id: CatalogKind; title: string; icon: StoryPictogramName }> = [
   { id: 'character', title: 'Figur', icon: 'person' },
@@ -45,9 +46,11 @@ function kindLabel(kind: CatalogKind): { field: string; button: string; hint: st
 export function ReferenceCatalog({
   assets,
   onChange,
+  dialogId,
 }: {
   assets: StoryLibraryAsset[]
   onChange: () => Promise<void> | void
+  dialogId?: string
 }) {
   const [kind, setKind] = useState<CatalogKind>('character')
   const [name, setName] = useState('')
@@ -59,6 +62,43 @@ export function ReferenceCatalog({
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const [cast, setCast] = useState<CatalogCast>(emptyCatalogCast)
+
+  useEffect(() => {
+    if (!dialogId) return
+    let alive = true
+    api.dialogs
+      .get(dialogId)
+      .then(({ dialog }) => {
+        if (!alive) return
+        setCast(dialog.catalogCast ?? emptyCatalogCast())
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [dialogId])
+
+  const toggleCast = async (asset: StoryLibraryAsset, slot: 'person' | 'place') => {
+    if (!dialogId) return
+    const key = slot === 'person' ? 'personIds' : 'placeIds'
+    const has = cast[key].includes(asset.id)
+    const next: CatalogCast = {
+      ...cast,
+      [key]: has ? cast[key].filter((id) => id !== asset.id) : [...cast[key], asset.id],
+    }
+    setCast(next)
+    setPendingId(asset.id)
+    setError('')
+    try {
+      await api.dialogs.update(dialogId, { catalogCast: next })
+    } catch (err) {
+      setCast(cast)
+      setError(err instanceof Error ? err.message : 'Die Wahl konnte nicht gespeichert werden.')
+    } finally {
+      setPendingId(null)
+    }
+  }
 
   const copy = kindLabel(kind)
   const needle = query.trim().toLowerCase()
@@ -254,6 +294,16 @@ export function ReferenceCatalog({
                     <span className="catalog-cover-more muted">Satz gespeichert</span>
                   ) : null}
                 </button>
+                {dialogId ? (
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${cast.personIds.includes(stack.cover.id) ? 'btn-primary' : 'btn-secondary'}`}
+                    disabled={pendingId === stack.cover.id}
+                    onClick={() => void toggleCast(stack.cover, 'person')}
+                  >
+                    {cast.personIds.includes(stack.cover.id) ? 'Für diese Geschichte' : 'Nehmen'}
+                  </button>
+                ) : null}
                 {open ? (
                   <div className="catalog-hidden">
                     {stack.cover.prompt ? (
@@ -355,6 +405,13 @@ export function ReferenceCatalog({
 
       {error ? <div className="alert alert-error">{error}</div> : null}
 
+      {dialogId ? (
+        <p className="muted">
+          «Nehmen» heisst: die Regie soll dieses Bild für diese Geschichte verwenden. Der Name muss so
+          heissen wie im Dialog, zum Beispiel Lena oder Küche.
+        </p>
+      ) : null}
+
       <input
         className="input catalog-search"
         value={query}
@@ -426,6 +483,16 @@ export function ReferenceCatalog({
                           />
                         </label>
                         <div className="story-character-card-actions">
+                          {dialogId ? (
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${cast.placeIds.includes(asset.id) ? 'btn-primary' : 'btn-secondary'}`}
+                              disabled={pendingId === asset.id}
+                              onClick={() => void toggleCast(asset, 'place')}
+                            >
+                              {cast.placeIds.includes(asset.id) ? 'Für diese Geschichte' : 'Nehmen'}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
