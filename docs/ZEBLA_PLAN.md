@@ -93,6 +93,28 @@ Reihenfolge:
 3. Jedes Bild der Geschichte neu, mit diesen Referenzen. Noch nicht.
 4. «Raum wie dieser, andere Möbel» im Katalog. **Gebaut.** In der Geschichte noch nicht von allein.
 
+## Regie als eigener Agent (28. Nov 2026, so steht es)
+
+Zebla gibt das Ziel, die Regie entscheidet den nächsten Schritt. Heute bestimmt noch Zebla die Reihenfolge — das wird umgebaut.
+
+- **Regie** = der Agent, verantwortlich für den ganzen Film. **Bild-KI** malt nur, ohne Gedächtnis. **Zebla** = Fenster, speichert, zeigt Fortschritt, setzt Grenzen (Kosten, Versuche, Zeit). Keine Regeln über Orte, Tiere, Videochat im Programm.
+- **Regiebuch** = Gedächtnis der Regie für diese Geschichte: Personen (Aussehen, Kleidung, was sie tragen), Orte (ein oder zwei Räume, wer wo), je Bild «muss zeigen / darf nicht / schliesst an Bild n an». **Jean-Marie sieht es und kann darin korrigieren.**
+- **Werkzeuge der Regie:** Katalog suchen, Referenzbild zeichnen lassen, Szenenbild malen lassen (mit gewählten Referenzen), Bild anschauen, ins Regiebuch schreiben, Jean-Marie fragen.
+- **Ablauf:** lesen → Regiebuch → Bilder planen → Referenzen vorbereiten und prüfen → Bild für Bild malen und anschauen → ganze Szene nebeneinander anschauen → Korrektur im Promptfenster ändert das Regiebuch, Regie wählt die betroffenen Bilder.
+- **Fragen:** Lässt der Dialog etwas offen (selber Raum?), fragt die Regie kurz und macht dann weiter.
+- **Versuche:** ein Bild höchstens **zweimal** neu, dann markiert für Jean-Marie.
+- **Etappen:** Eine Anfrage darf höchstens drei Minuten dauern. Die Regie arbeitet in Etappen und schreibt nach jeder ins Regiebuch, wo sie steht. Für Jean-Marie ein Ablauf mit Fortschritt.
+- Feste Sätze (Videochat, Tee, Klopfen, Nuss) fallen erst weg, wenn die Regie dieselben Fälle selbst richtig löst.
+
+Bauschritte:
+
+1. Regiebuch anlegen und auf der Bilder-Seite zeigen, korrigierbar. Noch nicht.
+2. Regie plant und prüft aus dem Regiebuch, zwei Versuche, dann Markierung. Teil gebaut (einmal anschauen, einmal neu).
+3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
+4. Fragen an Jean-Marie. Noch nicht.
+5. Ganze Szene nebeneinander prüfen. Noch nicht.
+6. Feste Sätze herausnehmen. Noch nicht.
+
 ## Stand (2026-10)
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder, Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler), **Drehbuch → Inventar → Vorlagen** (jede wiederkehrende Sache behält dieselbe id und wandert mit dem vorigen Foto **dieser** Sache: Blumen an der Tür, später auf dem Tisch; Kanne/Tablett derselbe Mechanismus, keine Extra-Tee-Logik), Zwischenbilder auf Augenhöhe, **Bild ändern als Packzettel** (`planStillEditPackzettel` → `{ imagePrompt, imageIds[] }`: Katalog + Hinweis an die Drehbuch-KI, genau diese Fotos an die Bild-KI; keine Stichwörter `allein`/`am Herd` — PR #74 nicht mergen), **Bild ändern mit Vorlagen-Check** (voriges Ortsbild, Requisiten, Personen — spätere Bilder der Szene neu), **Bild ändern mit FLUX Kontext Max** (harte Restage-Regie; Pro hält Gruppen zu fest), **Dialog zuerst Muttersprache** («Dialog daraus machen» schreibt Deutsch; Zielsprache, Lautschrift und Birkenbihl erst mit «Zielsprache machen» unter Text), **drei Sprachzeilen** (Deutsch · Zielsprache · Birkenbihl · Lautschrift), **Anmeldung / API-Boot** (Hub-Kachel, sso_mint, `/api/health` — kaputter Typ in `lib/ai.ts` behoben), **Zielsprache in Paketen** (ein Klick «Zielsprache machen»: Abschnitt oder ~8 Zeilen plus Birkenbihl; Knopf «läuft», dann «noch X Zeilen»; fertige Zeilen bleiben), **ein Knopf «Bilder planen»** auf Bilder (kein zweiter Zielsprache-Knopf dort; fehlt die Übersetzung, Satz «Zielsprache machst du unter Text»), **erster Bildplan lokal** (`planBoardWithoutAi`, sofort gespeichert, ohne auf Gemini zu warten — kein 60s-Loch auf der leeren Seite). Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): alte Filme ohne Deutsch **«Deutsch unter die Zeilen»**; neue Filme **Dialog daraus machen**, unter Text **Zielsprache machen**, auf Bilder **Bilder planen**.
