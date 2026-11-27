@@ -13,7 +13,7 @@ Nur **eigene Figuren**, keine Petit-Nicolas-Kopien in der App. Petit Nicolas dar
 ## So ist die Stadt gebaut
 
 1. **Geschichte = Ordner.** Dialog, Skript (Film-Prompt), Storyboard, Film und Diashow liegen zusammen. Neue Geschichte legt den Ordner selbst an.
-2. **Welt-Regal** (`/library`): Figuren, Räume, Möbel, Skizzen — über allen Geschichten. Zeichnen nur, wenn etwas fehlt. Gleiche Person (Ramo 1 / Ramo 2) bleibt getrennt; Ernten aus einem Standbild ist kein zweites Gesicht.
+2. **Welt-Regal** (`/library`): Figuren, Räume, Möbel, Skizzen — über allen Geschichten. Zeichnen nur, wenn etwas fehlt. Gleiche Person (Ramo 1 / Ramo 2) bleibt getrennt; Ernten aus einem Standbild ist kein zweites Gesicht. **Korrektur 27. Nov:** als Bauteil-Regal (ausschneiden und hinlegen) scheitert die Wiedererkennung. Neue Richtung unten: Katalog von Referenzbildern. Eine neue Sicht wird neu gezeichnet, die Referenz geht mit.
 3. **Meta-Blatt** auf der Dialog-Seite: wer spielt, Stimmen, Räume, Licht/Blick. Gilt für die ganze Geschichte.
 4. **Standbilder zuerst.** Ein Bild je Zeile. Die Kamera trifft Regie-Entscheidungen — nicht immer der ganze Raum. Erstes Sprechen in einer Szene = **Grundbild** (wer wo sitzt). Wenn jemand spricht = **Nahaufnahme** dieser Person. Handlung dazwischen (Tee, Klopfen, Tür) = **Zwischenbild** (Insert), neues Standbild, nicht das Wohnzimmer kopieren. Nahaufnahme = **Kamera wechselt den Platz** (FLUX Kontext auf das Grundbild): man schaut der Person ins Gesicht. Gemini dreht nur den Kopf — deshalb nicht für Nahaufnahmen. Weit-Bilder bleiben Gemini. Laufen durchs Bild kommt später.
    **Dialog darf mehr als Dialog sein.** Zeilenart: Dialog / Handlung / Erzähler. Handlung ist still (Bild + Geräusch: Wasser, Kessel pfeift, Plätschern, Klopfen). Erzähler wird gesprochen — eigene Stimme unter «Stimmen anpassen», nicht die Kinderstimmen. Geschichte («Ramo hat Freunde eingeladen») ist Erzähler, nicht stille Handlung. Tee-Reihenfolge: Wasser in denselben Kessel an der Spüle, dann denselben vollen Kessel auf denselben Herd (Gas bleibt Gas, Induktion bleibt Induktion), dann Pfeifen, dann Eingießen. Vorige Küchenbilder gehen als Vorlage mit, damit Kanne und Herd gleich bleiben.
@@ -57,26 +57,30 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 | Live/Deploy | [Vercel Zebla](https://vercel.com/zebojm-svgs-projects/zebla) · Anmeldung nur auf [zebla.zebotools.ch](https://zebla.zebotools.ch) — Vercel-Git-Vorschau (`…-git-….vercel.app`) darf Google nicht |
 | Zebla intern | App oben **Pro** (Master = fast kein Limit) |
 
-## Richtung (27. Nov 2026) — gefragt, noch nicht gebaut
+## Richtung (27. Nov 2026, korrigiert) — noch nicht gebaut
 
-Jean-Marie will die Tür neu denken. Noch nicht «so ist es». Erst sein Ja, dann bauen. Das Gebaute darunter bleibt.
+Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sicht muss neu gezeichnet werden. Noch nicht «so ist es». Erst sein Ja, dann bauen.
 
-- **Eine Tür:** ein Promptfenster. «Diese Figur als Reto, diese als Sabrina, die Geschichte so.» Daraus wird die Galerie, die Geschichte, das Board, die Bildergeschichte.
-- **Regal bleibt.** Gesicht, Raum, Sache, Stimme wiederverwenden. Neu zeichnen nur, was fehlt. Dieselbe Figur nicht noch einmal bezahlen.
-- **Regie-KI, nur Text:** liest den Satz und entscheidet selbst Weitbild, Nahaufnahme, Zwischenbild (Glas fällt), Geräusch, Stimme, Musik. Zeigt einen kurzen Plan. Teure Bilder erst nach «mach».
-- **Änderung im selben Fenster.** «Glas nur klirren» trifft dieses eine Bild. Der Rest bleibt.
-- **Geräusche wie Figuren** ins Regal (Klirren, Klopfen, Schritte). Die KI wählt. Nur ein unbekanntes Geräusch neu erzeugen. Heute kennt sie Tee, Klopfen, Nuss — ein fallendes Glas noch nicht.
-- **Stimmen** bleiben die vorhandenen KI-Stimmen, fest an der Figur.
-- Persisch und Birkenbihl bleiben. Erst wenn die Bildergeschichte steht.
-- Bewegungsfilm bleibt später.
+- **Katalog von Referenzen:** Figuren, Räume, Geräusche. «Ein Raum wie dieser», dazu Parameter (andere Möbel). Die Referenz bleibt dieser Raum.
+- **Jedes neue Bild wird neu gezeichnet.** Die Referenzbilder gehen jedes Mal mit, damit dieselbe Figur und derselbe Raum wiedererkennbar bleiben.
+- **Die KI legt eine Referenz an oder nimmt eine aus dem Katalog.** Fehlt Reto, entsteht einmal sein Referenzbild. Danach hängt jedes Bild von Reto daran.
+- **Eine Regie liest die ganze Geschichte**, bevor ein Bild entsteht. Sie hält fest, wer die Leute im Hintergrund sind und worauf ein Wort sich bezieht. Das Wort «Afrika» an einer anderen Stelle ändert die Menge auf dem Rummelplatz nicht.
+- **Geräusche** sind Referenzen im selben Katalog. Die Regie wählt sie aus der ganzen Geschichte.
+- **Eine Tür** bleibt: Promptfenster. «Diese Figur als Reto, diese als Sabrina, die Geschichte so.» Änderung im selben Fenster trifft ein Bild.
+- Stimmen bleiben an der Figur. Persisch und Birkenbihl erst danach. Bewegungsfilm später.
+
+Warum das Bisherige die Wiedererkennung verliert:
+
+- Das Regal erntet Ausschnitte und legt sie in die Szene. Eine neue Perspektive geht so nicht.
+- Beim Malen höchstens vier Fotos, oft nur die aktuelle Zeile. Gemini (weit) und FLUX (nah) haben kein gemeinsames Gedächtnis.
+- Manche Regeln sind Stichwörter (Tee, Klopfen, Nuss). Dasselbe Muster wie «Afrika» → andere Leute.
 
 Wenn ja, in dieser Reihenfolge:
 
-1. Promptfenster. Plan aus dem Regal. Noch keine neuen Bilder.
-2. Galerie: was schon da ist, was fehlt.
-3. «Mach» malt nur die Lücken, plus Stimme, Musik, Geräusch.
-4. Änderung im selben Fenster, ein Bild.
-5. Geräusch-Regal.
+1. Katalog: eine Figur-Referenz, eine Raum-Referenz, eine Geräusch-Referenz. Anlegen oder wählen.
+2. Regie liest die ganze Geschichte und schreibt den Zusammenhang.
+3. Jedes Bild neu, mit diesen Referenzen und diesem Zusammenhang.
+4. «Raum wie dieser, andere Möbel» ändert nur den genannten Parameter.
 
 ## Stand (2026-10)
 
