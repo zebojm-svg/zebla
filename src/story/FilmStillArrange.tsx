@@ -88,16 +88,6 @@ export function FilmStillPicture({
       </div>
     )
   }
-  if (panel.background.imageUrl && !interactive) {
-    return (
-      <div className="film-still-flat">
-        <img src={panel.background.imageUrl} alt={panel.caption || 'Raum'} />
-        <p className="muted film-arrange-hint">
-          Noch kein gemaltes Bild — «Diese Szene erzeugen». Die KI füllt Figuren in diesen Raum.
-        </p>
-      </div>
-    )
-  }
   return <div className="film-still-placeholder">Noch kein Bild</div>
 }
 

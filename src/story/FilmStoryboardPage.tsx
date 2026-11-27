@@ -125,7 +125,7 @@ function PanelCard({
       <FilmBeatColumns
         packNumber={stillPackNumber(board, panel)}
         picture={
-          panel.stillUrl || panel.background.imageUrl ? (
+          panel.stillUrl ? (
             <FilmStillPicture
               dialogId={dialog.id}
               panel={panel}
@@ -133,13 +133,8 @@ function PanelCard({
               onUpdated={onLayout}
             />
           ) : (
-            <div
-              className="film-panel-stage"
-              style={{
-                backgroundImage: bg.imageUrl ? `url(${bg.imageUrl})` : undefined,
-              }}
-            >
-              {!bg.imageUrl && <p className="film-panel-empty">Noch kein Bild</p>}
+            <div className="film-panel-stage">
+              <p className="film-panel-empty">Noch kein Bild</p>
             </div>
           )
         }

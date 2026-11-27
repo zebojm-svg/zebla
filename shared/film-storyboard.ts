@@ -288,21 +288,15 @@ export function matchCharacterPose(
   }
 }
 
-const GENERIC_PLACE_TOKENS = new Set([
-  'wohnzimmer',
-  'zimmer',
-  'wohnung',
-  'haus',
-  'stube',
-  'room',
-  'indoor',
-  'interior',
-  'szene',
-  'ort',
-  'place',
-  'home',
-  'house',
-])
+/** Der Raumname muss im Satz der Szene stehen. Ein einzelnes Wort aus der Beschreibung reicht nicht. */
+function roomNameFitsHint(roomName: string, hint: string): boolean {
+  const name = roomName.trim().toLowerCase()
+  const hay = hint.trim().toLowerCase()
+  if (!name || !hay) return false
+  if (hay.includes(name)) return true
+  const words = name.split(/[^a-zäöüß0-9]+/i).filter((word) => word.length > 3)
+  return words.length > 0 && words.every((word) => hay.includes(word))
+}
 
 export function matchBackground(
   hint: string,
@@ -318,28 +312,19 @@ export function matchBackground(
     }
   }
 
-  const tokens = needle.split(/[^a-zäöüß0-9]+/i).filter((t) => t.length > 2)
-  const specific = tokens.filter((t) => !GENERIC_PLACE_TOKENS.has(t))
-  const scored = envs
-    .map((env) => {
-      const hay = [env.name, env.description ?? '', ...(env.tags ?? [])].join(' ').toLowerCase()
-      let score = 0
-      if (hay.includes(needle) && needle.length > 12) score += 6
-      for (const t of specific) if (hay.includes(t)) score += 2
-      for (const t of tokens) if (GENERIC_PLACE_TOKENS.has(t) && hay.includes(t)) score += 0.25
-      if (score > 0 && (env.tags ?? []).includes('referenz')) score += 4
-      return { env, score }
-    })
-    .sort((a, b) => b.score - a.score)
-
-  const best = scored[0]
-  if (best && best.score >= 2) {
+  const hits = envs.filter((env) => roomNameFitsHint(env.name, needle))
+  const best = [...hits].sort((a, b) => {
+    const aRef = (a.tags ?? []).includes('referenz') ? 1 : 0
+    const bRef = (b.tags ?? []).includes('referenz') ? 1 : 0
+    return bRef - aRef
+  })[0]
+  if (best) {
     return {
       hint,
-      libraryAssetId: best.env.id,
-      imageUrl: best.env.imageUrl,
+      libraryAssetId: best.id,
+      imageUrl: best.imageUrl,
       match: 'reuse',
-      matchNoteDe: `Hintergrund «${best.env.name}» passt — ohne KI.`,
+      matchNoteDe: `Hintergrund «${best.name}» passt — ohne KI.`,
     }
   }
 
@@ -907,8 +892,9 @@ export function buildBoardFromDrafts(
 export function planBoardWithoutAi(
   dialog: Dialog,
   library: StoryLibraryAsset[],
+  opts?: { freshPlaces?: boolean },
 ): FilmStoryboard {
-  return buildBoardFromDrafts(dialog, draftPanelsFromDialog(dialog), library, 'rules')
+  return buildBoardFromDrafts(dialog, draftPanelsFromDialog(dialog), library, 'rules', undefined, opts)
 }
 
 /** Prop-ids und Vorlagen-Bedarf aus Dialog/Inventar auf jedes Bild legen. */

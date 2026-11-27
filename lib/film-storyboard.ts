@@ -300,7 +300,7 @@ export async function planFilmStoryboard(
         previous,
         { freshPlaces: Boolean(opts?.freshPlaces) },
       )
-    : planBoardWithoutAi(dialog, library)
+    : planBoardWithoutAi(dialog, library, { freshPlaces: true })
   const inventory = deriveFilmInventory(dialog)
 
   const updated = await updateDialog(

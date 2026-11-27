@@ -38,7 +38,7 @@ export function paintingStyleText(artStyle?: string | null, chosenStyle?: string
     if (picked === 'fotorealistisch') return PHOTOREALISTIC_STYLE
     return getStoryStylePrompt(picked)
   }
-  if (chosenStyle === 'photoreal' || artStyle === 'photoreal') return PHOTOREALISTIC_STYLE
+  if (chosenStyle === 'photoreal') return PHOTOREALISTIC_STYLE
   if (chosenStyle === 'comic' || artStyle === 'comic') return COMIC_STYLE
   if (chosenStyle === 'watercolor' || artStyle === 'watercolor') return WATERCOLOR_STYLE
   return getStoryStylePrompt('filmzeichnung')

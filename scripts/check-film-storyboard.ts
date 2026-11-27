@@ -97,6 +97,17 @@ const sofa: StoryLibraryAsset = {
 if (matchBackground('Kissen um einen niedrigen Holztisch, persische Teppiche', [sofa]).match === 'reuse') {
   fail('Altes Wohnzimmer nicht für einen anderen Dialog-Ort nehmen')
 }
+const flur: StoryLibraryAsset = {
+  ...park,
+  id: 'lib-flur',
+  name: 'Flur',
+  description: 'Tür, Schuhe, Jacken an der Wand',
+  tags: ['referenz', 'flur', 'tür'],
+  imageUrl: 'https://example.com/flur.png',
+}
+if (matchBackground('Nahaufnahme von Amir auf Lenas Bildschirm', [flur, park]).match === 'reuse') {
+  fail('ein Flur gehört nicht in den Videochat')
+}
 
 const dialog: Dialog = {
   id: 'd1',
