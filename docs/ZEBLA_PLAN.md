@@ -73,6 +73,8 @@ Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sich
 
 **Ordnung (27. Nov, nachmittags):** Figuren zuerst nach Stil, dann eine Figur im Stehen. Die anderen Ansichten erst nach einem Klick. Räume zuerst nach Stil, dann nach Ort (Draussen, Wald, Strand, See, Pool, Küche, Wohnzimmer, …). Ein neuer Raum landet über Stichwörter am selben Ort. Suchen im Katalog nach Name, Ort, Brille, Sofa. Keine Bilder aus Google. Bekannte Figuren nicht nachmachen lassen.
 
+**Zeitlimit beim Bild (27. Nov, abends):** Die Seite hat nach knapp einer Minute abgebrochen und so getan, als wären mehrere Bilder zugleich verlangt worden. Ein Bild darf jetzt länger brauchen. Die Meldung sagt: noch einmal versuchen.
+
 **Archiv (27. Nov, abends):** Bisherige Figuren liegen zugeklappt im Archiv. Sie bleiben für alte Filme. Neue Figuren speichern den Satz an die Bild-KI. Das Archiv macht alte Bilder nicht nachträglich rechtssicher. Es hält sie aus neuen Geschichten heraus. Der gespeicherte Satz zeigt, was bestellt wurde. Ein Archiv allein schützt nicht, wenn der Satz eine bekannte Figur verlangt.
 
 Warum das Bisherige die Wiedererkennung verliert:

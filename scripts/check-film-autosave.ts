@@ -68,6 +68,8 @@ if (isImageGenPath('/film-storyboard-reset')) fail('Vom-Text-neu ist kein Bild')
 
 const imgAbort = clientTimeoutMessage('/image', 'abort')
 if (!imgAbort.includes('Bild')) fail('Bild-Timeout muss Bild erwähnen')
+if (imgAbort.includes('auf einmal')) fail('Ein Bild darf nicht so tun, als hätte man mehrere zugleich verlangt')
+if (!clientSrc.includes('IMAGE_CLIENT_TIMEOUT_MS')) fail('Bild-Aufrufe warten lang genug')
 
 const filmAbort = clientTimeoutMessage('/film-from-prompt', 'abort')
 if (filmAbort.includes('Bild')) fail('Film-Timeout darf nicht so tun, als wäre es ein Bild')

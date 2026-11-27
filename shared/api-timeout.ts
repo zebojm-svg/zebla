@@ -3,9 +3,12 @@ export const DEFAULT_API_TIMEOUT_MS = 55_000
 
 /**
  * Lange Film-Planung (Dialog aus Prompt, Storyboard-JSON).
- * Vercel maxDuration ist 120 s — etwas darunter bleiben, damit die Antwort noch ankommt.
+ * Vercel maxDuration ist 180 s — etwas darunter bleiben, damit die Antwort noch ankommt.
  */
 export const FILM_PLAN_TIMEOUT_MS = 118_000
+
+/** Ein einzelnes Bild. Die Funktion darf 180 s laufen. */
+export const IMAGE_CLIENT_TIMEOUT_MS = 170_000
 
 /** Übersetzen / Birkenbihl: ein längerer Text, eine KI-Antwort. */
 export const TEXT_AI_TIMEOUT_MS = FILM_PLAN_TIMEOUT_MS
@@ -53,10 +56,15 @@ export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): 
   if (isStillEditPlanPath(path)) {
     return 'Die Drehbuch-KI hat den Packzettel nicht geliefert (Zeitlimit). Bitte noch einmal «Bild ändern».'
   }
+  if (apiPathOnly(path) === '/image-all') {
+    return reason === 'server'
+      ? 'Server-Zeitlimit. Bitte die Bilder einzeln erzeugen.'
+      : 'Zeitlimit. Bitte die Bilder einzeln erzeugen.'
+  }
   if (isImageGenPath(path)) {
     return reason === 'server'
-      ? 'Server-Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.'
-      : 'Zeitlimit überschritten. Bitte nur ein Bild auf einmal generieren.'
+      ? 'Das Bild hat auf dem Server zu lange gebraucht. Bitte noch einmal versuchen.'
+      : 'Das Bild hat zu lange gebraucht. Bitte noch einmal versuchen.'
   }
   if (isBoardPlanPath(path)) {
     return reason === 'server'

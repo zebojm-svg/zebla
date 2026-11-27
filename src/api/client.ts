@@ -2,6 +2,7 @@ import {
   clientTimeoutMessage,
   DEFAULT_API_TIMEOUT_MS,
   FILM_PLAN_TIMEOUT_MS,
+  IMAGE_CLIENT_TIMEOUT_MS,
   isStillEditPlanPath,
   TEXT_AI_TIMEOUT_MS,
 } from '../../shared/api-timeout'
@@ -622,7 +623,7 @@ export const api = {
       }>(
         '/film-storyboard-sketch',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
-        120_000,
+        IMAGE_CLIENT_TIMEOUT_MS,
       ),
     filmStillPlan: (dialogId: string, panelId: string, styleId: string | undefined, note: string) =>
       request<{ packzettel: { imagePrompt: string; imageIds: string[] } }>(
@@ -642,7 +643,7 @@ export const api = {
       }>(
         '/film-storyboard-still',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
-        120_000,
+        IMAGE_CLIENT_TIMEOUT_MS,
       ),
     filmPanelLayout: (
       dialogId: string,
@@ -707,15 +708,23 @@ export const api = {
         body: JSON.stringify({ dialogId }),
       }),
     image: (dialogId: string, sectionId: string) =>
-      request<{ dialog: import('../types').Dialog; imageUrl: string }>('/image', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, sectionId }),
-      }),
+      request<{ dialog: import('../types').Dialog; imageUrl: string }>(
+        '/image',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, sectionId }),
+        },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     imageAll: (dialogId: string) =>
-      request<{ dialog: import('../types').Dialog }>('/image-all', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId }),
-      }),
+      request<{ dialog: import('../types').Dialog }>(
+        '/image-all',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId }),
+        },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     imageLines: (
       dialogId: string,
       sectionId: string,
@@ -731,10 +740,14 @@ export const api = {
         currentBeat: number
         reason?: string
         prepPending?: boolean
-      }>('/image-lines', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, retry, forceImages }),
-      }),
+      }>(
+        '/image-lines',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, sectionId, beatIndex, replan, retry, forceImages }),
+        },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     visualBrief: (
       dialogId: string,
       data?: { answers?: Record<string, string>; askQuestions?: boolean },
@@ -748,10 +761,14 @@ export const api = {
         body: JSON.stringify({ dialogId, ...data }),
       }),
     visualTest: (dialogId: string, data?: { comment?: string; approve?: boolean }) =>
-      request<{ dialog: import('../types').Dialog }>('/visual-test', {
-        method: 'POST',
-        body: JSON.stringify({ dialogId, ...data }),
-      }),
+      request<{ dialog: import('../types').Dialog }>(
+        '/visual-test',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dialogId, ...data }),
+        },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     visualCritic: (
       dialogId: string,
       sectionId: string,
@@ -782,10 +799,14 @@ export const api = {
         poses: Array<{ id: string; label: string; hintDe: string }>
       }>('/story-stills-status'),
     generateScene: (description: string, styleId?: string) =>
-      request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-scene', {
-        method: 'POST',
-        body: JSON.stringify({ description, styleId }),
-      }),
+      request<{ imageUrl: string; prompt: string; styleId: string }>(
+        '/story-generate-scene',
+        {
+          method: 'POST',
+          body: JSON.stringify({ description, styleId }),
+        },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     generateCharacter: (
       name: string,
       description: string,
@@ -844,16 +865,20 @@ export const api = {
       styleId?: string,
       reference?: { imageUrl?: string; change?: string },
     ) =>
-      request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-environment', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          description,
-          styleId,
-          referenceImageUrl: reference?.imageUrl,
-          changeNote: reference?.change,
-        }),
-      }),
+      request<{ imageUrl: string; prompt: string; styleId: string }>(
+        '/story-generate-environment',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            description,
+            styleId,
+            referenceImageUrl: reference?.imageUrl,
+            changeNote: reference?.change,
+          }),
+        },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     listLibrary: (opts?: { type?: 'character' | 'environment' | 'scene'; tag?: string }) => {
       const params = new URLSearchParams()
       if (opts?.type) params.set('type', opts.type)
