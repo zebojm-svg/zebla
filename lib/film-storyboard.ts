@@ -73,7 +73,7 @@ import {
   type ArrangeLayerUpdate,
 } from '../shared/film-still-arrange.js'
 import { ensurePanelPieces } from './film-panel-pieces.js'
-import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId } from '../shared/story-art-styles.js'
+import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId, paintingStyleId } from '../shared/story-art-styles.js'
 import {
   catalogForPlanner,
   stillEditCatalog,
@@ -886,10 +886,11 @@ export async function planFilmPanelStillEdit(
     panels: board.panels.map((p) => (p.id === panelId ? panel : p)),
   }
   const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === found.sceneId)?.styleId
-  const resolvedStyle =
+  const resolvedStyle = paintingStyleId(
     (styleId && isStoryArtStyleId(styleId) ? styleId : undefined) ||
-    (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
-    DEFAULT_STORY_ART_STYLE
+      (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
+      DEFAULT_STORY_ART_STYLE,
+  )
   const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
   const catalog = stillEditCatalog({
     board: working,
@@ -929,7 +930,7 @@ export async function prepareFilmReferences(
           userId,
           library,
           continuity,
-          styleId: styleId && isStoryArtStyleId(styleId) ? styleId : undefined,
+          styleId: paintingStyleId(styleId),
         })
   board = { ...board, continuity: step.continuity }
   const pending = jobsForLibrary(step.continuity, step.library).length
@@ -966,10 +967,11 @@ export async function stillFilmPanel(
   if (!found) throw new Error('Bild nicht gefunden.')
   const scene = board.scenes.find((s) => s.id === found.sceneId)
   const fromPlan = dialog.filmPlan?.scenes.find((s) => s.sceneId === found.sceneId)?.styleId
-  const resolvedStyle =
+  const resolvedStyle = paintingStyleId(
     (styleId && isStoryArtStyleId(styleId) ? styleId : undefined) ||
-    (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
-    DEFAULT_STORY_ART_STYLE
+      (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
+      DEFAULT_STORY_ART_STYLE,
+  )
   const correction = note?.trim()
   const panel = correction
     ? { ...found, stillCorrection: correction, directorNote: correction }

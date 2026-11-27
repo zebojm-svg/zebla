@@ -1,13 +1,16 @@
+import { getStoryStylePrompt } from '../shared/story-art-styles.js'
+
 export const IMAGE_ASPECT_RATIO = '16:9' as const
+
+export const PAINT_STYLE_FIRST =
+  'STYLE OVERRIDE, highest priority. Draw in this style. Ignore any sentence that asks for a photograph, live-action, or a different drawing style.'
 
 export const PHOTOREALISTIC_STYLE =
   'Photorealistic cinematic photograph, live-action movie still, widescreen 16:9 landscape frame, natural soft lighting, shallow depth of field, high detail, realistic skin texture. ' +
   'Compose for a wide horizontal frame with room for faces and environment; avoid tall portrait crops. ' +
   'NOT comic book, NOT cartoon, NOT illustration, NOT anime, NOT drawn, NOT sketch, NOT cel-shaded, NOT graphic novel. No text or labels in the image.'
 
-export const ILLUSTRATION_STYLE =
-  'Children\'s book illustration: clear ink line, watercolor washes, consistent character designs, storybook lighting, widescreen 16:9 landscape frame. ' +
-  'NOT photorealistic, NOT live-action, NOT a photograph, NOT 3D CGI, NOT anime. No text, logos, or speech bubbles in the image.'
+export const ILLUSTRATION_STYLE = getStoryStylePrompt('filmzeichnung')
 
 export const COMIC_STYLE =
   'Graphic-novel comic illustration, clean ink, flat colors, consistent character model sheet, widescreen 16:9. ' +
@@ -27,6 +30,29 @@ export const CAST_APPEARANCE_GUIDE =
 export const CAST_STORYBOOK_GUIDE =
   'Age-accurate storybook characters, fully clothed, PG-rated language-learning context, never nude or sexually suggestive. ' +
   'Each person has a unique haircut, outfit color, and one distinguishing feature so they stay recognizable. Keep the same clothes in every frame.'
+
+/** Foto nur, wenn es bewusst gewählt wurde. Sonst die Filmzeichnung. */
+export function paintingStyleText(artStyle?: string | null, chosenStyle?: string | null): string {
+  if (chosenStyle === 'photoreal') return PHOTOREALISTIC_STYLE
+  if (chosenStyle === 'comic' || artStyle === 'comic') return COMIC_STYLE
+  if (chosenStyle === 'watercolor' || artStyle === 'watercolor') return WATERCOLOR_STYLE
+  return getStoryStylePrompt('filmzeichnung')
+}
+
+export function paintingAppearance(
+  artStyle?: string | null,
+  chosenStyle?: string | null,
+  ageEn?: string,
+  castLockEn?: string,
+): string {
+  if (chosenStyle === 'photoreal') {
+    return castLockEn || appearanceGuideFor('photoreal', ageEn)
+  }
+  if (chosenStyle === 'comic' || artStyle === 'comic' || chosenStyle === 'watercolor' || artStyle === 'watercolor') {
+    return castLockEn || CAST_STORYBOOK_GUIDE
+  }
+  return CAST_STORYBOOK_GUIDE
+}
 
 export function styleLockPrompt(
   artStyle: 'photoreal' | 'illustration' | 'comic' | 'watercolor' | undefined,

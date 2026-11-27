@@ -45,7 +45,7 @@ import {
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
-import { PHOTOREALISTIC_STYLE, CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO, appearanceGuideFor, styleLockPrompt, castIntegrityRules } from './ken-burns-style.js'
+import { CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO, castIntegrityRules, paintingAppearance, paintingStyleText, PAINT_STYLE_FIRST } from './ken-burns-style.js'
 import {
   referenceAnchorForPrompt,
   buildReferenceImagePrompt,
@@ -1255,8 +1255,13 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
     .join(', ')
 
   const brief = dialog.visualBrief
-  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
-  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
+  const appearance = paintingAppearance(
+    brief?.artStyle,
+    brief?.answers?.style,
+    brief?.ageEn,
+    brief?.castLockEn,
+  )
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
 
   const result = await chatJson<{ characters: CharacterVisual[] }>(
     `Du planst Bilder für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
@@ -1313,7 +1318,7 @@ function buildConsistentImagePrompt(
   if (brief) {
     return `${portraitRef}${ref}${cast}${scenePrompt}`
   }
-  return `${portraitRef}${ref}${cast}${scenePrompt}. ${CAST_APPEARANCE_GUIDE}. ${PHOTOREALISTIC_STYLE}`
+  return `${portraitRef}${ref}${cast}${scenePrompt}. ${PAINT_STYLE_FIRST} ${paintingStyleText()}`
 }
 
 function buildImagePrompt(
@@ -1595,7 +1600,7 @@ function buildPortraitGroup(
     `${group.speaker} is speaking to ${group.addressee} who is completely out of frame. ${gazeExpr[group.gaze]}. ` +
     `Expression: ${moodExpr[group.mood]}. Natural dialogue scene. ` +
     `Setting: ${scene}. ` +
-    `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PHOTOREALISTIC_STYLE}`
+    `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PAINT_STYLE_FIRST} ${paintingStyleText()}`
   return {
     id,
     speaker: group.speaker,

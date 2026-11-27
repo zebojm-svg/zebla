@@ -144,3 +144,10 @@ export function getStoryStylePrompt(id?: string | null): string {
 export function isStoryArtStyleId(value: string): value is StoryArtStyleId {
   return STORY_ART_STYLES.some((s) => s.id === value)
 }
+
+/** Alter Automatik-Stil und «kein Stil» werden zur Filmzeichnung. Eine andere bewusste Wahl bleibt. */
+export function paintingStyleId(saved?: string | null): StoryArtStyleId {
+  if (!saved || saved === 'illustration-lebendig') return 'filmzeichnung'
+  if (isStoryArtStyleId(saved)) return saved
+  return 'filmzeichnung'
+}
