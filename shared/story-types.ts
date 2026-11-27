@@ -26,6 +26,8 @@ export interface StoryLibraryAsset {
   rig?: CharacterRig
   /** Raum-Variante: die Referenz, von der dieses Bild kommt */
   basisId?: string
+  /** Satz, der an die Bild-KI ging. Fehlt er, liegt die Figur im Archiv. */
+  prompt?: string
   createdAt: string
 }
 

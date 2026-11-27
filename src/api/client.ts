@@ -875,6 +875,7 @@ export const api = {
       imageUrl?: string
       tags: string[]
       basisId?: string
+      prompt?: string
       styleId?: string
       legPoseId?: string
       headAngleId?: string

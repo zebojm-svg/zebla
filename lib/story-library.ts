@@ -19,6 +19,7 @@ export interface StoryLibraryDoc {
   faceExpressionId?: string
   rig?: CharacterRig
   basisId?: string
+  prompt?: string
   createdAt: string
 }
 
@@ -72,6 +73,7 @@ export async function saveStoryAsset(
     faceExpressionId?: string
     rig?: CharacterRig
     basisId?: string
+    prompt?: string
   },
 ): Promise<StoryLibraryAsset> {
   const id = randomUUID()
@@ -93,6 +95,8 @@ export async function saveStoryAsset(
   }
   const basisId = input.basisId?.trim()
   if (basisId) doc.basisId = basisId
+  const prompt = input.prompt?.trim()
+  if (prompt) doc.prompt = prompt.slice(0, 12000)
   await adminDb().collection('storyAssets').doc(id).set(doc)
   return { id, ...doc }
 }

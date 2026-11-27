@@ -172,7 +172,7 @@ export function FilmLibraryPage() {
         <div>
           <h1>Katalog</h1>
           <p className="muted">
-            Eine Figur, ein Raum, ein Geräusch. Eine neue Sicht wird neu gezeichnet. Diese Referenz geht mit.
+            Neue Figuren stehen hier, mit dem Satz, mit dem sie gezeichnet wurden. Die bisherigen liegen im Archiv.
           </p>
         </div>
         <Link to={dialogId ? `/story?dialog=${dialogId}` : '/story'} className="btn btn-ghost">
@@ -187,7 +187,8 @@ export function FilmLibraryPage() {
       ) : (
         <>
           <ReferenceCatalog assets={assets} onChange={load} />
-          <h2>Altes Regal</h2>
+          <details className="catalog-archive">
+          <summary>Altes Regal</summary>
           <p className="muted">
             Ausschnitte von früher, zum Hinlegen in eine Szene. Für dieselbe Figur zählt die Referenz oben.
           </p>
@@ -267,6 +268,7 @@ export function FilmLibraryPage() {
               )}
             </>
           )}
+          </details>
         </>
       )}
     </div>

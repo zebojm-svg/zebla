@@ -9,6 +9,7 @@ import {
   orderCharacters,
   orderRooms,
   roomPlateTags,
+  splitCatalogArchive,
 } from '../shared/catalog-order.ts'
 import { identityReferenceUrl } from '../shared/library-identities.ts'
 import { matchBackground } from '../shared/film-storyboard.ts'
@@ -43,6 +44,15 @@ if (identityReferenceUrl([oldPose], 'Reto') !== oldPose.imageUrl) {
 if (identityReferenceUrl([oldPose, plate], 'Reto') !== plate.imageUrl) {
   fail('Referenzbild geht vor der alten Pose')
 }
+const prompted: StoryLibraryAsset = {
+  ...plate,
+  id: 'prompted',
+  prompt: 'Junge, dunkle Haare, blaues Hemd',
+  createdAt: '2026-11-27T12:00:00.000Z',
+}
+if (identityReferenceUrl([plate, prompted], 'Reto') !== prompted.imageUrl) {
+  fail('Figur mit gespeichertem Satz geht vor der alten Referenz')
+}
 
 const glass: StoryLibraryAsset = {
   id: 'glass',
@@ -53,6 +63,10 @@ const glass: StoryLibraryAsset = {
   tags: ['referenz'],
   createdAt: '2026-11-27T10:00:00.000Z',
 }
+const split = splitCatalogArchive([oldPose, prompted, glass])
+if (split.archive.length !== 1 || split.archive[0]?.id !== 'old') fail('Figur ohne Satz liegt im Archiv')
+if (!split.active.some((asset) => asset.id === 'prompted')) fail('neue Figur bleibt im Katalog')
+if (!split.active.some((asset) => asset.id === 'glass')) fail('Geräusch bleibt im Katalog')
 if (!isCatalogReference(glass)) fail('Geräusch ist eine Referenz')
 if (isCatalogReference(oldPose)) fail('Pose ohne Kennzeichen ist keine Referenz')
 

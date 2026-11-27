@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '../api/client'
 import { REFERENCE_TAG, type CatalogKind } from '../../shared/reference-catalog'
 import {
@@ -7,12 +7,12 @@ import {
   orderCharacters,
   orderRooms,
   roomPlateTags,
-  type CharacterStack,
+  splitCatalogArchive,
 } from '../../shared/catalog-order'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import { StoryStylePicker, loadStoryArtStyle } from './StoryStylePicker'
 import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
-import { isStoryArtStyleId, type StoryArtStyleId } from '../../shared/story-art-styles'
+import { type StoryArtStyleId } from '../../shared/story-art-styles'
 
 const KINDS: Array<{ id: CatalogKind; title: string; icon: StoryPictogramName }> = [
   { id: 'character', title: 'Figur', icon: 'person' },
@@ -25,7 +25,7 @@ function kindLabel(kind: CatalogKind): { field: string; button: string; hint: st
     return {
       field: 'Wie sieht die Figur aus?',
       button: 'Referenzbild zeichnen',
-      hint: 'Das kostet ein Bild. Danach geht dieses Gesicht bei jeder neuen Sicht mit.',
+      hint: 'Das kostet ein Bild. Der Satz wird gespeichert und geht bei jeder neuen Sicht mit.',
     }
   }
   if (kind === 'environment') {
@@ -59,14 +59,12 @@ export function ReferenceCatalog({
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const [drawNote, setDrawNote] = useState('')
-  const drawStarted = useRef(false)
-  const drawStop = useRef(false)
 
   const copy = kindLabel(kind)
   const needle = query.trim().toLowerCase()
+  const { active, archive } = useMemo(() => splitCatalogArchive(assets), [assets])
   const characterGroups = useMemo(() => {
-    const groups = orderCharacters(assets)
+    const groups = orderCharacters(active)
     if (!needle) return groups
     return groups
       .map((group) => ({
@@ -79,7 +77,22 @@ export function ReferenceCatalog({
         ),
       }))
       .filter((group) => group.items.length > 0)
-  }, [assets, needle])
+  }, [active, needle])
+  const archiveGroups = useMemo(() => {
+    const groups = orderCharacters(archive)
+    if (!needle) return groups
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((stack) =>
+          [stack.displayName, stack.styleLabel, ...stack.hidden.map(catalogHay), catalogHay(stack.cover)]
+            .join(' ')
+            .toLowerCase()
+            .includes(needle),
+        ),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [archive, needle])
   const roomGroups = useMemo(() => {
     const groups = orderRooms(assets)
     if (!needle) return groups
@@ -134,6 +147,7 @@ export function ReferenceCatalog({
           imageUrl: drawn.imageUrl,
           tags: characterPlateTags(drawn.styleId, trimmedDescription),
           styleId: drawn.styleId,
+          prompt: drawn.prompt,
           legPoseId: 'standing',
           headAngleId: 'front',
           armPoseId: 'relaxed',
@@ -147,6 +161,7 @@ export function ReferenceCatalog({
           imageUrl: drawn.imageUrl,
           tags: roomPlateTags(drawn.styleId, trimmedDescription),
           styleId: drawn.styleId,
+          prompt: drawn.prompt,
         })
       }
       setName('')
@@ -181,6 +196,7 @@ export function ReferenceCatalog({
         imageUrl: drawn.imageUrl,
         tags: roomPlateTags(drawn.styleId, `${asset.description ?? ''} ${change}`),
         styleId: drawn.styleId,
+        prompt: drawn.prompt,
         basisId: asset.id,
       })
       setChangeById((prev) => ({ ...prev, [asset.id]: '' }))
@@ -190,34 +206,6 @@ export function ReferenceCatalog({
     } finally {
       setPendingId(null)
     }
-  }
-
-  const drawStanding = async (stack: CharacterStack) => {
-    const styleId = isStoryArtStyleId(stack.styleId) ? stack.styleId : loadStoryArtStyle()
-    const description = stack.cover.description?.trim() || stack.displayName
-    const drawn = await api.story.generateCharacter(
-      stack.displayName,
-      description,
-      styleId,
-      undefined,
-      undefined,
-      undefined,
-      stack.cover.imageUrl || undefined,
-      undefined,
-      undefined,
-      true,
-    )
-    await api.story.saveToLibrary({
-      type: 'character',
-      name: stack.displayName,
-      description,
-      imageUrl: drawn.imageUrl,
-      tags: characterPlateTags(drawn.styleId, description),
-      styleId: drawn.styleId,
-      legPoseId: 'standing',
-      headAngleId: 'front',
-      armPoseId: 'relaxed',
-    })
   }
 
   const remove = async (asset: StoryLibraryAsset) => {
@@ -234,42 +222,72 @@ export function ReferenceCatalog({
     }
   }
 
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
+  const archiveCount = archiveGroups.reduce((sum, group) => sum + group.items.length, 0)
 
-  useEffect(() => {
-    if (kind !== 'character' || drawStarted.current) return
-    const missing = orderCharacters(assets).flatMap((group) => group.items.filter((stack) => stack.needsStanding))
-    if (missing.length === 0) return
-    drawStarted.current = true
-    drawStop.current = false
-    void (async () => {
-      setDrawNote(
-        missing.length === 1
-          ? `${missing[0]!.displayName} hat kein ganzes Bild im Stehen. Ich zeichne es nach.`
-          : `${missing.length} Figuren haben kein ganzes Bild im Stehen. Ich zeichne sie nach. Jede kostet ein Bild.`,
-      )
-      for (const stack of missing) {
-        if (!mounted.current || drawStop.current) break
-        setDrawNote(`${stack.displayName} im Stehen …`)
-        try {
-          await drawStanding(stack)
-          await onChange()
-        } catch (err) {
-          if (mounted.current) setError(err instanceof Error ? err.message : 'Stehbild fehlgeschlagen.')
-          break
-        }
-      }
-      if (mounted.current && !drawStop.current) setDrawNote('')
-    })()
-    // Einmal, sobald Figuren da sind. Spätere Bilder starten den Lauf nicht neu.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, assets])
+  const renderCharacterGroups = (groups: typeof characterGroups, prefix: string) =>
+    groups.map((group) => (
+      <section key={`${prefix}-${group.styleId}`} className="catalog-style-block">
+        <h2>{group.styleLabel}</h2>
+        <div className="story-character-grid">
+          {group.items.map((stack) => {
+            const key = `${prefix}-${stack.key}`
+            const open = openKey === key || (needle.length > 0 && stack.hidden.length > 0)
+            return (
+              <div key={key} className="catalog-stack">
+                <button
+                  type="button"
+                  className="catalog-cover"
+                  aria-expanded={open}
+                  onClick={() => setOpenKey(open && openKey === key ? null : key)}
+                >
+                  {stack.cover.imageUrl ? (
+                    <img src={stack.cover.imageUrl} alt={stack.displayName} />
+                  ) : (
+                    <div className="catalog-sound-mark">
+                      <StoryPictogram name="person" />
+                    </div>
+                  )}
+                  <span className="catalog-cover-name">{stack.displayName}</span>
+                  {stack.hidden.length > 0 ? (
+                    <span className="catalog-cover-more muted">{stack.hidden.length} weitere</span>
+                  ) : stack.cover.prompt ? (
+                    <span className="catalog-cover-more muted">Satz gespeichert</span>
+                  ) : null}
+                </button>
+                {open ? (
+                  <div className="catalog-hidden">
+                    {stack.cover.prompt ? (
+                      <details className="catalog-prompt">
+                        <summary>Satz an die Bild-KI</summary>
+                        <p className="muted">{stack.cover.prompt}</p>
+                      </details>
+                    ) : stack.cover.description ? (
+                      <p className="muted">{stack.cover.description}</p>
+                    ) : null}
+                    {stack.hidden.map((asset) => (
+                      <article key={asset.id} className="story-character-card">
+                        {asset.imageUrl ? <img src={asset.imageUrl} alt={asset.name} /> : null}
+                        <p>{asset.name}</p>
+                        <div className="story-character-card-actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={pendingId === asset.id}
+                            onClick={() => void remove(asset)}
+                          >
+                            Löschen
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+    ))
 
   return (
     <section className="reference-catalog">
@@ -344,79 +362,34 @@ export function ReferenceCatalog({
         placeholder="Suchen: Reto, Küche, Brille, Wald …"
       />
 
-      {drawNote ? (
-        <p className="hint catalog-draw-note">
-          {drawNote}{' '}
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              drawStop.current = true
-              setDrawNote('Angehalten.')
-            }}
-          >
-            Stopp
-          </button>
-        </p>
-      ) : null}
-
       {kind === 'character' ? (
-        characterGroups.length === 0 ? (
-          <p className="muted">Noch keine Figur. Oben ein Referenzbild zeichnen.</p>
-        ) : (
-          characterGroups.map((group) => (
-            <section key={group.styleId} className="catalog-style-block">
-              <h2>{group.styleLabel}</h2>
-              <div className="story-character-grid">
-                {group.items.map((stack) => {
-                  const open = openKey === stack.key || (needle.length > 0 && stack.hidden.length > 0)
-                  return (
-                    <div key={stack.key} className="catalog-stack">
-                      <button
-                        type="button"
-                        className="catalog-cover"
-                        aria-expanded={open}
-                        onClick={() => setOpenKey(open && openKey === stack.key ? null : stack.key)}
-                      >
-                        {stack.cover.imageUrl ? (
-                          <img src={stack.cover.imageUrl} alt={stack.displayName} />
-                        ) : (
-                          <div className="catalog-sound-mark">
-                            <StoryPictogram name="person" />
-                          </div>
-                        )}
-                        <span className="catalog-cover-name">{stack.displayName}</span>
-                        {stack.hidden.length > 0 ? (
-                          <span className="catalog-cover-more muted">{stack.hidden.length} weitere</span>
-                        ) : null}
-                      </button>
-                      {open && stack.hidden.length > 0 ? (
-                        <div className="catalog-hidden">
-                          {stack.hidden.map((asset) => (
-                            <article key={asset.id} className="story-character-card">
-                              {asset.imageUrl ? <img src={asset.imageUrl} alt={asset.name} /> : null}
-                              <p>{asset.name}</p>
-                              <div className="story-character-card-actions">
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-sm"
-                                  disabled={pendingId === asset.id}
-                                  onClick={() => void remove(asset)}
-                                >
-                                  Löschen
-                                </button>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          ))
-        )
+        <>
+          {characterGroups.length === 0 && archiveGroups.length === 0 ? (
+            <p className="muted">
+              {needle
+                ? 'Nichts gefunden.'
+                : 'Noch keine neue Figur. Oben ein Referenzbild zeichnen. Der Satz wird mitgespeichert.'}
+            </p>
+          ) : characterGroups.length > 0 ? (
+            renderCharacterGroups(characterGroups, 'neu')
+          ) : null}
+          {archiveCount > 0 ? (
+            needle ? (
+              <section className="catalog-archive">
+                <h2>Archiv</h2>
+                {renderCharacterGroups(archiveGroups, 'archiv')}
+              </section>
+            ) : (
+              <details className="catalog-archive">
+                <summary>Archiv ({archiveCount})</summary>
+                <p className="muted">
+                  Bisherige Figuren. Sie bleiben für alte Filme. Neue Geschichten bekommen oben eine neue Figur.
+                </p>
+                {renderCharacterGroups(archiveGroups, 'archiv')}
+              </details>
+            )
+          ) : null}
+        </>
       ) : null}
 
       {kind === 'environment' ? (
