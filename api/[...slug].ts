@@ -2353,7 +2353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig, basisId } = req.body as {
+      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig, basisId, prompt } = req.body as {
         type?: StoryAssetType
         name?: string
         description?: string
@@ -2366,6 +2366,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         faceExpressionId?: string
         rig?: unknown
         basisId?: string
+        prompt?: string
       }
       if (!type || !name?.trim() || (type !== 'sound' && !imageUrl?.trim())) {
         res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
@@ -2382,6 +2383,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         imageUrl: imageUrl?.trim() || '',
         tags: Array.isArray(tags) ? tags : type === 'sound' ? [REFERENCE_TAG] : [],
         basisId: typeof basisId === 'string' ? basisId : undefined,
+        prompt: typeof prompt === 'string' ? prompt : undefined,
         styleId: isStoryArtStyleId(styleId ?? '') ? styleId : undefined,
         legPoseId: isLegPoseId(legPoseId ?? '') ? legPoseId : undefined,
         headAngleId: isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined,

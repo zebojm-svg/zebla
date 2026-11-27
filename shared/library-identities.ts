@@ -212,6 +212,8 @@ export function identityReferenceUrl(
   const refs = assets
     .filter((a) => (a.tags ?? []).includes(REFERENCE_TAG))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  const prompted = refs.filter((a) => (a.prompt ?? '').trim())
+  if (prompted[0]?.imageUrl) return prompted[0].imageUrl
   if (refs[0]?.imageUrl) return refs[0].imageUrl
   return [...assets].sort(oldestFirst)[0]?.imageUrl
 }

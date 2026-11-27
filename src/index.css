@@ -4321,3 +4321,21 @@ html[dir='rtl'] .slideshow-topbar {
   gap: 0.5rem;
 }
 
+.catalog-archive {
+  margin-top: 1.5rem;
+}
+
+.catalog-archive summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.catalog-prompt {
+  margin: 0.35rem 0 0;
+}
+
+.catalog-prompt p {
+  white-space: pre-wrap;
+  margin: 0.35rem 0 0;
+}
+

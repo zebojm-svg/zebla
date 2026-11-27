@@ -262,8 +262,23 @@ export function orderRooms(assets: StoryLibraryAsset[]): StyleGroup<RoomGroup>[]
     }))
 }
 
+/** Eine Figur ohne gespeicherten Zeichensatz ist eine bisherige Figur. */
+export function isArchivedFigure(asset: Pick<StoryLibraryAsset, 'type' | 'prompt'>): boolean {
+  return asset.type === 'character' && !(asset.prompt ?? '').trim()
+}
+
+/** Neue Figuren bleiben im Katalog. Bisherige Figuren wandern ins Archiv. */
+export function splitCatalogArchive(assets: StoryLibraryAsset[]): {
+  active: StoryLibraryAsset[]
+  archive: StoryLibraryAsset[]
+} {
+  const archive = assets.filter(isArchivedFigure)
+  const archived = new Set(archive.map((asset) => asset.id))
+  return { active: assets.filter((asset) => !archived.has(asset.id)), archive }
+}
+
 export function catalogHay(asset: StoryLibraryAsset): string {
-  const text = [asset.name, asset.description ?? '', ...(asset.tags ?? [])].join(' ')
+  const text = [asset.name, asset.description ?? '', asset.prompt ?? '', ...(asset.tags ?? [])].join(' ')
   const place = asset.type === 'environment' ? inferPlace(text).label : ''
   return `${text} ${detailTags(text).join(' ')} ${place} ${styleLabelOf(styleKeyOf(asset))}`.toLowerCase()
 }
