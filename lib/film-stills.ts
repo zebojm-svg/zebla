@@ -121,7 +121,7 @@ async function generateStillPng(
   for (const model of geminiImageModelCandidates()) {
     try {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 55_000)
+      const timer = setTimeout(() => controller.abort(), 90_000)
       let res: Response
       try {
         res = await fetch(

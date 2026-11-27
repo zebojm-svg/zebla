@@ -82,7 +82,7 @@ const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 const IMAGE_MODEL_CANDIDATES = geminiImageModelCandidates()
 const IMAGE_MODEL = IMAGE_MODEL_CANDIDATES[0] ?? 'gemini-3.1-flash-image'
 
-async function googleApiPost(url: string, body: object, timeoutMs = 45_000): Promise<Response> {
+async function googleApiPost(url: string, body: object, timeoutMs = 90_000): Promise<Response> {
   await assertAiAllowed()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -99,7 +99,7 @@ async function googleApiPost(url: string, body: object, timeoutMs = 45_000): Pro
     throw new Error(errText)
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error('Zeitüberschreitung bei der Bildgenerierung (45 s).')
+      throw new Error(`Zeitüberschreitung bei der Bildgenerierung (${Math.round(timeoutMs / 1000)} s).`)
     }
     throw err
   } finally {
@@ -1179,7 +1179,7 @@ function imageGenerationErrorMessage(raw: string): string {
     )
   }
   if (raw.includes('FUNCTION_INVOCATION_TIMEOUT') || raw.includes('Zeitüberschreitung')) {
-    return 'Zeitlimit überschritten. Bitte nur ein einzelnes Bild generieren und erneut versuchen.'
+    return 'Das Bild hat zu lange gebraucht. Bitte noch einmal versuchen.'
   }
   if (raw.includes('paid plans') || raw.includes('upgrade your account')) {
     return 'Imagen ist nur mit kostenpflichtigem Google-AI-Konto verfügbar. Entferne GEMINI_IMAGE_MODEL in Vercel oder setze gemini-2.5-flash-image.'
