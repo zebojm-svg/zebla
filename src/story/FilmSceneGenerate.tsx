@@ -108,7 +108,7 @@ export function FilmSceneGenerateBar({
         ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
         : status || 'Erzeuge Szene …'
     : allDone
-      ? 'Szene nochmals erzeugen'
+      ? 'Szene neu erzeugen'
       : stats.done > 0
         ? 'Fehlende Bilder erzeugen'
         : 'Diese Szene erzeugen'
