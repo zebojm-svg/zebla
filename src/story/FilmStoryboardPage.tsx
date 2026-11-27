@@ -14,6 +14,7 @@ import {
 } from './FilmSceneGenerate'
 import { stillPackNumber } from '../../shared/film-still-pack'
 import { FilmCastVoices } from './FilmCastVoices'
+import { FilmRegiebuch } from './FilmRegiebuch'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { FilmStillPicture } from './FilmStillArrange'
 import { useSceneStills } from './generateSceneStills'
@@ -460,6 +461,13 @@ export function FilmStoryboardPage() {
               {missing} Teil{missing === 1 ? '' : 'e'} fehlen.
             </p>
           ) : null}
+
+          <FilmRegiebuch
+            dialogId={dialog.id}
+            board={board}
+            disabled={locked}
+            onApplied={apply}
+          />
 
           <FilmCastVoices
             dialog={dialog}

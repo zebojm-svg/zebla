@@ -631,6 +631,18 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
         STILL_EDIT_PLAN_TIMEOUT_MS,
       ),
+    filmRegiebuch: (
+      dialogId: string,
+      opts: { edit?: import('../../shared/film-continuity').RegiebuchEdit; fresh?: boolean } = {},
+    ) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>(
+        '/film-regiebuch',
+        { method: 'POST', body: JSON.stringify({ dialogId, ...opts }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     filmPrepare: (dialogId: string, styleId?: string) =>
       request<{
         dialog: import('../types').Dialog

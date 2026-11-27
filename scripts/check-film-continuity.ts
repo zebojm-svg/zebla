@@ -14,7 +14,10 @@ import {
   fallbackContinuity,
   fallbackShots,
   referenceJobs,
+  regiebuchFromContinuity,
+  regiebuchVorgabenDe,
   sanitizeContinuity,
+  sanitizeRegiebuchEdit,
 } from '../shared/film-continuity.ts'
 
 function fail(msg: string): never {
@@ -122,5 +125,29 @@ if (!fn.includes('continuityBriefEn')) fail('der Regie-Satz geht ans Bild')
 if (!fn.includes('directorStillUrls')) fail('frühere Blicke gehen mit dem Bild')
 if (!src.includes('prepareFilmReferences')) fail('Referenzen entstehen vor den Szenenbildern')
 if (!src.includes('runNextReferenceJob')) fail('ein Referenzbild nach dem anderen')
+
+const read = sanitizeContinuity(
+  {
+    situationDe: 'Zwei Räume, Videogespräch.',
+    situationEn: 'Video call, two rooms.',
+    together: false,
+    people: [{ name: 'Amir', lookEn: 'man, headset', lookDe: 'Mann mit Headset' }],
+    places: [{ name: 'Büro', lookEn: 'small office', lookDe: 'kleines Büro' }],
+    locksEn: [],
+    shots: [],
+  },
+  'x',
+)
+if (read?.people[0]?.lookDe !== 'Mann mit Headset') fail('Regiebuch behält das Deutsche der Regie')
+const book = regiebuchFromContinuity({ ...read!, notesDe: ['Amir trägt immer das Headset.'] })
+const vorgaben = regiebuchVorgabenDe(book)
+if (!vorgaben.includes('Amir: Mann mit Headset') || !vorgaben.includes('Gilt: Amir trägt immer das Headset.')) {
+  fail('Vorgaben aus dem Regiebuch gehen an die Regie')
+}
+if (sanitizeRegiebuchEdit({ people: [{ name: '' }] })?.people.length !== 0) fail('leere Namen fallen weg')
+const contSrc = readFileSync('lib/film-continuity.ts', 'utf8')
+if (!contSrc.includes('VORGABEN VON JEAN-MARIE')) fail('Regie liest Jean-Maries Änderungen als Vorgabe')
+const boardSrc = readFileSync('lib/film-storyboard.ts', 'utf8')
+if (!boardSrc.includes('carry?.byUser')) fail('«Bilder planen» löscht das geänderte Regiebuch nicht')
 
 console.log('OK film-continuity')
