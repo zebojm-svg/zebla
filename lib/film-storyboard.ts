@@ -50,6 +50,7 @@ import {
   stampReferenceFaces,
 } from './film-continuity.js'
 import { directorStillUrls } from '../shared/film-continuity.js'
+import { pickedCastUrl } from '../shared/catalog-cast.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelHarvestNote,
@@ -922,7 +923,8 @@ export async function prepareFilmReferences(
   const continuity = await ensureFilmContinuity(dialog, board)
   board = { ...board, continuity }
   const library = libraryForCompose(await listStoryAssets(userId))
-  const pendingBefore = jobsForLibrary(continuity, library).length
+  const picks = dialog.catalogCast
+  const pendingBefore = jobsForLibrary(continuity, library, picks).length
   const step =
     pendingBefore === 0
       ? { library, continuity, didDe: 'Die Referenzen stehen.' }
@@ -931,9 +933,10 @@ export async function prepareFilmReferences(
           library,
           continuity,
           styleId: paintingStyleId(styleId),
+          picks,
         })
   board = { ...board, continuity: step.continuity }
-  const pending = jobsForLibrary(step.continuity, step.library).length
+  const pending = jobsForLibrary(step.continuity, step.library, picks).length
   const updated = await updateDialog(
     dialogId,
     userId,
@@ -1091,9 +1094,10 @@ export async function stillFilmPanel(
           name: speaker,
           lookEn: look?.lookEn || speaker,
           styleId: resolvedStyle,
+          pickedIds: dialog.catalogCast?.personIds,
         })
         faceLibrary = plated.library
-        panelForGen = stampReferenceFaces(panelForGen, plated.library)
+        panelForGen = stampReferenceFaces(panelForGen, plated.library, dialog.catalogCast?.personIds)
         boardForGen = {
           ...boardForGen,
           panels: boardForGen.panels.map((item) => (item.id === panelForGen.id ? panelForGen : item)),
@@ -1114,6 +1118,13 @@ export async function stillFilmPanel(
           ? [{ url: side.imageUrl, name: `Seitenansicht ${placement.name}`, role: 'identity' as const }]
           : []
       }),
+      ...(pickedCastUrl(faceLibrary, dialog.catalogCast?.placeIds, panelForGen.settingHint)
+        ? [{
+            url: pickedCastUrl(faceLibrary, dialog.catalogCast?.placeIds, panelForGen.settingHint) as string,
+            name: panelForGen.settingHint || 'Raum',
+            role: 'grundbild' as const,
+          }]
+        : []),
     ].slice(0, 3)
     const whoOnWide = (wide ?? panelForGen).placements.find(
       (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),

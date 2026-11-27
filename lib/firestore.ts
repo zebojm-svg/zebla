@@ -53,6 +53,7 @@ interface DialogDoc {
   visualBrief?: Dialog['visualBrief']
   storyMeta?: Dialog['storyMeta']
   filmInventory?: Dialog['filmInventory']
+  catalogCast?: Dialog['catalogCast']
   createdAt: string
   updatedAt: string
 }
@@ -105,6 +106,7 @@ function docToDialog(id: string, data: DialogDoc): Dialog {
     visualBrief: data.visualBrief ?? null,
     storyMeta: data.storyMeta ?? null,
     filmInventory: data.filmInventory ?? null,
+    catalogCast: data.catalogCast ?? null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }
@@ -415,6 +417,7 @@ export async function updateDialog(
     visualBrief: Dialog['visualBrief']
     storyMeta: Dialog['storyMeta']
     filmInventory: Dialog['filmInventory']
+    catalogCast: Dialog['catalogCast']
   }>,
   profile?: UserProfile | null,
 ): Promise<Dialog | null> {
@@ -484,6 +487,7 @@ export async function updateDialog(
     visualBrief: pick(data.visualBrief, existing.visualBrief ?? undefined),
     storyMeta: pick(data.storyMeta, existing.storyMeta ?? undefined),
     filmInventory: pick(data.filmInventory, existing.filmInventory ?? undefined),
+    catalogCast: pick(data.catalogCast, existing.catalogCast ?? undefined),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   }
@@ -636,6 +640,9 @@ export async function cloneDialog(
       : undefined,
     storyMeta: source.storyMeta
       ? JSON.parse(JSON.stringify(source.storyMeta))
+      : undefined,
+    catalogCast: source.catalogCast
+      ? JSON.parse(JSON.stringify(source.catalogCast))
       : undefined,
     filmInventory: source.filmInventory
       ? JSON.parse(JSON.stringify(source.filmInventory))

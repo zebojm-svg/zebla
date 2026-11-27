@@ -385,6 +385,11 @@ export function FilmStoryboardPage() {
   return (
     <div className="page film-board-page">
       <FilmProjectNav dialogId={dialog.id} />
+      <p className="muted">
+        Personen und Räume wählst du im{' '}
+        <Link to={`/library?dialog=${dialog.id}`}>Katalog</Link>
+        {' '}mit «Nehmen». Die Regie verwendet sie, wenn der Name gleich ist wie im Dialog.
+      </p>
       {board ? (
         <FilmStyleTabs
           value={activeStyle}
