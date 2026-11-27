@@ -44,6 +44,7 @@ import {
   briefForImage,
   ensureFilmContinuity,
   ensureSpeakerPlate,
+  judgeStoryStill,
   jobsForLibrary,
   runNextReferenceJob,
   sidePlate,
@@ -1254,7 +1255,7 @@ export async function stillFilmPanel(
       inventory: dialog.filmInventory,
       library: editLibrary,
     })
-    const url = await generateFilmPanelStillImage({
+    let url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
       styleId: resolvedStyle,
@@ -1277,6 +1278,50 @@ export async function stillFilmPanel(
       inventory: dialog.filmInventory,
       library: editLibrary,
     })
+    let judgeDe = ''
+    if (!correction) {
+      try {
+        const earlier = [...boardForGen.panels]
+          .slice(0, boardForGen.panels.findIndex((item) => item.id === panelForGen.id))
+          .reverse()
+          .find(
+            (item) =>
+              item.stillUrl?.startsWith('http') &&
+              (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() ===
+                (panelForGen.closeupSpeaker || speaker || '').trim().toLowerCase(),
+          )?.stillUrl
+        const verdict = await judgeStoryStill({
+          imageUrl: url,
+          earlierUrl: earlier,
+          situationDe: storyContinuity.situationDe,
+          lineDe: [panelForGen.caption, panelForGen.imageCue].filter(Boolean).join(' '),
+        })
+        if (!verdict.ok && verdict.fixEn) {
+          judgeDe = verdict.noteDe
+          url = await generateFilmPanelStillImage({
+            panel: panelForGen,
+            scene,
+            styleId: resolvedStyle,
+            previousStillUrl: earlier,
+            targetLanguage,
+            beatTotal,
+            speakerGender:
+              speakerGender(dialog, speaker) ?? genderFromKnownName(speaker),
+            speakerX: whoOnWide?.x,
+            speakerSitting: sittingFromPlacement(whoOnWide),
+            continuityEn: continuityForShot,
+            situationText,
+            continuityBriefEn: `${verdict.fixEn} ${continuityBriefEn}`,
+            directorRefs,
+            board: boardForGen,
+            inventory: dialog.filmInventory,
+            library: editLibrary,
+          })
+        }
+      } catch {
+        /* Das erste Bild bleibt, wenn die Regie das Bild nicht anschauen konnte. */
+      }
+    }
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
       withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
@@ -1287,6 +1332,7 @@ export async function stillFilmPanel(
       panelId,
       [
         storyContinuity.situationDe ? `Lage: ${storyContinuity.situationDe}` : '',
+        judgeDe ? `Regie hat nachgeschaut: ${judgeDe}` : '',
         pack.noteDe,
         correction
           ? `Neu gemalt mit FLUX nach Hinweis: ${correction}`

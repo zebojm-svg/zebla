@@ -217,6 +217,47 @@ async function imagePart(url: string): Promise<{ mimeType: string; data: string 
   }
 }
 
+/**
+ * Die Regie schaut das fertige Bild an und vergleicht es mit dem Dialog.
+ * Kein fester Satz für Videochat, See oder Ente — nur dieser Dialog und dieses Bild.
+ */
+export async function judgeStoryStill(opts: {
+  imageUrl: string
+  earlierUrl?: string
+  situationDe: string
+  lineDe: string
+}): Promise<{ ok: boolean; fixEn: string; noteDe: string }> {
+  const still = await imagePart(opts.imageUrl)
+  if (!still) return { ok: true, fixEn: '', noteDe: '' }
+  const earlier = opts.earlierUrl ? await imagePart(opts.earlierUrl) : null
+  const images = earlier ? [still, earlier] : [still]
+  try {
+    const raw = await chatJsonWithImages<{ ok?: boolean; fixEn?: string; noteDe?: string }>(
+      `Du bist die Regie. Du siehst das fertige Bild und den Satz aus dem Dialog.
+Du urteilst nur daraus, nicht aus einer Liste von Orten oder Tieren.
+Prüfe: Zeigt das Bild, was dieser Satz sagt? Sind die genannten Leute da und niemand sonst?
+Wenn ein zweites Bild dabei ist, ist das ein früheres Bild derselben Person: Gesicht, Kleidung und Dinge am Körper bleiben, ausser der Satz ändert sie ausdrücklich. Der Ort bleibt, ausser der Satz wechselt den Ort.
+JSON: { "ok": true, "fixEn": "", "noteDe": "" }
+ok ist false nur wenn es klar falsch ist. fixEn ist dann ein englischer Satz an die Bild-KI, was anders sein muss. noteDe ist ein kurzer deutscher Satz.`,
+      `Lage: ${opts.situationDe || '—'}\nSatz zu diesem Bild: ${opts.lineDe || '—'}\n${
+        earlier ? 'Erstes Bild: das neue. Zweites Bild: dieselbe Person früher.' : 'Nur das neue Bild.'
+      }`,
+      images,
+      { temperature: 0.1, timeoutMs: 25_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
+    )
+    const ok = raw.ok !== false
+    const fixEn = typeof raw.fixEn === 'string' ? raw.fixEn.trim().slice(0, 400) : ''
+    const noteDe = typeof raw.noteDe === 'string' ? raw.noteDe.trim().slice(0, 240) : ''
+    return {
+      ok,
+      fixEn: ok ? '' : fixEn,
+      noteDe,
+    }
+  } catch {
+    return { ok: true, fixEn: '', noteDe: '' }
+  }
+}
+
 async function samePerson(frontUrl: string, sideUrl: string): Promise<boolean | null> {
   const front = await imagePart(frontUrl)
   const side = await imagePart(sideUrl)
