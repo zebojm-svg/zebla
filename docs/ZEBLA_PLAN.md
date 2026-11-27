@@ -104,6 +104,7 @@ Zebla gibt das Ziel, die Regie entscheidet den nächsten Schritt. Heute bestimmt
 - **Fragen:** Lässt der Dialog etwas offen (selber Raum?), fragt die Regie kurz und macht dann weiter.
 - **Versuche:** ein Bild höchstens **zweimal** neu, dann markiert für Jean-Marie.
 - **Etappen:** Eine Anfrage darf höchstens drei Minuten dauern. Die Regie arbeitet in Etappen und schreibt nach jeder ins Regiebuch, wo sie steht. Für Jean-Marie ein Ablauf mit Fortschritt.
+- **Modell:** Die Regie (Geschichte lesen, planen, Bilder anschauen) denkt mit **Gemini Pro**. Kleine Aufgaben (übersetzen, Stichwörter) bleiben auf Flash. Fehlt Pro am Schlüssel, nimmt sie Flash. **Live.**
 - Feste Sätze (Videochat, Tee, Klopfen, Nuss) fallen erst weg, wenn die Regie dieselben Fälle selbst richtig löst.
 
 Bauschritte:

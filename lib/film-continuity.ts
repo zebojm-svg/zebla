@@ -1,4 +1,4 @@
-import { chatJson, chatJsonWithImages } from './ai.js'
+import { regieJson } from './ai.js'
 import { saveStoryAsset, setStoryAssetTags } from './story-library.js'
 import { generateStoryCharacter, generateStoryEnvironment } from './story-asset-gen.js'
 import { CHARACTER_REFERENCE_LINE, REFERENCE_TAG } from '../shared/reference-catalog.js'
@@ -108,9 +108,9 @@ export async function ensureFilmContinuity(
   const people = peopleInDialog(dialog)
   const places = placesOnBoard(board)
   try {
-    const raw = await chatJson<unknown>(SYSTEM, text, {
+    const raw = await regieJson<unknown>(SYSTEM, text, [], {
       temperature: 0.2,
-      timeoutMs: 40_000,
+      timeoutMs: 75_000,
       timeoutMessage: 'Die Regie hat die Geschichte nicht rechtzeitig gelesen.',
     })
     const clean = sanitizeContinuity(raw, text, panels)
@@ -232,7 +232,7 @@ export async function judgeStoryStill(opts: {
   const earlier = opts.earlierUrl ? await imagePart(opts.earlierUrl) : null
   const images = earlier ? [still, earlier] : [still]
   try {
-    const raw = await chatJsonWithImages<{ ok?: boolean; fixEn?: string; noteDe?: string }>(
+    const raw = await regieJson<{ ok?: boolean; fixEn?: string; noteDe?: string }>(
       `Du bist die Regie. Du siehst das fertige Bild und den Satz aus dem Dialog.
 Du urteilst nur daraus, nicht aus einer Liste von Orten oder Tieren.
 Prüfe: Zeigt das Bild, was dieser Satz sagt? Sind die genannten Leute da und niemand sonst?
@@ -243,7 +243,7 @@ ok ist false nur wenn es klar falsch ist. fixEn ist dann ein englischer Satz an 
         earlier ? 'Erstes Bild: das neue. Zweites Bild: dieselbe Person früher.' : 'Nur das neue Bild.'
       }`,
       images,
-      { temperature: 0.1, timeoutMs: 25_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
+      { temperature: 0.1, timeoutMs: 45_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
     )
     const ok = raw.ok !== false
     const fixEn = typeof raw.fixEn === 'string' ? raw.fixEn.trim().slice(0, 400) : ''
@@ -263,11 +263,11 @@ async function samePerson(frontUrl: string, sideUrl: string): Promise<boolean | 
   const side = await imagePart(sideUrl)
   if (!front || !side) return null
   try {
-    const raw = await chatJsonWithImages<{ ok?: boolean }>(
+    const raw = await regieJson<{ ok?: boolean }>(
       'Du vergleichst zwei Bilder. JSON: { "ok": true }. ok ist true, wenn es dieselbe Person ist: gleiches Gesicht, gleiche Haarfarbe, gleiche Kleidung. Eine andere Blickrichtung ist in Ordnung. ok ist false, wenn es klar eine andere Person ist.',
       'Erstes Bild: Stammbild von vorne. Zweites Bild: Seitenansicht. Ist es dieselbe Person?',
       [front, side],
-      { temperature: 0.1, timeoutMs: 25_000, timeoutMessage: 'Der Vergleich hat zu lange gebraucht.' },
+      { temperature: 0.1, timeoutMs: 45_000, timeoutMessage: 'Der Vergleich hat zu lange gebraucht.' },
     )
     return raw.ok !== false
   } catch {

@@ -242,6 +242,24 @@ export async function chatJsonWithImages<T>(
   }
 }
 
+/** Die Regie denkt gründlich: Pro. Kleine Aufgaben bleiben auf TEXT_MODEL (Flash). */
+export const REGIE_MODEL = process.env.GEMINI_REGIE_MODEL?.trim() || 'gemini-2.5-pro'
+
+/** Regie-Anfrage auf Pro; fehlt Pro am Schlüssel, dieselbe Frage auf Flash. */
+export async function regieJson<T>(
+  system: string,
+  user: string,
+  images: Array<{ mimeType: string; data: string }> = [],
+  opts?: Omit<ChatJsonOpts, 'model'>,
+): Promise<T> {
+  try {
+    return await chatJsonWithImages<T>(system, user, images, { ...opts, model: REGIE_MODEL })
+  } catch (err) {
+    if (!isGeminiModelMissing(err)) throw err
+    return chatJsonWithImages<T>(system, user, images, { ...opts, model: TEXT_MODEL })
+  }
+}
+
 interface RawDialogResponse {
   title: string
   lines: { speaker: string; text: string }[]

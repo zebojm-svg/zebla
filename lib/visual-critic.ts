@@ -1,17 +1,7 @@
-import { assertAiAllowed } from './ai-authorize.js'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { Dialog } from '../shared/types.js'
 import { downloadImageByUrl } from './image-storage.js'
 import { beatsForSection } from './visual-script.js'
-import { recordGeminiUsage } from './ai-usage-ledger.js'
-
-const TEXT_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
-
-function requireGeminiKey(): string {
-  const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY
-  if (!key) throw new Error('GEMINI_API_KEY ist nicht gesetzt.')
-  return key
-}
+import { regieJson } from './ai.js'
 
 export interface VisualCriticResult {
   ok: boolean
@@ -90,17 +80,7 @@ export async function reviewRecentBeats(
     return { ok: true, notes: 'Bilder nicht prüfbar.', extraConstraintsEn: '', retryBeatIndexes: [] }
   }
 
-  await assertAiAllowed()
-  const model = new GoogleGenerativeAI(requireGeminiKey()).getGenerativeModel({
-    model: TEXT_MODEL,
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-  })
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts }],
-  })
-  recordGeminiUsage('critic', TEXT_MODEL, result.response.usageMetadata)
-  const raw = result.response.text()
-  const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+  const [prompt, ...images] = parts
   let parsed: {
     ok?: boolean
     notes?: string
@@ -108,9 +88,17 @@ export async function reviewRecentBeats(
     retryIndexes?: number[]
   }
   try {
-    parsed = JSON.parse(cleaned) as typeof parsed
-  } catch {
-    return { ok: true, notes: 'Kritik unlesbar.', extraConstraintsEn: '', retryBeatIndexes: [] }
+    parsed = await regieJson<typeof parsed>(
+      'text' in prompt ? prompt.text : '',
+      '',
+      images.flatMap((part) => ('inlineData' in part ? [part.inlineData] : [])),
+      { temperature: 0.2 },
+    )
+  } catch (err) {
+    if (err instanceof Error && err.message === 'JSON der KI war ungültig.') {
+      return { ok: true, notes: 'Kritik unlesbar.', extraConstraintsEn: '', retryBeatIndexes: [] }
+    }
+    throw err
   }
 
   const retryBeatIndexes = (parsed.retryIndexes ?? [])

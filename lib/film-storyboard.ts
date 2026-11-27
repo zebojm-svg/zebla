@@ -966,6 +966,7 @@ export async function stillFilmPanel(
   profile?: UserProfile | null,
   note?: string,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const startedAt = Date.now()
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
@@ -1279,7 +1280,8 @@ export async function stillFilmPanel(
       library: editLibrary,
     })
     let judgeDe = ''
-    if (!correction) {
+    // Vercel bricht nach 180 s ab: Anschauen und Neumalen nur, solange Zeit bleibt.
+    if (!correction && Date.now() - startedAt < 70_000) {
       try {
         const earlier = [...boardForGen.panels]
           .slice(0, boardForGen.panels.findIndex((item) => item.id === panelForGen.id))
@@ -1296,7 +1298,7 @@ export async function stillFilmPanel(
           situationDe: storyContinuity.situationDe,
           lineDe: [panelForGen.caption, panelForGen.imageCue].filter(Boolean).join(' '),
         })
-        if (!verdict.ok && verdict.fixEn) {
+        if (!verdict.ok && verdict.fixEn && Date.now() - startedAt < 115_000) {
           judgeDe = verdict.noteDe
           url = await generateFilmPanelStillImage({
             panel: panelForGen,
