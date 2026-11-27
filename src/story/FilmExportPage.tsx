@@ -8,7 +8,7 @@ import { useSceneStills } from './generateSceneStills'
 import { LanguageFlag } from '../components/LanguageFlag'
 import type { Dialog } from '../types'
 import { LANGUAGES } from '../types'
-import { DEFAULT_STORY_ART_STYLE } from '../../shared/story-art-styles'
+import { DEFAULT_STORY_ART_STYLE, preferSceneStyle } from '../../shared/story-art-styles'
 import {
   normalizeFilmStoryboard,
   type FilmPlan,
@@ -46,8 +46,9 @@ export function FilmExportPage() {
         const fromPlan = d.filmPlan
         const next: Record<string, string> = {}
         for (const scene of board?.scenes ?? []) {
-          next[scene.id] =
-            fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId ?? DEFAULT_STORY_ART_STYLE
+          next[scene.id] = preferSceneStyle(
+            fromPlan?.scenes.find((s) => s.sceneId === scene.id)?.styleId,
+          )
         }
         setStyles(next)
         setTimeline(fromPlan?.timelineNotes ?? [])

@@ -213,6 +213,8 @@ export function identityReferenceUrl(
     .filter((a) => (a.tags ?? []).includes(REFERENCE_TAG))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const prompted = refs.filter((a) => (a.prompt ?? '').trim())
+  const standing = prompted.filter((a) => (a.tags ?? []).includes('standing-front'))
+  if (standing[0]?.imageUrl) return standing[0].imageUrl
   if (prompted[0]?.imageUrl) return prompted[0].imageUrl
   if (refs[0]?.imageUrl) return refs[0].imageUrl
   return [...assets].sort(oldestFirst)[0]?.imageUrl

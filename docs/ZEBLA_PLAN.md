@@ -69,7 +69,9 @@ Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sich
 - **Eine Tür** bleibt: Promptfenster. «Diese Figur als Reto, diese als Sabrina, die Geschichte so.» Änderung im selben Fenster trifft ein Bild.
 - Stimmen bleiben an der Figur. Persisch und Birkenbihl erst danach. Bewegungsfilm später.
 
-**Live mit diesem Schritt:** Katalog unter «Katalog» (früher Welt). Figur und Raum zeichnen, bestehendes Bild als Referenz nehmen, «Raum wie dieser» mit einem Satz (anderes Sofa). Geräusch merken (Name und Satz, noch keine Ton-Datei). Neue Posen nehmen das Referenzbild, nicht das älteste Posenfoto. Beim Bilder-Erzeugen liest eine Regie den Dialog einmal und sagt der Bild-KI die Lage. Unter dem Bild steht «Lage: …».
+**Live mit diesem Schritt:** Katalog unter «Katalog» (früher Welt). Figur und Raum zeichnen, bestehendes Bild als Referenz nehmen, «Raum wie dieser» mit einem Satz (anderes Sofa). Geräusch merken (Name und Satz, noch keine Ton-Datei). Neue Posen nehmen das Referenzbild, nicht das älteste Posenfoto. Stil **Filmzeichnung** (warmes Zeichentrick-Standbild). Beim Erzeugen liest die Regie den Dialog, plant wo der Blick wechselt und wohin er zurückgeht, zeichnet Stammbild, Seitenansicht und Raum (im Katalog, auch wenn sie im Film nicht als Szene vorkommen) und schickt die passenden früheren Bilder mit jedem Szenenbild.
+
+**Blinzeln, Kopf, Mund (27. Nov, abends):** In der Vorschau der ausgeschnittenen Figuren gibt es schon leichtes Blinzeln. Mund und eine kleine Kopfbewegung als echter Film sind möglich, kosten deutlich mehr und kommen erst, wenn die Standbilder sitzen.
 
 **Ordnung (27. Nov, nachmittags):** Figuren zuerst nach Stil, dann eine Figur im Stehen. Die anderen Ansichten erst nach einem Klick. Räume zuerst nach Stil, dann nach Ort (Draussen, Wald, Strand, See, Pool, Küche, Wohnzimmer, …). Ein neuer Raum landet über Stichwörter am selben Ort. Suchen im Katalog nach Name, Ort, Brille, Sofa. Keine Bilder aus Google. Bekannte Figuren nicht nachmachen lassen.
 
@@ -86,7 +88,7 @@ Warum das Bisherige die Wiedererkennung verliert:
 Reihenfolge:
 
 1. Katalog: Figur, Raum, Geräusch anlegen oder wählen. **Gebaut.**
-2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. **Gebaut, beim Bilder-Erzeugen:** einmal Lage, Gesichter, Orte. Dieser Satz geht mit jedem Bild. Fehlt das Stammbild einer Person, entsteht es einmal. Ein Wort in einer Zeile ändert die Lage nicht. Bekannte Figuren nicht nachmachen.
+2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. **Gebaut:** Lage, Gesichter, Orte, und welcher Blick zu welchem früheren Bild gehört. Vor den Szenenbildern: Stammbild, davon abhängige Seitenansicht (einmal geprüft), Raum. Alles im Katalog. Ein Wort in einer Zeile ändert die Lage nicht. Bekannte Figuren nicht nachmachen.
 3. Jedes Bild der Geschichte neu, mit diesen Referenzen. Noch nicht.
 4. «Raum wie dieser, andere Möbel» im Katalog. **Gebaut.** In der Geschichte noch nicht von allein.
 

@@ -44,8 +44,12 @@ import {
   briefForImage,
   ensureFilmContinuity,
   ensureSpeakerPlate,
+  jobsForLibrary,
+  runNextReferenceJob,
+  sidePlate,
   stampReferenceFaces,
 } from './film-continuity.js'
+import { directorStillUrls } from '../shared/film-continuity.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelHarvestNote,
@@ -134,6 +138,7 @@ async function paintCloseupPushIn(opts: {
   continuityEn: string
   situationText?: string
   continuityBriefEn?: string
+  directorRefs?: Array<{ url: string; name: string; role?: 'grundbild' | 'identity' }>
   targetLanguage?: string
   beatTotal: number
   inventory?: FilmInventory | null
@@ -153,6 +158,7 @@ async function paintCloseupPushIn(opts: {
     continuityEn: opts.continuityEn,
     situationText: opts.situationText,
     continuityBriefEn: opts.continuityBriefEn,
+    directorRefs: opts.directorRefs,
     inventory: opts.inventory,
   })
 }
@@ -902,6 +908,49 @@ export async function planFilmPanelStillEdit(
   })
 }
 
+/** Ein Referenzbild oder ein Vergleich. Die Seite ruft das so oft auf, bis alles steht. */
+export async function prepareFilmReferences(
+  dialogId: string,
+  userId: string,
+  styleId: string | undefined,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard; pending: number; didDe: string; done: boolean }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  let board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const continuity = await ensureFilmContinuity(dialog, board)
+  board = { ...board, continuity }
+  const library = libraryForCompose(await listStoryAssets(userId))
+  const pendingBefore = jobsForLibrary(continuity, library).length
+  const step =
+    pendingBefore === 0
+      ? { library, continuity, didDe: 'Die Referenzen stehen.' }
+      : await runNextReferenceJob({
+          userId,
+          library,
+          continuity,
+          styleId: styleId && isStoryArtStyleId(styleId) ? styleId : undefined,
+        })
+  board = { ...board, continuity: step.continuity }
+  const pending = jobsForLibrary(step.continuity, step.library).length
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: normalizeFilmStoryboard(board) },
+    profile,
+  )
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) {
+    throw new Error('Die Referenzen konnten nicht gespeichert werden.')
+  }
+  return {
+    dialog: updated,
+    board: updated.filmStoryboard,
+    pending,
+    didDe: step.didDe,
+    done: pending === 0,
+  }
+}
+
 export async function stillFilmPanel(
   dialogId: string,
   userId: string,
@@ -1028,19 +1077,20 @@ export async function stillFilmPanel(
     const storyContinuity = await ensureFilmContinuity(dialog, boardForGen)
     const continuityBriefEn = briefForImage(storyContinuity)
     boardForGen = { ...boardForGen, continuity: storyContinuity }
+    let faceLibrary = libraryForCompose(await listStoryAssets(userId).catch(() => []))
     if (!correction && speaker && !isNarratorName(speaker) && !isStageSpeaker(speaker)) {
       try {
-        const assets = libraryForCompose(await listStoryAssets(userId))
         const look = storyContinuity.people.find(
           (person) => person.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
         )
         const plated = await ensureSpeakerPlate({
           userId,
-          library: assets,
+          library: faceLibrary,
           name: speaker,
           lookEn: look?.lookEn || speaker,
           styleId: resolvedStyle,
         })
+        faceLibrary = plated.library
         panelForGen = stampReferenceFaces(panelForGen, plated.library)
         boardForGen = {
           ...boardForGen,
@@ -1050,6 +1100,19 @@ export async function stillFilmPanel(
         /* Ohne neues Stammbild bleibt der Regie-Satz. */
       }
     }
+    const directorRefs = [
+      ...directorStillUrls(boardForGen.panels, storyContinuity, panelForGen.id).map((item) => ({
+        url: item.url,
+        name: item.name,
+        role: 'grundbild' as const,
+      })),
+      ...panelForGen.placements.flatMap((placement) => {
+        const side = sidePlate(faceLibrary, placement.name)
+        return side?.imageUrl
+          ? [{ url: side.imageUrl, name: `Seitenansicht ${placement.name}`, role: 'identity' as const }]
+          : []
+      }),
+    ].slice(0, 3)
     const whoOnWide = (wide ?? panelForGen).placements.find(
       (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
     )
@@ -1087,6 +1150,7 @@ export async function stillFilmPanel(
         continuityEn: continuityForShot,
         situationText,
         continuityBriefEn,
+        directorRefs,
         inventory: dialog.filmInventory,
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
@@ -1105,6 +1169,7 @@ export async function stillFilmPanel(
         continuityEn,
         situationText,
         continuityBriefEn,
+        directorRefs,
         targetLanguage,
         beatTotal,
         inventory: dialog.filmInventory,
@@ -1158,6 +1223,7 @@ export async function stillFilmPanel(
       continuityEn: continuityForShot,
       situationText,
       continuityBriefEn,
+      directorRefs,
       board: boardForGen,
       inventory: dialog.filmInventory,
       library: editLibrary,

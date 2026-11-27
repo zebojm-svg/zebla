@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   STORY_ART_STYLES,
+  rememberStyleChoice,
   type StoryArtStyleId,
 } from '../../shared/story-art-styles'
 import type { Dialog } from '../types'
@@ -37,6 +38,7 @@ type Props = {
   extraDisabled?: boolean
   progress?: { current: number; total: number } | null
   error?: string
+  status?: string
   onGenerate: (force: boolean) => void
   onRematch?: () => void
   shotPlanDe?: string
@@ -53,6 +55,7 @@ export function FilmSceneGenerateBar({
   extraDisabled,
   progress,
   error,
+  status,
   onGenerate,
   onRematch,
   shotPlanDe,
@@ -66,9 +69,9 @@ export function FilmSceneGenerateBar({
   const label = busy
     ? paintingOne
       ? 'Bild wird neu gemalt …'
-      : progress
+      : progress && progress.current > 0
         ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
-        : 'Erzeuge Szene …'
+        : status || 'Erzeuge Szene …'
     : allDone
       ? 'Szene nochmals erzeugen'
       : stats.done > 0
@@ -82,7 +85,10 @@ export function FilmSceneGenerateBar({
         <select
           value={styleId}
           disabled={busy || extraDisabled}
-          onChange={(e) => onStyleChange(e.target.value as StoryArtStyleId)}
+          onChange={(e) => {
+            rememberStyleChoice()
+            onStyleChange(e.target.value as StoryArtStyleId)
+          }}
         >
           {STORY_ART_STYLES.map((s) => (
             <option key={s.id} value={s.id}>

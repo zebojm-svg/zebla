@@ -536,6 +536,8 @@ export function stillReferencePack(
     board?: FilmStoryboard
     inventory?: FilmInventory | null
     library?: StillPackLibraryAsset[]
+    /** Frühere Blicke und Seitenansichten, die die Regie für DIESES Bild ausgewählt hat. */
+    directorRefs?: Array<{ url: string; name: string; role?: 'grundbild' | 'identity' }>
   },
 ): { urls: string[]; items: StillRefItem[]; instruction: string; noteDe: string } {
   const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
@@ -589,6 +591,14 @@ export function stillReferencePack(
   }
 
   const correcting = Boolean(opts?.correctFromUrl)
+  for (const extra of opts?.directorRefs ?? []) {
+    if (!http(extra.url)) continue
+    add({
+      role: extra.role === 'identity' ? 'identity' : 'grundbild',
+      name: extra.name,
+      url: extra.url,
+    })
+  }
   if (opts?.correctFromUrl) {
     add({ role: 'grundbild', name: 'aktuelles Bild', url: opts.correctFromUrl })
   }
@@ -631,7 +641,9 @@ export function stillReferencePack(
   }
 
   const max = closeup ? 3 : 4
+  const directorUrls = new Set((opts?.directorRefs ?? []).map((extra) => extra.url))
   const rank = (it: StillRefItem): number => {
+    if (directorUrls.has(it.url)) return 0
     if (it.role === 'grundbild' && it.url === opts?.correctFromUrl) return 0
     if (it.role === 'prop') return 1
     if (it.role === 'place' || it.role === 'grundbild') return 2
