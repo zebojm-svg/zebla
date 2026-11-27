@@ -4,7 +4,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { buildFilmStillPrompt } from '../shared/film-stills.ts'
-import { DEFAULT_STORY_ART_STYLE } from '../shared/story-art-styles.ts'
+import { DEFAULT_STORY_ART_STYLE, paintingStyleId } from '../shared/story-art-styles.ts'
+import { paintingStyleText } from '../lib/ken-burns-style.ts'
 import {
   continuityBriefEn,
   continuitySourceKey,
@@ -94,6 +95,10 @@ const jobs = referenceJobs({
 if (jobs[0]?.kind !== 'person-front') fail('zuerst das Stammbild, dann die Seitenansicht')
 if (!jobs.some((job) => job.kind === 'place')) fail('der Raum wird als Referenz geplant')
 if (DEFAULT_STORY_ART_STYLE !== 'filmzeichnung') fail('der Zeichenstil ist die Filmzeichnung')
+if (!paintingStyleText('photoreal').includes('animated-film')) fail('ohne bewusste Foto-Wahl wird gezeichnet')
+if (!paintingStyleText('photoreal', 'photoreal').includes('Photorealistic')) fail('bewusste Foto-Wahl bleibt ein Foto')
+if (paintingStyleId('illustration-lebendig') !== 'filmzeichnung') fail('der alte Automatik-Stil wird zur Filmzeichnung')
+if (paintingStyleId('comic') !== 'comic') fail('Comic bleibt Comic')
 
 const src = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 const fn = src.slice(src.indexOf('export async function stillFilmPanel'), src.indexOf('export async function saveFilmPlan'))

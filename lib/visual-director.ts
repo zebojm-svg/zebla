@@ -16,7 +16,7 @@ export const VISUAL_QUESTIONS: VisualQuestion[] = [
     question: 'In welchem Stil sollen die Bilder sein?',
     options: [
       { id: 'photoreal', label: 'Echte Menschen (wie ein Foto)' },
-      { id: 'illustration', label: 'Kinderbuch-Zeichnung' },
+      { id: 'illustration', label: 'Filmzeichnung' },
       { id: 'comic', label: 'Comic' },
       { id: 'watercolor', label: 'Aquarell' },
     ],
@@ -149,7 +149,7 @@ export async function buildVisualBrief(
   const merged = resolveAnswers(dialog, answers)
   const artStyle = ART_STYLES.has(merged.style as VisualArtStyle)
     ? (merged.style as VisualArtStyle)
-    : 'photoreal'
+    : 'illustration'
   const speakerCount = new Set(
     dialog.sections.flatMap((s) => s.lines.map((l) => l.speaker)),
   ).size

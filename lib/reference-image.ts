@@ -1,6 +1,6 @@
 import type { CharacterVisual, Dialog } from '../shared/types.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
-import { appearanceGuideFor, styleLockPrompt } from './ken-burns-style.js'
+import { PAINT_STYLE_FIRST, paintingAppearance, paintingStyleText } from './ken-burns-style.js'
 
 function formatCast(bible: CharacterVisual[]): string {
   return bible.map((c) => `${c.name}: ${c.description}`).join('; ')
@@ -35,8 +35,8 @@ export function buildCharacterPortraitPrompt(
 ): string {
   const imgCtx = imagePlanningContext(dialog)
   const brief = dialog.visualBrief
-  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
-  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
+  const appearance = paintingAppearance(brief?.artStyle, brief?.answers?.style, brief?.ageEn, brief?.castLockEn)
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
   return (
     `INDIVIDUAL CHARACTER IDENTITY LOCK (portrait 0) for language-learning dialog "${dialog.title}". ` +
     `Portrait of ONLY one person: ${character.name}. ` +
@@ -57,8 +57,8 @@ export function buildReferenceImagePrompt(dialog: Dialog, bible?: CharacterVisua
   const imgCtx = imagePlanningContext(dialog)
   const scene = sceneHintFromDirection(dialog)
   const brief = dialog.visualBrief
-  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
-  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
+  const appearance = paintingAppearance(brief?.artStyle, brief?.answers?.style, brief?.ageEn, brief?.castLockEn)
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
   const director = brief?.directorPromptEn ? `${brief.directorPromptEn} ` : ''
 
   return (

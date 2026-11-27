@@ -13,11 +13,12 @@ import type {
   VisualScriptBeat,
 } from '../shared/types.js'
 import {
-  appearanceGuideFor,
   CAST_APPEARANCE_GUIDE,
   castIntegrityRules,
   PHOTOREALISTIC_STYLE,
-  styleLockPrompt,
+  PAINT_STYLE_FIRST,
+  paintingAppearance,
+  paintingStyleText,
 } from './ken-burns-style.js'
 import { imagePlanningContext } from '../shared/dialog-image-context.js'
 import { MOOD_PROMPT_EN, normalizeSpeakerMood, SPEAKER_MOODS } from './expression-moods.js'
@@ -221,8 +222,13 @@ function buildBeatPrompt(
     ? `LOCKED CAST (identical in every frame): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
   const continuity = scene?.continuity === 'gradual' ? 'gradual' : 'locked'
-  const styleLock = brief?.stylePromptEn || styleLockPrompt(brief?.artStyle)
-  const appearance = brief?.castLockEn || appearanceGuideFor(brief?.artStyle, brief?.ageEn)
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
+  const appearance = paintingAppearance(
+    brief?.artStyle,
+    brief?.answers?.style,
+    brief?.ageEn,
+    brief?.castLockEn,
+  )
   const director = brief?.directorPromptEn ? `${brief.directorPromptEn} ` : ''
   const extra = brief?.extraConstraintsEn ? `CORRECTIONS: ${brief.extraConstraintsEn}. ` : ''
   const pictureStory = brief?.cameraLanguage === 'picture_story'
@@ -253,8 +259,8 @@ function buildBeatPrompt(
         (beat.mustShowEn ? `MUST SHOW: ${beat.mustShowEn}. ` : '')
     : `${framingExpr[beat.framing]} of ${beat.activeSpeaker}${cast ? ` — MUST look exactly like: ${cast}` : ''}, speaking toward ${beat.addressee} who is out of frame. `
   return (
+    `${styleLock} ` +
     `${director}${extra}` +
-    (brief ? '' : `Photorealistic cinematic dialog still (live-action, NOT comic/cartoon). `) +
     `${setupNote}` +
     `${allCast}` +
     spatialBlockForScene(scene, seating) +
