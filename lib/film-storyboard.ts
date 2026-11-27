@@ -65,6 +65,8 @@ import {
   previousStillUrlInScene,
   replaceStillUrl,
   sceneContinuityBlock,
+  isVideoCallSituation,
+  videoCallFrameEn,
   panelPlaceKey,
   placeGrundbildPanel,
   stillReferencePack,
@@ -1106,17 +1108,45 @@ export async function stillFilmPanel(
         /* Ohne neues Stammbild bleibt der Regie-Satz. */
       }
     }
+    const videoCall = isVideoCallSituation(continuityBriefEn, situationText)
+    const videoHost = (panelForGen.closeupSpeaker || speaker || '').trim()
+    const hostStill = videoCall
+      ? [...boardForGen.panels]
+          .slice(0, boardForGen.panels.findIndex((item) => item.id === panelForGen.id))
+          .reverse()
+          .find(
+            (item) =>
+              item.stillUrl?.startsWith('http') &&
+              (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() ===
+                videoHost.toLowerCase(),
+          )?.stillUrl
+      : undefined
     const directorRefs = [
-      ...directorStillUrls(boardForGen.panels, storyContinuity, panelForGen.id).map((item) => ({
-        url: item.url,
-        name: item.name,
-        role: 'grundbild' as const,
-      })),
+      ...(videoCall
+        ? hostStill
+          ? [{
+              url: hostStill,
+              name: `Früheres Bild von ${videoHost}: gleiche Kleidung, gleiches Headset, gleiche Möbel. Keine zweite Person übernehmen.`,
+              role: 'identity' as const,
+            }]
+          : []
+        : directorStillUrls(boardForGen.panels, storyContinuity, panelForGen.id).map((item) => ({
+            url: item.url,
+            name: item.name,
+            role: 'grundbild' as const,
+          }))),
       ...panelForGen.placements.flatMap((placement) => {
         const side = sidePlate(faceLibrary, placement.name)
-        return side?.imageUrl
-          ? [{ url: side.imageUrl, name: `Seitenansicht ${placement.name}`, role: 'identity' as const }]
-          : []
+        if (!side?.imageUrl) return []
+        const onScreen =
+          videoCall && placement.name.trim().toLowerCase() !== videoHost.toLowerCase()
+        return [{
+          url: side.imageUrl,
+          name: onScreen
+            ? `${placement.name} nur im Laptop, nicht als Körper im Raum`
+            : `Seitenansicht ${placement.name}`,
+          role: 'identity' as const,
+        }]
       }),
       ...(pickedCastUrl(faceLibrary, dialog.catalogCast?.placeIds, panelForGen.settingHint)
         ? [{
@@ -1129,7 +1159,13 @@ export async function stillFilmPanel(
     const whoOnWide = (wide ?? panelForGen).placements.find(
       (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
     )
-    const continuityEn = continuityEnFor(dialog, panelForGen, wide, speaker, correction)
+    const continuityEn = videoCall
+      ? videoCallFrameEn({
+          host: videoHost,
+          others: seatNames.filter((name) => name.trim().toLowerCase() !== videoHost.toLowerCase()),
+          shot: panelForGen.shot,
+        })
+      : continuityEnFor(dialog, panelForGen, wide, speaker, correction)
     const rewrite = Boolean(correction && correctionRewritesPerson(correction))
     const isCloseup = (panelForGen.shot ?? 'wide') === 'closeup'
     const grundUrl = grund?.stillUrl
@@ -1200,8 +1236,8 @@ export async function stillFilmPanel(
     if (isCloseup && !correctionIsFaceOnly(correction)) {
       correctFromUrl = undefined
     }
-    const placeWideUrl = isInsert ? undefined : grund?.stillUrl
-    const prevPlaceUrl = previousPlaceStillUrl(boardForGen, panelForGen)
+    const placeWideUrl = videoCall || isInsert ? undefined : grund?.stillUrl
+    const prevPlaceUrl = videoCall ? undefined : previousPlaceStillUrl(boardForGen, panelForGen)
     let editLibrary: ReturnType<typeof libraryForCompose> | undefined
     if (correction) {
       try {

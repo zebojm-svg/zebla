@@ -66,7 +66,7 @@ function clip(value: unknown, max: number): string {
 export function continuityBriefEn(note: FilmContinuity): string {
   const where = note.together
     ? 'They are physically together in one place for this whole story. On a close-up the others are just outside the frame, still in that place. FORBIDDEN: video call, webcam, laptop or phone showing the other face, split screen, each person in a different room.'
-    : 'This whole story is a video call. Each person stays in their own room. The other person appears only on a screen. Do not seat them at the same table.'
+    : 'This whole story is a video call. Each person stays in their own room. The other person appears only once, inside a single laptop screen. Never two copies of the same person, never a second screen, never an extra stranger, never both sitting at one table.'
   const people = note.people.map((person) => `${person.name}: ${person.lookEn}`).join(' ')
   const places = note.places.map((place) => `${place.name}: ${place.lookEn}`).join(' ')
   const locks = note.locksEn.join(' ')

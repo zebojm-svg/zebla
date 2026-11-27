@@ -1072,6 +1072,25 @@ const kitchenPrompt = buildFilmStillPrompt({
 })
 if (!kitchenPrompt.includes('SITUATION LOCK')) fail('Jedes Bild bekommt die Lage der Szene')
 if (!kitchenPrompt.toLowerCase().includes('forbidden: video call')) fail('Nahaufnahme darf kein Videogespräch erfinden')
+if (kitchenPrompt.toLowerCase().includes('single laptop')) fail('Küche bleibt kein Videogespräch')
+const videoPrompt = buildFilmStillPrompt({
+  caption: 'Amir: Hallo Lena.',
+  settingHint: 'Amirs Zimmer',
+  sceneTitle: 'Erste Begegnung im Videochat',
+  hasLibraryRefs: true,
+  shot: 'closeup',
+  closeupSpeaker: 'Amir',
+  names: ['Lena', 'Amir'],
+  situationText: 'Erste Begegnung im Videochat. Lena am Laptop, Amir in seinem Zimmer.',
+  continuityBriefEn: 'They are physically together. FORBIDDEN: video call.',
+})
+if (videoPrompt.toLowerCase().includes('gathering')) fail('Videogespräch sagt nicht, dass alle zusammensitzen')
+if (videoPrompt.toLowerCase().includes('over-the-shoulder') || videoPrompt.toLowerCase().includes('neighbour')) {
+  fail('Videogespräch erfindet keinen Nachbarn über die Schulter')
+}
+if (!videoPrompt.includes('single laptop')) fail('die andere Person nur einmal im Laptop')
+if (!videoPrompt.includes('Only Amir has a body')) fail('im Bild ist nur der Körper der Person, deren Raum wir sehen')
+if (!videoPrompt.includes('FORBIDDEN: an extra person')) fail('keine fremde Person')
 
 const stillGenSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
 const stillFn = stillGenSrc.slice(
