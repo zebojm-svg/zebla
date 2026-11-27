@@ -71,6 +71,8 @@ Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sich
 
 **Live mit diesem Schritt:** Katalog unter «Katalog» (früher Welt). Figur und Raum zeichnen, bestehendes Bild als Referenz nehmen, «Raum wie dieser» mit einem Satz (anderes Sofa). Geräusch merken (Name und Satz, noch keine Ton-Datei). Neue Posen nehmen das Referenzbild, nicht das älteste Posenfoto. Die Regie über die ganze Geschichte und jedes Bild neu sind der nächste Schritt, noch nicht hier.
 
+**Ordnung (27. Nov, nachmittags):** Figuren zuerst nach Stil, dann eine Figur im Stehen. Die anderen Ansichten erst nach einem Klick. Fehlt das ganze Stehbild, zeichnet der Katalog es nach (kostet je ein Bild, Stopp ist da). Räume zuerst nach Stil, dann nach Ort (Draussen, Wald, Strand, See, Pool, Küche, Wohnzimmer, …). Ein neuer Raum landet über Stichwörter am selben Ort. Suchen im Katalog nach Name, Ort, Brille, Sofa. Keine Bilder aus Google: das bricht das Urheberrecht und liefert jedes Mal ein anderes Gesicht. Eigene KI-Bilder speichern. Bekannte Figuren nicht nachmachen lassen.
+
 Warum das Bisherige die Wiedererkennung verliert:
 
 - Das Regal erntet Ausschnitte und legt sie in die Szene. Eine neue Perspektive geht so nicht.

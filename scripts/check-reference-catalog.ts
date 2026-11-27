@@ -2,6 +2,14 @@
  * Katalog: Referenz vor älterem Foto, Raum-Prompt hält den Raum.
  * Aufruf: npx tsx scripts/check-reference-catalog.ts
  */
+import {
+  characterPlateTags,
+  inferPlace,
+  isStandingFull,
+  orderCharacters,
+  orderRooms,
+  roomPlateTags,
+} from '../shared/catalog-order.ts'
 import { identityReferenceUrl } from '../shared/library-identities.ts'
 import { matchBackground } from '../shared/film-storyboard.ts'
 import { isCatalogReference, roomLikePrompt } from '../shared/reference-catalog.ts'
@@ -85,5 +93,54 @@ const room: StoryLibraryAsset = {
 }
 const matched = matchBackground('Küche mit Gasherd', [harvested, room])
 if (matched.libraryAssetId !== room.id) fail('passender Raum nimmt die Referenz')
+
+const sitting: StoryLibraryAsset = {
+  ...oldPose,
+  id: 'reto-sit',
+  name: 'Reto',
+  styleId: 'comic',
+  legPoseId: 'sitting-forward',
+  tags: ['sitting'],
+}
+const standing: StoryLibraryAsset = {
+  ...oldPose,
+  id: 'reto-stand',
+  name: 'Reto',
+  styleId: 'comic',
+  legPoseId: 'standing',
+  tags: ['standing-front'],
+  imageUrl: 'https://example.com/reto-stand.png',
+}
+if (!isStandingFull(standing)) fail('Stehen zählt als ganzes Bild')
+if (isStandingFull(sitting)) fail('Sitzen ist nicht das Stehbild')
+const ordered = orderCharacters([sitting, standing])
+const reto = ordered[0]?.items[0]
+if (!reto || reto.cover.id !== 'reto-stand') fail('Stehende Figur steht vorn')
+if (reto.hidden.length !== 1 || reto.needsStanding) fail('andere Ansichten bleiben dahinter')
+
+const kitchen: StoryLibraryAsset = {
+  ...oldPose,
+  id: 'kitchen',
+  type: 'environment',
+  name: 'Küche',
+  description: 'Gasherd am Fenster',
+  styleId: 'comic',
+  tags: [],
+}
+const beach: StoryLibraryAsset = {
+  ...kitchen,
+  id: 'beach',
+  name: 'Strand',
+  description: 'Meer und Sand',
+}
+const rooms = orderRooms([kitchen, beach])
+const places = rooms[0]?.items.map((item) => item.placeId).join(',')
+if (places !== 'strand,kueche') fail('Orte: Draussen-Reihe vor Küche, Strand vor Küche: ' + places)
+if (inferPlace('ein Nachmittag im Wald').id !== 'wald') fail('Wald erkennen')
+if (inferPlace('ort:kueche Wohnzimmer').id !== 'kueche') fail('gespeicherter Ort gilt')
+if (!roomPlateTags('comic', 'Küche mit Sofa').includes('ort:kueche')) fail('neuer Raum merkt die Küche')
+if (!roomPlateTags('comic', 'Küche mit Sofa').includes('sofa')) fail('Sofa wird zum Stichwort')
+if (!characterPlateTags('comic', 'Junge mit Brille').includes('brille')) fail('Brille wird zum Stichwort')
+if (!characterPlateTags('comic', 'Junge mit Brille').includes('standing-front')) fail('neue Figur ist das Stehbild')
 
 console.log('OK reference-catalog')

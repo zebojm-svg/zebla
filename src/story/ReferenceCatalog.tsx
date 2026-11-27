@@ -1,10 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
-import { REFERENCE_TAG, isCatalogReference, type CatalogKind } from '../../shared/reference-catalog'
+import { REFERENCE_TAG, type CatalogKind } from '../../shared/reference-catalog'
+import {
+  catalogHay,
+  characterPlateTags,
+  orderCharacters,
+  orderRooms,
+  roomPlateTags,
+  type CharacterStack,
+} from '../../shared/catalog-order'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import { StoryStylePicker, loadStoryArtStyle } from './StoryStylePicker'
 import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
-import type { StoryArtStyleId } from '../../shared/story-art-styles'
+import { isStoryArtStyleId, type StoryArtStyleId } from '../../shared/story-art-styles'
 
 const KINDS: Array<{ id: CatalogKind; title: string; icon: StoryPictogramName }> = [
   { id: 'character', title: 'Figur', icon: 'person' },
@@ -49,11 +57,45 @@ export function ReferenceCatalog({
   const [error, setError] = useState('')
   const [changeById, setChangeById] = useState<Record<string, string>>({})
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const [drawNote, setDrawNote] = useState('')
+  const drawStarted = useRef(false)
+  const drawStop = useRef(false)
 
   const copy = kindLabel(kind)
-  const ofKind = assets.filter((asset) => asset.type === kind)
-  const references = ofKind.filter((asset) => isCatalogReference(asset))
-  const others = ofKind.filter((asset) => !isCatalogReference(asset))
+  const needle = query.trim().toLowerCase()
+  const characterGroups = useMemo(() => {
+    const groups = orderCharacters(assets)
+    if (!needle) return groups
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((stack) =>
+          [stack.displayName, stack.styleLabel, ...stack.hidden.map(catalogHay), catalogHay(stack.cover)]
+            .join(' ')
+            .toLowerCase()
+            .includes(needle),
+        ),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [assets, needle])
+  const roomGroups = useMemo(() => {
+    const groups = orderRooms(assets)
+    if (!needle) return groups
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items
+          .map((place) => ({
+            ...place,
+            rooms: place.rooms.filter((room) => catalogHay(room).includes(needle) || place.placeLabel.toLowerCase().includes(needle)),
+          }))
+          .filter((place) => place.rooms.length > 0),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [assets, needle])
+  const sounds = assets.filter((asset) => asset.type === 'sound' && (!needle || catalogHay(asset).includes(needle)))
 
   const create = async () => {
     const trimmedName = name.trim()
@@ -90,7 +132,7 @@ export function ReferenceCatalog({
           name: trimmedName,
           description: trimmedDescription,
           imageUrl: drawn.imageUrl,
-          tags: [REFERENCE_TAG, 'standing-front'],
+          tags: characterPlateTags(drawn.styleId, trimmedDescription),
           styleId: drawn.styleId,
           legPoseId: 'standing',
           headAngleId: 'front',
@@ -103,7 +145,7 @@ export function ReferenceCatalog({
           name: trimmedName,
           description: trimmedDescription,
           imageUrl: drawn.imageUrl,
-          tags: [REFERENCE_TAG],
+          tags: roomPlateTags(drawn.styleId, trimmedDescription),
           styleId: drawn.styleId,
         })
       }
@@ -114,19 +156,6 @@ export function ReferenceCatalog({
       setError(err instanceof Error ? err.message : 'Das hat nicht geklappt.')
     } finally {
       setBusy(false)
-    }
-  }
-
-  const mark = async (id: string) => {
-    setPendingId(id)
-    setError('')
-    try {
-      await api.story.markReference(id)
-      await onChange()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Referenz konnte nicht gesetzt werden.')
-    } finally {
-      setPendingId(null)
     }
   }
 
@@ -150,7 +179,7 @@ export function ReferenceCatalog({
         name: asset.name,
         description: `${asset.description?.trim() || asset.name}. Anders: ${change}`,
         imageUrl: drawn.imageUrl,
-        tags: [REFERENCE_TAG],
+        tags: roomPlateTags(drawn.styleId, `${asset.description ?? ''} ${change}`),
         styleId: drawn.styleId,
         basisId: asset.id,
       })
@@ -161,6 +190,34 @@ export function ReferenceCatalog({
     } finally {
       setPendingId(null)
     }
+  }
+
+  const drawStanding = async (stack: CharacterStack) => {
+    const styleId = isStoryArtStyleId(stack.styleId) ? stack.styleId : loadStoryArtStyle()
+    const description = stack.cover.description?.trim() || stack.displayName
+    const drawn = await api.story.generateCharacter(
+      stack.displayName,
+      description,
+      styleId,
+      undefined,
+      undefined,
+      undefined,
+      stack.cover.imageUrl || undefined,
+      undefined,
+      undefined,
+      true,
+    )
+    await api.story.saveToLibrary({
+      type: 'character',
+      name: stack.displayName,
+      description,
+      imageUrl: drawn.imageUrl,
+      tags: characterPlateTags(drawn.styleId, description),
+      styleId: drawn.styleId,
+      legPoseId: 'standing',
+      headAngleId: 'front',
+      armPoseId: 'relaxed',
+    })
   }
 
   const remove = async (asset: StoryLibraryAsset) => {
@@ -176,6 +233,43 @@ export function ReferenceCatalog({
       setPendingId(null)
     }
   }
+
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (kind !== 'character' || drawStarted.current) return
+    const missing = orderCharacters(assets).flatMap((group) => group.items.filter((stack) => stack.needsStanding))
+    if (missing.length === 0) return
+    drawStarted.current = true
+    drawStop.current = false
+    void (async () => {
+      setDrawNote(
+        missing.length === 1
+          ? `${missing[0]!.displayName} hat kein ganzes Bild im Stehen. Ich zeichne es nach.`
+          : `${missing.length} Figuren haben kein ganzes Bild im Stehen. Ich zeichne sie nach. Jede kostet ein Bild.`,
+      )
+      for (const stack of missing) {
+        if (!mounted.current || drawStop.current) break
+        setDrawNote(`${stack.displayName} im Stehen …`)
+        try {
+          await drawStanding(stack)
+          await onChange()
+        } catch (err) {
+          if (mounted.current) setError(err instanceof Error ? err.message : 'Stehbild fehlgeschlagen.')
+          break
+        }
+      }
+      if (mounted.current && !drawStop.current) setDrawNote('')
+    })()
+    // Einmal, sobald Figuren da sind. Spätere Bilder starten den Lauf nicht neu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, assets])
 
   return (
     <section className="reference-catalog">
@@ -243,91 +337,175 @@ export function ReferenceCatalog({
 
       {error ? <div className="alert alert-error">{error}</div> : null}
 
-      {references.length === 0 ? (
-        <p className="muted">Noch keine Referenz. Oben anlegen, oder unten eine bestehende nehmen.</p>
-      ) : (
-        <div className="story-character-grid">
-          {references.map((asset) => {
-            const pending = pendingId === asset.id
-            const basis = asset.basisId
-              ? assets.find((item) => item.id === asset.basisId)?.name
-              : ''
-            return (
-              <article
-                key={asset.id}
-                className={`story-character-card catalog-card${asset.type === 'environment' ? ' is-room' : ''}`}
-              >
-                {asset.type === 'sound' || !asset.imageUrl ? (
-                  <div className="catalog-sound-mark">
-                    <StoryPictogram name={asset.type === 'environment' ? 'room' : asset.type === 'character' ? 'person' : 'sound'} />
+      <input
+        className="input catalog-search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Suchen: Reto, Küche, Brille, Wald …"
+      />
+
+      {drawNote ? (
+        <p className="hint catalog-draw-note">
+          {drawNote}{' '}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              drawStop.current = true
+              setDrawNote('Angehalten.')
+            }}
+          >
+            Stopp
+          </button>
+        </p>
+      ) : null}
+
+      {kind === 'character' ? (
+        characterGroups.length === 0 ? (
+          <p className="muted">Noch keine Figur. Oben ein Referenzbild zeichnen.</p>
+        ) : (
+          characterGroups.map((group) => (
+            <section key={group.styleId} className="catalog-style-block">
+              <h2>{group.styleLabel}</h2>
+              <div className="story-character-grid">
+                {group.items.map((stack) => {
+                  const open = openKey === stack.key || (needle.length > 0 && stack.hidden.length > 0)
+                  return (
+                    <div key={stack.key} className="catalog-stack">
+                      <button
+                        type="button"
+                        className="catalog-cover"
+                        aria-expanded={open}
+                        onClick={() => setOpenKey(open && openKey === stack.key ? null : stack.key)}
+                      >
+                        {stack.cover.imageUrl ? (
+                          <img src={stack.cover.imageUrl} alt={stack.displayName} />
+                        ) : (
+                          <div className="catalog-sound-mark">
+                            <StoryPictogram name="person" />
+                          </div>
+                        )}
+                        <span className="catalog-cover-name">{stack.displayName}</span>
+                        {stack.hidden.length > 0 ? (
+                          <span className="catalog-cover-more muted">{stack.hidden.length} weitere</span>
+                        ) : null}
+                      </button>
+                      {open && stack.hidden.length > 0 ? (
+                        <div className="catalog-hidden">
+                          {stack.hidden.map((asset) => (
+                            <article key={asset.id} className="story-character-card">
+                              {asset.imageUrl ? <img src={asset.imageUrl} alt={asset.name} /> : null}
+                              <p>{asset.name}</p>
+                              <div className="story-character-card-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={pendingId === asset.id}
+                                  onClick={() => void remove(asset)}
+                                >
+                                  Löschen
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          ))
+        )
+      ) : null}
+
+      {kind === 'environment' ? (
+        roomGroups.length === 0 ? (
+          <p className="muted">Noch kein Raum. Oben einen Raum zeichnen.</p>
+        ) : (
+          roomGroups.map((group) => (
+            <section key={group.styleId} className="catalog-style-block">
+              <h2>{group.styleLabel}</h2>
+              {group.items.map((place) => (
+                <div key={place.placeId} className="catalog-place">
+                  <h3>{place.placeLabel}</h3>
+                  <div className="story-character-grid">
+                    {place.rooms.map((asset) => (
+                      <article key={asset.id} className="story-character-card catalog-card is-room">
+                        {asset.imageUrl ? (
+                          <img src={asset.imageUrl} alt={asset.name} />
+                        ) : (
+                          <div className="catalog-sound-mark">
+                            <StoryPictogram name="room" />
+                          </div>
+                        )}
+                        <p>{asset.name}</p>
+                        {asset.description ? <p className="story-card-subtitle muted">{asset.description}</p> : null}
+                        <label className="catalog-change">
+                          Was soll anders sein?
+                          <input
+                            className="input"
+                            value={changeById[asset.id] ?? ''}
+                            onChange={(event) =>
+                              setChangeById((prev) => ({ ...prev, [asset.id]: event.target.value }))
+                            }
+                            placeholder="anderes Sofa, gleicher Herd"
+                          />
+                        </label>
+                        <div className="story-character-card-actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={pendingId === asset.id || busy}
+                            onClick={() => void varyRoom(asset)}
+                          >
+                            {pendingId === asset.id ? '…' : 'Raum wie dieser'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={pendingId === asset.id || busy}
+                            onClick={() => void remove(asset)}
+                          >
+                            Löschen
+                          </button>
+                        </div>
+                      </article>
+                    ))}
                   </div>
-                ) : (
-                  <img src={asset.imageUrl} alt={asset.name} />
-                )}
+                </div>
+              ))}
+            </section>
+          ))
+        )
+      ) : null}
+
+      {kind === 'sound' ? (
+        sounds.length === 0 ? (
+          <p className="muted">Noch kein Geräusch. Oben den Namen und den Satz merken.</p>
+        ) : (
+          <div className="story-character-grid">
+            {sounds.map((asset) => (
+              <article key={asset.id} className="story-character-card catalog-card">
+                <div className="catalog-sound-mark">
+                  <StoryPictogram name="sound" />
+                </div>
                 <p>{asset.name}</p>
                 {asset.description ? <p className="story-card-subtitle muted">{asset.description}</p> : null}
-                {basis ? <p className="story-card-subtitle muted">Wie {basis}</p> : null}
-                {asset.type === 'environment' ? (
-                  <label className="catalog-change">
-                    Was soll anders sein?
-                    <input
-                      className="input"
-                      value={changeById[asset.id] ?? ''}
-                      onChange={(event) =>
-                        setChangeById((prev) => ({ ...prev, [asset.id]: event.target.value }))
-                      }
-                      placeholder="anderes Sofa, gleicher Herd"
-                    />
-                  </label>
-                ) : null}
                 <div className="story-character-card-actions">
-                  {asset.type === 'environment' ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={pending || busy}
-                      onClick={() => void varyRoom(asset)}
-                    >
-                      {pending ? '…' : 'Raum wie dieser'}
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    disabled={pending || busy}
+                    disabled={pendingId === asset.id}
                     onClick={() => void remove(asset)}
                   >
                     Löschen
                   </button>
                 </div>
               </article>
-            )
-          })}
-        </div>
-      )}
-
-      {others.length > 0 ? (
-        <div className="catalog-others">
-          <h3>Schon da, noch keine Referenz</h3>
-          <div className="story-character-grid">
-            {others.map((asset) => (
-              <article key={asset.id} className="story-character-card">
-                {asset.imageUrl ? <img src={asset.imageUrl} alt={asset.name} /> : null}
-                <p>{asset.name}</p>
-                <div className="story-character-card-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={pendingId === asset.id || busy}
-                    onClick={() => void mark(asset.id)}
-                  >
-                    {pendingId === asset.id ? '…' : 'Das ist die Referenz'}
-                  </button>
-                </div>
-              </article>
             ))}
           </div>
-        </div>
+        )
       ) : null}
     </section>
   )
