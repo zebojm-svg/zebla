@@ -158,6 +158,7 @@ async function attachSectionImage(
     referenceUrlsForScene(withBible, activeSpeaker),
     withBible.referenceImagePrompt,
     activeSpeaker,
+    withBible.paintStyleId,
   )
   let imageUrl = dataUrl
   try {
@@ -628,6 +629,7 @@ export async function handleImageLines(req: VercelRequest, res: VercelResponse) 
         ),
         pictureStory ? undefined : beat.activeSpeaker,
         dialog.visualBrief,
+        dialog.paintStyleId,
       )
       beats = beats.map((b, i) => (i === beatIndex ? { ...b, imageUrl } : b))
     }
@@ -873,6 +875,7 @@ export async function handleVisualTest(req: VercelRequest, res: VercelResponse) 
       undefined,
       undefined,
       visualBrief,
+      dialog.paintStyleId,
     )
     visualBrief.testImageUrl = imageUrl
     const updated = await updateDialog(

@@ -215,6 +215,7 @@ function buildBeatPrompt(
   seating: SceneSeating | null,
   brief?: VisualBrief | null,
   presentNames?: string[],
+  paintStyleId?: string | null,
 ): string {
   const cast = bible?.find((c) => c.name === beat.activeSpeaker)?.description
   const castNames = bible?.map((c) => c.name) ?? [beat.activeSpeaker, beat.addressee].filter(Boolean)
@@ -222,10 +223,11 @@ function buildBeatPrompt(
     ? `LOCKED CAST (identical in every frame): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
   const continuity = scene?.continuity === 'gradual' ? 'gradual' : 'locked'
-  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
+  const chosen = paintStyleId || brief?.answers?.style
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, chosen)}`
   const appearance = paintingAppearance(
     brief?.artStyle,
-    brief?.answers?.style,
+    chosen,
     brief?.ageEn,
     brief?.castLockEn,
   )
@@ -563,6 +565,7 @@ JSON:
               seatingByScene.get(group.sceneId) ?? null,
               brief,
               presentByScene.get(group.sceneId),
+              dialog.paintStyleId,
             ),
           )
         }
@@ -593,6 +596,7 @@ JSON:
           seatingByScene.get(group.sceneId) ?? null,
           brief,
           presentByScene.get(group.sceneId),
+          dialog.paintStyleId,
         ),
       )
     }
@@ -635,6 +639,7 @@ function finalizeBeat(
   seating: SceneSeating | null,
   brief?: VisualBrief | null,
   presentNames?: string[],
+  paintStyleId?: string | null,
 ): VisualScriptBeat {
   const firstIdx = group.lineIndices[0]
   const id = `${group.activeSpeaker.replace(/\s+/g, '_')}-${group.sceneId}-${group.mood}-${firstIdx}`
@@ -657,7 +662,7 @@ function finalizeBeat(
   return {
     id,
     ...partial,
-    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, seating, brief, presentNames),
+    prompt: buildBeatPrompt(partial, sceneMap.get(group.sceneId), bible, seating, brief, presentNames, paintStyleId),
   }
 }
 

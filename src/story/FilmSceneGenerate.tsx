@@ -32,14 +32,16 @@ export function FilmStyleTabs({
   value,
   disabled,
   onChange,
+  lead = 'Zeichenstil für neue Szenen',
 }: {
   value: string
   disabled?: boolean
+  lead?: string
   onChange: (id: StoryArtStyleId) => void
 }) {
   return (
     <div className="film-style-tabs">
-      <p className="muted film-style-lead">Zeichenstil für neue Szenen</p>
+      <p className="muted film-style-lead">{lead}</p>
       <div className="film-style-tab-row" role="tablist" aria-label="Zeichenstil">
         {STORY_ART_STYLES.map((style) => (
           <button

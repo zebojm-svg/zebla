@@ -1257,11 +1257,11 @@ export async function buildCharacterBible(dialog: Dialog): Promise<CharacterVisu
   const brief = dialog.visualBrief
   const appearance = paintingAppearance(
     brief?.artStyle,
-    brief?.answers?.style,
+    dialog.paintStyleId || brief?.answers?.style,
     brief?.ageEn,
     brief?.castLockEn,
   )
-  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, dialog.paintStyleId || brief?.answers?.style)}`
 
   const result = await chatJson<{ characters: CharacterVisual[] }>(
     `Du planst Bilder für einen Sprachlern-Dialog. Lies den gesamten Dialog und definiere für JEDE sprechende Person ein festes visuelles Erscheinungsbild (englisch), das auf ALLEN Bildern gleich bleiben soll.
@@ -1302,6 +1302,7 @@ function buildConsistentImagePrompt(
   referencePrompt?: string,
   activeSpeaker?: string,
   brief?: VisualBrief | null,
+  paintStyleId?: string | null,
 ): string {
   const portrait = activeSpeaker
     ? bible?.find((c) => c.name === activeSpeaker)
@@ -1315,10 +1316,8 @@ function buildConsistentImagePrompt(
     bible?.length ?
       `SAME characters in every image (do not change faces or outfits): ${formatCharacterBibleForPrompt(bible)}. `
     : ''
-  if (brief) {
-    return `${portraitRef}${ref}${cast}${scenePrompt}`
-  }
-  return `${portraitRef}${ref}${cast}${scenePrompt}. ${PAINT_STYLE_FIRST} ${paintingStyleText()}`
+  const styleLead = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, paintStyleId || brief?.answers?.style)}. `
+  return `${styleLead}${portraitRef}${ref}${cast}${scenePrompt}`
 }
 
 function buildImagePrompt(
@@ -1361,6 +1360,7 @@ export async function generateSectionImage(
   referenceImageUrls?: string[],
   referencePrompt?: string,
   activeSpeaker?: string,
+  paintStyleId?: string | null,
 ): Promise<{ imageUrl: string; prompt: string }> {
   const speakers = uniqueSpeakers(section)
   const snippet = section.lines
@@ -1372,6 +1372,8 @@ export async function generateSectionImage(
     bible,
     referencePrompt,
     activeSpeaker,
+    undefined,
+    paintStyleId,
   )
   const imageUrl = await generateImageDataUrl(prompt, referenceImageUrls)
   return { imageUrl, prompt }
@@ -1529,7 +1531,7 @@ JSON:
     } else {
       if (group) {
         portraits.push(
-          buildPortraitGroup(group, defaultFraming, scene, bible, moodExpr, gazeExpr, framingExpr),
+          buildPortraitGroup(group, defaultFraming, scene, bible, moodExpr, gazeExpr, framingExpr, dialog),
         )
       }
       group = {
@@ -1544,7 +1546,7 @@ JSON:
   }
   if (group) {
     portraits.push(
-      buildPortraitGroup(group, defaultFraming, scene, bible, moodExpr, gazeExpr, framingExpr),
+      buildPortraitGroup(group, defaultFraming, scene, bible, moodExpr, gazeExpr, framingExpr, dialog),
     )
   }
 
@@ -1583,6 +1585,7 @@ function buildPortraitGroup(
   moodExpr: Record<SpeakerMood, string>,
   gazeExpr: Record<PortraitGaze, string>,
   framingExpr: Record<PortraitFraming, string>,
+  dialog?: Dialog,
 ): SpeakerPortrait {
   const castHint = bible?.find((c) => c.name === group.speaker)?.description
   const reason = group.reasons.join('; ') || undefined
@@ -1600,7 +1603,7 @@ function buildPortraitGroup(
     `${group.speaker} is speaking to ${group.addressee} who is completely out of frame. ${gazeExpr[group.gaze]}. ` +
     `Expression: ${moodExpr[group.mood]}. Natural dialogue scene. ` +
     `Setting: ${scene}. ` +
-    `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PAINT_STYLE_FIRST} ${paintingStyleText()}`
+    `Widescreen 16:9 landscape frame. Do NOT break the fourth wall, no direct eye contact with camera or viewer. ${PAINT_STYLE_FIRST} ${paintingStyleText(dialog?.visualBrief?.artStyle, dialog?.paintStyleId || dialog?.visualBrief?.answers?.style)}`
   return {
     id,
     speaker: group.speaker,
@@ -1700,6 +1703,7 @@ export async function generateUploadedImage(
   referenceImageUrls?: string[],
   activeSpeaker?: string,
   brief?: VisualBrief | null,
+  paintStyleId?: string | null,
 ): Promise<string> {
   const fullPrompt = buildConsistentImagePrompt(
     prompt,
@@ -1707,6 +1711,7 @@ export async function generateUploadedImage(
     referencePrompt,
     activeSpeaker,
     brief,
+    paintStyleId,
   )
   const dataUrl = await generateImageDataUrl(fullPrompt, referenceImageUrls)
   const { uploadDialogImage } = await import('./image-storage.js')
@@ -1767,6 +1772,7 @@ export async function ensureNextCharacterPortrait(
     undefined,
     character.name,
     dialog.visualBrief,
+    dialog.paintStyleId,
   )
   const nextBible = bible.map((c) =>
     c.name === character.name ? { ...c, portraitUrl, portraitPrompt: prompt } : c,
@@ -1806,6 +1812,7 @@ export async function ensureReferenceImage(
     portraitUrls,
     undefined,
     dialog.visualBrief,
+    dialog.paintStyleId,
   )
   const updated = await updateDialog(dialog.id, userId, {
     referenceImageUrl: imageUrl,

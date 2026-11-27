@@ -1,4 +1,4 @@
-import { getStoryStylePrompt } from '../shared/story-art-styles.js'
+import { getStoryStylePrompt, isStoryArtStyleId } from '../shared/story-art-styles.js'
 
 export const IMAGE_ASPECT_RATIO = '16:9' as const
 
@@ -31,9 +31,14 @@ export const CAST_STORYBOOK_GUIDE =
   'Age-accurate storybook characters, fully clothed, PG-rated language-learning context, never nude or sexually suggestive. ' +
   'Each person has a unique haircut, outfit color, and one distinguishing feature so they stay recognizable. Keep the same clothes in every frame.'
 
-/** Foto nur, wenn es bewusst gewählt wurde. Sonst die Filmzeichnung. */
+/** Foto nur, wenn es bewusst gewählt wurde. Sonst die Filmzeichnung. Ein Reiter-Stil gilt zuerst. */
 export function paintingStyleText(artStyle?: string | null, chosenStyle?: string | null): string {
-  if (chosenStyle === 'photoreal') return PHOTOREALISTIC_STYLE
+  const picked = [chosenStyle, artStyle].find((id) => id && isStoryArtStyleId(id))
+  if (picked && isStoryArtStyleId(picked)) {
+    if (picked === 'fotorealistisch') return PHOTOREALISTIC_STYLE
+    return getStoryStylePrompt(picked)
+  }
+  if (chosenStyle === 'photoreal' || artStyle === 'photoreal') return PHOTOREALISTIC_STYLE
   if (chosenStyle === 'comic' || artStyle === 'comic') return COMIC_STYLE
   if (chosenStyle === 'watercolor' || artStyle === 'watercolor') return WATERCOLOR_STYLE
   return getStoryStylePrompt('filmzeichnung')
@@ -45,7 +50,7 @@ export function paintingAppearance(
   ageEn?: string,
   castLockEn?: string,
 ): string {
-  if (chosenStyle === 'photoreal') {
+  if (chosenStyle === 'photoreal' || chosenStyle === 'fotorealistisch' || artStyle === 'fotorealistisch') {
     return castLockEn || appearanceGuideFor('photoreal', ageEn)
   }
   if (chosenStyle === 'comic' || artStyle === 'comic' || chosenStyle === 'watercolor' || artStyle === 'watercolor') {
