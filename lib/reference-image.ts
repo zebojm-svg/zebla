@@ -35,8 +35,9 @@ export function buildCharacterPortraitPrompt(
 ): string {
   const imgCtx = imagePlanningContext(dialog)
   const brief = dialog.visualBrief
-  const appearance = paintingAppearance(brief?.artStyle, brief?.answers?.style, brief?.ageEn, brief?.castLockEn)
-  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
+  const chosen = dialog.paintStyleId || brief?.answers?.style
+  const appearance = paintingAppearance(brief?.artStyle, chosen, brief?.ageEn, brief?.castLockEn)
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, chosen)}`
   return (
     `INDIVIDUAL CHARACTER IDENTITY LOCK (portrait 0) for language-learning dialog "${dialog.title}". ` +
     `Portrait of ONLY one person: ${character.name}. ` +
@@ -57,8 +58,9 @@ export function buildReferenceImagePrompt(dialog: Dialog, bible?: CharacterVisua
   const imgCtx = imagePlanningContext(dialog)
   const scene = sceneHintFromDirection(dialog)
   const brief = dialog.visualBrief
-  const appearance = paintingAppearance(brief?.artStyle, brief?.answers?.style, brief?.ageEn, brief?.castLockEn)
-  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, brief?.answers?.style)}`
+  const chosen = dialog.paintStyleId || brief?.answers?.style
+  const appearance = paintingAppearance(brief?.artStyle, chosen, brief?.ageEn, brief?.castLockEn)
+  const styleLock = `${PAINT_STYLE_FIRST} ${paintingStyleText(brief?.artStyle, chosen)}`
   const director = brief?.directorPromptEn ? `${brief.directorPromptEn} ` : ''
 
   return (

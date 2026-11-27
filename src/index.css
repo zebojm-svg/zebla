@@ -3851,6 +3851,9 @@ html[dir='rtl'] .slideshow-topbar {
 .film-style-tabs {
   margin: 0 0 1.25rem;
 }
+.tool-group .film-style-tabs {
+  margin: 0;
+}
 .film-style-lead {
   margin: 0 0 0.45rem;
 }

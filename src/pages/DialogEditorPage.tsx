@@ -26,6 +26,12 @@ import {
 } from '../lib/translateTarget'
 import { VisualBriefPanel } from '../components/VisualBriefPanel'
 import { FilmProjectNav, FilmSaveStatusText, type FilmSaveStatus } from '../story/FilmProjectNav'
+import { FilmStyleTabs } from '../story/FilmSceneGenerate'
+import {
+  DEFAULT_STORY_ART_STYLE,
+  isStoryArtStyleId,
+  type StoryArtStyleId,
+} from '../../shared/story-art-styles'
 import { StoryMetaSheet } from '../story/StoryMetaSheet'
 import { EMPTY_FILM_TITLE, FILM_DRAFT_MODES, displayFilmTitle, isPlaceholderDraftSection } from '../../shared/film-draft'
 import {
@@ -895,6 +901,34 @@ export function DialogEditorPage() {
 
           <div className="tool-group">
             <span className="tool-label">Bilder</span>
+            <FilmStyleTabs
+              value={
+                dialog.paintStyleId && isStoryArtStyleId(dialog.paintStyleId)
+                  ? dialog.paintStyleId
+                  : DEFAULT_STORY_ART_STYLE
+              }
+              disabled={!!busy}
+              lead="Zeichenstil für diese Bilder"
+              onChange={(next: StoryArtStyleId) => {
+                const plan = dialog.filmPlan
+                  ? {
+                      ...dialog.filmPlan,
+                      scenes: dialog.filmPlan.scenes.map((scene) => ({ ...scene, styleId: next })),
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : undefined
+                setDialog({ ...dialog, paintStyleId: next, filmPlan: plan ?? dialog.filmPlan })
+                void api.dialogs
+                  .update(dialog.id, {
+                    paintStyleId: next,
+                    ...(plan ? { filmPlan: plan } : {}),
+                  })
+                  .then(({ dialog: saved }) => setDialog(saved))
+                  .catch((err) =>
+                    setError(err instanceof Error ? err.message : 'Stil konnte nicht gespeichert werden.'),
+                  )
+              }}
+            />
             <div className="tool-controls tool-controls--stack">
               <button
                 type="button"

@@ -333,6 +333,7 @@ export function FilmStoryboardPage() {
   }
 
   const activeStyle: StoryArtStyleId = (() => {
+    if (dialog.paintStyleId && isStoryArtStyleId(dialog.paintStyleId)) return dialog.paintStyleId
     const first = board?.scenes[0]
     const saved = first ? styles[first.id] : undefined
     return saved && isStoryArtStyleId(saved) ? saved : DEFAULT_STORY_ART_STYLE
@@ -356,7 +357,8 @@ export function FilmStoryboardPage() {
       timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
       updatedAt: new Date().toISOString(),
     }
-    void api.ai.filmPlanSave(dialog.id, plan)
+    void api.dialogs
+      .update(dialog.id, { paintStyleId: next, filmPlan: plan })
       .then(({ dialog: saved }) => setDialog(saved))
       .catch((err) => setError(err instanceof Error ? err.message : 'Stil konnte nicht gespeichert werden.'))
   }
