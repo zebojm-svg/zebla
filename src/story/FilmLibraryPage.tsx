@@ -5,15 +5,9 @@ import { FilmProjectNav } from './FilmProjectNav'
 import type { StoryLibraryAsset } from '../../shared/story-types'
 import { getStillPose } from '../../shared/story-stills'
 import { isLibraryShelf, LIBRARY_SHELVES, type LibraryShelfId } from '../../shared/story-project'
-import {
-  isCutoutFromStill,
-  partitionLibraryCharacters,
-  type LibraryIdentityGroup,
-} from '../../shared/library-identities'
+import { isCutoutFromStill } from '../../shared/library-identities'
 import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
 import { ReferenceCatalog } from './ReferenceCatalog'
-import { isCatalogReference } from '../../shared/reference-catalog'
-
 const SHELF_ICON: Record<LibraryShelfId, StoryPictogramName> = {
   character: 'person',
   environment: 'room',
@@ -103,7 +97,6 @@ export function FilmLibraryPage() {
   const [filter, setFilter] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
-  const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = async () => {
     const { assets: list } = await api.story.listLibrary()
@@ -116,35 +109,12 @@ export function FilmLibraryPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const characters = useMemo(
-    () => assets.filter((a) => a.type === 'character' && !isCatalogReference(a)),
-    [assets],
-  )
-  const environments = useMemo(
-    () => assets.filter((a) => a.type === 'environment' && !isCatalogReference(a)),
-    [assets],
-  )
   const props = useMemo(() => assets.filter((a) => a.type === 'prop'), [assets])
   const sketches = useMemo(
     () => assets.filter((a) => (a.tags ?? []).includes('sketch')),
     [assets],
   )
-  const grouped = useMemo(() => partitionLibraryCharacters(characters), [characters])
-
   const needle = filter.trim().toLowerCase()
-  const shownIdentities = needle
-    ? grouped.identities.filter((i) => i.displayName.toLowerCase().includes(needle))
-    : grouped.identities
-  const shownHarvested = needle
-    ? grouped.harvested.filter((e) =>
-        [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
-      )
-    : grouped.harvested
-  const shownEnvs = needle
-    ? environments.filter((e) =>
-        [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
-      )
-    : environments
   const shownSketches = needle
     ? sketches.filter((e) =>
         [e.name, e.description ?? '', ...(e.tags ?? [])].join(' ').toLowerCase().includes(needle),
@@ -184,41 +154,6 @@ export function FilmLibraryPage() {
       }
     } finally {
       setPendingId(null)
-    }
-  }
-
-  const removeMany = async (ids: string[]) => {
-    const unique = [...new Set(ids.filter(Boolean))]
-    if (unique.length === 0) return
-    if (
-      !window.confirm(
-        unique.length === 1
-          ? 'Diesen Eintrag aus der Bibliothek löschen?'
-          : `${unique.length} Einträge aus der Bibliothek löschen?`,
-      )
-    ) {
-      return
-    }
-    setBulkBusy(true)
-    setError('')
-    const failed: string[] = []
-    for (const id of unique) {
-      try {
-        await api.story.deleteFromLibrary(id)
-        setAssets((prev) => prev.filter((a) => a.id !== id))
-      } catch {
-        failed.push(id)
-      }
-    }
-    setConfirmId(null)
-    setBulkBusy(false)
-    if (failed.length) {
-      setError(`${failed.length} Einträge konnten nicht gelöscht werden. Bitte einzeln versuchen.`)
-      try {
-        await load()
-      } catch {
-        /* ignore */
-      }
     }
   }
 
@@ -280,84 +215,20 @@ export function FilmLibraryPage() {
           {shelf === 'character' && (
             <>
               <h2>Figuren</h2>
-              {shownIdentities.length === 0 && shownHarvested.length === 0 ? (
-                <p className="muted">
-                  Noch keine Figur.{' '}
-                  <Link to="/story">Zeichnen</Link>
-                </p>
-              ) : (
-                shownIdentities.map((identity: LibraryIdentityGroup) => (
-                  <section key={identity.key} className="film-identity">
-                    <h3>
-                      {identity.displayName}{' '}
-                      <span className="muted">
-                        {identity.assets.length} Pose{identity.assets.length === 1 ? '' : 'n'}
-                      </span>
-                    </h3>
-                    <div className="story-character-grid">
-                      {identity.assets.map((asset) => (
-                        <LibraryCard key={asset.id} asset={asset} {...cardProps} />
-                      ))}
-                    </div>
-                    {identity.assets.length > 1 ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={bulkBusy}
-                        onClick={() => void removeMany(identity.assets.map((a) => a.id))}
-                      >
-                        Alle Posen von {identity.displayName} löschen
-                      </button>
-                    ) : null}
-                  </section>
-                ))
-              )}
-              {shownHarvested.length > 0 ? (
-                <section className="film-identity film-identity-harvest">
-                  <h3>Aus Gruppenbild geschnitten</h3>
-                  <p className="alert alert-warn">
-                    Diese Bilder kleben oft am Sofa oder sind zu klein. Nicht als Stamm-Figur
-                    verwenden — lieber löschen. Stehende Posen entstehen aus der sauberen
-                    Studio-Figur darüber.
-                  </p>
-                  <div className="story-character-grid">
-                    {shownHarvested.map((asset) => (
-                      <LibraryCard
-                        key={asset.id}
-                        asset={asset}
-                        badge="geschnitten"
-                        {...cardProps}
-                      />
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={bulkBusy}
-                    onClick={() => void removeMany(shownHarvested.map((a) => a.id))}
-                  >
-                    {bulkBusy ? '…' : 'Alle geschnittenen Figuren löschen'}
-                  </button>
-                </section>
-              ) : null}
+              <p className="muted">
+                Die Figuren stehen oben im Katalog. Zuerst der Stil, dann eine Figur im Stehen.
+                Ein Klick zeigt die anderen Ansichten.
+              </p>
             </>
           )}
 
           {shelf === 'environment' && (
             <>
               <h2>Räume</h2>
-              {shownEnvs.length === 0 ? (
-                <p className="muted">
-                  Noch kein Raum. Einmal aus einer Szene ernten oder zeichnen — dann in jeder Geschichte
-                  gratis.
-                </p>
-              ) : (
-                <div className="story-character-grid">
-                  {shownEnvs.map((asset) => (
-                    <LibraryCard key={asset.id} asset={asset} {...cardProps} />
-                  ))}
-                </div>
-              )}
+              <p className="muted">
+                Die Räume stehen oben im Katalog. Zuerst der Stil, dann der Ort:
+                Draussen, Wald, Strand, Küche, Wohnzimmer.
+              </p>
             </>
           )}
 

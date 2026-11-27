@@ -4260,3 +4260,64 @@ html[dir='rtl'] .slideshow-topbar {
   margin-top: 1.25rem;
 }
 
+.catalog-search {
+  width: 100%;
+  margin: 0 0 1rem;
+}
+
+.catalog-style-block {
+  margin: 1.25rem 0 0;
+}
+
+.catalog-place {
+  margin: 0.75rem 0 0;
+}
+
+.catalog-cover {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.catalog-cover img,
+.catalog-cover .catalog-sound-mark {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
+  background: var(--bg);
+}
+
+.catalog-cover-name,
+.catalog-cover-more {
+  display: block;
+  padding: 0.35rem 0.65rem 0;
+  font-weight: 700;
+}
+
+.catalog-cover-more {
+  font-weight: 500;
+  padding-bottom: 0.55rem;
+}
+
+.catalog-hidden {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.catalog-draw-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
