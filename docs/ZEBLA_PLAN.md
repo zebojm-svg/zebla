@@ -57,6 +57,27 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 | Live/Deploy | [Vercel Zebla](https://vercel.com/zebojm-svgs-projects/zebla) · Anmeldung nur auf [zebla.zebotools.ch](https://zebla.zebotools.ch) — Vercel-Git-Vorschau (`…-git-….vercel.app`) darf Google nicht |
 | Zebla intern | App oben **Pro** (Master = fast kein Limit) |
 
+## Richtung (27. Nov 2026) — gefragt, noch nicht gebaut
+
+Jean-Marie will die Tür neu denken. Noch nicht «so ist es». Erst sein Ja, dann bauen. Das Gebaute darunter bleibt.
+
+- **Eine Tür:** ein Promptfenster. «Diese Figur als Reto, diese als Sabrina, die Geschichte so.» Daraus wird die Galerie, die Geschichte, das Board, die Bildergeschichte.
+- **Regal bleibt.** Gesicht, Raum, Sache, Stimme wiederverwenden. Neu zeichnen nur, was fehlt. Dieselbe Figur nicht noch einmal bezahlen.
+- **Regie-KI, nur Text:** liest den Satz und entscheidet selbst Weitbild, Nahaufnahme, Zwischenbild (Glas fällt), Geräusch, Stimme, Musik. Zeigt einen kurzen Plan. Teure Bilder erst nach «mach».
+- **Änderung im selben Fenster.** «Glas nur klirren» trifft dieses eine Bild. Der Rest bleibt.
+- **Geräusche wie Figuren** ins Regal (Klirren, Klopfen, Schritte). Die KI wählt. Nur ein unbekanntes Geräusch neu erzeugen. Heute kennt sie Tee, Klopfen, Nuss — ein fallendes Glas noch nicht.
+- **Stimmen** bleiben die vorhandenen KI-Stimmen, fest an der Figur.
+- Persisch und Birkenbihl bleiben. Erst wenn die Bildergeschichte steht.
+- Bewegungsfilm bleibt später.
+
+Wenn ja, in dieser Reihenfolge:
+
+1. Promptfenster. Plan aus dem Regal. Noch keine neuen Bilder.
+2. Galerie: was schon da ist, was fehlt.
+3. «Mach» malt nur die Lücken, plus Stimme, Musik, Geräusch.
+4. Änderung im selben Fenster, ein Bild.
+5. Geräusch-Regal.
+
 ## Stand (2026-10)
 
 **Live (main):** Projektordner, Welt-Regal, Meta-Blatt, Szene-für-Szene-Standbilder, «Bild neu malen», Figuren ziehen/zoomen, Schatten und Blinzeln, Möbel-Ernte, Bibliothek löschen, Deutsch unter den Zeilen, Szene abspielen mit Stimme, Board als Comic-Zeile, KI-Musik (Lyria), Szenen nur im Dialog aus dem Prompt, Kamera-Regie (Nahaufnahme wer spricht, Zwischenbilder, Handlung/Erzähler im Dialog), Geräusche zur Handlung (Wasser, Pfeifen, Plätschern, Klopfen), Erzählerstimme unter Stimmen anpassen, Ortssperre (Küche ≠ Wohnzimmer), Vorlagenpaket für die Bild-KI (Raum + Figuren + Grundbild dieses Ortes), eigenes Bild je Sprecher, gleiche Kanne und Herd über die Küchenbilder, Erzähler spricht auch wenn die KI «Handlung» geschrieben hat, zugeordnete Stimmen trotz Schreibweise (Schöme/Schoeme, Off/Erzähler), **Drehbuch → Inventar → Vorlagen** (jede wiederkehrende Sache behält dieselbe id und wandert mit dem vorigen Foto **dieser** Sache: Blumen an der Tür, später auf dem Tisch; Kanne/Tablett derselbe Mechanismus, keine Extra-Tee-Logik), Zwischenbilder auf Augenhöhe, **Bild ändern als Packzettel** (`planStillEditPackzettel` → `{ imagePrompt, imageIds[] }`: Katalog + Hinweis an die Drehbuch-KI, genau diese Fotos an die Bild-KI; keine Stichwörter `allein`/`am Herd` — PR #74 nicht mergen), **Bild ändern mit Vorlagen-Check** (voriges Ortsbild, Requisiten, Personen — spätere Bilder der Szene neu), **Bild ändern mit FLUX Kontext Max** (harte Restage-Regie; Pro hält Gruppen zu fest), **Dialog zuerst Muttersprache** («Dialog daraus machen» schreibt Deutsch; Zielsprache, Lautschrift und Birkenbihl erst mit «Zielsprache machen» unter Text), **drei Sprachzeilen** (Deutsch · Zielsprache · Birkenbihl · Lautschrift), **Anmeldung / API-Boot** (Hub-Kachel, sso_mint, `/api/health` — kaputter Typ in `lib/ai.ts` behoben), **Zielsprache in Paketen** (ein Klick «Zielsprache machen»: Abschnitt oder ~8 Zeilen plus Birkenbihl; Knopf «läuft», dann «noch X Zeilen»; fertige Zeilen bleiben), **ein Knopf «Bilder planen»** auf Bilder (kein zweiter Zielsprache-Knopf dort; fehlt die Übersetzung, Satz «Zielsprache machst du unter Text»), **erster Bildplan lokal** (`planBoardWithoutAi`, sofort gespeichert, ohne auf Gemini zu warten — kein 60s-Loch auf der leeren Seite). Nach dem Live-Deploy auf [zebla.zebotools.ch](https://zebla.zebotools.ch): alte Filme ohne Deutsch **«Deutsch unter die Zeilen»**; neue Filme **Dialog daraus machen**, unter Text **Zielsprache machen**, auf Bilder **Bilder planen**.
