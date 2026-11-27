@@ -1,8 +1,9 @@
 import { isCharacterRig, type CharacterRig } from '../shared/character-rig.js'
+import { REFERENCE_TAG } from '../shared/reference-catalog.js'
 import { randomUUID } from 'crypto'
 import { adminDb } from './firebase-admin.js'
 
-export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop'
+export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop' | 'sound'
 
 export interface StoryLibraryDoc {
   userId: string
@@ -17,6 +18,7 @@ export interface StoryLibraryDoc {
   armPoseId?: string
   faceExpressionId?: string
   rig?: CharacterRig
+  basisId?: string
   createdAt: string
 }
 
@@ -69,6 +71,7 @@ export async function saveStoryAsset(
     armPoseId?: string
     faceExpressionId?: string
     rig?: CharacterRig
+    basisId?: string
   },
 ): Promise<StoryLibraryAsset> {
   const id = randomUUID()
@@ -88,6 +91,8 @@ export async function saveStoryAsset(
     rig,
     createdAt: new Date().toISOString(),
   }
+  const basisId = input.basisId?.trim()
+  if (basisId) doc.basisId = basisId
   await adminDb().collection('storyAssets').doc(id).set(doc)
   return { id, ...doc }
 }
@@ -108,6 +113,21 @@ export async function updateStoryAssetRig(
   if (imageUrl?.trim()) patch.imageUrl = imageUrl.trim()
   await ref.update(patch)
   return { id, ...data, rig, imageUrl: patch.imageUrl ?? data.imageUrl }
+}
+
+export async function markStoryAssetReference(
+  userId: string,
+  id: string,
+): Promise<StoryLibraryAsset | null> {
+  const ref = adminDb().collection('storyAssets').doc(id)
+  const snap = await ref.get()
+  if (!snap.exists) return null
+  const data = snap.data() as StoryLibraryDoc
+  if (data.userId !== userId) return null
+  if (data.type !== 'character' && data.type !== 'environment') return null
+  const tags = normalizeTags([...(data.tags ?? []), REFERENCE_TAG])
+  await ref.update({ tags })
+  return { id, ...data, tags }
 }
 
 export async function deleteStoryAsset(userId: string, id: string): Promise<boolean> {

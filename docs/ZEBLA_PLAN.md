@@ -57,9 +57,9 @@ Neue Screens: diese Variablen nutzen, nicht neue Paletten.
 | Live/Deploy | [Vercel Zebla](https://vercel.com/zebojm-svgs-projects/zebla) · Anmeldung nur auf [zebla.zebotools.ch](https://zebla.zebotools.ch) — Vercel-Git-Vorschau (`…-git-….vercel.app`) darf Google nicht |
 | Zebla intern | App oben **Pro** (Master = fast kein Limit) |
 
-## Richtung (27. Nov 2026, korrigiert) — noch nicht gebaut
+## Richtung (27. Nov 2026, korrigiert)
 
-Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sicht muss neu gezeichnet werden. Noch nicht «so ist es». Erst sein Ja, dann bauen.
+Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sicht muss neu gezeichnet werden.
 
 - **Katalog von Referenzen:** Figuren, Räume, Geräusche. «Ein Raum wie dieser», dazu Parameter (andere Möbel). Die Referenz bleibt dieser Raum.
 - **Jedes neue Bild wird neu gezeichnet.** Die Referenzbilder gehen jedes Mal mit, damit dieselbe Figur und derselbe Raum wiedererkennbar bleiben.
@@ -69,18 +69,20 @@ Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sich
 - **Eine Tür** bleibt: Promptfenster. «Diese Figur als Reto, diese als Sabrina, die Geschichte so.» Änderung im selben Fenster trifft ein Bild.
 - Stimmen bleiben an der Figur. Persisch und Birkenbihl erst danach. Bewegungsfilm später.
 
+**Live mit diesem Schritt:** Katalog unter «Katalog» (früher Welt). Figur und Raum zeichnen, bestehendes Bild als Referenz nehmen, «Raum wie dieser» mit einem Satz (anderes Sofa). Geräusch merken (Name und Satz, noch keine Ton-Datei). Neue Posen nehmen das Referenzbild, nicht das älteste Posenfoto. Die Regie über die ganze Geschichte und jedes Bild neu sind der nächste Schritt, noch nicht hier.
+
 Warum das Bisherige die Wiedererkennung verliert:
 
 - Das Regal erntet Ausschnitte und legt sie in die Szene. Eine neue Perspektive geht so nicht.
 - Beim Malen höchstens vier Fotos, oft nur die aktuelle Zeile. Gemini (weit) und FLUX (nah) haben kein gemeinsames Gedächtnis.
 - Manche Regeln sind Stichwörter (Tee, Klopfen, Nuss). Dasselbe Muster wie «Afrika» → andere Leute.
 
-Wenn ja, in dieser Reihenfolge:
+Reihenfolge:
 
-1. Katalog: eine Figur-Referenz, eine Raum-Referenz, eine Geräusch-Referenz. Anlegen oder wählen.
-2. Regie liest die ganze Geschichte und schreibt den Zusammenhang.
-3. Jedes Bild neu, mit diesen Referenzen und diesem Zusammenhang.
-4. «Raum wie dieser, andere Möbel» ändert nur den genannten Parameter.
+1. Katalog: Figur, Raum, Geräusch anlegen oder wählen. **Gebaut.**
+2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. Noch nicht.
+3. Jedes Bild der Geschichte neu, mit diesen Referenzen. Noch nicht.
+4. «Raum wie dieser, andere Möbel» im Katalog. **Gebaut.** In der Geschichte noch nicht von allein.
 
 ## Stand (2026-10)
 

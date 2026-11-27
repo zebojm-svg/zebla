@@ -7,6 +7,7 @@ export type StoryPictogramName =
   | 'room'
   | 'chair'
   | 'sketch'
+  | 'sound'
 
 const ICONS: Record<StoryPictogramName, { label: string; path: string }> = {
   text: {
@@ -40,6 +41,10 @@ const ICONS: Record<StoryPictogramName, { label: string; path: string }> = {
   sketch: {
     label: 'Skizzen',
     path: 'M5 19l4-1 10-10-3-3L6 15l-1 4z',
+  },
+  sound: {
+    label: 'Geräusch',
+    path: 'M4 10v4h3l5 4V6L7 10H4zM16.5 8.5a4.5 4.5 0 010 7',
   },
 }
 

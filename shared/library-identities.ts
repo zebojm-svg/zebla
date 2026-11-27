@@ -4,6 +4,7 @@
  */
 
 import { characterBaseName } from './character-parts.js'
+import { REFERENCE_TAG } from './reference-catalog.js'
 import { STILL_POSES } from './story-stills.js'
 import type { StoryLibraryAsset } from './story-types.js'
 
@@ -202,13 +203,15 @@ export function identitySaveName(library: StoryLibraryAsset[], speakerName: stri
   return characterBaseName(speakerName)
 }
 
-/** Ältestes Studio-Foto dieser Person — neue Posen davon ableiten, nicht vom Freisteller. */
+/** Referenzbild dieser Person, sonst das älteste Studio-Foto. Nicht der Freisteller. */
 export function identityReferenceUrl(
   library: StoryLibraryAsset[],
   speakerName: string,
 ): string | undefined {
-  const assets = canonicalIdentityAssets(library, speakerName)
-    .filter((a) => a.imageUrl)
-    .sort(oldestFirst)
-  return assets[0]?.imageUrl
+  const assets = canonicalIdentityAssets(library, speakerName).filter((a) => a.imageUrl)
+  const refs = assets
+    .filter((a) => (a.tags ?? []).includes(REFERENCE_TAG))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  if (refs[0]?.imageUrl) return refs[0].imageUrl
+  return [...assets].sort(oldestFirst)[0]?.imageUrl
 }

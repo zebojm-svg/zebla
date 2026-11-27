@@ -486,11 +486,11 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1>{t('dashboard.title')}</h1>
-          <p className="muted">Text, Bilder, Abspielen. Figuren und Räume in der Welt.</p>
+          <p className="muted">Text, Bilder, Abspielen. Figuren und Räume im Katalog.</p>
         </div>
         <div className="header-actions">
-          <Link to="/library" className="btn btn-secondary" title="Welt">
-            Welt
+          <Link to="/library" className="btn btn-secondary" title="Katalog">
+            Katalog
           </Link>
           {canCreateFolder && (
             <button type="button" className="btn btn-ghost" onClick={createFolder}>
@@ -555,11 +555,11 @@ export function DashboardPage() {
                     ? 'Ordner oder Geschichte hier anlegen.'
                     : 'Geschichte starten – Ordner legt die Lehrkraft an.'
                   : 'Ordner oder Geschichte hier anlegen.'
-                : 'Neue Geschichte = neuer Ordner. Figuren in der Welt.'}
+                : 'Neue Geschichte = neuer Ordner. Figuren im Katalog.'}
           </p>
           <div className="empty-state-actions">
             <Link to="/library" className="btn btn-secondary">
-              Welt-Regal
+              Katalog
             </Link>
             {canCreateFolder && (
               <button type="button" className="btn btn-ghost" onClick={createFolder}>

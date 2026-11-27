@@ -32,6 +32,7 @@ import {
 } from './gemini-image-model.js'
 import { fluxLockAvailable, generateLockedStillPng } from './story-stills-gen.js'
 import { genderFromKnownName } from './speaker-gender.js'
+import { roomLikePrompt } from '../shared/reference-catalog.js'
 
 function lockAppearanceSex(name: string, appearance: string): string {
   const g = genderFromKnownName(name)
@@ -442,14 +443,31 @@ export async function generateStoryEnvironment(
   description: string,
   name: string,
   styleId?: StoryArtStyleId,
+  reference?: { imageUrl?: string; change?: string },
 ): Promise<{ imageUrl: string; prompt: string; styleId: StoryArtStyleId }> {
   const apiKey = requireGeminiKey()
   const style = getStoryStylePrompt(styleId)
-  const prompt = `${style}\n\nEmpty room/environment with NO people, NO characters, NO faces, NO mannequins, NO silhouettes sitting on furniture. Show only the space, furniture, objects, lighting:\n${description}\nLocation: ${name}\nIMPORTANT: Absolutely NO people or characters. Just the empty space ready for characters to be placed in.`
+  const referenceUrl = reference?.imageUrl?.trim()
+  const prompt = roomLikePrompt({
+    name,
+    description,
+    stylePrompt: style,
+    change: reference?.change,
+    hasReference: Boolean(referenceUrl),
+  })
+  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
+  if (referenceUrl) {
+    const refPng = await fetchPngBuffer(referenceUrl)
+    if (!refPng) {
+      throw new Error('Das Raum-Referenzbild konnte nicht geladen werden.')
+    }
+    parts.push({ inlineData: { mimeType: 'image/png', data: refPng.toString('base64') } })
+  }
+  parts.push({ text: prompt })
 
   const buffer3 = await generateGeminiPng(
     apiKey,
-    [{ text: prompt }],
+    parts,
     '16:9',
     50_000,
     'Kein Bild generiert.',

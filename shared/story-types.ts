@@ -2,7 +2,7 @@
 
 import type { CharacterRig } from './character-rig'
 
-export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop'
+export type StoryAssetType = 'character' | 'environment' | 'scene' | 'prop' | 'sound'
 
 /** Persistiertes KI-Asset in der persönlichen Story-Bibliothek */
 export interface StoryLibraryAsset {
@@ -24,6 +24,8 @@ export interface StoryLibraryAsset {
   faceExpressionId?: string
   /** Kopf / Rumpf / Beine als zusammenhängende Teile */
   rig?: CharacterRig
+  /** Raum-Variante: die Referenz, von der dieses Bild kommt */
+  basisId?: string
   createdAt: string
 }
 

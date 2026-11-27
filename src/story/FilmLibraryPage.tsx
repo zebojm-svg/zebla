@@ -11,6 +11,8 @@ import {
   type LibraryIdentityGroup,
 } from '../../shared/library-identities'
 import { StoryPictogram, type StoryPictogramName } from './StoryPictogram'
+import { ReferenceCatalog } from './ReferenceCatalog'
+import { isCatalogReference } from '../../shared/reference-catalog'
 
 const SHELF_ICON: Record<LibraryShelfId, StoryPictogramName> = {
   character: 'person',
@@ -115,11 +117,11 @@ export function FilmLibraryPage() {
   }, [])
 
   const characters = useMemo(
-    () => assets.filter((a) => a.type === 'character'),
+    () => assets.filter((a) => a.type === 'character' && !isCatalogReference(a)),
     [assets],
   )
   const environments = useMemo(
-    () => assets.filter((a) => a.type === 'environment'),
+    () => assets.filter((a) => a.type === 'environment' && !isCatalogReference(a)),
     [assets],
   )
   const props = useMemo(() => assets.filter((a) => a.type === 'prop'), [assets])
@@ -233,7 +235,10 @@ export function FilmLibraryPage() {
       <FilmProjectNav dialogId={dialogId} />
       <div className="page-header">
         <div>
-          <h1>Welt</h1>
+          <h1>Katalog</h1>
+          <p className="muted">
+            Eine Figur, ein Raum, ein Geräusch. Eine neue Sicht wird neu gezeichnet. Diese Referenz geht mit.
+          </p>
         </div>
         <Link to={dialogId ? `/story?dialog=${dialogId}` : '/story'} className="btn btn-ghost">
           Nur wenn etwas fehlt: zeichnen
@@ -242,33 +247,36 @@ export function FilmLibraryPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="library-shelf-tabs" role="tablist" aria-label="Welt-Regal">
-        {LIBRARY_SHELVES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={shelf === item.id}
-            className={`library-shelf-tab${shelf === item.id ? ' is-active' : ''}`}
-            onClick={() => openShelf(item.id)}
-          >
-            <StoryPictogram name={SHELF_ICON[item.id]} />
-            <strong>{item.title}</strong>
-          </button>
-        ))}
-      </div>
-
-      <input
-        className="input"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Suchen: Julien, Park, Stuhl …"
-      />
-
       {loading ? (
-        <p className="muted">Lade Bibliothek …</p>
+        <p className="muted">Lade Katalog …</p>
       ) : (
         <>
+          <ReferenceCatalog assets={assets} onChange={load} />
+          <h2>Altes Regal</h2>
+          <p className="muted">
+            Ausschnitte von früher, zum Hinlegen in eine Szene. Für dieselbe Figur zählt die Referenz oben.
+          </p>
+          <div className="library-shelf-tabs" role="tablist" aria-label="Altes Regal">
+            {LIBRARY_SHELVES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={shelf === item.id}
+                className={`library-shelf-tab${shelf === item.id ? ' is-active' : ''}`}
+                onClick={() => openShelf(item.id)}
+              >
+                <StoryPictogram name={SHELF_ICON[item.id]} />
+                <strong>{item.title}</strong>
+              </button>
+            ))}
+          </div>
+          <input
+            className="input"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Suchen: Julien, Park, Stuhl …"
+          />
           {shelf === 'character' && (
             <>
               <h2>Figuren</h2>

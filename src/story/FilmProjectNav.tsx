@@ -190,11 +190,11 @@ export function FilmProjectNav({ dialogId, title, onTitleChange, saveStatus, com
         <Link
           to={dialogId ? `/library?dialog=${dialogId}` : '/library'}
           className={`story-workflow-step${worldActive ? ' is-active' : ''}`}
-          title="Welt-Regal"
+          title="Katalog"
           aria-current={worldActive ? 'page' : undefined}
         >
           <StoryPictogram name="world" />
-          <span className="story-workflow-caption">Welt</span>
+          <span className="story-workflow-caption">Katalog</span>
         </Link>
       </nav>
     </div>

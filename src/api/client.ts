@@ -796,6 +796,7 @@ export const api = {
       referenceImageUrl?: string,
       faceExpressionId?: string,
       stillPoseId?: string,
+      referencePlate?: boolean,
     ) =>
       request<{
         imageUrl: string
@@ -819,6 +820,7 @@ export const api = {
             referenceImageUrl,
             faceExpressionId,
             stillPoseId,
+            referencePlate,
           }),
         },
         140_000,
@@ -836,10 +838,21 @@ export const api = {
         },
         80_000,
       ),
-    generateEnvironment: (name: string, description: string, styleId?: string) =>
+    generateEnvironment: (
+      name: string,
+      description: string,
+      styleId?: string,
+      reference?: { imageUrl?: string; change?: string },
+    ) =>
       request<{ imageUrl: string; prompt: string; styleId: string }>('/story-generate-environment', {
         method: 'POST',
-        body: JSON.stringify({ name, description, styleId }),
+        body: JSON.stringify({
+          name,
+          description,
+          styleId,
+          referenceImageUrl: reference?.imageUrl,
+          changeNote: reference?.change,
+        }),
       }),
     listLibrary: (opts?: { type?: 'character' | 'environment' | 'scene'; tag?: string }) => {
       const params = new URLSearchParams()
@@ -850,12 +863,18 @@ export const api = {
         `/story-library${qs ? `?${qs}` : ''}`,
       )
     },
+    markReference: (id: string) =>
+      request<{ asset: import('../../shared/story-types').StoryLibraryAsset }>(
+        '/story-library-reference',
+        { method: 'POST', body: JSON.stringify({ id }) },
+      ),
     saveToLibrary: (input: {
-      type: 'character' | 'environment' | 'scene'
+      type: 'character' | 'environment' | 'scene' | 'sound'
       name: string
       description?: string
-      imageUrl: string
+      imageUrl?: string
       tags: string[]
+      basisId?: string
       styleId?: string
       legPoseId?: string
       headAngleId?: string

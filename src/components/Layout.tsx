@@ -58,8 +58,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Link to="/" className={tabClass('/', true)} title="Geschichten">
                     Geschichten
                   </Link>
-                  <Link to="/library" className={tabClass('/library')} title="Welt">
-                    Welt
+                  <Link to="/library" className={tabClass('/library')} title="Katalog">
+                    Katalog
                   </Link>
                   <Link to="/explore" className={tabClass('/explore')} title="Öffentlich">
                     Öffentlich
@@ -74,7 +74,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
               <div className="zebo-shell-header__right">
                 <Link to="/library" className="btn btn-story-studio btn-sm">
-                  Welt
+                  Katalog
                 </Link>
                 <LanguageSwitcher className="lang-switcher--topbar" />
                 <a className="zebo-hub-link" href="https://zebotools.ch">
