@@ -2,13 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { FilmProjectNav } from './FilmProjectNav'
-import { FilmSceneGenerateBar, FilmStillStrip } from './FilmSceneGenerate'
+import { FilmSceneGenerateBar, FilmStillStrip, FilmStyleTabs } from './FilmSceneGenerate'
 import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { useSceneStills } from './generateSceneStills'
 import { LanguageFlag } from '../components/LanguageFlag'
 import type { Dialog } from '../types'
 import { LANGUAGES } from '../types'
-import { DEFAULT_STORY_ART_STYLE, preferSceneStyle } from '../../shared/story-art-styles'
+import {
+  DEFAULT_STORY_ART_STYLE,
+  isStoryArtStyleId,
+  preferSceneStyle,
+  type StoryArtStyleId,
+} from '../../shared/story-art-styles'
 import {
   normalizeFilmStoryboard,
   type FilmPlan,
@@ -191,6 +196,29 @@ export function FilmExportPage() {
           <h1>Bilder</h1>
         </div>
       </div>
+      {board ? (
+        <FilmStyleTabs
+          value={
+            (board.scenes[0] && styles[board.scenes[0].id] && isStoryArtStyleId(styles[board.scenes[0].id]!)
+              ? styles[board.scenes[0].id]
+              : DEFAULT_STORY_ART_STYLE) as StoryArtStyleId
+          }
+          disabled={busy || stills.busySceneId !== null}
+          onChange={(next) => {
+            if (!id) return
+            const updated: Record<string, string> = {}
+            for (const scene of board.scenes) updated[scene.id] = next
+            setStyles((prev) => ({ ...prev, ...updated }))
+            void api.ai
+              .filmPlanSave(id, {
+                ...buildPlan(),
+                scenes: board.scenes.map((scene) => ({ sceneId: scene.id, styleId: next })),
+              })
+              .then(({ dialog: saved }) => setDialog(saved))
+              .catch((err) => setError(err instanceof Error ? err.message : 'Stil konnte nicht gespeichert werden.'))
+          }}
+        />
+      ) : null}
       {error && <div className="alert alert-error">{error}</div>}
       {status && <div className="alert alert-info">{status}</div>}
 

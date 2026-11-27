@@ -3848,6 +3848,36 @@ html[dir='rtl'] .slideshow-topbar {
   background: #f0fdfa;
 }
 
+.film-style-tabs {
+  margin: 0 0 1.25rem;
+}
+.film-style-lead {
+  margin: 0 0 0.45rem;
+}
+.film-style-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.film-style-tab {
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--accent);
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.film-style-tab.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+.film-style-tab:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .film-scene-style {
   display: flex;
   flex-direction: column;

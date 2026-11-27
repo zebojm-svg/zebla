@@ -10,6 +10,7 @@ import {
   FilmPackSpeakerSelect,
   FilmSceneGenerateBar,
   FilmStillFixBar,
+  FilmStyleTabs,
 } from './FilmSceneGenerate'
 import { stillPackNumber } from '../../shared/film-still-pack'
 import { FilmCastVoices } from './FilmCastVoices'
@@ -17,7 +18,7 @@ import { FilmScenePreviewPlayer } from './FilmScenePreview'
 import { FilmStillPicture } from './FilmStillArrange'
 import { useSceneStills } from './generateSceneStills'
 import type { Dialog } from '../types'
-import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
+import type { FilmPlan, FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
 import {
   boardNeedsDrawing,
   dialogNeedsNativeFill,
@@ -32,7 +33,12 @@ import {
   repeatedDialogSectionTitles,
   sceneShotPlanDe,
 } from '../../shared/film-storyboard'
-import { DEFAULT_STORY_ART_STYLE, preferSceneStyle } from '../../shared/story-art-styles'
+import {
+  DEFAULT_STORY_ART_STYLE,
+  isStoryArtStyleId,
+  preferSceneStyle,
+  type StoryArtStyleId,
+} from '../../shared/story-art-styles'
 
 function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
@@ -326,6 +332,35 @@ export function FilmStoryboardPage() {
     )
   }
 
+  const activeStyle: StoryArtStyleId = (() => {
+    const first = board?.scenes[0]
+    const saved = first ? styles[first.id] : undefined
+    return saved && isStoryArtStyleId(saved) ? saved : DEFAULT_STORY_ART_STYLE
+  })()
+
+  const chooseStyle = (next: StoryArtStyleId) => {
+    if (!board) return
+    setStyles((prev) => {
+      const updated = { ...prev }
+      for (const scene of board.scenes) updated[scene.id] = next
+      return updated
+    })
+    const plan: FilmPlan = {
+      version: 1,
+      targetLanguage: dialog.filmPlan?.targetLanguage ?? dialog.targetLanguage,
+      scenes: board.scenes.map((scene) => ({
+        sceneId: scene.id,
+        styleId: next,
+        noteDe: dialog.filmPlan?.scenes.find((item) => item.sceneId === scene.id)?.noteDe,
+      })),
+      timelineNotes: dialog.filmPlan?.timelineNotes ?? [],
+      updatedAt: new Date().toISOString(),
+    }
+    void api.ai.filmPlanSave(dialog.id, plan)
+      .then(({ dialog: saved }) => setDialog(saved))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Stil konnte nicht gespeichert werden.'))
+  }
+
   const planPictures = () => {
     if (board) {
       const ok = window.confirm(
@@ -340,7 +375,7 @@ export function FilmStoryboardPage() {
         if (!first) return
         const panels = nextBoard.panels.filter((p) => p.sceneId === first.id)
         if (panels.length === 0) return
-        await stills.generate(first.id, panels, DEFAULT_STORY_ART_STYLE, false)
+        await stills.generate(first.id, panels, activeStyle, false)
       })()
       return
     }
@@ -350,6 +385,13 @@ export function FilmStoryboardPage() {
   return (
     <div className="page film-board-page">
       <FilmProjectNav dialogId={dialog.id} />
+      {board ? (
+        <FilmStyleTabs
+          value={activeStyle}
+          disabled={locked}
+          onChange={(next) => chooseStyle(next)}
+        />
+      ) : null}
       <div className="page-header">
         <div>
           <h1>Bilder</h1>
@@ -488,7 +530,7 @@ export function FilmStoryboardPage() {
                     dialogId={dialog.id}
                     scene={scene}
                     panels={panels}
-                    styleId={styles[scene.id] ?? DEFAULT_STORY_ART_STYLE}
+                    styleId={activeStyle}
                     onStyleChange={(next) => setStyles((prev) => ({ ...prev, [scene.id]: next }))}
                     busy={stills.busySceneId === scene.id}
                     extraDisabled={locked && stills.busySceneId !== scene.id}
@@ -503,7 +545,7 @@ export function FilmStoryboardPage() {
                       void stills.generate(
                         scene.id,
                         panels,
-                        styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                        activeStyle,
                         force,
                       )
                     }
@@ -547,7 +589,7 @@ export function FilmStoryboardPage() {
                         void stills.generateOne(
                           scene.id,
                           panel,
-                          styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                          activeStyle,
                           note,
                         )
                       }
@@ -565,7 +607,7 @@ export function FilmStoryboardPage() {
                               await stills.generateOne(
                                 scene.id,
                                 created,
-                                styles[scene.id] ?? DEFAULT_STORY_ART_STYLE,
+                                activeStyle,
                               )
                             }
                           } catch (err) {

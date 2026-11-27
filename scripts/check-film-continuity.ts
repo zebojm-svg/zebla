@@ -97,7 +97,8 @@ if (!jobs.some((job) => job.kind === 'place')) fail('der Raum wird als Referenz 
 if (DEFAULT_STORY_ART_STYLE !== 'filmzeichnung') fail('der Zeichenstil ist die Filmzeichnung')
 if (!paintingStyleText('photoreal').includes('animated-film')) fail('ohne bewusste Foto-Wahl wird gezeichnet')
 if (!paintingStyleText('photoreal', 'photoreal').includes('Photorealistic')) fail('bewusste Foto-Wahl bleibt ein Foto')
-if (paintingStyleId('illustration-lebendig') !== 'filmzeichnung') fail('der alte Automatik-Stil wird zur Filmzeichnung')
+if (paintingStyleId('') !== 'filmzeichnung') fail('ohne Wahl gilt die Filmzeichnung')
+if (paintingStyleId('illustration-lebendig') !== 'illustration-lebendig') fail('eine gewählte Illustration bleibt')
 if (paintingStyleId('comic') !== 'comic') fail('Comic bleibt Comic')
 
 const src = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')

@@ -145,9 +145,8 @@ export function isStoryArtStyleId(value: string): value is StoryArtStyleId {
   return STORY_ART_STYLES.some((s) => s.id === value)
 }
 
-/** Alter Automatik-Stil und «kein Stil» werden zur Filmzeichnung. Eine andere bewusste Wahl bleibt. */
+/** Kein Stil wird zur Filmzeichnung. Eine Wahl im Reiter bleibt, auch die alte Illustration. */
 export function paintingStyleId(saved?: string | null): StoryArtStyleId {
-  if (!saved || saved === 'illustration-lebendig') return 'filmzeichnung'
-  if (isStoryArtStyleId(saved)) return saved
+  if (saved && isStoryArtStyleId(saved)) return saved
   return 'filmzeichnung'
 }
