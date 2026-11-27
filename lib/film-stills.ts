@@ -23,6 +23,7 @@ import {
 import {
   buildFilmStillPrompt,
   correctionIsFaceOnly,
+  isVideoCallSituation,
   correctionRewritesPerson,
   stillAttachmentInstruction,
   stillEditKontextPrompt,
@@ -301,8 +302,10 @@ export async function generateFilmPanelStillImage(opts: {
   const isCloseup = opts.panel.shot === 'closeup'
   const isInsert = opts.panel.shot === 'insert'
   const faceOnly = correctionIsFaceOnly(opts.panel.stillCorrection)
+  const videoCall = isVideoCallSituation(opts.continuityBriefEn, opts.situationText)
   if (
     isCloseup &&
+    !videoCall &&
     !faceOnly &&
     !opts.panel.stillCorrection?.trim() &&
     opts.sceneWideStillUrl &&

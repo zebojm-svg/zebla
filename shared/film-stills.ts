@@ -899,6 +899,47 @@ export function insertCameraLine(cue?: string): string {
 const VIDEO_SITUATION =
   /videochat|videogespräch|videogespraech|video-?anruf|video-?call|per video|zoom|facetime|skype/i
 
+/** Videogespräch, auch wenn die Regie es falsch als «zusammen im Raum» gespeichert hat. */
+export function isVideoCallSituation(brief?: string, situationText?: string): boolean {
+  if (VIDEO_SITUATION.test(situationText || '')) return true
+  const text = (brief || '').toLowerCase()
+  if (text.includes('forbidden: video call')) return false
+  return text.includes('this whole story is a video call') || text.includes('each person stays in their own room')
+}
+
+/**
+ * Ein Körper im Raum. Die andere Person höchstens einmal, nur im Laptop.
+ * Kein Nachbar über die Schulter, keine dritte Person, kein gemeinsamer Tisch.
+ */
+export function videoCallFrameEn(opts: {
+  host: string
+  others: string[]
+  shot?: string
+}): string {
+  const host = opts.host.trim() || 'the person whose room the camera is in'
+  const others = opts.others.map((name) => name.trim()).filter(Boolean)
+  const screen = others.length
+    ? `${others.join(' and ')} may appear ONCE, only inside a single laptop screen. Never also on a wall television. Never as a body in this room.`
+    : 'Nobody else is in this room.'
+  const camera =
+    opts.shot === 'closeup'
+      ? `Close-up of ${host} in ${host}'s own room: head and shoulders, the same furniture behind them as in their earlier picture.`
+      : `Wide shot of ${host}'s own room. One laptop on the desk if someone else is on the call.`
+  return [
+    'VIDEO CALL FRAME, higher than seating and higher than any group photo.',
+    `The camera is in ${host}'s room. Only ${host} has a body in this room.`,
+    screen,
+    camera,
+    'Keep the same clothes, the same hair and the same headset as the attached photos of this person. Keep the same furniture.',
+    'FORBIDDEN: two copies of the same person.',
+    'FORBIDDEN: the same face on two screens.',
+    'FORBIDDEN: an extra person who is not named.',
+    'FORBIDDEN: both people sitting at one table.',
+    'FORBIDDEN: a second person standing beside the camera.',
+    'FORBIDDEN: moving this person into the other room.',
+  ].join(' ')
+}
+
 /**
  * Einmal für die ganze Szene: zusammen im Raum, oder ein Videogespräch.
  * Ein einzelnes Bild darf das nicht neu entscheiden.
@@ -978,6 +1019,11 @@ export function buildFilmStillPrompt(opts: {
   const langEn = filmStillLanguageEn(opts.targetLanguage)
   const isCloseup = opts.shot === 'closeup'
   const isInsert = opts.shot === 'insert'
+  const videoCall = isVideoCallSituation(opts.continuityBriefEn, opts.situationText)
+  const host = (opts.closeupSpeaker || (opts.names ?? []).find(Boolean) || '').trim()
+  const remote = (opts.names ?? [])
+    .map((name) => name.trim())
+    .filter((name) => name && name.toLowerCase() !== host.toLowerCase())
   const rewritePerson = correctionRewritesPerson(opts.stillCorrection)
   const closeEyes =
     'Eyes fully drawn and opaque: white sclera, colored iris, dark pupil — never translucent, glassy, hollow, see-through, or empty-white.'
@@ -998,6 +1044,9 @@ export function buildFilmStillPrompt(opts: {
       : isInsert
         ? 'Paint a cinematic insert: the named object or small action fills the frame. Same house, not a wide of the whole room.'
         : 'Draw a complete room matching the described place (not a leftover generic living room), with complete furniture and complete people occupying it.'
+  const frameLock = videoCall
+    ? `Only ${host || 'one person'} is physically in this room. Attached photos lock the face, clothes, headset and furniture. They are not a group to copy. Do not draw a second person beside the camera.`
+    : lock
   const notGerman =
     opts.targetLanguage && opts.targetLanguage.slice(0, 2).toLowerCase() !== 'de'
       ? `Never write German on signs, stalls, posters or paper (no Bratwurst, Glühwein, German menus). Use ${langEn} instead (e.g. French: saucisse, vin chaud).`
@@ -1011,10 +1060,14 @@ export function buildFilmStillPrompt(opts: {
 
   return [
     stillEditHintPriorityEn(opts.stillCorrection),
-    opts.continuityBriefEn?.trim() ||
-      situationLockEn(opts.situationText ?? `${opts.settingHint || ''} ${opts.sceneTitle || ''}`),
+    videoCall
+      ? videoCallFrameEn({ host, others: remote, shot: opts.shot })
+      : opts.continuityBriefEn?.trim() ||
+        situationLockEn(opts.situationText ?? `${opts.settingHint || ''} ${opts.sceneTitle || ''}`),
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
-    isCloseup
+    videoCall
+      ? ''
+      : isCloseup
       ? `${closeupCameraLine(opts.closeupSpeaker)} Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. ${
           rewritePerson
             ? 'New correct face and sex. Do not keep a wrong-gender face from the attached photo.'
@@ -1029,7 +1082,9 @@ export function buildFilmStillPrompt(opts: {
         : `WIDE shot. Paint ONE coherent illustration of a complete room filled with complete furniture matching THIS scene's description, and complete figures. The people belong in the room. Do not reuse a previous unrelated living room. Do not collage, no cut-out sprites, no dashed boxes, no ghost people. FORBIDDEN: an empty room with no guests if people are named.`,
     opts.correctingExisting
       ? ''
-      : isCloseup
+      : videoCall
+        ? `${moment} Same person, same room, same clothes and headset. Do not invent a new room or a new person.`
+        : isCloseup
         ? `${moment} Same gathering and clothes as the wide still. Only the camera is closer — do not invent a new room or a new person.`
         : isInsert
           ? `${moment} New camera on the named detail. Never copy the previous wide frame.`
@@ -1037,9 +1092,11 @@ export function buildFilmStillPrompt(opts: {
     `Art style (${styleLabel}): ${style}`,
     placeLockEn(inferFilmPlaceKey(`${opts.settingHint || ''} ${opts.imageCue || ''} ${opts.caption || ''}`)),
     teaBeatLockEn(opts.caption, opts.imageCue),
-    opts.continuityEn || '',
-    lock,
-    isCloseup
+    videoCall ? '' : opts.continuityEn || '',
+    frameLock,
+    videoCall
+      ? ''
+      : isCloseup
       ? closeupSpaceLine({
           speaker: opts.closeupSpeaker || '',
           settingHint: opts.settingHint,
@@ -1062,7 +1119,11 @@ export function buildFilmStillPrompt(opts: {
     opts.spokenLine ? `Spoken in this moment: ${opts.spokenLine}.` : '',
     opts.imageCue ? `What we see in THIS frame only: ${opts.imageCue}.` : '',
     `Faces: ${opts.expressionHint || 'natural'}.`,
-    people
+    videoCall
+      ? `Physical body in this room: ${host || 'one person'} only. ${
+          remote.length ? `On the single laptop screen only: ${remote.join(', ')}.` : 'No second person.'
+        } Do not invent a girl, a boy, or an extra guest.`
+      : people
       ? isInsert
         ? `People in frame (exactly these, each ONCE, no twins): ${people}.`
         : opts.stillCorrection
@@ -1078,7 +1139,9 @@ export function buildFilmStillPrompt(opts: {
     opts.stillCorrection
       ? 'Reminder: the highest-priority director note at the start outranks camera, seating, and who-is-in-frame.'
       : '',
-    isCloseup
+    videoCall
+      ? `Widescreen 16:9. One room, one body, at most one laptop screen. Opaque eyes with iris and pupil.`
+      : isCloseup
       ? `Widescreen 16:9. Close-up crop of the same gathering. Face large. Hair not cut off at the top. Opaque eyes with iris and pupil. No legs, no floating torso, no studio cut-out, no second person, no glassy see-through eyes.`
       : isInsert
         ? `Widescreen 16:9. Insert/cutaway. The named detail fills most of the frame. Not a group wide. Not a portrait.`
