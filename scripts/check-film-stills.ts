@@ -1100,6 +1100,9 @@ const stillFn = stillGenSrc.slice(
 if (!stillFn.includes('stillReferencePack')) {
   fail('Erstes Malen nutzt stillReferencePack')
 }
+if (!stillFn.includes('judgeStoryStill')) {
+  fail('Die Regie schaut das fertige Bild an und schickt es zurück, wenn es nicht zum Satz passt')
+}
 if (!stillFn.includes('situationText')) {
   fail('Jedes Bild bekommt denselben Satz zur Lage')
 }

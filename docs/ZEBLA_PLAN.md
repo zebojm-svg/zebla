@@ -65,6 +65,7 @@ Wiederverwenden als Bauteil hat nicht geklappt. Ein Gesicht aus einer neuen Sich
 - **Jedes neue Bild wird neu gezeichnet.** Die Referenzbilder gehen jedes Mal mit, damit dieselbe Figur und derselbe Raum wiedererkennbar bleiben.
 - **Die KI legt eine Referenz an oder nimmt eine aus dem Katalog.** Fehlt Reto, entsteht einmal sein Referenzbild. Danach hängt jedes Bild von Reto daran.
 - **Eine Regie liest die ganze Geschichte**, bevor ein Bild entsteht. Sie hält fest, wer die Leute im Hintergrund sind und worauf ein Wort sich bezieht. Das Wort «Afrika» an einer anderen Stelle ändert die Menge auf dem Rummelplatz nicht.
+- **Nicht für jeden Ort einen festen Satz.** Videochat, See, Ente, Schwan gehören nicht als eigene Regeln in Zebla. Die Regie liest den Dialog, sagt der Bild-KI was dieses Bild zeigen muss, schaut das fertige Bild an und schickt es einmal zurück, wenn es nicht zum Satz passt. Für den Nutzer bleibt ein Knopf. Der Videochat-Satz von vorher ist nur ein Pflaster.
 - **Geräusche** sind Referenzen im selben Katalog. Die Regie wählt sie aus der ganzen Geschichte.
 - **Eine Tür** bleibt: Promptfenster. «Diese Figur als Reto, diese als Sabrina, die Geschichte so.» Änderung im selben Fenster trifft ein Bild.
 - Stimmen bleiben an der Figur. Persisch und Birkenbihl erst danach. Bewegungsfilm später.
