@@ -97,6 +97,7 @@ import {
   listStoryAssets,
   saveStoryAsset,
   deleteStoryAsset,
+  markStoryAssetReference,
   updateStoryAssetRig,
   type StoryAssetType,
 } from '../lib/story-library.js'
@@ -108,6 +109,7 @@ import {
 } from '../shared/story-art-styles.js'
 import { isArmPoseId, isFaceExpressionId, isHeadAngleId, isLegPoseId } from '../shared/character-parts.js'
 import { isCharacterRig } from '../shared/character-rig.js'
+import { CHARACTER_REFERENCE_LINE, REFERENCE_TAG } from '../shared/reference-catalog.js'
 import {
   listPublicCatalog,
   getPublicCatalogItem,
@@ -2208,6 +2210,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         faceExpressionId,
         stillPoseId,
         buildRig,
+        referencePlate,
       } = req.body as {
         description?: string
         name?: string
@@ -2219,28 +2222,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         faceExpressionId?: string
         stillPoseId?: string
         buildRig?: boolean
+        referencePlate?: boolean
       }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
       const style = isStoryArtStyleId(styleId ?? '') ? styleId : undefined
-      const still = isStillPoseId(stillPoseId ?? '') ? stillPoseId : undefined
+      const plate = referencePlate === true
+      const still = plate
+        ? 'standing-front'
+        : isStillPoseId(stillPoseId ?? '')
+          ? stillPoseId
+          : undefined
       const legPose = isLegPoseId(legPoseId ?? '') ? legPoseId : undefined
       const headAngle = isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined
       const armPose = isArmPoseId(armPoseId ?? '') ? armPoseId : undefined
       const face = isFaceExpressionId(faceExpressionId ?? '') ? faceExpressionId : undefined
       const result = await generateStoryCharacter(
-        description.trim(),
+        plate ? `${description.trim()}\n${CHARACTER_REFERENCE_LINE}` : description.trim(),
         name.trim(),
         style,
-        legPose,
-        headAngle,
-        armPose,
+        plate ? 'standing' : legPose,
+        plate ? 'front' : headAngle,
+        plate ? 'relaxed' : armPose,
         typeof referenceImageUrl === 'string' ? referenceImageUrl : undefined,
         face,
         still,
         buildRig === true,
+        plate ? false : true,
       )
       res.json(result)
       return
@@ -2268,17 +2278,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (route === 'story-generate-environment' && req.method === 'POST') {
       await requireAuth(req)
-      const { description, name, styleId } = req.body as {
+      const { description, name, styleId, referenceImageUrl, changeNote } = req.body as {
         description?: string
         name?: string
         styleId?: string
+        referenceImageUrl?: string
+        changeNote?: string
       }
       if (!description?.trim() || !name?.trim()) {
         res.status(400).json({ error: 'Name und Beschreibung fehlen.' })
         return
       }
       const style = isStoryArtStyleId(styleId ?? '') ? styleId : undefined
-      const result = await generateStoryEnvironment(description.trim(), name.trim(), style)
+      const result = await generateStoryEnvironment(description.trim(), name.trim(), style, {
+        imageUrl: typeof referenceImageUrl === 'string' ? referenceImageUrl : undefined,
+        change: typeof changeNote === 'string' ? changeNote : undefined,
+      })
       res.json(result)
       return
     }
@@ -2318,9 +2333,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    if (route === 'story-library-reference' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const id = typeof (req.body as { id?: string } | undefined)?.id === 'string'
+        ? (req.body as { id: string }).id.trim()
+        : ''
+      if (!id) {
+        res.status(400).json({ error: 'ID fehlt.' })
+        return
+      }
+      const asset = await markStoryAssetReference(user.uid, id)
+      if (!asset) {
+        res.status(404).json({ error: 'Figur oder Raum nicht gefunden.' })
+        return
+      }
+      res.json({ asset })
+      return
+    }
+
     if (route === 'story-library' && req.method === 'POST') {
       const user = await requireAuth(req)
-      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig } = req.body as {
+      const { type, name, description, imageUrl, tags, styleId, legPoseId, headAngleId, armPoseId, faceExpressionId, rig, basisId } = req.body as {
         type?: StoryAssetType
         name?: string
         description?: string
@@ -2332,12 +2365,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         armPoseId?: string
         faceExpressionId?: string
         rig?: unknown
+        basisId?: string
       }
-      if (!type || !name?.trim() || !imageUrl?.trim()) {
+      if (!type || !name?.trim() || (type !== 'sound' && !imageUrl?.trim())) {
         res.status(400).json({ error: 'Typ, Name und Bild-URL fehlen.' })
         return
       }
-      if (!['character', 'environment', 'scene', 'prop'].includes(type)) {
+      if (!['character', 'environment', 'scene', 'prop', 'sound'].includes(type)) {
         res.status(400).json({ error: 'Ungültiger Asset-Typ.' })
         return
       }
@@ -2345,8 +2379,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         type,
         name: name.trim(),
         description: description?.trim(),
-        imageUrl: imageUrl.trim(),
-        tags: Array.isArray(tags) ? tags : [],
+        imageUrl: imageUrl?.trim() || '',
+        tags: Array.isArray(tags) ? tags : type === 'sound' ? [REFERENCE_TAG] : [],
+        basisId: typeof basisId === 'string' ? basisId : undefined,
         styleId: isStoryArtStyleId(styleId ?? '') ? styleId : undefined,
         legPoseId: isLegPoseId(legPoseId ?? '') ? legPoseId : undefined,
         headAngleId: isHeadAngleId(headAngleId ?? '') ? headAngleId : undefined,

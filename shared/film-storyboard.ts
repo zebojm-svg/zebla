@@ -324,6 +324,7 @@ export function matchBackground(
       if (hay.includes(needle) && needle.length > 12) score += 6
       for (const t of specific) if (hay.includes(t)) score += 2
       for (const t of tokens) if (GENERIC_PLACE_TOKENS.has(t) && hay.includes(t)) score += 0.25
+      if (score > 0 && (env.tags ?? []).includes('referenz')) score += 4
       return { env, score }
     })
     .sort((a, b) => b.score - a.score)
