@@ -507,28 +507,7 @@ export function FilmStoryboardPage() {
                 {panels.length === 0 ? (
                   <p className="muted">Noch keine Bilder für diese Szene. Oben «Bilder planen».</p>
                 ) : null}
-                <FilmScenePreviewPlayer
-                  dialogId={dialog.id}
-                  dialog={dialog}
-                  scene={scene}
-                  panels={panels}
-                  onDialogUpdated={setDialog}
-                />
-                <details className="film-scene-more">
-                  <summary>Bilder erzeugen</summary>
-                  <textarea
-                    className="input"
-                    rows={2}
-                    defaultValue={scene.noteDe}
-                    placeholder="Zur ganzen Szene: Ort, wer dabei ist …"
-                    disabled={locked}
-                    onBlur={(e) => {
-                      if (e.target.value.trim() !== (scene.noteDe ?? '')) {
-                        void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
-                      }
-                    }}
-                  />
-                  <FilmSceneGenerateBar
+                <FilmSceneGenerateBar
                     dialogId={dialog.id}
                     scene={scene}
                     panels={panels}
@@ -554,6 +533,27 @@ export function FilmStoryboardPage() {
                     onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
                     shotPlanDe={sceneShotPlanDe(panels)}
                     expectedShots={expectedSceneShotCount(dialog, scene.id)}
+                  />
+                <FilmScenePreviewPlayer
+                  dialogId={dialog.id}
+                  dialog={dialog}
+                  scene={scene}
+                  panels={panels}
+                  onDialogUpdated={setDialog}
+                />
+                <details className="film-scene-more">
+                  <summary>Zur ganzen Szene</summary>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    defaultValue={scene.noteDe}
+                    placeholder="Ort, wer dabei ist …"
+                    disabled={locked}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== (scene.noteDe ?? '')) {
+                        void run(() => api.ai.filmSceneNote(id, scene.id, e.target.value))
+                      }
+                    }}
                   />
                 </details>
                 <div className="film-panel-grid">
