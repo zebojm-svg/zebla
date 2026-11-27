@@ -86,7 +86,7 @@ Warum das Bisherige die Wiedererkennung verliert:
 Reihenfolge:
 
 1. Katalog: Figur, Raum, Geräusch anlegen oder wählen. **Gebaut.**
-2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. Noch nicht.
+2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. **Angefangen:** eine Szene ist entweder ein Raum oder ein Videogespräch. Das gilt für jedes Bild. Gesichter hängen noch nicht bei jedem Bild am Katalog.
 3. Jedes Bild der Geschichte neu, mit diesen Referenzen. Noch nicht.
 4. «Raum wie dieser, andere Möbel» im Katalog. **Gebaut.** In der Geschichte noch nicht von allein.
 

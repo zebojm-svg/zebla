@@ -884,6 +884,27 @@ export function insertCameraLine(cue?: string): string {
   )
 }
 
+const VIDEO_SITUATION =
+  /videochat|videogespräch|videogespraech|video-?anruf|video-?call|per video|zoom|facetime|skype/i
+
+/**
+ * Einmal für die ganze Szene: zusammen im Raum, oder ein Videogespräch.
+ * Ein einzelnes Bild darf das nicht neu entscheiden.
+ */
+export function situationLockEn(sceneText: string): string {
+  if (VIDEO_SITUATION.test(sceneText)) {
+    return (
+      'SITUATION LOCK: This whole scene is a video call. Each person stays in their own room. ' +
+      'The other person appears only on a screen. Do not seat them together at the same table.'
+    )
+  }
+  return (
+    'SITUATION LOCK: This whole scene is one physical room. The people are together in that room. ' +
+    'On a close-up the other person is just outside the frame, still in this room. ' +
+    'FORBIDDEN: video call, webcam, laptop or phone showing the other face, split screen, each person in a different room.'
+  )
+}
+
 /** Nahaufnahme = Kamera näher, kein zerschnittener Weit-Shot. */
 export function closeupCameraLine(speaker?: string): string {
   const who = speaker?.trim() || 'the speaker'
@@ -933,6 +954,8 @@ export function buildFilmStillPrompt(opts: {
   speakerGender?: 'male' | 'female'
   speakerX?: number
   continuityEn?: string
+  /** Ganzer Szenentext. Daraus steht fest: ein Raum oder ein Videogespräch. */
+  situationText?: string
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -974,6 +997,7 @@ export function buildFilmStillPrompt(opts: {
 
   return [
     stillEditHintPriorityEn(opts.stillCorrection),
+    situationLockEn(opts.situationText ?? `${opts.settingHint || ''} ${opts.sceneTitle || ''}`),
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
       ? `${closeupCameraLine(opts.closeupSpeaker)} Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. ${

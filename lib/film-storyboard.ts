@@ -76,6 +76,14 @@ import {
 import { applyLineSpeaker, speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
 
+function situationTextFor(dialog: Dialog, sceneId: string): string {
+  const section = dialog.sections.find((s) => s.id === sceneId)
+  const lines = (section?.lines ?? [])
+    .map((line) => [line.cueImage, line.text, line.nativeText].filter(Boolean).join(' '))
+    .join(' ')
+  return [dialog.imageDirection, dialog.filmPrompt, section?.title, lines].filter(Boolean).join(' ')
+}
+
 function sittingFromPlacement(pl: FilmPlacement | undefined): boolean {
   if (!pl) return true
   return pl.poseId === 'sitting' || /sit/i.test(pl.poseHint || '')
@@ -118,6 +126,7 @@ async function paintCloseupPushIn(opts: {
   speakerX?: number
   speakerSitting: boolean
   continuityEn: string
+  situationText?: string
   targetLanguage?: string
   beatTotal: number
   inventory?: FilmInventory | null
@@ -135,6 +144,7 @@ async function paintCloseupPushIn(opts: {
     speakerX: opts.speakerX,
     speakerSitting: opts.speakerSitting,
     continuityEn: opts.continuityEn,
+    situationText: opts.situationText,
     inventory: opts.inventory,
   })
 }
@@ -993,6 +1003,7 @@ export async function stillFilmPanel(
       }
     }
     const beatTotal = boardForGen.panels.filter((p) => p.sceneId === panelForGen.sceneId).length
+    const situationText = situationTextFor(dialog, panelForGen.sceneId)
     const isInsert = (panelForGen.shot ?? 'wide') === 'insert'
     if (isInsert) {
       correctFromUrl = correction ? correctFromUrl : undefined
@@ -1041,6 +1052,7 @@ export async function stillFilmPanel(
         speakerX: whoOnWide?.x,
         speakerSitting: sittingFromPlacement(whoOnWide),
         continuityEn: continuityForShot,
+        situationText,
         inventory: dialog.filmInventory,
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
@@ -1057,6 +1069,7 @@ export async function stillFilmPanel(
         speakerX: whoOnWide?.x,
         speakerSitting: sittingFromPlacement(whoOnWide),
         continuityEn,
+        situationText,
         targetLanguage,
         beatTotal,
         inventory: dialog.filmInventory,
@@ -1108,6 +1121,7 @@ export async function stillFilmPanel(
       speakerX: whoOnWide?.x,
       speakerSitting: sittingFromPlacement(whoOnWide),
       continuityEn: continuityForShot,
+      situationText,
       board: boardForGen,
       inventory: dialog.filmInventory,
       library: editLibrary,
