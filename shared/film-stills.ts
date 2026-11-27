@@ -956,6 +956,8 @@ export function buildFilmStillPrompt(opts: {
   continuityEn?: string
   /** Ganzer Szenentext. Daraus steht fest: ein Raum oder ein Videogespräch. */
   situationText?: string
+  /** Regie-Satz, nachdem die KI die ganze Geschichte gelesen hat. */
+  continuityBriefEn?: string
 }): string {
   const style = getStoryStylePrompt(opts.styleId)
   const styleLabel = getStoryArtStyle(opts.styleId).label
@@ -997,7 +999,8 @@ export function buildFilmStillPrompt(opts: {
 
   return [
     stillEditHintPriorityEn(opts.stillCorrection),
-    situationLockEn(opts.situationText ?? `${opts.settingHint || ''} ${opts.sceneTitle || ''}`),
+    opts.continuityBriefEn?.trim() ||
+      situationLockEn(opts.situationText ?? `${opts.settingHint || ''} ${opts.sceneTitle || ''}`),
     `FINISHED cinematic STILL FRAME for a storyboard. Not a moving film, not animation, not a rough pencil sketch.`,
     isCloseup
       ? `${closeupCameraLine(opts.closeupSpeaker)} Camera at eye level, face large (about 50–70% of the frame), head and shoulders, top of hair inside the frame. Mouth mid-speech, eyebrows readable. ${

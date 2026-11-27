@@ -40,6 +40,12 @@ import {
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
+import {
+  briefForImage,
+  ensureFilmContinuity,
+  ensureSpeakerPlate,
+  stampReferenceFaces,
+} from './film-continuity.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelHarvestNote,
@@ -127,6 +133,7 @@ async function paintCloseupPushIn(opts: {
   speakerSitting: boolean
   continuityEn: string
   situationText?: string
+  continuityBriefEn?: string
   targetLanguage?: string
   beatTotal: number
   inventory?: FilmInventory | null
@@ -145,6 +152,7 @@ async function paintCloseupPushIn(opts: {
     speakerSitting: opts.speakerSitting,
     continuityEn: opts.continuityEn,
     situationText: opts.situationText,
+    continuityBriefEn: opts.continuityBriefEn,
     inventory: opts.inventory,
   })
 }
@@ -1017,6 +1025,31 @@ export async function stillFilmPanel(
       panelForGen.closeupSpeaker ||
       panelForGen.placements[0]?.name ||
       ''
+    const storyContinuity = await ensureFilmContinuity(dialog, boardForGen)
+    const continuityBriefEn = briefForImage(storyContinuity)
+    boardForGen = { ...boardForGen, continuity: storyContinuity }
+    if (!correction && speaker && !isNarratorName(speaker) && !isStageSpeaker(speaker)) {
+      try {
+        const assets = libraryForCompose(await listStoryAssets(userId))
+        const look = storyContinuity.people.find(
+          (person) => person.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
+        )
+        const plated = await ensureSpeakerPlate({
+          userId,
+          library: assets,
+          name: speaker,
+          lookEn: look?.lookEn || speaker,
+          styleId: resolvedStyle,
+        })
+        panelForGen = stampReferenceFaces(panelForGen, plated.library)
+        boardForGen = {
+          ...boardForGen,
+          panels: boardForGen.panels.map((item) => (item.id === panelForGen.id ? panelForGen : item)),
+        }
+      } catch {
+        /* Ohne neues Stammbild bleibt der Regie-Satz. */
+      }
+    }
     const whoOnWide = (wide ?? panelForGen).placements.find(
       (pl) => pl.name.trim().toLowerCase() === speaker.trim().toLowerCase(),
     )
@@ -1053,6 +1086,7 @@ export async function stillFilmPanel(
         speakerSitting: sittingFromPlacement(whoOnWide),
         continuityEn: continuityForShot,
         situationText,
+        continuityBriefEn,
         inventory: dialog.filmInventory,
       })
       let next = applyPanelStill(boardForGen, grund.id, newWideUrl, resolvedStyle)
@@ -1070,6 +1104,7 @@ export async function stillFilmPanel(
         speakerSitting: sittingFromPlacement(whoOnWide),
         continuityEn,
         situationText,
+        continuityBriefEn,
         targetLanguage,
         beatTotal,
         inventory: dialog.filmInventory,
@@ -1122,6 +1157,7 @@ export async function stillFilmPanel(
       speakerSitting: sittingFromPlacement(whoOnWide),
       continuityEn: continuityForShot,
       situationText,
+      continuityBriefEn,
       board: boardForGen,
       inventory: dialog.filmInventory,
       library: editLibrary,
@@ -1135,6 +1171,7 @@ export async function stillFilmPanel(
       notedBoard,
       panelId,
       [
+        storyContinuity.situationDe ? `Lage: ${storyContinuity.situationDe}` : '',
         pack.noteDe,
         correction
           ? `Neu gemalt mit FLUX nach Hinweis: ${correction}`

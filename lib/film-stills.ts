@@ -192,6 +192,7 @@ export function stillPromptForPanel(
     speakerX?: number
     continuityEn?: string
     situationText?: string
+    continuityBriefEn?: string
   },
 ): string {
   return buildFilmStillPrompt({
@@ -217,6 +218,7 @@ export function stillPromptForPanel(
     speakerX: extras.speakerX,
     continuityEn: extras.continuityEn,
     situationText: extras.situationText,
+    continuityBriefEn: extras.continuityBriefEn,
   })
 }
 
@@ -234,6 +236,7 @@ export async function generateFilmPanelStillImage(opts: {
   speakerSitting?: boolean
   continuityEn?: string
   situationText?: string
+  continuityBriefEn?: string
   board?: FilmStoryboard
   inventory?: FilmInventory | null
   library?: StillPackLibraryAsset[]
@@ -290,6 +293,7 @@ export async function generateFilmPanelStillImage(opts: {
     speakerX: opts.speakerX,
     continuityEn: opts.continuityEn,
     situationText: opts.situationText,
+    continuityBriefEn: opts.continuityBriefEn,
   })
   const rewritePerson = correctionRewritesPerson(opts.panel.stillCorrection)
   const isCloseup = opts.panel.shot === 'closeup'

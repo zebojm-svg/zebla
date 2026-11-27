@@ -4,6 +4,7 @@
  * teure KI nur wenn etwas fehlt.
  */
 
+import type { FilmContinuity } from './film-continuity.js'
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
@@ -122,6 +123,8 @@ export interface FilmStoryboard {
   panels: FilmStoryboardPanel[]
   updatedAt: string
   summaryDe?: string
+  /** Einmal gelesen, gilt für jedes Bild, bis sich der Dialog ändert. */
+  continuity?: FilmContinuity
 }
 
 export interface FilmPlan {
