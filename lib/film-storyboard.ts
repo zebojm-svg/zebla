@@ -42,6 +42,7 @@ import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage } from './film-stills.js'
 import {
   briefForImage,
+  applyRegiebuchEdit,
   ensureFilmContinuity,
   ensureSpeakerPlate,
   judgeStoryStill,
@@ -50,7 +51,7 @@ import {
   sidePlate,
   stampReferenceFaces,
 } from './film-continuity.js'
-import { directorStillUrls } from '../shared/film-continuity.js'
+import { directorStillUrls, type FilmContinuity, type RegiebuchEdit } from '../shared/film-continuity.js'
 import { pickedCastUrl } from '../shared/catalog-cast.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
@@ -285,10 +286,18 @@ export async function planFilmStoryboard(
   dialogId: string,
   userId: string,
   profile?: UserProfile | null,
-  opts?: { cheapAi?: boolean; extra?: string; keepBoard?: boolean; freshPlaces?: boolean },
+  opts?: {
+    cheapAi?: boolean
+    extra?: string
+    keepBoard?: boolean
+    freshPlaces?: boolean
+    carry?: FilmContinuity
+  },
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
+  const carry =
+    opts?.carry ?? (isFilmStoryboard(dialog.filmStoryboard) ? dialog.filmStoryboard.continuity : undefined)
 
   const library = libraryForCompose(await listStoryAssets(userId))
   const previous = opts?.keepBoard && isFilmStoryboard(dialog.filmStoryboard)
@@ -305,12 +314,13 @@ export async function planFilmStoryboard(
       )
     : planBoardWithoutAi(dialog, library, { freshPlaces: true })
   const inventory = deriveFilmInventory(dialog)
+  const withBook = carry?.byUser ? { ...board, continuity: carry } : board
 
   const updated = await updateDialog(
     dialogId,
     userId,
     {
-      filmStoryboard: normalizeFilmStoryboard(board),
+      filmStoryboard: normalizeFilmStoryboard(withBook),
       filmInventory: inventory,
     },
     profile,
@@ -327,6 +337,7 @@ export async function resetFilmStoryboardFromDialog(
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog) throw new Error('Dialog nicht gefunden.')
+  const carry = isFilmStoryboard(dialog.filmStoryboard) ? dialog.filmStoryboard.continuity : undefined
   const wiped = await updateDialog(
     dialogId,
     userId,
@@ -338,6 +349,7 @@ export async function resetFilmStoryboardFromDialog(
     cheapAi: false,
     keepBoard: false,
     freshPlaces: true,
+    carry,
   })
 }
 
@@ -911,6 +923,31 @@ export async function planFilmPanelStillEdit(
     catalog: catalogForPlanner(catalog),
     styleLabel: getStoryArtStyle(resolvedStyle).label,
   })
+}
+
+/** Regiebuch: die Regie liest (fresh = noch einmal), oder sie übernimmt Jean-Maries Änderung. */
+export async function regiebuchFilm(
+  dialogId: string,
+  userId: string,
+  opts: { edit?: RegiebuchEdit; fresh?: boolean },
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Zuerst «Bilder planen».')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const continuity = opts.edit
+    ? await applyRegiebuchEdit(dialog, board, opts.edit)
+    : await ensureFilmContinuity(dialog, board, { fresh: opts.fresh })
+  const updated = await updateDialog(
+    dialogId,
+    userId,
+    { filmStoryboard: normalizeFilmStoryboard({ ...board, continuity }) },
+    profile,
+  )
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) {
+    throw new Error('Das Regiebuch konnte nicht gespeichert werden.')
+  }
+  return { dialog: updated, board: updated.filmStoryboard }
 }
 
 /** Ein Referenzbild oder ein Vergleich. Die Seite ruft das so oft auf, bis alles steht. */

@@ -3485,6 +3485,7 @@ html[dir='rtl'] .slideshow-topbar {
 }
 
 .film-cast-voices,
+.film-regiebuch,
 .film-board-tools,
 .film-scene-more {
   margin: 0 0 1rem;
@@ -3495,11 +3496,41 @@ html[dir='rtl'] .slideshow-topbar {
 }
 
 .film-cast-voices summary,
+.film-regiebuch summary,
 .film-board-tools summary,
 .film-scene-more summary {
   cursor: pointer;
   font-weight: 700;
   color: #0f766e;
+}
+
+.film-regiebuch h3 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 1rem;
+}
+
+.film-regiebuch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 0.6rem;
+}
+
+.film-regiebuch-field span {
+  font-weight: 600;
+}
+
+.film-regiebuch-field textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.film-regiebuch-shots {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.film-regiebuch-shots summary {
+  font-weight: 600;
 }
 
 .film-cast-voices h2 {

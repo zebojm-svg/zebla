@@ -13,7 +13,11 @@ import {
   continuityBriefEn,
   continuitySourceKey,
   fallbackContinuity,
+  fallbackShots,
   referenceJobs,
+  regiebuchFromContinuity,
+  regiebuchVorgabenDe,
+  type RegiebuchEdit,
   sanitizeContinuity,
   type FilmContinuity,
   type FilmRefJob,
@@ -25,14 +29,17 @@ Du hältst einmal fest, wo die Leute sind und wie sie aussehen. Ein Wort in eine
 «Afrika» an einer anderen Stelle macht die Leute in dieser Szene nicht zu anderen Menschen.
 together=false nur, wenn sie wirklich per Video, Zoom oder Bildschirm verbunden sind und nicht im selben Raum sitzen.
 Sonst together=true: sie sind physisch zusammen.
-lookEn beschreibt ein eigenes Gesicht, Haare, Kleidung, Brille. Keine bekannte Figur aus einem Buch oder Film.
+lookEn beschreibt ein eigenes Gesicht, Haare, Kleidung, Brille, und was die Person am Körper oder in der Hand hat. Keine bekannte Figur aus einem Buch oder Film.
+lookDe ist derselbe Inhalt auf Deutsch, in einfachen Sätzen. Jean-Marie liest ihn im Regiebuch.
+Bei Orten: lookEn und lookDe sagen, wie es dort aussieht und wer dort ist.
+Stehen VORGABEN VON JEAN-MARIE unter der Geschichte, gelten sie. Sie gehen dem Dialog vor, wo sie sich widersprechen.
 Nur JSON:
 {
   "situationDe": "ein deutscher Satz",
   "situationEn": "one English paragraph for the painter",
   "together": true,
-  "people": [{ "name": "Lena", "lookEn": "woman, short dark hair, green coat" }],
-  "places": [{ "name": "Küche", "lookEn": "bright kitchen, gas stove, window to the street" }],
+  "people": [{ "name": "Lena", "lookEn": "woman, short dark hair, green coat", "lookDe": "Frau, kurze dunkle Haare, grüner Mantel" }],
+  "places": [{ "name": "Küche", "lookEn": "bright kitchen, gas stove, window to the street", "lookDe": "helle Küche, Gasherd, Fenster zur Strasse" }],
   "locksEn": ["same green coat in every frame"],
   "shots": [
     { "panelId": "die echte Bild-id", "viewKey": "kueche|weit", "sendViewKeys": [], "whyDe": "erster Blick auf die Küche" }
@@ -85,45 +92,81 @@ function placesOnBoard(board?: FilmStoryboard): string[] {
   return names.slice(0, 6)
 }
 
-export async function ensureFilmContinuity(
-  dialog: Dialog,
-  board?: FilmStoryboard,
-): Promise<FilmContinuity> {
-  const text = storyTextForContinuity(dialog, board)
-  const key = continuitySourceKey(text)
-  const panels = (board?.panels ?? []).map((panel) => ({
+function panelsForContinuity(board?: FilmStoryboard) {
+  return (board?.panels ?? []).map((panel) => ({
     id: panel.id,
     shot: panel.shot,
     settingHint: panel.settingHint,
     closeupSpeaker: panel.closeupSpeaker,
   }))
+}
+
+async function readStory(
+  dialog: Dialog,
+  board: FilmStoryboard | undefined,
+  vorgabenDe: string,
+): Promise<FilmContinuity | null> {
+  const text = storyTextForContinuity(dialog, board)
+  const ask = vorgabenDe.trim() ? `${text}\n\nVORGABEN VON JEAN-MARIE:\n${vorgabenDe}` : text
+  try {
+    const raw = await regieJson<unknown>(SYSTEM, ask, [], {
+      temperature: 0.2,
+      timeoutMs: 75_000,
+      timeoutMessage: 'Die Regie hat die Geschichte nicht rechtzeitig gelesen.',
+    })
+    const clean = sanitizeContinuity(raw, text, panelsForContinuity(board))
+    return clean ? { ...clean, sourceKey: continuitySourceKey(text) } : null
+  } catch {
+    return null
+  }
+}
+
+export async function ensureFilmContinuity(
+  dialog: Dialog,
+  board?: FilmStoryboard,
+  opts?: { fresh?: boolean },
+): Promise<FilmContinuity> {
+  const text = storyTextForContinuity(dialog, board)
+  const key = continuitySourceKey(text)
+  const panels = panelsForContinuity(board)
   const cached = board?.continuity
   if (
+    !opts?.fresh &&
     cached?.sourceKey === key &&
     cached.situationEn &&
     (panels.length === 0 || (cached.shots?.length ?? 0) > 0)
   ) {
     return cached
   }
-  const people = peopleInDialog(dialog)
-  const places = placesOnBoard(board)
-  try {
-    const raw = await regieJson<unknown>(SYSTEM, text, [], {
-      temperature: 0.2,
-      timeoutMs: 75_000,
-      timeoutMessage: 'Die Regie hat die Geschichte nicht rechtzeitig gelesen.',
-    })
-    const clean = sanitizeContinuity(raw, text, panels)
-    if (clean && clean.sourceKey === key) {
-      return { ...clean, sideChecked: cached?.sideChecked, sideTries: cached?.sideTries }
-    }
-  } catch {
-    /* Der Fallback hält wenigstens Raum gegen Videogespräch. */
-  }
-  return {
-    ...fallbackContinuity({ text, people, places, panels }),
+  const keep = {
     sideChecked: cached?.sideChecked,
     sideTries: cached?.sideTries,
+    ...(cached?.byUser ? { byUser: true, notesDe: cached.notesDe } : {}),
+  }
+  const vorgaben = cached?.byUser ? regiebuchVorgabenDe(regiebuchFromContinuity(cached)) : ''
+  const read = await readStory(dialog, board, vorgaben)
+  if (read) return { ...read, ...keep }
+  if (cached?.byUser) return { ...cached, sourceKey: key, shots: fallbackShots(panels) }
+  return {
+    ...fallbackContinuity({ text, people: peopleInDialog(dialog), places: placesOnBoard(board), panels }),
+    ...keep,
+  }
+}
+
+/** Jean-Marie hat das Regiebuch geändert. Die Regie liest die Geschichte mit seinen Sätzen als Vorgabe neu. */
+export async function applyRegiebuchEdit(
+  dialog: Dialog,
+  board: FilmStoryboard,
+  edit: RegiebuchEdit,
+): Promise<FilmContinuity> {
+  const read = await readStory(dialog, board, regiebuchVorgabenDe(edit))
+  if (!read) throw new Error('Die Regie konnte das Regiebuch nicht übernehmen. Bitte noch einmal speichern.')
+  return {
+    ...read,
+    sideChecked: board.continuity?.sideChecked,
+    sideTries: board.continuity?.sideTries,
+    byUser: true,
+    notesDe: edit.notesDe,
   }
 }
 

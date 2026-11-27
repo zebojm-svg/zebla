@@ -6,11 +6,14 @@
 export interface FilmContinuityPerson {
   name: string
   lookEn: string
+  /** Dasselbe auf Deutsch, für das Regiebuch. */
+  lookDe?: string
 }
 
 export interface FilmContinuityPlace {
   name: string
   lookEn: string
+  lookDe?: string
 }
 
 /** Ein Blick. Spätere Bilder desselben Blicks bekommen das frühere Foto mit. */
@@ -43,6 +46,62 @@ export interface FilmContinuity {
   sideChecked?: string[]
   /** Einmal neu gezeichnet, weil die erste Seitenansicht nicht passte. */
   sideTries?: string[]
+  /** Jean-Marie hat das Regiebuch geändert. Die Regie liest es nicht über, sie nimmt es als Vorgabe. */
+  byUser?: boolean
+  /** Was sonst gilt, von Jean-Marie, eine Sache pro Zeile. */
+  notesDe?: string[]
+}
+
+/** Was im Regiebuch auf Deutsch steht und geändert werden kann. */
+export interface RegiebuchEdit {
+  situationDe: string
+  people: Array<{ name: string; lookDe: string }>
+  places: Array<{ name: string; lookDe: string }>
+  notesDe: string[]
+}
+
+export function regiebuchVorgabenDe(edit: RegiebuchEdit): string {
+  return [
+    `Lage: ${edit.situationDe}`,
+    ...edit.people.map((person) => `${person.name}: ${person.lookDe}`),
+    ...edit.places.map((place) => `Ort ${place.name}: ${place.lookDe}`),
+    ...edit.notesDe.map((note) => `Gilt: ${note}`),
+  ]
+    .filter((line) => line.trim())
+    .join('\n')
+}
+
+export function regiebuchFromContinuity(note: FilmContinuity): RegiebuchEdit {
+  return {
+    situationDe: note.situationDe,
+    people: note.people.map((person) => ({ name: person.name, lookDe: person.lookDe ?? '' })),
+    places: note.places.map((place) => ({ name: place.name, lookDe: place.lookDe ?? '' })),
+    notesDe: note.notesDe ?? [],
+  }
+}
+
+export function sanitizeRegiebuchEdit(raw: unknown): RegiebuchEdit | null {
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as Record<string, unknown>
+  const named = (list: unknown, max: number) =>
+    Array.isArray(list)
+      ? list
+          .map((item) => {
+            const entry = item as Record<string, unknown>
+            const name = clip(entry?.name, 40)
+            return name ? { name, lookDe: clip(entry?.lookDe, 400) } : null
+          })
+          .filter((item): item is { name: string; lookDe: string } => Boolean(item))
+          .slice(0, max)
+      : []
+  return {
+    situationDe: clip(row.situationDe, 600),
+    people: named(row.people, 8),
+    places: named(row.places, 6),
+    notesDe: Array.isArray(row.notesDe)
+      ? row.notesDe.map((line) => clip(line, 240)).filter(Boolean).slice(0, 12)
+      : [],
+  }
 }
 
 export type FilmRefJob =
@@ -219,7 +278,8 @@ export function sanitizeContinuity(
           const item = person as Record<string, unknown>
           const name = clip(item?.name, 40)
           const lookEn = clip(item?.lookEn, 240)
-          return name && lookEn ? { name, lookEn } : null
+          const lookDe = clip(item?.lookDe, 400)
+          return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((person): person is FilmContinuityPerson => Boolean(person))
         .slice(0, 8)
@@ -230,7 +290,8 @@ export function sanitizeContinuity(
           const item = place as Record<string, unknown>
           const name = clip(item?.name, 40)
           const lookEn = clip(item?.lookEn, 240)
-          return name && lookEn ? { name, lookEn } : null
+          const lookDe = clip(item?.lookDe, 400)
+          return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((place): place is FilmContinuityPlace => Boolean(place))
         .slice(0, 6)

@@ -109,7 +109,7 @@ Zebla gibt das Ziel, die Regie entscheidet den nächsten Schritt. Heute bestimmt
 
 Bauschritte:
 
-1. Regiebuch anlegen und auf der Bilder-Seite zeigen, korrigierbar. Noch nicht.
+1. Regiebuch anlegen und auf der Bilder-Seite zeigen, korrigierbar. **Gebaut:** oben auf Bilder, offen. Wo und wie, Personen, Orte, «Was sonst gilt», welches Bild woran anschliesst. «Regiebuch speichern» = die Regie liest neu mit deinen Sätzen als Vorgabe. «Neu lesen» behält die Vorgaben. «Bilder planen» löscht ein geändertes Regiebuch nicht. Ein schon gezeichnetes Stammbild bleibt; neu zeichnen nach einer Änderung kommt später.
 2. Regie plant und prüft aus dem Regiebuch, zwei Versuche, dann Markierung. Teil gebaut (einmal anschauen, einmal neu).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
