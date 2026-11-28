@@ -3607,6 +3607,13 @@ html[dir='rtl'] .slideshow-topbar {
   color: var(--muted, #64748b);
 }
 
+.film-panel--ref-highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
 .film-scene-action-row {
   display: flex;
   flex-wrap: wrap;

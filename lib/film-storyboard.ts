@@ -164,11 +164,14 @@ import {
 import {
   applyPanelRefApproval,
   approveAllSceneRefs,
+  assertRefApprovalForGeneration,
   blockedPackNumbersFromHint,
   filterRegiePlanRefs,
+  generationBlockedByRefApproval,
   refNotApprovedMessageDe,
   suggestRefApprovalsFromBoard,
   stillUrlOkAsRefSource,
+  type RefApprovalBlock,
 } from '../shared/film-ref-approval.js'
 import { applyLineSpeaker, speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
@@ -1094,7 +1097,14 @@ export async function planFilmPanel(
   userId: string,
   panelId: string,
   profile?: UserProfile | null,
-): Promise<{ dialog: Dialog; board: FilmStoryboard; planned: boolean; reused?: boolean; errorDe?: string }> {
+): Promise<{
+  dialog: Dialog
+  board: FilmStoryboard
+  planned: boolean
+  reused?: boolean
+  errorDe?: string
+  refApprovalBlock?: RefApprovalBlock
+}> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
@@ -1106,9 +1116,13 @@ export async function planFilmPanel(
     return { dialog, board, planned: false, reused: true }
   }
   let continuity = board.continuity
+  continuity = continuity ?? (await ensureFilmContinuity(dialog, board))
+  const block = generationBlockedByRefApproval(board, panelId, { continuity })
+  if (block) {
+    return { dialog, board, planned: false, refApprovalBlock: block }
+  }
   let read: Awaited<ReturnType<typeof planStoryPicture>>
   try {
-    continuity = continuity ?? (await ensureFilmContinuity(dialog, board))
     read = await askRegieForPlan(dialog, board, panel, index, continuity, userId)
   } catch (err) {
     const message = err instanceof Error ? err.message.trim() : ''
@@ -1742,6 +1756,8 @@ export async function stillFilmPanel(
   const panel = correction
     ? { ...found, stillCorrection: correction, directorNote: correction, regiePlanError: undefined }
     : found
+  const continuityForRefs = board.continuity ?? (await ensureFilmContinuity(dialog, board))
+  assertRefApprovalForGeneration(board, panelId, { continuity: continuityForRefs, hint: correction })
   const working: FilmStoryboard = correction
     ? {
         ...board,

@@ -3,9 +3,51 @@
  * wenn Jean-Marie das freigibt. Raumbilder, Stammbilder und Katalog bleiben frei.
  */
 
-import { normalizeFilmStoryboard, type FilmStoryboard, type FilmStoryboardPanel } from './film-storyboard.js'
+import { directorStillUrls, type FilmContinuity } from './film-continuity.js'
 import { panelByStillPackNumber, parseStillPackRefs, stillPackNumber } from './film-still-pack.js'
 import type { FilmRegiePlanRef } from './film-regie-plan.js'
+import {
+  normalizeFilmStoryboard,
+  panelWantsOwnStill,
+  type FilmStoryboard,
+  type FilmStoryboardPanel,
+} from './film-storyboard.js'
+import {
+  panelPlaceKey,
+  panelPropIds,
+  placeGrundbildPanel,
+  previousStillUrlInScene,
+  sceneGrundbildPanel,
+} from './film-stills.js'
+
+export const REF_SCENE_RESUME_DE =
+  'Öffne das markierte Bild, wähle «Als Vorlage freigeben», dann «Szene weiter erzeugen».'
+
+export type RefApprovalBlock = {
+  /** Das Bild, das gerade hätte gemalt werden sollen. */
+  targetPanelId: string
+  /** Päckchen, die freigegeben werden müssen (zum Markieren). */
+  panelIds: string[]
+  packNumbers: number[]
+  messageDe: string
+}
+
+export class RefApprovalRequired extends Error {
+  readonly block: RefApprovalBlock
+  constructor(block: RefApprovalBlock) {
+    super(block.messageDe)
+    this.name = 'RefApprovalRequired'
+    this.block = block
+  }
+}
+
+export function refApprovalBlockFromError(err: unknown): RefApprovalBlock | null {
+  if (err instanceof RefApprovalRequired) return err.block
+  const maybe = err as { block?: RefApprovalBlock; refApprovalBlock?: RefApprovalBlock }
+  if (maybe.block?.messageDe) return maybe.block
+  if (maybe.refApprovalBlock?.messageDe) return maybe.refApprovalBlock
+  return null
+}
 
 export const REF_APPROVE_LABEL_DE = 'Als Vorlage freigeben'
 export const REF_REVOKE_LABEL_DE = 'Vorlage sperren'
@@ -169,4 +211,109 @@ export function filterRegiePlanRefs(
 ): FilmRegiePlanRef[] {
   if (!board) return refs
   return refs.filter((ref) => stillUrlOkAsRefSource(board, ref.url))
+}
+
+function noteBlockedUrl(
+  blocked: Map<string, number>,
+  board: FilmStoryboard,
+  url: string | undefined,
+) {
+  if (!url?.startsWith('http') || stillUrlOkAsRefSource(board, url)) return
+  const owner = panelForStillUrl(board, url)
+  if (!owner) return
+  blocked.set(owner.id, stillPackNumber(board, owner))
+}
+
+function previousPlaceStillUrlRaw(board: FilmStoryboard, panel: FilmStoryboardPanel): string | undefined {
+  const key = panelPlaceKey(panel)
+  const all = normalizeFilmStoryboard(board).panels
+  const idx = all.findIndex((item) => item.id === panel.id)
+  const search = idx >= 0 ? all.slice(0, idx) : all.filter((item) => item.id !== panel.id)
+  for (let i = search.length - 1; i >= 0; i--) {
+    const prev = search[i]
+    if (!prev?.stillUrl?.startsWith('http')) continue
+    if (panelPlaceKey(prev) === key) return prev.stillUrl
+  }
+  return undefined
+}
+
+function previousPropStillUrlRaw(
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+  propId: string,
+): string | undefined {
+  const want = propId.trim().toLowerCase()
+  if (!want) return undefined
+  const all = normalizeFilmStoryboard(board).panels
+  const idx = all.findIndex((item) => item.id === panel.id)
+  const search = idx >= 0 ? all.slice(0, idx) : all.filter((item) => item.id !== panel.id)
+  for (let i = search.length - 1; i >= 0; i--) {
+    const prev = search[i]
+    if (!prev?.stillUrl?.startsWith('http')) continue
+    if (panelPropIds(prev).some((id) => id === want)) return prev.stillUrl
+  }
+  return undefined
+}
+
+/**
+ * Braucht dieses Bild beim Malen ein früheres Szenen-Still als Vorlage, das noch nicht freigegeben ist?
+ * Dann darf die Generierung nicht weiterlaufen — Jean-Marie gibt zuerst frei.
+ */
+export function generationBlockedByRefApproval(
+  board: FilmStoryboard,
+  panelId: string,
+  opts?: { continuity?: FilmContinuity; hint?: string },
+): RefApprovalBlock | null {
+  const normalized = normalizeFilmStoryboard(board)
+  const index = normalized.panels.findIndex((item) => item.id === panelId)
+  if (index < 0) return null
+  const panel = normalized.panels[index]!
+  const scenePanels = normalized.panels.filter((item) => item.sceneId === panel.sceneId)
+  const hint = opts?.hint?.trim()
+  if (!hint && !panelWantsOwnStill(panel, scenePanels) && previousStillUrlInScene(normalized, panel)) {
+    return null
+  }
+
+  const blocked = new Map<string, number>()
+  if (hint) {
+    for (const n of blockedPackNumbersFromHint(normalized, hint).blocked) {
+      const owner = panelByStillPackNumber(normalized, n)
+      if (owner) blocked.set(owner.id, n)
+    }
+  }
+
+  noteBlockedUrl(blocked, normalized, previousPlaceStillUrlRaw(normalized, panel))
+  noteBlockedUrl(blocked, normalized, placeGrundbildPanel(normalized, panel)?.stillUrl)
+  if ((panel.shot ?? 'wide') === 'closeup') {
+    noteBlockedUrl(blocked, normalized, sceneGrundbildPanel(normalized, panel.sceneId)?.stillUrl)
+  }
+  for (const propId of panelPropIds(panel)) {
+    noteBlockedUrl(blocked, normalized, previousPropStillUrlRaw(normalized, panel, propId))
+  }
+  if (opts?.continuity) {
+    for (const item of directorStillUrls(normalized.panels, opts.continuity, panelId, () => true)) {
+      noteBlockedUrl(blocked, normalized, item.url)
+    }
+  }
+
+  if (!blocked.size) return null
+  const packNumbers = [...new Set(blocked.values())].sort((a, b) => a - b)
+  const panelIds = [...blocked.keys()]
+  const targetPack = stillPackNumber(normalized, panel)
+  const refsLabel = packNumbers.map((n) => `Bild ${n}`).join(' und ')
+  const messageDe =
+    packNumbers.length === 1
+      ? `Stopp: Bild ${targetPack} braucht ${refsLabel} als Vorlage. ${refNotApprovedMessageDe(packNumbers[0]!)} ${REF_SCENE_RESUME_DE}`
+      : `Stopp: Bild ${targetPack} braucht ${refsLabel} als Vorlage. Diese sind noch nicht freigegeben. ${REF_SCENE_RESUME_DE}`
+
+  return { targetPanelId: panelId, panelIds, packNumbers, messageDe }
+}
+
+export function assertRefApprovalForGeneration(
+  board: FilmStoryboard,
+  panelId: string,
+  opts?: { continuity?: FilmContinuity; hint?: string },
+): void {
+  const block = generationBlockedByRefApproval(board, panelId, opts)
+  if (block) throw new RefApprovalRequired(block)
 }

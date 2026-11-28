@@ -83,6 +83,7 @@ function PanelCard({
   onSketch,
   onLayout,
   onRefApproval,
+  refHighlight,
   detailsOpenOverride,
 }: {
   panel: FilmStoryboardPanel
@@ -110,6 +111,7 @@ function PanelCard({
   onSketch: () => void
   onLayout: (dialog: Dialog, board: FilmStoryboard) => void
   onRefApproval?: (approved: boolean) => void
+  refHighlight?: boolean
   detailsOpenOverride?: boolean
 }) {
   const [comment, setComment] = useState(panel.comment ?? '')
@@ -134,7 +136,10 @@ function PanelCard({
   }
 
   return (
-    <article className={`film-panel${panel.stillMarkRedo ? ' film-panel--mark-redo' : ''}`}>
+    <article
+      id={`film-panel-${panel.id}`}
+      className={`film-panel${panel.stillMarkRedo ? ' film-panel--mark-redo' : ''}${refHighlight ? ' film-panel--ref-highlight' : ''}`}
+    >
       <FilmBeatColumns
         packNumber={stillPackNumber(board, panel)}
         picture={
@@ -295,6 +300,13 @@ export function FilmStoryboardPage() {
   }
 
   const stills = useSceneStills(id, apply)
+  const refHighlight = new Set(stills.refHighlightIds)
+
+  useEffect(() => {
+    const first = stills.refHighlightIds[0]
+    if (!first) return
+    document.getElementById(`film-panel-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [stills.refHighlightIds])
   const locked = busy || nativeBusy || stills.busySceneId !== null
   const needsGerman = dialog ? dialogNeedsNativeTranslation(dialog) : false
   const needsNativeFill = dialog ? dialogNeedsNativeFill(dialog) : false
@@ -644,6 +656,7 @@ export function FilmStoryboardPage() {
                     <PanelCard
                       key={panel.id}
                       panel={panel}
+                      refHighlight={refHighlight.has(panel.id)}
                       detailsOpenOverride={sceneDetailsOpen[scene.id]}
                       dialog={dialog}
                       board={board}
@@ -709,9 +722,10 @@ export function FilmStoryboardPage() {
                         })()
                       }
                       onSketch={() => void run(() => api.ai.filmSketch(id, panel.id))}
-                      onRefApproval={(approved) =>
+                      onRefApproval={(approved) => {
                         void run(() => api.ai.filmPack(id, panel.id, { refApprovedByUser: approved }))
-                      }
+                        if (approved) stills.clearRefHighlight()
+                      }}
                     />
                   ))}
                 </div>

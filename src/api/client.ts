@@ -10,6 +10,7 @@ import {
   STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS,
   STILL_EDIT_PLANNER_GOOGLE_DE,
 } from '../../shared/film-still-pack'
+import { RefApprovalRequired } from '../../shared/film-ref-approval'
 
 const STILL_EDIT_PLAN_TIMEOUT_MS = STILL_EDIT_PLAN_CLIENT_TIMEOUT_MS
 
@@ -87,7 +88,10 @@ async function request<T>(
     )
   }
   if (!res.ok) {
-    const err = data as { error?: string }
+    const err = data as { error?: string; refApprovalBlock?: import('../../shared/film-ref-approval').RefApprovalBlock }
+    if (err.refApprovalBlock?.messageDe) {
+      throw new RefApprovalRequired(err.refApprovalBlock)
+    }
     const fromServer = typeof err?.error === 'string' ? err.error.trim() : ''
     if (fromServer) throw new Error(fromServer)
     throw new Error(
@@ -723,6 +727,7 @@ export const api = {
         planned: boolean
         reused?: boolean
         errorDe?: string
+        refApprovalBlock?: import('../../shared/film-ref-approval').RefApprovalBlock
       }>(
         '/film-storyboard-plan',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },

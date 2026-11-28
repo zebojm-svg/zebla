@@ -71,6 +71,7 @@ import {
 import {
   applyPanelRefApproval,
   blockedPackNumbersFromHint,
+  generationBlockedByRefApproval,
   stillUrlOkAsRefSource,
 } from '../shared/film-ref-approval.ts'
 
@@ -227,6 +228,17 @@ if (!stillUrlOkAsRefSource(lockedBoard, 'https://example.com/kitchen-empty.png')
 }
 if (blockedPackNumbersFromHint(lockedBoard, 'wie in Bild 1').blocked.join(',') !== '1') {
   fail('Hinweis meldet gesperrte Bildnummer')
+}
+const stoveLocked = { ...stove, refApprovedByUser: undefined }
+const needStove = generationBlockedByRefApproval(
+  { ...board, panels: [stoveLocked, { ...table, stillUrl: undefined }] },
+  table.id,
+)
+if (!needStove?.packNumbers.includes(1)) {
+  fail('Generierung stoppt, wenn Küchen-Vorlage von Bild 1 fehlt')
+}
+if (generationBlockedByRefApproval(board, table.id)) {
+  fail('freigegebenes Bild 1 blockiert nicht')
 }
 
 const catalog = stillEditCatalog({ board, panel: table, inventory })
@@ -1028,6 +1040,12 @@ if (!planMd.includes('Vorlage freigeben')) {
 }
 if (!stillFnSrc.includes('stillUrlOkAsRefSource')) {
   fail('Regie und Maler filtern nur freigegebene Szenen-Stills')
+}
+if (!stillFnSrc.includes('assertRefApprovalForGeneration')) {
+  fail('Malen stoppt ohne Vorlage-Freigabe')
+}
+if (!stillFnSrc.includes('generationBlockedByRefApproval')) {
+  fail('Planen stoppt ohne Vorlage-Freigabe')
 }
 if (!apiSrc.includes('film-storyboard-approve-scene-refs')) {
   fail('API: Szene alle Vorlagen freigeben')

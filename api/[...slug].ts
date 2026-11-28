@@ -2194,19 +2194,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
         return
       }
-      const result = await stillFilmPanel(
-        dialogId.trim(),
-        user.uid,
-        panelId.trim(),
-        styleId?.trim(),
-        profile,
-        note?.trim(),
-        typeof regie?.fixEn === 'string' && regie.fixEn.trim()
-          ? { fixEn: regie.fixEn.trim().slice(0, 500), freshRefs: regie.freshRefs === true }
-          : undefined,
-        typeof planErrorDe === 'string' && planErrorDe.trim() ? planErrorDe.trim().slice(0, 200) : undefined,
-      )
-      res.json(result)
+      try {
+        const result = await stillFilmPanel(
+          dialogId.trim(),
+          user.uid,
+          panelId.trim(),
+          styleId?.trim(),
+          profile,
+          note?.trim(),
+          typeof regie?.fixEn === 'string' && regie.fixEn.trim()
+            ? { fixEn: regie.fixEn.trim().slice(0, 500), freshRefs: regie.freshRefs === true }
+            : undefined,
+          typeof planErrorDe === 'string' && planErrorDe.trim() ? planErrorDe.trim().slice(0, 200) : undefined,
+        )
+        res.json(result)
+      } catch (err) {
+        const { RefApprovalRequired } = await import('../shared/film-ref-approval.js')
+        if (err instanceof RefApprovalRequired) {
+          res.status(409).json({ error: err.block.messageDe, refApprovalBlock: err.block })
+          return
+        }
+        throw err
+      }
       return
     }
 
