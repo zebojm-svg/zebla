@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { buildFilmStillPrompt } from '../shared/film-stills.ts'
 import { DEFAULT_STORY_ART_STYLE, paintingStyleId } from '../shared/story-art-styles.ts'
 import { pickedCastUrl } from '../shared/catalog-cast.ts'
+import { normalizeFilmStoryboard, type FilmStoryboard } from '../shared/film-storyboard.ts'
 import { paintingStyleText } from '../lib/ken-burns-style.ts'
 import {
   continuityBriefEn,
@@ -15,6 +16,7 @@ import {
   isRegieReading,
   placeForName,
   placesTooAlike,
+  tidyContinuity,
   fallbackContinuity,
   fallbackShots,
   referenceJobs,
@@ -375,5 +377,34 @@ if (!contSrc.includes('LEERE Raum') || !contSrc.includes('genau EIN Ort') || !co
 }
 if (!contSrc.includes('Maler einen Raum in den anderen kopiert')) fail('die Regie weiss, dass Vorlagen falsch sein können')
 if (!judgeFn.includes('placeForName')) fail('das Urteil zählt «Lenas Zimmer Karte» als Lenas Zimmer')
+
+const storedBook = {
+  ...twoRooms,
+  places: [
+    { name: 'Lenas Zimmer', lookEn: 'beige room. Lena sits at the desk.', lookDe: lenaRoom },
+    { name: 'Lenas Zimmer Karte', lookEn: 'same room with map', lookDe: lenaRoom },
+    { name: 'Amirs Zimmer', lookEn: 'beige room. Amir sits at the desk.', lookDe: amirRoom },
+    { name: 'Amirs Zimmer Karte', lookEn: 'map', lookDe: amirRoom },
+    { name: 'Lenas Bildschirm', lookEn: 'laptop screen', lookDe: 'Lenas Laptop-Bildschirm.' },
+  ],
+  shots: [
+    { panelId: 'p1', viewKey: 'lenas zimmer|weit', sendViewKeys: [], whyDe: 'a' },
+    { panelId: 'p2', viewKey: 'lenas zimmer karte|weit', sendViewKeys: ['lenas zimmer|weit'], whyDe: 'b' },
+  ],
+}
+const tidied = tidyContinuity(storedBook)
+if (tidied.places.map((place) => place.name).join() !== 'Lenas Zimmer,Amirs Zimmer,Lenas Bildschirm') fail('ein gespeichertes Regiebuch wird ohne Neu-Lesen aufgeräumt')
+if (/Lena sitzt|Amir sitzt|Lena sits|Amir sits/.test(JSON.stringify(tidied.places))) fail('gespeicherte Orte verlieren die Sätze mit Leuten')
+if (tidied.shots[1]!.viewKey !== 'lenas zimmer|karte|weit') fail('gespeicherte Blicke gehören zum einen Raum')
+if (JSON.stringify(tidyContinuity(tidied)) !== JSON.stringify(tidied)) fail('Aufräumen zweimal ändert nichts mehr')
+const mine = tidyContinuity({ ...storedBook, byUser: true })
+if (mine.places.length !== 3 || !mine.places[0]!.lookDe!.includes('Lena sitzt')) fail('von Jean-Marie: doppelte Orte fallen zusammen, seine Texte bleiben')
+if (placesTooAlike(tidied.places).length !== 1) fail('die zwei gleichen Zimmer im gespeicherten Regiebuch werden erkannt')
+const normalized = normalizeFilmStoryboard({ panels: [], continuity: storedBook } as unknown as FilmStoryboard)
+if (normalized.continuity?.places.length !== 3) fail('Planen, Anschauen und Malen bekommen das aufgeräumte Regiebuch')
+const bookUi = readFileSync('src/story/FilmRegiebuch.tsx', 'utf8')
+if (!bookUi.includes('tidyContinuity(board.continuity)')) fail('die Seite zeigt das aufgeräumte Regiebuch')
+if (!bookUi.includes('placesTooAlike') || !bookUi.includes('sehen fast gleich aus')) fail('fast gleiche Zimmer: Hinweis auf «Neu lesen»')
+if (!bookUi.includes('failed to fetch')) fail('abgebrochene Verbindung steht auf Deutsch da')
 
 console.log('OK film-continuity')

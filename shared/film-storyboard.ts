@@ -4,7 +4,7 @@
  * teure KI nur wenn etwas fehlt.
  */
 
-import type { FilmContinuity } from './film-continuity.js'
+import { tidyContinuity, type FilmContinuity } from './film-continuity.js'
 import type { FilmRegiePlan, RegieAttempt } from './film-regie-plan.js'
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
@@ -1028,6 +1028,7 @@ export function normalizeFilmStoryboard(board: FilmStoryboard): FilmStoryboard {
     ...board,
     scenes: board.scenes?.length ? board.scenes : scenesFromPanels(panels),
     panels,
+    ...(board.continuity ? { continuity: tidyContinuity(board.continuity) } : {}),
   }
 }
 
