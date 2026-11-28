@@ -383,19 +383,17 @@ export function sanitizeContinuity(
         .filter((person): person is FilmContinuityPerson => Boolean(person))
         .slice(0, 8)
     : []
-  const names = people.map((person) => person.name)
-  const read = Array.isArray(row.places)
+  const places = Array.isArray(row.places)
     ? row.places
         .map((place) => {
           const item = place as Record<string, unknown>
           const name = clip(item?.name, 40)
-          const lookEn = withoutPeople(clip(item?.lookEn, 900), names)
-          const lookDe = withoutPeople(clip(item?.lookDe, 900), names)
+          const lookEn = clip(item?.lookEn, 900)
+          const lookDe = clip(item?.lookDe, 900)
           return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((place): place is FilmContinuityPlace => Boolean(place))
     : []
-  const places = mergePlaces(read).slice(0, 6)
   const locksEn = Array.isArray(row.locksEn)
     ? row.locksEn.map((line) => clip(line, 200)).filter(Boolean).slice(0, 8)
     : []
@@ -419,22 +417,9 @@ export function sanitizeContinuity(
         })
         .filter((shot): shot is FilmShotLink => Boolean(shot))
     : []
-  const placeNames = places.map((place) => place.name)
-  const heads = new Map<string, string>()
-  for (const shot of fromAi) {
-    const head = shot.viewKey.split('|')[0] ?? ''
-    const place = placeForName(placeNames, head)
-    if (place && nameWords(head).length === nameWords(place).length && !heads.has(place.toLowerCase())) {
-      heads.set(place.toLowerCase(), head)
-    }
-  }
-  for (const shot of fromAi) {
-    shot.viewKey = remapViewKey(shot.viewKey, placeNames, heads)
-    shot.sendViewKeys = [...new Set(shot.sendViewKeys.map((key) => remapViewKey(key, placeNames, heads)))]
-  }
   const fallback = fallbackShots(panels)
   const shots = fallback.map((shot) => fromAi.find((item) => item.panelId === shot.panelId) ?? shot)
-  return {
+  return tidyContinuity({
     version: 1,
     sourceKey: continuitySourceKey(text),
     situationDe,
@@ -444,5 +429,38 @@ export function sanitizeContinuity(
     places,
     locksEn,
     shots,
+  })
+}
+
+function remapShots(shots: FilmShotLink[], placeNames: string[]): FilmShotLink[] {
+  const heads = new Map<string, string>()
+  for (const shot of shots) {
+    const head = shot.viewKey.split('|')[0] ?? ''
+    const place = placeForName(placeNames, head)
+    if (place && nameWords(head).length === nameWords(place).length && !heads.has(place.toLowerCase())) {
+      heads.set(place.toLowerCase(), head)
+    }
   }
+  return shots.map((shot) => ({
+    ...shot,
+    viewKey: remapViewKey(shot.viewKey, placeNames, heads),
+    sendViewKeys: [...new Set((shot.sendViewKeys ?? []).map((key) => remapViewKey(key, placeNames, heads)))],
+  }))
+}
+
+/**
+ * Ein Raum = ein Ort, Orte ohne Leute. Läuft auch über gespeicherte Regiebücher, ohne neu zu lesen.
+ * Hat Jean-Marie das Regiebuch geändert, bleiben seine Texte; nur doppelte Orte fallen zusammen.
+ */
+export function tidyContinuity(note: FilmContinuity): FilmContinuity {
+  const names = (note.people ?? []).map((person) => person.name)
+  const looked = note.byUser
+    ? (note.places ?? [])
+    : (note.places ?? []).map((place) => ({
+        ...place,
+        lookEn: withoutPeople(place.lookEn ?? '', names),
+        ...(place.lookDe ? { lookDe: withoutPeople(place.lookDe, names) } : {}),
+      }))
+  const places = mergePlaces(looked).slice(0, 6)
+  return { ...note, places, shots: remapShots(note.shots ?? [], places.map((place) => place.name)) }
 }

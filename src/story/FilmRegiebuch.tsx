@@ -2,12 +2,20 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { Dialog } from '../types'
 import type { FilmStoryboard } from '../../shared/film-storyboard'
-import { regiebuchFromContinuity, type RegiebuchEdit } from '../../shared/film-continuity'
+import {
+  placesTooAlike,
+  regiebuchFromContinuity,
+  tidyContinuity,
+  type RegiebuchEdit,
+} from '../../shared/film-continuity'
 
 const EMPTY: RegiebuchEdit = { situationDe: '', people: [], places: [], notesDe: [] }
 
 function regiebuchFailDe(kind: 'read' | 'save', reason: string): string {
-  const why = reason.trim().replace(/[.\s]+$/, '') || 'Grund unbekannt'
+  const said = reason.trim().replace(/[.\s]+$/, '')
+  const why = /failed to fetch|networkerror|load failed|network request failed/i.test(said)
+    ? 'Die Verbindung zum Server ist abgebrochen'
+    : said || 'Grund unbekannt'
   return kind === 'read'
     ? `Die Regie konnte die Geschichte nicht lesen: ${why}. Das bisherige Regiebuch bleibt.`
     : `Die Regie konnte deine Änderung nicht übernehmen: ${why}. Das bisherige Regiebuch bleibt. Deine Änderung steht noch hier — bitte noch einmal speichern.`
@@ -24,7 +32,7 @@ export function FilmRegiebuch({
   disabled: boolean
   onApplied: (dialog: Dialog, board: FilmStoryboard) => void
 }) {
-  const note = board.continuity
+  const note = board.continuity ? tidyContinuity(board.continuity) : undefined
   const [draft, setDraft] = useState<{ book: RegiebuchEdit; notesText: string } | null>(null)
   const [busy, setBusy] = useState<'' | 'read' | 'save'>('')
   const [status, setStatus] = useState('')
@@ -36,6 +44,8 @@ export function FilmRegiebuch({
   const needsGerman =
     Boolean(note) &&
     [...(note?.people ?? []), ...(note?.places ?? [])].some((item) => !item.lookDe?.trim())
+
+  const alike = note ? placesTooAlike(note.places) : []
 
   const call = async (kind: 'read' | 'save') => {
     setBusy(kind)
@@ -93,6 +103,13 @@ export function FilmRegiebuch({
             <p className="alert alert-warn">
               Dieses Regiebuch ist noch aus der Zeit vor dem Deutschen. «Neu lesen» schreibt es auf
               Deutsch.
+            </p>
+          ) : null}
+
+          {alike.length && !dirty ? (
+            <p className="alert alert-warn">
+              Die Zimmer {alike.map(([a, b]) => `«${a}» und «${b}»`).join(', ')} sehen fast gleich aus.
+              Drück «Neu lesen», damit die Regie sie unterscheidet.
             </p>
           ) : null}
 
