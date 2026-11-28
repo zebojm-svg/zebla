@@ -11,6 +11,7 @@ import {
   FilmRegiePlanNote,
   FilmRegieCheckNote,
   FilmSceneGenerateBar,
+  FilmRefApprovalToggle,
   FilmStillFixBar,
   FilmStillHistory,
   FilmStyleTabs,
@@ -81,6 +82,7 @@ function PanelCard({
   onRewrite,
   onSketch,
   onLayout,
+  onRefApproval,
   detailsOpenOverride,
 }: {
   panel: FilmStoryboardPanel
@@ -107,6 +109,7 @@ function PanelCard({
   onRewrite: (lineId: string, nativeText: string) => Promise<void>
   onSketch: () => void
   onLayout: (dialog: Dialog, board: FilmStoryboard) => void
+  onRefApproval?: (approved: boolean) => void
   detailsOpenOverride?: boolean
 }) {
   const [comment, setComment] = useState(panel.comment ?? '')
@@ -149,14 +152,22 @@ function PanelCard({
           )
         }
         underPicture={
-          <FilmStillFixBar
-            panel={panel}
-            busy={busy}
-            error={error}
-            status={painting ? status : undefined}
-            onCorrect={onCorrect}
-            onSaveMark={onSaveStillMark}
-          />
+          <>
+            <FilmRefApprovalToggle
+              panel={panel}
+              busy={busy}
+              onToggle={(approved) => onRefApproval?.(approved)}
+            />
+            <FilmStillFixBar
+              panel={panel}
+              board={board}
+              busy={busy}
+              error={error}
+              status={painting ? status : undefined}
+              onCorrect={onCorrect}
+              onSaveMark={onSaveStillMark}
+            />
+          </>
         }
         lines={lines}
         silent={silent}
@@ -596,6 +607,7 @@ export function FilmStoryboardPage() {
                       void stills.repaintReviewIssues(scene.id, panels, activeStyle, scene.sceneReview)
                     }
                     onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
+                    onApproveSceneRefs={() => void run(() => api.ai.filmApproveSceneRefs(dialog.id, scene.id))}
                     shotPlanDe={sceneShotPlanDe(panels)}
                     expectedShots={expectedSceneShotCount(dialog, scene.id)}
                     onStop={stills.stop}
@@ -697,6 +709,9 @@ export function FilmStoryboardPage() {
                         })()
                       }
                       onSketch={() => void run(() => api.ai.filmSketch(id, panel.id))}
+                      onRefApproval={(approved) =>
+                        void run(() => api.ai.filmPack(id, panel.id, { refApprovedByUser: approved }))
+                      }
                     />
                   ))}
                 </div>

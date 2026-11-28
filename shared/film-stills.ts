@@ -28,6 +28,7 @@ import {
   type FilmStoryboard,
   type FilmStoryboardPanel,
 } from './film-storyboard.js'
+import { isPaintedSceneStillUrl, stillUrlOkAsRefSource } from './film-ref-approval.js'
 
 /** Stehender Regie-Satz an die Bild-KI — kein Stichwort-Denken im Werkzeug. */
 export const STILL_EDIT_DIRECTOR_DE = 'Hinweis ist die Regie; Fotos sind Aussehen.'
@@ -475,6 +476,7 @@ export function previousPropStillUrl(
   for (let i = search.length - 1; i >= 0; i--) {
     const prev = search[i]
     if (!prev?.stillUrl?.startsWith('http')) continue
+    if (!stillUrlOkAsRefSource(board, prev.stillUrl)) continue
     const ids = panelPropIds(prev)
     if (ids.includes(want)) return prev.stillUrl
   }
@@ -547,8 +549,10 @@ export function stillReferencePack(
   const place = panelPlaceKey(panel)
   const closeup = panel.shot === 'closeup'
   const insert = panel.shot === 'insert'
-  const placeWide =
+  const placeWideRaw =
     opts?.board ? placeGrundbildPanel(opts.board, panel)?.stillUrl : undefined
+  const placeWide =
+    placeWideRaw && stillUrlOkAsRefSource(opts?.board, placeWideRaw) ? placeWideRaw : undefined
   const wideUrl = placeWide || opts?.sceneWideStillUrl
   const widePlaceOk =
     !wideUrl ||
@@ -566,6 +570,14 @@ export function stillReferencePack(
   const add = (item: StillRefItem) => {
     if (!http(item.url) || items.some((x) => x.url === item.url)) return
     if (blocked?.has(item.url) && (item.role === 'grundbild' || editing)) return
+    if (
+      opts?.board &&
+      item.url !== opts.correctFromUrl &&
+      isPaintedSceneStillUrl(opts.board, item.url) &&
+      !stillUrlOkAsRefSource(opts.board, item.url)
+    ) {
+      return
+    }
     items.push(item)
   }
 
@@ -736,6 +748,7 @@ export function previousPlaceStillUrl(
   for (let i = search.length - 1; i >= 0; i--) {
     const prev = search[i]
     if (!prev?.stillUrl?.startsWith('http')) continue
+    if (!stillUrlOkAsRefSource(board, prev.stillUrl)) continue
     if (panelPlaceKey(prev) === key) return prev.stillUrl
   }
   return undefined
@@ -759,6 +772,7 @@ export function applyPanelStill(
             stillError: undefined,
             harvestNoteDe: undefined,
             regieCheck: undefined,
+            refApprovedByUser: p.stillUrl === stillUrl ? p.refApprovedByUser : undefined,
           }
         : p,
     ),

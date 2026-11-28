@@ -52,6 +52,8 @@ export interface FilmRegiePlan {
   /** Der ganze Auftrag an den Maler. */
   paintEn: string
   refs: FilmRegiePlanRef[]
+  /** Hinweis für Jean-Marie: gewünschte Vorlage war noch nicht freigegeben. */
+  warnDe?: string
   /** Welches Modell geplant hat. */
   model?: string
   /** Warum nicht Pro («Flash statt Pro, weil …»). */

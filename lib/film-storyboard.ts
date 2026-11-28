@@ -156,10 +156,20 @@ import {
   stillEditFigures,
   stillEditImageErrorDe,
   stillEditLineDe,
+  panelByStillPackNumber,
   stillPackNumber,
   stillUrlForPackRef,
   type StillEditPackzettel,
 } from '../shared/film-still-pack.js'
+import {
+  applyPanelRefApproval,
+  approveAllSceneRefs,
+  blockedPackNumbersFromHint,
+  filterRegiePlanRefs,
+  refNotApprovedMessageDe,
+  suggestRefApprovalsFromBoard,
+  stillUrlOkAsRefSource,
+} from '../shared/film-ref-approval.js'
 import { applyLineSpeaker, speakerGender } from '../shared/speakers.js'
 import { genderFromKnownName } from './speaker-gender.js'
 
@@ -650,6 +660,7 @@ export async function saveFilmPack(
     nativeText?: string
     stillCorrection?: string | null
     stillMarkRedo?: boolean | null
+    refApprovedByUser?: boolean | null
   },
   profile?: UserProfile | null,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
@@ -736,6 +747,9 @@ export async function saveFilmPack(
   }
   if (fields.directorNote !== undefined) {
     board = applyPanelDirectorNote(board, panelId, fields.directorNote)
+  }
+  if (fields.refApprovedByUser !== undefined && fields.refApprovedByUser !== null) {
+    board = applyPanelRefApproval(board, panelId, Boolean(fields.refApprovedByUser))
   }
   if (fields.stillCorrection !== undefined || fields.stillMarkRedo !== undefined) {
     const correction =
@@ -1147,7 +1161,12 @@ async function askRegieForPlan(
   const blocked = blockedStillUrlsForHint(board, hint)
   const earlier = board.panels
     .slice(0, index)
-    .filter((item) => item.stillUrl?.startsWith('http') && !blocked.has(item.stillUrl as string))
+    .filter(
+      (item) =>
+        item.stillUrl?.startsWith('http') &&
+        !blocked.has(item.stillUrl as string) &&
+        stillUrlOkAsRefSource(board, item.stillUrl),
+    )
   const shown = new Set<string>()
   const recent = [...earlier].reverse().filter((item) => {
     if (shown.has(item.stillUrl as string)) return false
@@ -1166,18 +1185,28 @@ async function askRegieForPlan(
       `Das bisherige Bild zu diesem Päckchen — Jean-Marie will es ändern: ${hint}. Nicht kopieren, ausser der Hinweis verlangt «wie in Bild …».`,
     )
   }
+  const refWarnParts: string[] = []
   if (hint) {
+    const { blocked: blockedByApproval, messages } = blockedPackNumbersFromHint(board, hint)
+    if (messages.length) refWarnParts.push(...messages)
     const named = stillUrlForPackRef(board, hint, panel.stillUrl)
     if (named?.startsWith('http') && named !== panel.stillUrl && !blocked.has(named)) {
       offer(
         named,
         'Ein anderes Bild-Päckchen, das Jean-Marie im Hinweis nannte — nur für Aussehen oder Haltung, nicht als Raum-Vorlage.',
       )
+    } else if (blockedByApproval.length) {
+      for (const n of blockedByApproval) {
+        const url = panelByStillPackNumber(board, n)?.stillUrl
+        if (url && !blocked.has(url)) {
+          refWarnParts.push(refNotApprovedMessageDe(n))
+        }
+      }
     }
   }
   const sceneBefore = scenePanels.filter((item) => item.panelIndex < panel.panelIndex)
   const sceneAfter = scenePanels.filter((item) => item.panelIndex > panel.panelIndex)
-  return planStoryPicture({
+  const read = await planStoryPicture({
     continuity,
     linesDe: panelLinesDe(dialog, panel),
     beforeDe: sceneBefore.slice(-2).map((item) => panelLinesDe(dialog, item)).join('\n'),
@@ -1190,6 +1219,23 @@ async function askRegieForPlan(
     hintDe: hint,
     excludedPackNumbers: hint ? parseExcludedStillPackRefs(hint) : [],
   })
+  if (!read.plan) return read
+  const filteredRefs = filterRegiePlanRefs(board, read.plan.refs)
+  const dropped = read.plan.refs.length - filteredRefs.length
+  const warnPieces = [...refWarnParts]
+  if (dropped > 0) {
+    warnPieces.push(
+      'Manche früheren Bilder wollte die Regie mitnehmen — die sind noch nicht als Vorlage freigegeben. Es gehen nur Raumbilder und Stammbilder mit.',
+    )
+  }
+  const warnDe = warnPieces.length ? [...new Set(warnPieces)].join(' ') : undefined
+  return {
+    plan: {
+      ...read.plan,
+      refs: filteredRefs,
+      ...(warnDe ? { warnDe } : {}),
+    },
+  }
 }
 
 /** Die Regie schaut ein fertiges Bild an. Eigene Anfrage, damit Malen und Anschauen je unter drei Minuten bleiben. */
@@ -1294,7 +1340,7 @@ function judgeRefs(opts: {
   const roomPlate = (name: string) => roomPlateUrl(continuity, library, picks, name)
   if (plan?.place) add(roomPlate(plan.place), roomPlateRoleDe(plan.place))
   const prev = board.panels[index - 1]
-  if (prev?.stillUrl) {
+  if (prev?.stillUrl && stillUrlOkAsRefSource(board, prev.stillUrl)) {
     add(
       prev.stillUrl,
       `Voriges Bild (Bild ${index}). ${prev.regiePlan ? `Damals: ${regiePlanSummaryDe(prev.regiePlan)}` : ''} Zum Vergleich für «neu» und für den Anschluss.`,
@@ -1321,6 +1367,7 @@ function judgeRefs(opts: {
   const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
   const usable = (item: FilmStoryboardPanel) =>
     item.stillUrl !== panel.stillUrl &&
+    stillUrlOkAsRefSource(board, item.stillUrl) &&
     roomRefAllowed(item.regieCheck && item.regieCheck.stillUrl === item.stillUrl ? item.regieCheck : undefined)
   if (plan?.place) {
     const here = room(plan.place)
@@ -1351,7 +1398,11 @@ function judgeRefs(opts: {
       if (otherPlaces.size >= 1) break
     }
   } else {
-    for (const item of directorStillUrls(board.panels, continuity, panel.id)) add(item.url, `Früheres Bild: ${item.name}`)
+    for (const item of directorStillUrls(board.panels, continuity, panel.id, (url) =>
+      stillUrlOkAsRefSource(board, url),
+    )) {
+      add(item.url, `Früheres Bild: ${item.name}`)
+    }
   }
   return refs
 }
@@ -1815,9 +1866,12 @@ export async function stillFilmPanel(
       const paintedUrls = new Set(working.panels.map((item) => item.stillUrl).filter(Boolean))
       const copied = regie?.fixEn ? panel.regieAttempts?.[panel.regieAttempts.length - 1]?.copyOf : undefined
       const refBlocked = correction ? blockedStillUrlsForHint(working, correction) : new Set<string>()
-      const chosen = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs)
-        .filter((ref) => ref.url !== copied)
-        .filter((ref) => !refBlocked.has(ref.url))
+      const chosen = filterRegiePlanRefs(
+        working,
+        (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs)
+          .filter((ref) => ref.url !== copied)
+          .filter((ref) => !refBlocked.has(ref.url)),
+      )
       const plateLibrary = libraryForCompose(await listStoryAssets(userId).catch(() => []))
       const plateOf = (name: string) => roomPlateUrl(working.continuity, plateLibrary, dialog.catalogCast, name)
       const cameraPlate = plan.place ? plateOf(plan.place) : undefined
@@ -1843,7 +1897,8 @@ export async function stillFilmPanel(
             (url): url is string =>
               Boolean(url?.startsWith('http')) &&
               (paintedUrls.has(url as string) || url === panel.stillUrl) &&
-              !refBlocked.has(url as string),
+              !refBlocked.has(url as string) &&
+              stillUrlOkAsRefSource(working, url as string),
           )
       const fixEn = [regie?.fixEn, correction].filter(Boolean).join(' ')
       const painted = await paintRegiePlannedStill({
@@ -1954,6 +2009,7 @@ export async function stillFilmPanel(
           .find(
             (item) =>
               item.stillUrl?.startsWith('http') &&
+              stillUrlOkAsRefSource(boardForGen, item.stillUrl) &&
               (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() ===
                 videoHost.toLowerCase(),
           )?.stillUrl
@@ -1970,7 +2026,12 @@ export async function stillFilmPanel(
               role: 'identity' as const,
             }]
           : []
-        : directorStillUrls(boardForGen.panels, storyContinuity, panelForGen.id)
+        : directorStillUrls(
+            boardForGen.panels,
+            storyContinuity,
+            panelForGen.id,
+            (url) => stillUrlOkAsRefSource(boardForGen, url) && !refBlocked.has(url),
+          )
             .filter((item) => !refBlocked.has(item.url))
             .map((item) => ({
               url: item.url,
@@ -2224,10 +2285,29 @@ export async function reviewFilmScene(
   const freshScene = freshBoard.scenes.find((item) => item.id === sceneId)
   const finalReview = freshScene?.sceneReview ?? review
   const done = !finalReview.pending?.length
+  const suggest = done ? suggestRefApprovalsFromBoard(freshBoard, sceneId) : []
+  const suggestLine =
+    suggest.length > 0
+      ? `Zum Weitergeben ohne Mitnahme von Fehlern: Bild ${suggest.join(', Bild ')} als Vorlage freigeben.`
+      : ''
   const didDe = done
-    ? sceneReviewSummaryDe(finalReview)
+    ? [sceneReviewSummaryDe(finalReview), suggestLine].filter(Boolean).join(' ')
     : `Regie schaut weiter … noch ${finalReview.pending!.length} Bild${finalReview.pending!.length === 1 ? '' : 'er'}.`
   return { dialog: updated, board: freshBoard, review: finalReview, done, didDe }
+}
+
+export async function approveFilmSceneRefs(
+  dialogId: string,
+  userId: string,
+  sceneId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = approveAllSceneRefs(normalizeFilmStoryboard(dialog.filmStoryboard), sceneId)
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: board }, profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Freigabe konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard }
 }
 
 export async function saveFilmPlan(

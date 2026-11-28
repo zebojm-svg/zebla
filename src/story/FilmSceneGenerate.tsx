@@ -17,6 +17,14 @@ import {
   type FilmPanelDialogueLine,
 } from '../../shared/film-storyboard'
 import { stillPackNumber } from '../../shared/film-still-pack'
+import {
+  REF_APPROVE_LABEL_DE,
+  REF_REVOKE_LABEL_DE,
+  blockedPackNumbersFromHint,
+  panelsNeedingRefApproval,
+  stillRefUsageInBoard,
+  type StillRefUsageRow,
+} from '../../shared/film-ref-approval'
 import { packSpeakerChoices } from '../../shared/speakers'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
 import { regiePlanErrorLineDe, regiePlanPlacesDe, type RegieAttempt } from '../../shared/film-regie-plan'
@@ -98,6 +106,7 @@ type Props = {
   onStop?: () => void
   stopping?: boolean
   stoppedNote?: string
+  onApproveSceneRefs?: () => void
 }
 
 export function FilmSceneGenerateBar({
@@ -121,6 +130,7 @@ export function FilmSceneGenerateBar({
   onStop,
   stopping,
   stoppedNote,
+  onApproveSceneRefs,
 }: Props) {
   const stats = sceneStillProgress(panels, styleId)
   const hint = stillLibraryHintDe(panels)
@@ -130,6 +140,9 @@ export function FilmSceneGenerateBar({
   const missingPlates = placesMissingRoomPlate(board?.continuity?.places, board?.continuity?.plates)
   const review = scene.sceneReview
   const batchRepaintIds = sceneBatchRepaintIds(panels, review)
+  const pendingRefApproval = board ? panelsNeedingRefApproval(panels) : []
+  const refAudit = board ? stillRefUsageInBoard(board, scene.id) : []
+  const [refAuditOpen, setRefAuditOpen] = useState(false)
   const label = busy
     ? paintingOne
       ? 'Bild wird neu gemalt …'
@@ -202,7 +215,30 @@ export function FilmSceneGenerateBar({
               Markierte Bilder ändern ({batchRepaintIds.length})
             </button>
           ) : null}
+          {pendingRefApproval.length > 0 && onApproveSceneRefs ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={extraDisabled}
+              onClick={onApproveSceneRefs}
+            >
+              Alle fertigen Bilder als Vorlage freigeben ({pendingRefApproval.length})
+            </button>
+          ) : null}
+          {refAudit.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={extraDisabled}
+              onClick={() => setRefAuditOpen((open) => !open)}
+            >
+              {refAuditOpen ? 'Vorlagen-Liste zu' : 'Vorlagen prüfen'}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+      {!busy && refAuditOpen && refAudit.length ? (
+        <FilmSceneRefAudit rows={refAudit} />
       ) : null}
       {onRematch ? (
         <button
@@ -607,20 +643,69 @@ export function FilmPackActions({
   )
 }
 
+export function FilmSceneRefAudit({ rows }: { rows: StillRefUsageRow[] }) {
+  if (!rows.length) return null
+  return (
+    <ul className="film-ref-audit">
+      {rows.map((row) => (
+        <li key={row.panelId} className={row.approved ? 'film-ref-audit--ok' : 'film-ref-audit--warn'}>
+          <strong>Bild {row.packNumber}</strong> — {row.approved ? 'Vorlage freigegeben' : 'noch nicht freigegeben'}
+          {row.usedInPackNumbers.length
+            ? ` · ging als Vorlage Richtung Bild ${row.usedInPackNumbers.join(', ')}`
+            : ' · noch nirgends als Vorlage genutzt'}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export function FilmRefApprovalToggle({
+  panel,
+  busy,
+  onToggle,
+}: {
+  panel: FilmStoryboardPanel
+  busy?: boolean
+  onToggle?: (approved: boolean) => void
+}) {
+  if (!panel.stillUrl?.startsWith('http') || !onToggle) return null
+  const approved = Boolean(panel.refApprovedByUser)
+  return (
+    <div className="film-ref-approval">
+      <button
+        type="button"
+        className={`btn btn-sm ${approved ? 'btn-secondary' : 'btn-primary'}`}
+        disabled={busy}
+        onClick={() => onToggle(!approved)}
+      >
+        {approved ? REF_REVOKE_LABEL_DE : REF_APPROVE_LABEL_DE}
+      </button>
+      <p className="muted film-ref-approval-hint">
+        {approved
+          ? 'Dieses Bild darf als Vorlage für spätere Bilder mit — du hast es freigegeben.'
+          : 'Noch gesperrt: Fehler in diesem Bild ziehen sonst in neue Bilder mit.'}
+      </p>
+    </div>
+  )
+}
+
 /** Unter jedem Bild: was die Regie geplant hat — oder warum sie nicht planen konnte. */
 export function FilmRegiePlanNote({ panel }: { panel: FilmStoryboardPanel }) {
   if (panel.regiePlan?.cameraDe) {
     const places = regiePlanPlacesDe(panel.regiePlan)
     return (
-      <p className="muted">
-        Regie: {panel.regiePlan.cameraDe}
-        {places ? (
-          <>
-            <br />
-            {places}
-          </>
-        ) : null}
-      </p>
+      <>
+        <p className="muted">
+          Regie: {panel.regiePlan.cameraDe}
+          {places ? (
+            <>
+              <br />
+              {places}
+            </>
+          ) : null}
+        </p>
+        {panel.regiePlan.warnDe ? <p className="alert alert-warn">{panel.regiePlan.warnDe}</p> : null}
+      </>
     )
   }
   if (panel.regiePlanError) {
@@ -1021,6 +1106,7 @@ export function FilmPanelDialogue({
 
 export function FilmStillFixBar({
   panel,
+  board,
   busy,
   error,
   status,
@@ -1028,6 +1114,7 @@ export function FilmStillFixBar({
   onSaveMark,
 }: {
   panel: FilmStoryboardPanel
+  board?: FilmStoryboard | null
   busy: boolean
   error?: string
   status?: string
@@ -1047,6 +1134,8 @@ export function FilmStillFixBar({
   const saveDraft = (nextNote: string, nextMark: boolean) => {
     onSaveMark?.(nextNote, nextMark)
   }
+  const refBlocked =
+    note.trim() && board ? blockedPackNumbersFromHint(board, note.trim()) : { blocked: [], messages: [] }
   return (
     <div className={`film-still-fix${marked ? ' film-still-fix--marked' : ''}`}>
       <label className="film-still-fix-mark">
@@ -1102,9 +1191,13 @@ export function FilmStillFixBar({
         </p>
       ) : null}
       {!busy && shownError ? <div className="alert alert-error">{shownError}</div> : null}
+      {refBlocked.messages.length ? (
+        <p className="alert alert-warn">{refBlocked.messages.join(' ')}</p>
+      ) : null}
       <p className="muted film-tweak-hint">
         Bildnummer durch die ganze Geschichte (Bild 1, 2, … — steht oben am Foto). «wie in Bild 3» schickt dieses
-        Foto mit. «ohne Referenz von Bild 5» oder «Bild 5 nicht» lässt dieses Päckchen als Vorlage weg.
+        Foto nur mit, wenn du dort «{REF_APPROVE_LABEL_DE}» gewählt hast. «ohne Referenz von Bild 5» oder «Bild 5 nicht»
+        lässt dieses Päckchen als Vorlage weg.
       </p>
     </div>
   )

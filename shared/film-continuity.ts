@@ -333,6 +333,7 @@ export function directorStillUrls(
   panels: Array<{ id: string; stillUrl?: string }>,
   continuity: FilmContinuity | undefined,
   panelId: string,
+  allowUrl?: (url: string) => boolean,
 ): Array<{ url: string; name: string }> {
   const shot = continuity?.shots?.find((item) => item.panelId === panelId)
   if (!shot) return []
@@ -345,6 +346,7 @@ export function directorStillUrls(
     )
     const prev = earlier.find((panel) => panel.id === source?.panelId && panel.stillUrl?.startsWith('http'))
     if (!prev?.stillUrl) continue
+    if (allowUrl && !allowUrl(prev.stillUrl)) continue
     if (urls.some((item) => item.url === prev.stillUrl)) continue
     urls.push({ url: prev.stillUrl, name: source?.whyDe || 'früheres Bild' })
   }

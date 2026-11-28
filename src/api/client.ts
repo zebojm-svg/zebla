@@ -566,6 +566,7 @@ export const api = {
         nativeText?: string
         stillCorrection?: string | null
         stillMarkRedo?: boolean | null
+        refApprovedByUser?: boolean | null
       },
     ) =>
       request<{
@@ -574,6 +575,14 @@ export const api = {
       }>('/film-storyboard-pack', {
         method: 'POST',
         body: JSON.stringify({ dialogId, panelId, ...fields }),
+      }),
+    filmApproveSceneRefs: (dialogId: string, sceneId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+      }>('/film-storyboard-approve-scene-refs', {
+        method: 'POST',
+        body: JSON.stringify({ dialogId, sceneId }),
       }),
     filmInsertScene: (dialogId: string, afterSceneId: string | null, title: string) =>
       request<{

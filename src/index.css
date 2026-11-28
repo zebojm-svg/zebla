@@ -3584,6 +3584,29 @@ html[dir='rtl'] .slideshow-topbar {
   gap: var(--space-xs);
 }
 
+.film-ref-approval {
+  margin-top: 0.5rem;
+}
+
+.film-ref-approval-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
+.film-ref-audit {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+}
+
+.film-ref-audit--warn {
+  color: var(--warn-text, #92400e);
+}
+
+.film-ref-audit--ok {
+  color: var(--muted, #64748b);
+}
+
 .film-scene-action-row {
   display: flex;
   flex-wrap: wrap;

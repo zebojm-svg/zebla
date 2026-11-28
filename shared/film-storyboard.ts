@@ -120,6 +120,8 @@ export interface FilmStoryboardPanel {
   propIds?: string[]
   /** Welche Vorlagen (Person / Ort / Requisite) dieses Bild braucht. */
   refNeeds?: FilmRefNeeds
+  /** Jean-Marie hat dieses fertige Bild als Vorlage für spätere Bilder freigegeben. */
+  refApprovedByUser?: boolean
 }
 
 import type { FilmSceneReview } from './film-scene-review.js'

@@ -68,6 +68,11 @@ import {
   STILL_EDIT_FLUX_MODEL,
   stillReferencePack,
 } from '../shared/film-stills.ts'
+import {
+  applyPanelRefApproval,
+  blockedPackNumbersFromHint,
+  stillUrlOkAsRefSource,
+} from '../shared/film-ref-approval.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -115,6 +120,7 @@ const stove = panel({
   caption: 'Ramo stellt den Kessel auf den Herd.',
   imageCue: 'Kessel auf dem Herd',
   stillUrl: 'https://example.com/stove.png',
+  refApprovedByUser: true,
   shot: 'insert',
   propIds: ['kanne-1'],
   placements: [person('Ramo', 'https://example.com/ramo.png', 40)],
@@ -211,6 +217,18 @@ if (stillUrlForPackRef(board, 'Ramo allein am Herd', table.stillUrl) !== table.s
   fail('ohne Bild-Nummer bleibt das aktuelle Still')
 }
 
+const lockedBoard = applyPanelRefApproval(board, 'stove', false)
+if (stillUrlForPackRef(lockedBoard, 'wie in Bild 1, Ramo allein', table.stillUrl) !== table.stillUrl) {
+  fail('«wie in Bild 1» ohne Freigabe: kein Still von Bild 1')
+}
+if (stillUrlOkAsRefSource(lockedBoard, stove.stillUrl!)) fail('ohne Freigabe kein Szenen-Still als Vorlage')
+if (!stillUrlOkAsRefSource(lockedBoard, 'https://example.com/kitchen-empty.png')) {
+  fail('Bibliotheks-Raum bleibt ohne Freigabe erlaubt')
+}
+if (blockedPackNumbersFromHint(lockedBoard, 'wie in Bild 1').blocked.join(',') !== '1') {
+  fail('Hinweis meldet gesperrte Bildnummer')
+}
+
 const catalog = stillEditCatalog({ board, panel: table, inventory })
 const blockedCatalog = filterStillEditCatalogForHint(catalog, board, 'ohne Referenz von Bild 1')
 if (blockedCatalog.some((it) => it.id === 'still-stove')) {
@@ -285,6 +303,7 @@ const hint = 'mach dass ramo alleine am Herd steht'
     caption: 'Vorige Szene am selben Ort',
     imageCue: 'ganzer Raum',
     stillUrl: 'https://example.com/prev-scene.png',
+    refApprovedByUser: true,
     shot: 'wide',
     placements: table.placements,
     background: table.background,
@@ -1003,6 +1022,15 @@ if (!planMd.includes('höchste Priorität')) {
 }
 if (!planMd.includes('wie in Bild')) {
   fail('ZEBLA_PLAN: «wie in Bild n» nimmt dieses Foto mit')
+}
+if (!planMd.includes('Vorlage freigeben')) {
+  fail('ZEBLA_PLAN: Vorlage freigeben')
+}
+if (!stillFnSrc.includes('stillUrlOkAsRefSource')) {
+  fail('Regie und Maler filtern nur freigegebene Szenen-Stills')
+}
+if (!apiSrc.includes('film-storyboard-approve-scene-refs')) {
+  fail('API: Szene alle Vorlagen freigeben')
 }
 if (!planMd.includes('Bild-Päckchen')) {
   fail('ZEBLA_PLAN: nummerierte Bild-Päckchen')

@@ -21,6 +21,7 @@ import {
   type FilmStoryboard,
   type FilmStoryboardPanel,
 } from './film-storyboard.js'
+import { stillUrlOkAsRefSource } from './film-ref-approval.js'
 import type { Dialog, FilmInventory } from './types.js'
 
 export { STILL_EDIT_DIRECTOR_DE }
@@ -245,7 +246,7 @@ export function stillUrlForPackRef(
   if (board) {
     for (const n of parseStillPackRefs(hint)) {
       const url = panelByStillPackNumber(board, n)?.stillUrl?.trim()
-      if (http(url)) return url
+      if (http(url) && stillUrlOkAsRefSource(board, url)) return url
     }
   }
   const current = currentUrl?.trim()
@@ -347,6 +348,7 @@ export function stillEditCatalog(opts: {
   scene.forEach((other) => {
     if (other.id === panel.id) return
     if (!httpUrl(other.stillUrl)) return
+    if (!stillUrlOkAsRefSource(board, other.stillUrl)) return
     const packN = stillPackNumber(board, other)
     add({
       id: `still-${other.id}`,
@@ -405,6 +407,7 @@ export function stillEditCatalog(opts: {
   for (const propId of propIds) {
     const url = otherPropStillUrl(board, panel, propId) || previousPropStillUrl(board, panel, propId)
     if (!httpUrl(url) || url === currentUrl) continue
+    if (!stillUrlOkAsRefSource(board, url)) continue
     add(
       {
         id: `prop-${slugPropId(propId)}`,

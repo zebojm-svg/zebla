@@ -130,7 +130,7 @@ import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
 import { sanitizeRegiebuchEdit } from '../shared/film-continuity.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, redrawSpeakerPortrait, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary, reviewFilmScene } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, redrawSpeakerPortrait, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary, reviewFilmScene, approveFilmSceneRefs } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt, regieModelHealth } from '../lib/ai.js'
@@ -1897,6 +1897,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         nativeText?: string
         stillCorrection?: string | null
         stillMarkRedo?: boolean | null
+        refApprovedByUser?: boolean | null
       }
       if (!dialogId?.trim() || !panelId?.trim()) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
@@ -1906,9 +1907,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dialogId.trim(),
         user.uid,
         panelId.trim(),
-        { speaker, imageCue, directorNote, soundCue, nativeText, stillCorrection, stillMarkRedo },
+        { speaker, imageCue, directorNote, soundCue, nativeText, stillCorrection, stillMarkRedo, refApprovedByUser },
         profile,
       )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-approve-scene-refs' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      const { dialogId, sceneId } = req.body as { dialogId?: string; sceneId?: string }
+      if (!dialogId?.trim() || !sceneId?.trim()) {
+        res.status(400).json({ error: 'dialogId und sceneId fehlen.' })
+        return
+      }
+      const result = await approveFilmSceneRefs(dialogId.trim(), user.uid, sceneId.trim(), profile)
       res.json(result)
       return
     }
