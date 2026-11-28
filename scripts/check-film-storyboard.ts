@@ -33,6 +33,7 @@ import {
   sceneShotPlanDe,
 } from '../shared/film-storyboard.ts'
 import { uniqueSpeakersInDialog } from '../shared/speakers.ts'
+import { panelsNeedingStills } from '../shared/film-stills.ts'
 import { inferDialogLineKind, type Dialog } from '../shared/types.ts'
 import type { StoryLibraryAsset } from '../shared/story-types.ts'
 
@@ -615,6 +616,13 @@ if (!sceneGenSrc.includes("'Anhalten'") || !sceneGenSrc.includes("'Szene weiter 
   fail('Szene: «Anhalten» während dem Erzeugen und «Szene weiter erzeugen» danach')
 }
 const stillLoopSrc = readFileSync(new URL('../src/story/generateSceneStills.ts', import.meta.url), 'utf8')
+if (!/stats\.done > 0 && !allDone[\s\S]{0,200}onGenerate\(true\)[\s\S]{0,80}Ganze Szene neu erzeugen/.test(sceneGenSrc)) {
+  fail('halb fertige Szene: «Ganze Szene neu erzeugen» malt alle Bilder neu')
+}
+if (!stillLoopSrc.includes('Ganze Szene neu erzeugen')) fail('nach Anhalten: beide Wege stehen im Satz')
+if (panelsNeedingStills([{ id: 'a', stillUrl: 'https://x/a.png' }, { id: 'b' }] as never, undefined, true).length !== 2) {
+  fail('neu erzeugen nimmt jedes Bild der Szene, auch die fertigen')
+}
 if ((stillLoopSrc.match(/if \(stop\(\)/g) ?? []).length < 5 || !stillLoopSrc.includes('shouldStop: () => stopRef.current')) {
   fail('Anhalten: zwischen Planen, Malen, Anschauen und Bildern wird nachgeschaut')
 }
