@@ -19,6 +19,12 @@ import {
   sanitizeContinuity,
   sanitizeRegiebuchEdit,
 } from '../shared/film-continuity.ts'
+import {
+  regieAttachmentLegendEn,
+  regiePaintPromptEn,
+  regiePlanSummaryDe,
+  sanitizeRegiePlan,
+} from '../shared/film-regie-plan.ts'
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`)
@@ -149,5 +155,70 @@ const contSrc = readFileSync('lib/film-continuity.ts', 'utf8')
 if (!contSrc.includes('VORGABEN VON JEAN-MARIE')) fail('Regie liest Jean-Maries Änderungen als Vorgabe')
 const boardSrc = readFileSync('lib/film-storyboard.ts', 'utf8')
 if (!boardSrc.includes('carry?.byUser')) fail('«Bilder planen» löscht das geänderte Regiebuch nicht')
+
+if (!contSrc.includes('aus jeder Richtung zeichnen')) fail('Orte im Regiebuch sagen, was an welcher Wand ist')
+if (!contSrc.includes('gegenüberliegende Wand')) fail('Gegenschuss zeigt die andere Wand (Regie-Satz, kein Code)')
+if (!contSrc.includes('posieren nicht')) fail('die Regie prüft, dass niemand für den Zuschauer posiert')
+
+const options = [
+  { id: 'V1', url: 'https://example.com/lena.png', aboutDe: 'Stammbild von Lena' },
+  { id: 'V2', url: 'https://example.com/bild1.png', aboutDe: 'Früheres Bild 1' },
+]
+const plan = sanitizeRegiePlan(
+  {
+    place: 'lenas zimmer',
+    bodies: ['Lena', 'Fremder'],
+    screens: ['Amir', 'Lena'],
+    cameraDe: 'Über Lenas Schulter.',
+    paintEn: 'Lena at her desk, camera behind her right shoulder.',
+    refs: [
+      { id: 'V1', useEn: "Lena's face and clothes only" },
+      { id: 'V9', useEn: 'unknown' },
+      { id: 'V2', useEn: 'same room, opposite wall' },
+      { id: 'V1', useEn: 'twice' },
+    ],
+  },
+  { places: ['Lenas Zimmer', 'Amirs Zimmer'], people: ['Lena', 'Amir'], options },
+)
+if (!plan) fail('ein Plan der Regie wird übernommen')
+if (plan.place !== 'Lenas Zimmer') fail('der Ort ist ein Ort aus dem Regiebuch')
+if (plan.bodies.join() !== 'Lena') fail('nur Leute aus dem Regiebuch sind im Bild')
+if (plan.screens.join() !== 'Amir') fail('wer im Raum ist, ist nicht zusätzlich auf dem Bildschirm')
+if (plan.refs.length !== 2 || plan.refs[0]?.url !== 'https://example.com/lena.png') fail('nur bekannte Vorlagen, jede einmal')
+if (sanitizeRegiePlan({ place: 'x' }, { places: [], people: [], options })) fail('ein leerer Plan gilt nicht')
+const paint = regiePaintPromptEn({
+  plan,
+  continuity: { ...room, people: [{ name: 'Lena', lookEn: 'green coat' }], places: [{ name: 'Lenas Zimmer', lookEn: 'window left' }] },
+  styleLabel: 'Filmzeichnung',
+  stylePrompt: 'ink',
+  languageEn: 'Persian',
+  fixEn: 'Lena is a woman',
+})
+if (!paint.startsWith('DIRECTOR FIX')) fail('die Korrektur der Regie steht zuerst')
+if (!paint.includes('camera behind her right shoulder') || !paint.includes('window left')) fail('Plan und Ort gehen an den Maler')
+if (!paint.includes('green coat') || !paint.includes('Seen only on a screen')) fail('Aussehen und Bildschirm-Leute gehen an den Maler')
+if (/video|laptop|webcam|tea|duck|ente/i.test(paint)) fail('der Plan-Auftrag hat keine Regeln für bestimmte Lagen')
+if (!regieAttachmentLegendEn(plan.refs).includes("1. Lena's face and clothes only")) fail('jede Vorlage trägt den Satz der Regie')
+if (!regiePlanSummaryDe(plan).includes('Lenas Zimmer')) fail('der Plan wird für spätere Bilder kurz gefasst')
+
+const planSrc = readFileSync('lib/film-regie-plan.ts', 'utf8')
+if (!planSrc.includes('regieJson')) fail('die Regie plant mit dem grossen Modell')
+if (/video|laptop|webcam|ente|duck/i.test(planSrc)) fail('die Plan-Regie hat keine Regeln für bestimmte Lagen')
+const planFn = boardSrc.slice(boardSrc.indexOf('export async function planFilmPanel'), boardSrc.indexOf('export async function judgeFilmPanel'))
+if (!planFn.includes('sidePlate') || !planFn.includes('placePlate') || !planFn.includes('stillUrl')) {
+  fail('die Regie bekommt Stammbilder, Raum-Vorlagen und frühere Bilder zur Auswahl')
+}
+const judgeFn = boardSrc.slice(boardSrc.indexOf('export async function judgeFilmPanel'), boardSrc.indexOf('export async function regiebuchFilm'))
+if (!judgeFn.includes('regiePlan')) fail('das Urteil kennt den Plan der Regie')
+const stillFn = boardSrc.slice(boardSrc.indexOf('export async function stillFilmPanel'), boardSrc.indexOf('export async function saveFilmPlan'))
+if (!stillFn.includes('!correction && panel.regiePlan') || !stillFn.includes('paintRegiePlannedStill')) {
+  fail('mit Plan malt Zebla nach dem Plan, Korrekturen gehen den alten Weg')
+}
+const apiSrc = readFileSync('api/[...slug].ts', 'utf8')
+if (!apiSrc.includes("'film-storyboard-plan'") || !apiSrc.includes('planFilmPanel(')) fail('Planen ist eine eigene Anfrage')
+const loopSrc = readFileSync('src/story/generateSceneStills.ts', 'utf8')
+if (loopSrc.indexOf('filmPlanPanel') < 0 || loopSrc.indexOf('filmPlanPanel') > loopSrc.indexOf('filmStill(')) {
+  fail('zuerst plant die Regie, dann wird gemalt')
+}
 
 console.log('OK film-continuity')

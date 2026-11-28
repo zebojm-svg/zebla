@@ -22,6 +22,7 @@ import {
 } from '../shared/film-still-pack.js'
 import {
   buildFilmStillPrompt,
+  filmStillLanguageEn,
   correctionIsFaceOnly,
   isVideoCallSituation,
   correctionRewritesPerson,
@@ -34,7 +35,14 @@ import {
 import { editImageWithKontext, fluxLockAvailable } from './story-stills-gen.js'
 import type { FilmScene, FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.js'
 import type { FilmInventory } from '../shared/types.js'
-import type { StoryArtStyleId } from '../shared/story-art-styles.js'
+import { getStoryArtStyle, getStoryStylePrompt, type StoryArtStyleId } from '../shared/story-art-styles.js'
+import type { FilmContinuity } from '../shared/film-continuity.js'
+import {
+  regieAttachmentLegendEn,
+  regiePaintPromptEn,
+  type FilmRegiePlan,
+  type FilmRegiePlanRef,
+} from '../shared/film-regie-plan.js'
 
 function requireGeminiKey(): string {
   const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -98,9 +106,7 @@ async function generateStillPng(
   packInstruction = '',
   directorHint = false,
 ): Promise<Buffer> {
-  const apiKey = requireGeminiKey()
-  await assertAiAllowed()
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
+  const parts: ImagePart[] = []
   if (refs.length) {
     for (const img of refs) {
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
@@ -117,7 +123,14 @@ async function generateStillPng(
     })
   }
   parts.push({ text: prompt })
+  return paintWithGemini(parts)
+}
 
+type ImagePart = { text?: string; inlineData?: { mimeType: string; data: string } }
+
+async function paintWithGemini(parts: ImagePart[]): Promise<Buffer> {
+  const apiKey = requireGeminiKey()
+  await assertAiAllowed()
   let lastError = 'Standbild fehlgeschlagen.'
   for (const model of geminiImageModelCandidates()) {
     try {
@@ -365,5 +378,34 @@ export async function generateFilmPanelStillImage(opts: {
       }
     }
   }
+  return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
+}
+
+/** Die Regie hat das Bild geplant: genau ihre Vorlagen mit ihren Sätzen, ihr Auftrag, sonst nichts. */
+export async function paintRegiePlannedStill(opts: {
+  plan: FilmRegiePlan
+  continuity?: FilmContinuity
+  styleId?: string
+  targetLanguage?: string
+  fixEn?: string
+}): Promise<string> {
+  const loaded = await Promise.all(
+    opts.plan.refs.map(async (ref) => ({ ref, image: await fetchImageAsInline(ref.url) })),
+  )
+  const refs = loaded.filter((item): item is { ref: FilmRegiePlanRef; image: InlineImage } => item.image !== null)
+  const parts: ImagePart[] = refs.map((item) => ({ inlineData: item.image }))
+  const legend = regieAttachmentLegendEn(refs.map((item) => item.ref))
+  if (legend) parts.push({ text: legend })
+  parts.push({
+    text: regiePaintPromptEn({
+      plan: opts.plan,
+      continuity: opts.continuity,
+      styleLabel: getStoryArtStyle(opts.styleId).label,
+      stylePrompt: getStoryStylePrompt(opts.styleId),
+      languageEn: filmStillLanguageEn(opts.targetLanguage),
+      fixEn: opts.fixEn,
+    }),
+  })
+  const buffer = await paintWithGemini(parts)
   return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
 }

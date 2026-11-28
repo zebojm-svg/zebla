@@ -5,6 +5,7 @@
  */
 
 import type { FilmContinuity } from './film-continuity.js'
+import type { FilmRegiePlan } from './film-regie-plan.js'
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
@@ -102,6 +103,8 @@ export interface FilmStoryboardPanel {
   harvestNoteDe?: string
   /** Die Regie hat dieses Bild angeschaut. Gilt nur, solange stillUrl dasselbe Bild ist. */
   regieCheck?: { ok: boolean; noteDe: string; stillUrl: string }
+  /** Die Regie hat dieses Bild geplant: Ort, wer da ist, Kamera, Vorlagen. Bleibt beim Neumalen. */
+  regiePlan?: FilmRegiePlan
   /** Weit (Raum), Nahaufnahme (Gesicht) oder Zwischenbild (Tür, Tee). */
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */

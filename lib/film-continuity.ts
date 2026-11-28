@@ -32,6 +32,9 @@ Sonst together=true: sie sind physisch zusammen.
 lookEn beschreibt ein eigenes Gesicht, Haare, Kleidung, Brille, und was die Person am Körper oder in der Hand hat. Keine bekannte Figur aus einem Buch oder Film.
 lookDe ist derselbe Inhalt auf Deutsch, in einfachen Sätzen. Jean-Marie liest ihn im Regiebuch.
 Bei Orten: lookEn und lookDe sagen, wie es dort aussieht und wer dort ist.
+Beschreibe jeden Ort so, dass man ihn aus jeder Richtung zeichnen kann: was an welcher Wand ist (Fenster, Tür, Regal, Bild, Möbel), wo die Person sitzt oder steht und in welche Richtung sie schaut.
+Ist eine Person an einem anderen Ort als die andere, bekommt jeder Ort einen eigenen Eintrag mit eigenem Namen.
+Kamera-Regeln für alle Bilder: Ein Gegenschuss zeigt die gegenüberliegende Wand. Die Leute schauen ihr Gegenüber oder das an, womit sie gerade beschäftigt sind, nicht den Zuschauer, ausser der Satz spricht den Zuschauer an.
 Stehen VORGABEN VON JEAN-MARIE unter der Geschichte, gelten sie. Sie gehen dem Dialog vor, wo sie sich widersprechen.
 Nur JSON:
 {
@@ -234,7 +237,7 @@ export function sidePlate(library: StoryLibraryAsset[], name: string): StoryLibr
   )
 }
 
-function placePlate(library: StoryLibraryAsset[], name: string): StoryLibraryAsset | undefined {
+export function placePlate(library: StoryLibraryAsset[], name: string): StoryLibraryAsset | undefined {
   return library.find(
     (asset) =>
       asset.type === 'environment' &&
@@ -272,12 +275,14 @@ const JUDGE = `Du bist die Regie einer Bildergeschichte. Du siehst das neue Bild
 Du urteilst nur daraus. Es gibt keine Liste von Orten, Tieren oder Geräten. Was hier gilt, steht im Regiebuch und im Satz.
 Prüfe der Reihe nach:
 1. Jede Person ist höchstens einmal zu sehen. Auch nicht zusätzlich auf einem zweiten Bildschirm, in einem eingeblendeten Fenster oder als Doppelgänger, ausser der Satz will das.
-2. Nur wer laut Regiebuch in diesem Moment an diesem Ort ist, ist körperlich hier. Keine fremde Person, die im Regiebuch nicht vorkommt.
+2. Nur wer laut Regiebuch und Plan der Regie in diesem Moment an diesem Ort ist, ist körperlich hier. Wer laut Plan nur auf einem Bildschirm ist, ist nicht als Körper im Raum. Keine fremde Person, die im Regiebuch nicht vorkommt.
 3. Gesicht, Haare, Kleidung und Dinge am Körper wie im Regiebuch und wie auf den früheren Bildern derselben Person.
-4. Der Ort sieht aus wie im Regiebuch. Dinge, die zu einem anderen Ort gehören, tauchen hier nicht auf.
-5. Die Einstellung passt zum Satz: nah heisst, diese Person füllt das Bild.
+4. Der Ort sieht aus wie im Regiebuch. Dinge, die zu einem anderen Ort gehören, tauchen hier nicht auf. Ist es der Raum eines anderen Ortes, ist das ein Fehler, und freshRefs ist true.
+5. Die Einstellung passt zum Satz und zum Plan: nah heisst, diese Person füllt das Bild.
 6. Unlesbare Fantasie-Schrift auf Zetteln, Schildern oder Bildschirmen ist ein Fehler, ausser der Satz braucht Schrift.
-Licht, Pose und Gesichtsausdruck sind frei, solange sie zum Satz passen.
+7. Die Leute posieren nicht für den Zuschauer. Sie schauen ihr Gegenüber an oder das, womit sie beschäftigt sind, ausser der Satz spricht den Zuschauer an.
+8. Der Hintergrund passt zur Blickrichtung der Kamera und zur Beschreibung des Ortes: schaut die Kamera in die andere Richtung als auf einem früheren Bild am selben Ort, ist die gegenüberliegende Wand zu sehen.
+Licht und Gesichtsausdruck sind frei, solange sie zum Satz passen.
 JSON: { "ok": true, "noteDe": "", "fixEn": "", "freshRefs": false }
 ok ist false nur bei einem klaren Fehler aus der Liste.
 noteDe: ein kurzer deutscher Satz für Jean-Marie, was falsch ist (leer wenn ok).
@@ -310,7 +315,7 @@ export async function judgeStoryStill(opts: {
   try {
     const raw = await regieJson<{ ok?: boolean; noteDe?: string; fixEn?: string; freshRefs?: boolean }>(
       JUDGE,
-      `REGIEBUCH:\n${opts.regiebuchDe || '—'}\n\nEINSTELLUNG: ${opts.shotDe}\nSATZ ZU DIESEM BILD: ${opts.lineDe || '—'}\n\n${legend}`,
+      `REGIEBUCH:\n${opts.regiebuchDe || '—'}\n\nEINSTELLUNG / PLAN: ${opts.shotDe}\nSATZ ZU DIESEM BILD: ${opts.lineDe || '—'}\n\n${legend}`,
       [still, ...refs.map((ref) => ref.part)],
       { temperature: 0.1, timeoutMs: 90_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
     )

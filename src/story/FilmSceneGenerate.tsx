@@ -808,6 +808,7 @@ export function FilmStillStrip({
               notes={
                 <>
                   {panelBusy ? <p className="film-beat-count">wird neu gemalt …</p> : null}
+                  {panel.regiePlan?.cameraDe ? <p className="muted">Regie: {panel.regiePlan.cameraDe}</p> : null}
                   <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
                   {panel.harvestNoteDe ? (
                     <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>

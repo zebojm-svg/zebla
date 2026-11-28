@@ -89,7 +89,7 @@ export function sanitizeRegiebuchEdit(raw: unknown): RegiebuchEdit | null {
           .map((item) => {
             const entry = item as Record<string, unknown>
             const name = clip(entry?.name, 40)
-            return name ? { name, lookDe: clip(entry?.lookDe, 400) } : null
+            return name ? { name, lookDe: clip(entry?.lookDe, 600) } : null
           })
           .filter((item): item is { name: string; lookDe: string } => Boolean(item))
           .slice(0, max)
@@ -289,8 +289,8 @@ export function sanitizeContinuity(
         .map((place) => {
           const item = place as Record<string, unknown>
           const name = clip(item?.name, 40)
-          const lookEn = clip(item?.lookEn, 240)
-          const lookDe = clip(item?.lookDe, 400)
+          const lookEn = clip(item?.lookEn, 600)
+          const lookDe = clip(item?.lookDe, 600)
           return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((place): place is FilmContinuityPlace => Boolean(place))

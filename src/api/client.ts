@@ -670,6 +670,16 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, regie }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
+    filmPlanPanel: (dialogId: string, panelId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+        planned: boolean
+      }>(
+        '/film-storyboard-plan',
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     filmJudge: (dialogId: string, panelId: string) =>
       request<{
         dialog: import('../types').Dialog
