@@ -130,6 +130,15 @@ Bauschritte:
    - **Verlauf je Bild:** zugeklappt «So ist das Bild entstanden»: Plan, Vorlagen an den Maler (mit Zweck, englisch), jeder Versuch mit Bild, Urteil und Auftrag der Regie. Höchstens 6 Versuche; neuer Durchgang oder «Bilder planen» fängt leer an.
    - **Neu lesen kaputt (28. Nov, behoben):** Lesen misslang (zu wenig Zeit für das längere Regiebuch), Zebla schrieb still ein leeres Ersatz-Regiebuch hinein und meldete «hat gelesen». Neu: ein echtes Regiebuch wird nie mehr überschrieben; misslingt es, steht «Die Regie konnte die Geschichte nicht lesen: Grund. Das bisherige Regiebuch bleibt.» «Neu lesen» darf 2½ Minuten brauchen; vor den Bildern ist Lesen ein eigener Schritt.
    - **Regiebuch besser:** Personen nur nach Aussehen (Alter, Haare, Haut, Kleidung mit Farben, Brille, was sie tragen) — kein Charakter. Orte Wand für Wand, mit Farben und Möbeln; zwei Orte nie gleich beschrieben. «Neu lesen» zeigt der Regie bis zu 4 schon gemalte, gutgeheissene Bilder.
+   **2c. Regie prüft genauer — gebaut (28. Nov 2026), für jede Geschichte, keine Videochat-Regeln.** Anlass: 20 Bilder Lena/Amir, Regie sagte zu 15 «passt», darunter fremde Füsse, doppelte Bilder, falscher Raum um den Laptop.
+   - Anschauen: zuerst beschreiben, was zu sehen ist (Leute, Hände/Füsse, Bildschirme, Wände, Blick), dann Prüfliste mit ja/nein: Leute, Körper, Aussehen, Ort, Bild im Bild, Handlung des Satzes, Kamera wie geplant, Blick, nicht fast gleich wie das vorige Bild. Schrift ist nur eine Kleinigkeit: steht unter dem Bild, malt nicht neu.
+   - Die Regie sieht beim Anschauen: Auftrag an den Maler, Satz davor und danach, das vorige Bild, Raum-Vorlage, Stammbilder aller Leute im Bild (höchstens 6 Vergleichsbilder, verkleinert).
+   - Ehrlich: kann die Regie nicht anschauen (Zeitlimit, Fehler, Bild fehlt), steht blau «Regie: nicht geprüft», nie mehr still «passt». Sie schaut dann einmal neu, malt aber nicht neu. Im Verlauf steht das Modell und was die Regie sah.
+   - Bild im Bild allgemein: der Plan sagt, wo die Kamera steht (Ort), und für jede Fläche (Bildschirm, Fernseher, Spiegel, Anzeigetafel …), wer und welcher Ort darauf ist. Unter dem Bild: «Ort: … Auf …: …».
+   - Planen: die Regie sieht kleine Bilder der Vorlagen (so sind die Bilder wirklich geworden). Braucht der Satz Neues, nimmt sie das vorige Bild nicht für Bildaufbau oder Haltung.
+   - Fast gleiches Bild (Bildvergleich, ohne KI): gilt als Fehler, nächster Versuch ohne dieses Bild als Vorlage.
+   - Nach zwei Neuversuchen bleibt der Versuch mit den wenigsten Fehlern, nicht einfach der letzte. Ein Bild mit Fehler nur am Blick oder an der Handlung bleibt Raum-Vorlage.
+   - Kosten: etwa 1 Rappen mehr pro Bild (längere Prüfung, kleine Vorschaubilder); dafür weniger Neumalen bei Fehlalarm.
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
 5. Ganze Szene nebeneinander prüfen. Noch nicht.
