@@ -139,6 +139,12 @@ Bauschritte:
    - Fast gleiches Bild (Bildvergleich, ohne KI): gilt als Fehler, nächster Versuch ohne dieses Bild als Vorlage.
    - Nach zwei Neuversuchen bleibt der Versuch mit den wenigsten Fehlern, nicht einfach der letzte. Ein Bild mit Fehler nur am Blick oder an der Handlung bleibt Raum-Vorlage.
    - Kosten: etwa 1 Rappen mehr pro Bild (längere Prüfung, kleine Vorschaubilder); dafür weniger Neumalen bei Fehlalarm.
+   **2d. Nach dem ersten Lauf (28. Nov 2026):**
+   - Regie = Pro. Flash nur, wenn Google Pro am Schlüssel nicht kennt oder kein Kontingent hat — dann steht «Flash statt Pro, weil …» beim Urteil, beim Plan und im Regiebuch. Pro überlastet: kurz warten, noch einmal Pro; reicht die Zeit nicht, «nicht geprüft» mit Grund.
+   - Kamera: sieht die Regie «von hinten», der Plan sagt «von vorne» (oder umgekehrt), ist Kamera ein Fehler, auch wenn sie «passt» angekreuzt hat. Möbel an anderer Wand als geplant = Fehler am Ort.
+   - Bild ändern: rote Meldung sagt den Grund auf Deutsch (Bild-KI zu oft gefragt, Schutzfilter, kein Bild zurück, Verbindung weg, sonst der kurze Original-Grund).
+   - Seite deutsch: was auf einem Bildschirm zu sehen ist, steht deutsch; Englisch nur für den Maler.
+   - Mit Regie-Plan zeigt «Mehr» nicht mehr den alten Sitzplan/Blick/Gesicht vom Board (Daten bleiben).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
 5. Ganze Szene nebeneinander prüfen. Noch nicht.
