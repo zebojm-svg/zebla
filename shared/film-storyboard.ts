@@ -100,6 +100,8 @@ export interface FilmStoryboardPanel {
   stillCorrection?: string
   /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
   harvestNoteDe?: string
+  /** Die Regie hat dieses Bild angeschaut. Gilt nur, solange stillUrl dasselbe Bild ist. */
+  regieCheck?: { ok: boolean; noteDe: string; stillUrl: string }
   /** Weit (Raum), Nahaufnahme (Gesicht) oder Zwischenbild (Tür, Tee). */
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */

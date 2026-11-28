@@ -754,6 +754,7 @@ export function applyPanelStill(
             stillStyleId: styleId,
             stillError: undefined,
             harvestNoteDe: undefined,
+            regieCheck: undefined,
           }
         : p,
     ),

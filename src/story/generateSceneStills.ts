@@ -8,6 +8,39 @@ import {
   STILL_EDIT_PAINT_STATUS_DE,
 } from '../../shared/film-still-pack'
 
+const REGIE_TRIES = 2
+
+/** Malen, dann schaut die Regie hin. Passt es nicht, höchstens zweimal neu. Danach bleibt das Bild markiert. */
+export async function stillWithRegie(opts: {
+  dialogId: string
+  panelId: string
+  styleId: string
+  label: string
+  onStatus?: (text: string) => void
+  onResult?: (result: { dialog: Dialog; board: FilmStoryboard }) => void
+}): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  let result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId)
+  opts.onResult?.(result)
+  for (let tries = 0; ; tries++) {
+    opts.onStatus?.(`Die Regie schaut ${opts.label} an …`)
+    let judged: Awaited<ReturnType<typeof api.ai.filmJudge>>
+    try {
+      judged = await api.ai.filmJudge(opts.dialogId, opts.panelId)
+    } catch {
+      return result
+    }
+    result = { dialog: judged.dialog, board: judged.board }
+    opts.onResult?.(result)
+    if (judged.verdict.ok || tries >= REGIE_TRIES) return result
+    opts.onStatus?.(`${opts.label}: ${judged.verdict.noteDe} Neu gemalt (${tries + 1} von ${REGIE_TRIES}) …`)
+    result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, {
+      fixEn: judged.verdict.fixEn || judged.verdict.noteDe,
+      freshRefs: judged.verdict.freshRefs,
+    })
+    opts.onResult?.(result)
+  }
+}
+
 export async function generateSceneStills(opts: {
   dialogId: string
   styleId: string
@@ -43,7 +76,14 @@ export async function generateSceneStills(opts: {
   let last: { dialog: Dialog; board: FilmStoryboard } | null = null
   for (let i = 0; i < queue.length; i++) {
     const panel = queue[i]!
-    const result = await api.ai.filmStill(opts.dialogId, panel.id, opts.styleId)
+    const result = await stillWithRegie({
+      dialogId: opts.dialogId,
+      panelId: panel.id,
+      styleId: opts.styleId,
+      label: `Bild ${i + 1} von ${queue.length}`,
+      onStatus: opts.onStatus,
+      onResult: (step) => opts.onProgress({ current: i, total: queue.length, ...step }),
+    })
     last = result
     opts.onProgress({
       current: i + 1,
@@ -147,7 +187,14 @@ export function useSceneStills(
       if (hint) {
         result = await api.ai.filmStill(dialogId, panel.id, styleId, hint)
       } else {
-        result = await api.ai.filmStill(dialogId, panel.id, styleId)
+        result = await stillWithRegie({
+          dialogId,
+          panelId: panel.id,
+          styleId,
+          label: 'das Bild',
+          onStatus: setStatus,
+          onResult: (step) => apply(step.dialog, step.board),
+        })
       }
       apply(result.dialog, result.board)
       setProgress({ sceneId, current: 1, total: 1 })

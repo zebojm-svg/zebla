@@ -260,44 +260,66 @@ async function imagePart(url: string): Promise<{ mimeType: string; data: string 
   }
 }
 
+export interface RegieVerdict {
+  ok: boolean
+  noteDe: string
+  fixEn: string
+  /** Das Bild hat Dinge aus einem falschen früheren Bild übernommen: beim nächsten Versuch ohne Ortsbilder. */
+  freshRefs: boolean
+}
+
+const JUDGE = `Du bist die Regie einer Bildergeschichte. Du siehst das neue Bild, dein Regiebuch und den Satz aus dem Dialog.
+Du urteilst nur daraus. Es gibt keine Liste von Orten, Tieren oder Geräten. Was hier gilt, steht im Regiebuch und im Satz.
+Prüfe der Reihe nach:
+1. Jede Person ist höchstens einmal zu sehen. Auch nicht zusätzlich auf einem zweiten Bildschirm, in einem eingeblendeten Fenster oder als Doppelgänger, ausser der Satz will das.
+2. Nur wer laut Regiebuch in diesem Moment an diesem Ort ist, ist körperlich hier. Keine fremde Person, die im Regiebuch nicht vorkommt.
+3. Gesicht, Haare, Kleidung und Dinge am Körper wie im Regiebuch und wie auf den früheren Bildern derselben Person.
+4. Der Ort sieht aus wie im Regiebuch. Dinge, die zu einem anderen Ort gehören, tauchen hier nicht auf.
+5. Die Einstellung passt zum Satz: nah heisst, diese Person füllt das Bild.
+6. Unlesbare Fantasie-Schrift auf Zetteln, Schildern oder Bildschirmen ist ein Fehler, ausser der Satz braucht Schrift.
+Licht, Pose und Gesichtsausdruck sind frei, solange sie zum Satz passen.
+JSON: { "ok": true, "noteDe": "", "fixEn": "", "freshRefs": false }
+ok ist false nur bei einem klaren Fehler aus der Liste.
+noteDe: ein kurzer deutscher Satz für Jean-Marie, was falsch ist (leer wenn ok).
+fixEn: was der Maler beim nächsten Versuch anders machen muss, englisch, konkret, mit Namen.
+freshRefs ist true, wenn das neue Bild Dinge aus einem der früheren Bilder übernommen hat, die nicht hierher gehören.`
+
 /**
- * Die Regie schaut das fertige Bild an und vergleicht es mit dem Dialog.
- * Kein fester Satz für Videochat, See oder Ente — nur dieser Dialog und dieses Bild.
+ * Die Regie schaut das fertige Bild an und vergleicht es mit Regiebuch, Satz und früheren Bildern.
+ * Kein fester Satz für Videochat, See oder Ente — nur dieses Regiebuch und dieses Bild.
  */
 export async function judgeStoryStill(opts: {
   imageUrl: string
-  earlierUrl?: string
-  situationDe: string
+  regiebuchDe: string
   lineDe: string
-}): Promise<{ ok: boolean; fixEn: string; noteDe: string }> {
+  shotDe: string
+  refs: Array<{ url: string; roleDe: string }>
+}): Promise<RegieVerdict> {
+  const pass: RegieVerdict = { ok: true, noteDe: '', fixEn: '', freshRefs: false }
   const still = await imagePart(opts.imageUrl)
-  if (!still) return { ok: true, fixEn: '', noteDe: '' }
-  const earlier = opts.earlierUrl ? await imagePart(opts.earlierUrl) : null
-  const images = earlier ? [still, earlier] : [still]
+  if (!still) return pass
+  const refs: Array<{ part: { mimeType: string; data: string }; roleDe: string }> = []
+  for (const ref of opts.refs.slice(0, 3)) {
+    const part = await imagePart(ref.url)
+    if (part) refs.push({ part, roleDe: ref.roleDe })
+  }
+  const legend = [
+    'Bild 1: das neue Bild.',
+    ...refs.map((ref, index) => `Bild ${index + 2}: ${ref.roleDe}`),
+  ].join('\n')
   try {
-    const raw = await regieJson<{ ok?: boolean; fixEn?: string; noteDe?: string }>(
-      `Du bist die Regie. Du siehst das fertige Bild und den Satz aus dem Dialog.
-Du urteilst nur daraus, nicht aus einer Liste von Orten oder Tieren.
-Prüfe: Zeigt das Bild, was dieser Satz sagt? Sind die genannten Leute da und niemand sonst?
-Wenn ein zweites Bild dabei ist, ist das ein früheres Bild derselben Person: Gesicht, Kleidung und Dinge am Körper bleiben, ausser der Satz ändert sie ausdrücklich. Der Ort bleibt, ausser der Satz wechselt den Ort.
-JSON: { "ok": true, "fixEn": "", "noteDe": "" }
-ok ist false nur wenn es klar falsch ist. fixEn ist dann ein englischer Satz an die Bild-KI, was anders sein muss. noteDe ist ein kurzer deutscher Satz.`,
-      `Lage: ${opts.situationDe || '—'}\nSatz zu diesem Bild: ${opts.lineDe || '—'}\n${
-        earlier ? 'Erstes Bild: das neue. Zweites Bild: dieselbe Person früher.' : 'Nur das neue Bild.'
-      }`,
-      images,
-      { temperature: 0.1, timeoutMs: 45_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
+    const raw = await regieJson<{ ok?: boolean; noteDe?: string; fixEn?: string; freshRefs?: boolean }>(
+      JUDGE,
+      `REGIEBUCH:\n${opts.regiebuchDe || '—'}\n\nEINSTELLUNG: ${opts.shotDe}\nSATZ ZU DIESEM BILD: ${opts.lineDe || '—'}\n\n${legend}`,
+      [still, ...refs.map((ref) => ref.part)],
+      { temperature: 0.1, timeoutMs: 90_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
     )
     const ok = raw.ok !== false
-    const fixEn = typeof raw.fixEn === 'string' ? raw.fixEn.trim().slice(0, 400) : ''
     const noteDe = typeof raw.noteDe === 'string' ? raw.noteDe.trim().slice(0, 240) : ''
-    return {
-      ok,
-      fixEn: ok ? '' : fixEn,
-      noteDe,
-    }
+    const fixEn = typeof raw.fixEn === 'string' ? raw.fixEn.trim().slice(0, 500) : ''
+    return ok ? pass : { ok, noteDe: noteDe || 'Das Bild passt nicht zum Regiebuch.', fixEn, freshRefs: raw.freshRefs === true }
   } catch {
-    return { ok: true, fixEn: '', noteDe: '' }
+    return pass
   }
 }
 
