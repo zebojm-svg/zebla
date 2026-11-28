@@ -1141,9 +1141,8 @@ export async function judgeFilmPanel(
   const attempt = [...(panel.regieAttempts ?? [])].reverse().find((item) => item.stillUrl === panel.stillUrl)
   const plan = panel.regiePlan
   const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
-  let verdict: RegieVerdict
   const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
-  const verdict = await judgeStoryStill({
+  let verdict = await judgeStoryStill({
     imageUrl: panel.stillUrl,
     regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
     linesDe: {
