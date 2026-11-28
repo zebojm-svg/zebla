@@ -3504,6 +3504,32 @@ html[dir='rtl'] .slideshow-topbar {
   color: #0f766e;
 }
 
+.film-still-history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.film-still-history-grid figure {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.film-still-history-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+}
+
+.film-still-history-grid figcaption {
+  margin-top: 0.25rem;
+}
+
 .film-regiebuch h3 {
   margin: 0.75rem 0 0.35rem;
   font-size: 1rem;

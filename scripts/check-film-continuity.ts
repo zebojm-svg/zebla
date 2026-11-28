@@ -260,4 +260,17 @@ if (!loopSrc.includes('planErrorDe') || !loopSrc.includes('Regie konnte nicht pl
 }
 if (/catch \{\s*\/\* Ohne Plan/.test(loopSrc)) fail('kein stilles Weitermalen ohne Plan')
 
+const regiebuchPrompt = contSrc.slice(contSrc.indexOf('const SYSTEM'), contSrc.indexOf('export function storyTextForContinuity'))
+for (const need of ['nur was man sieht', 'Haare: Farbe, Länge, Frisur', 'Hautfarbe', 'Kleidung mit Farben', 'Brille']) {
+  if (!regiebuchPrompt.includes(need)) fail(`Regiebuch: Personen nur nach Aussehen (${need})`)
+}
+if (!regiebuchPrompt.includes('gehören NICHT')) fail('Regiebuch: Charakter und Hobbys gehören nicht ins Aussehen')
+if (!regiebuchPrompt.includes('Wand für Wand') || !regiebuchPrompt.includes('nie dieselbe Beschreibung')) {
+  fail('Regiebuch: Orte Wand für Wand und jeder Ort unverwechselbar')
+}
+if (!contSrc.includes('SCHON GEMALTE BILDER') || !boardSrc.includes('regiebuchStills(board)')) {
+  fail('Neu lesen: die Regie sieht gutgeheissene gemalte Bilder')
+}
+if (!boardSrc.includes('regieCheck?.ok && panel.regieCheck.stillUrl === url')) fail('nur Bilder, die die Regie gutgeheissen hat')
+
 console.log('OK film-continuity')

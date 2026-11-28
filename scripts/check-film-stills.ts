@@ -3,6 +3,7 @@
  * Aufruf: npx tsx scripts/check-film-stills.ts
  */
 import { readFileSync } from 'node:fs'
+import { addRegieAttempt, REGIE_ATTEMPTS_MAX, setRegieAttemptVerdict } from '../shared/film-regie-plan.ts'
 import {
   applyPanelStill,
   buildFilmStillPrompt,
@@ -1145,6 +1146,21 @@ if (!plannedBranch.includes('PAINTED_WITH_PLAN_DE') || !stillGenSrc.includes('PA
 }
 if (!stillGenSrc.includes('planErrorDe') || !stillGenSrc.includes('regiePlanErrorLineDe')) {
   fail('Ohne Plan gemalt: der Grund steht beim Bild')
+}
+
+{
+  const shot = (n: number) => ({ stillUrl: `https://example.com/${n}.png`, at: `t${n}`, planned: true })
+  let attempts = addRegieAttempt(undefined, shot(1), true)
+  for (let n = 2; n <= 9; n++) attempts = addRegieAttempt(attempts, shot(n), false)
+  if (attempts.length !== REGIE_ATTEMPTS_MAX || attempts[0]?.stillUrl !== 'https://example.com/4.png') {
+    fail('Verlauf: höchstens 6 Versuche, die neuesten bleiben')
+  }
+  if (addRegieAttempt(attempts, shot(10), true).length !== 1) fail('Verlauf: neuer Durchgang beginnt leer')
+  const judged = setRegieAttemptVerdict(attempts, 'https://example.com/9.png', { ok: false, noteDe: 'Falscher Raum.' })
+  if (judged?.[judged.length - 1]?.verdict?.noteDe !== 'Falscher Raum.') fail('Verlauf: Urteil gehört zum richtigen Versuch')
+  const stillFnSrc = stillGenSrc.slice(stillGenSrc.indexOf('export async function stillFilmPanel'), stillGenSrc.indexOf('export async function saveFilmPlan'))
+  if ((stillFnSrc.match(/withAttempt\(/g) ?? []).length < 3) fail('Verlauf: jeder Malweg schreibt einen Versuch')
+  if (!stillGenSrc.includes('setRegieAttemptVerdict(item.regieAttempts')) fail('Verlauf: das Urteil der Regie kommt zum Versuch')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

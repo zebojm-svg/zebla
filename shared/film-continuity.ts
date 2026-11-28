@@ -277,8 +277,8 @@ export function sanitizeContinuity(
         .map((person) => {
           const item = person as Record<string, unknown>
           const name = clip(item?.name, 40)
-          const lookEn = clip(item?.lookEn, 240)
-          const lookDe = clip(item?.lookDe, 400)
+          const lookEn = clip(item?.lookEn, 400)
+          const lookDe = clip(item?.lookDe, 500)
           return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((person): person is FilmContinuityPerson => Boolean(person))
@@ -289,8 +289,8 @@ export function sanitizeContinuity(
         .map((place) => {
           const item = place as Record<string, unknown>
           const name = clip(item?.name, 40)
-          const lookEn = clip(item?.lookEn, 600)
-          const lookDe = clip(item?.lookDe, 600)
+          const lookEn = clip(item?.lookEn, 900)
+          const lookDe = clip(item?.lookDe, 900)
           return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((place): place is FilmContinuityPlace => Boolean(place))

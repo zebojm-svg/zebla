@@ -80,6 +80,10 @@ type Props = {
   onRematch?: () => void
   shotPlanDe?: string
   expectedShots?: number
+  /** Anhalten: der laufende Schritt läuft fertig, dann hört die Szene auf. */
+  onStop?: () => void
+  stopping?: boolean
+  stoppedNote?: string
 }
 
 export function FilmSceneGenerateBar({
@@ -96,6 +100,9 @@ export function FilmSceneGenerateBar({
   onRematch,
   shotPlanDe,
   expectedShots,
+  onStop,
+  stopping,
+  stoppedNote,
 }: Props) {
   const stats = sceneStillProgress(panels, styleId)
   const hint = stillLibraryHintDe(panels)
@@ -107,11 +114,11 @@ export function FilmSceneGenerateBar({
       ? 'Bild wird neu gemalt …'
       : progress && progress.current > 0
         ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
-        : status || 'Erzeuge Szene …'
+        : 'Erzeuge Szene …'
     : allDone
       ? 'Szene neu erzeugen'
       : stats.done > 0
-        ? 'Fehlende Bilder erzeugen'
+        ? 'Szene weiter erzeugen'
         : 'Diese Szene erzeugen'
 
   return (
@@ -152,8 +159,18 @@ export function FilmSceneGenerateBar({
             : `Erzeuge Szene «${scene.title}»${
                 progress ? ` — Bild ${progress.current} von ${progress.total}` : ' …'
               }`}
+          {!paintingOne && status ? ` ${status}` : ''}
+          {!paintingOne && onStop ? (
+            <>
+              {' '}
+              <button type="button" className="btn btn-secondary" disabled={stopping} onClick={onStop}>
+                {stopping ? 'Wird angehalten …' : 'Anhalten'}
+              </button>
+            </>
+          ) : null}
         </p>
       ) : null}
+      {!busy && stoppedNote ? <p className="alert alert-info">{stoppedNote}</p> : null}
       {error ? <div className="alert alert-error">{error}</div> : null}
       {hint ? (
         <p className="alert alert-warn">
@@ -487,6 +504,76 @@ export function FilmRegiePlanNote({ panel }: { panel: FilmStoryboardPanel }) {
     return <p className="alert alert-warn">{regiePlanErrorLineDe(panel.regiePlanError)}</p>
   }
   return null
+}
+
+function HistoryThumb({ url, children }: { url: string; children: ReactNode }) {
+  return (
+    <figure>
+      <a href={url} target="_blank" rel="noreferrer" title="Gross öffnen">
+        <img src={url} alt="" loading="lazy" />
+      </a>
+      <figcaption>{children}</figcaption>
+    </figure>
+  )
+}
+
+/** Unter jedem Bild, zugeklappt: Plan, Vorlagen und jeder Malversuch mit dem Urteil der Regie. */
+export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
+  const plan = panel.regiePlan
+  const attempts = panel.regieAttempts ?? []
+  if (!plan && attempts.length === 0) return null
+  const lastRefs = attempts[attempts.length - 1]?.refs ?? []
+  const refs = lastRefs.length ? lastRefs : (plan?.refs ?? [])
+  return (
+    <details className="film-scene-more">
+      <summary>So ist das Bild entstanden</summary>
+      {plan ? (
+        <>
+          <h4>Plan der Regie</h4>
+          <p>
+            {plan.place ? <>Ort: {plan.place}. </> : null}
+            Im Raum: {plan.bodies.length ? plan.bodies.join(', ') : 'niemand'}.
+            {plan.screens.length ? <> Nur auf einem Bildschirm: {plan.screens.join(', ')}.</> : null}
+          </p>
+          <p>Kamera: {plan.cameraDe}</p>
+        </>
+      ) : panel.regiePlanError ? (
+        <p className="muted">{regiePlanErrorLineDe(panel.regiePlanError)}</p>
+      ) : null}
+      {refs.length ? (
+        <>
+          <h4>Mitgeschickt an den Maler (und wofür, englisch)</h4>
+          <div className="film-still-history-grid">
+            {refs.map((ref) => (
+              <HistoryThumb key={ref.url} url={ref.url}>
+                {ref.useEn}
+              </HistoryThumb>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {attempts.length ? (
+        <>
+          <h4>Versuche</h4>
+          <div className="film-still-history-grid">
+            {attempts.map((attempt, index) => (
+              <HistoryThumb key={`${attempt.at}-${index}`} url={attempt.stillUrl}>
+                <strong>Versuch {index + 1}</strong> — {attempt.planned ? 'nach Plan' : 'ohne Plan'}
+                {attempt.hintDe ? <> · Dein Hinweis: {attempt.hintDe}</> : null}
+                {attempt.fixEn ? <> · Auftrag der Regie an den Maler: {attempt.fixEn}</> : null}
+                <br />
+                {attempt.verdict
+                  ? attempt.verdict.ok
+                    ? 'Regie: passt.'
+                    : `Regie: ${attempt.verdict.noteDe}`
+                  : 'Regie hat nicht angeschaut.'}
+              </HistoryThumb>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </details>
+  )
 }
 
 export function FilmBeatNotes({
@@ -823,6 +910,7 @@ export function FilmStillStrip({
                   {panel.harvestNoteDe ? (
                     <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
                   ) : null}
+                  <FilmStillHistory panel={panel} />
                 </>
               }
             />
