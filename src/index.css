@@ -3326,6 +3326,16 @@ html[dir='rtl'] .slideshow-topbar {
   width: 100%;
 }
 
+.film-pack-field textarea.film-pack-textarea {
+  min-height: 2.75rem;
+  max-height: 14rem;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.35;
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
 .film-pack-silent {
   margin: 0.15rem 0 0.35rem;
 }

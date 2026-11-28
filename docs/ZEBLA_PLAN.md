@@ -156,7 +156,7 @@ Bauschritte:
 
 **Live (Nov 2026):** **Bild ändern** plant neu mit Hinweis, malt mit Raumbild und Stammbildern wie erstes Malen; Regie prüft Schreibtisch, Kleidung, Bildschirm-Vorderseite, Haltung, Ausdruck; **Szene prüfen** (Gesamtschau) vergleicht Kleidung und Schreibtisch über die Szene.
 - **Stammbilder:** Regie vergleicht Katalog-Stammbild mit Regiebuch; bei Abweichung «Stammbild neu zeichnen» im Regiebuch. An den Maler geht nur ein geprüftes Stammbild.
-- **Druckansicht (kompakt):** auf Bilder «Druckansicht»; je Szene Seitenschätzung (kompakt), «Alle Details aufklappen/zuklappen». Druckroute: kleinere Bilder (max. ~300 px), knappe Typo, Zweispalten; «So ist das Bild entstanden» je Versuch eine Zeile; Mehr nur Plan + Urteil. Haken «Ausführlich drucken» = volle Prompts (Standard: aus).
+- **Druckansicht (kompakt, live auf main):** Adresse `…/dialog/<Geschichte>/board/druck` (alte `…/druck` leitet um). Auf Bilder oben «Druckansicht», je Szene mit Seitenschätzung und denselben Knöpfen «Alle Details aufklappen / zuklappen». Standard ist kompakt: kleine Bilder (~300 px), knappe Schrift, oft zwei Spalten; Regie-Verlauf je Versuch eine Zeile. «Ausführlich drucken» nur mit Haken (volle Prompts). **Stammbild:** im Regiebuch «Stammbild passt nicht — neu zeichnen», wenn Kleidung nicht zum Buch passt. **Handlung / Regie / Ton** unter jedem Bild: kleine Felder, wachsen mit dem Text (nicht mehr die hohe Standard-Box).
 
 **Nächste Baustellen (noch nicht hier):**
 

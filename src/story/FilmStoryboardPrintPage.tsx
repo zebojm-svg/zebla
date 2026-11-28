@@ -44,6 +44,7 @@ export function FilmStoryboardPrintPage() {
       return false
     }
   })
+  const [historyOpen, setHistoryOpen] = useState<boolean | undefined>(undefined)
 
   useEffect(() => {
     if (!id) return
@@ -124,6 +125,22 @@ export function FilmStoryboardPrintPage() {
             />{' '}
             Ausführlich drucken
           </label>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={verbose}
+            onClick={() => setHistoryOpen(true)}
+          >
+            Alle Details aufklappen
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={verbose}
+            onClick={() => setHistoryOpen(false)}
+          >
+            Alle zuklappen
+          </button>
           <Link className="btn btn-ghost" to={`/dialog/${id}/board`}>
             Zurück zu Bilder
           </Link>
@@ -133,7 +150,9 @@ export function FilmStoryboardPrintPage() {
         </div>
       </header>
 
-      <div className="film-print-doc">
+      <div
+        className={`film-print-doc${verbose || historyOpen ? ' film-print-open' : ''}`}
+      >
         <p className="film-print-meta">
           {title} · {new Date().toLocaleDateString('de-CH')}
         </p>
@@ -179,7 +198,7 @@ export function FilmStoryboardPrintPage() {
                         panel={panel}
                         compact
                         verbose={verbose}
-                        openOverride={verbose ? true : undefined}
+                        openOverride={verbose ? true : historyOpen}
                       />
                     </article>
                   )

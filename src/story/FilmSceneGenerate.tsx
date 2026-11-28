@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   STORY_ART_STYLES,
@@ -442,6 +442,44 @@ export function FilmPackSpeakerSelect({
   )
 }
 
+function FilmPackTextarea({
+  value,
+  disabled,
+  placeholder,
+  onChange,
+  onBlur,
+}: {
+  value: string
+  disabled?: boolean
+  placeholder: string
+  onChange: (next: string) => void
+  onBlur: () => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const fitHeight = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.max(el.scrollHeight, 44)}px`
+  }, [])
+  useLayoutEffect(() => {
+    fitHeight()
+  }, [value, fitHeight])
+  return (
+    <textarea
+      ref={ref}
+      className="input film-pack-textarea"
+      rows={1}
+      value={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      onInput={fitHeight}
+      onBlur={onBlur}
+    />
+  )
+}
+
 export function FilmPackFields({
   panel,
   busy,
@@ -464,13 +502,11 @@ export function FilmPackFields({
     <div className="film-pack-fields">
       <label className="film-pack-field">
         <span className="film-beat-col-label">Handlung</span>
-        <textarea
-          className="input"
-          rows={2}
+        <FilmPackTextarea
           value={handlung}
           disabled={busy}
           placeholder="z.B. Ramo stellt Teetassen und ein Tablett bereit"
-          onChange={(e) => setHandlung(e.target.value)}
+          onChange={setHandlung}
           onBlur={() => {
             if (handlung.trim() !== (panel.imageCue ?? '').trim()) onSave({ imageCue: handlung })
           }}
@@ -478,13 +514,11 @@ export function FilmPackFields({
       </label>
       <label className="film-pack-field">
         <span className="film-beat-col-label">Regie</span>
-        <textarea
-          className="input"
-          rows={2}
+        <FilmPackTextarea
           value={regie}
           disabled={busy}
           placeholder="z.B. Kamera auf den Herd, Ramo von der Seite"
-          onChange={(e) => setRegie(e.target.value)}
+          onChange={setRegie}
           onBlur={() => {
             if (regie.trim() !== (panel.directorNote ?? '').trim()) onSave({ directorNote: regie })
           }}
@@ -492,13 +526,11 @@ export function FilmPackFields({
       </label>
       <label className="film-pack-field">
         <span className="film-beat-col-label">Ton</span>
-        <textarea
-          className="input"
-          rows={2}
+        <FilmPackTextarea
           value={soundCue}
           disabled={busy}
           placeholder="z.B. Wasser läuft, Kessel pfeift"
-          onChange={(e) => setSoundCue(e.target.value)}
+          onChange={setSoundCue}
           onBlur={() => {
             if (soundCue.trim() !== (panel.soundCue ?? '').trim()) onSave({ soundCue })
           }}
