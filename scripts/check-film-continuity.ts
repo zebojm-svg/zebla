@@ -22,6 +22,8 @@ import {
 import {
   regieAttachmentLegendEn,
   regiePaintPromptEn,
+  readRegiePlan,
+  regiePlanErrorLineDe,
   regiePlanSummaryDe,
   sanitizeRegiePlan,
 } from '../shared/film-regie-plan.ts'
@@ -220,5 +222,42 @@ const loopSrc = readFileSync('src/story/generateSceneStills.ts', 'utf8')
 if (loopSrc.indexOf('filmPlanPanel') < 0 || loopSrc.indexOf('filmPlanPanel') > loopSrc.indexOf('filmStill(')) {
   fail('zuerst plant die Regie, dann wird gemalt')
 }
+
+const opts2 = { places: ['Videochat'], people: ['Lena', 'Amir'], options }
+const newPlace = readRegiePlan(
+  {
+    place: 'Amirs Zimmer',
+    placeLookEn: 'bookshelf on the left wall',
+    bodies: ['Amir (at his desk)', 'Handlung'],
+    screens: 'Lena',
+    cameraDe: 'Nah auf Amir.',
+    paintEn: 'Amir at his desk.',
+    refs: [],
+  },
+  opts2,
+)
+if (!newPlace.plan) fail(`ein Ort, der noch nicht im Regiebuch steht, wird angenommen: ${newPlace.errorDe}`)
+if (newPlace.plan.place !== 'Amirs Zimmer' || !newPlace.plan.placeLookEn) fail('der neue Ort und sein Aussehen gehen mit')
+if (newPlace.plan.bodies.join() !== 'Amir') fail('«Amir (at his desk)» ist Amir, «Handlung» ist keine Person')
+if (newPlace.plan.screens.join() !== 'Lena') fail('ein einzelner Name als Text gilt auch')
+if (!regiePaintPromptEn({ plan: newPlace.plan, styleLabel: 'x', stylePrompt: 'y', languageEn: 'Persian' }).includes('bookshelf on the left wall')) {
+  fail('der Maler bekommt das Aussehen des neuen Ortes')
+}
+if (!readRegiePlan([{ cameraDe: 'a', paintEn: 'b' }], opts2).plan) fail('eine Liste mit einem Plan wird gelesen')
+if (!readRegiePlan({ cameraDe: 'a' }, opts2).errorDe?.includes('Auftrag')) fail('ein fehlender Auftrag hat einen deutschen Grund')
+if (!regiePlanErrorLineDe('Zeitlimit.').startsWith('Regie konnte dieses Bild nicht planen: Zeitlimit. Gemalt wurde ohne Plan.')) {
+  fail('der Satz unter dem Bild sagt, warum ohne Plan gemalt wurde')
+}
+if (!planSrc.includes('errorDe') || planSrc.includes('return null')) fail('Planen scheitert nie still: es gibt einen Grund zurück')
+if (!planSrc.includes('placeLookEn') || !planSrc.includes('Handlung')) fail('die Regie darf neue Orte nennen und liest Handlung als Anweisung')
+if (!planFn.includes('regiePlanError')) fail('der Grund wird beim Bild gespeichert')
+if (!boardSrc.includes('function panelPersonName') || !boardSrc.includes('Regieanweisung ohne Sprecher')) {
+  fail('«Handlung» ist keine Person für Board-Vorschlag und Urteil')
+}
+if (!judgeFn.includes('darf hier nicht erscheinen')) fail('das Urteil bekommt ein Bild vom anderen Ort als Warnung')
+if (!loopSrc.includes('planErrorDe') || !loopSrc.includes('Regie konnte nicht planen')) {
+  fail('die Statuszeile sagt, wenn die Regie nicht planen konnte')
+}
+if (/catch \{\s*\/\* Ohne Plan/.test(loopSrc)) fail('kein stilles Weitermalen ohne Plan')
 
 console.log('OK film-continuity')

@@ -661,13 +661,14 @@ export const api = {
       styleId?: string,
       note?: string,
       regie?: { fixEn: string; freshRefs: boolean },
+      planErrorDe?: string,
     ) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
       }>(
         '/film-storyboard-still',
-        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, regie }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, regie, planErrorDe }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
     filmPlanPanel: (dialogId: string, panelId: string) =>
@@ -675,6 +676,8 @@ export const api = {
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
         planned: boolean
+        reused?: boolean
+        errorDe?: string
       }>(
         '/film-storyboard-plan',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },

@@ -119,6 +119,12 @@ Bauschritte:
    - Unter jedem Bild ein Satz «Regie: …» (wo die Kamera steht).
    - Alte Regiebücher: einmal «Neu lesen», damit die Orte die Wände beschreiben.
    - Kosten: ein Pro-Aufruf mehr pro Bild (etwa 1–2 Rappen).
+   - **Erster Lauf (28. Nov):** alle 6 Bilder auf dem alten Weg gemalt, der Plan griff nicht und niemand sah es. Folgen: Amir an einem zweiten Pult (Bild 2), Lena auf dem Bildschirm vor Amirs Zimmer (Bild 5).
+   - **Nie mehr still:** Kann die Regie nicht planen, steht unter dem Bild «Regie konnte dieses Bild nicht planen: Grund. Gemalt wurde ohne Plan.» Auch in der Statuszeile. Jede Bild-Notiz beginnt mit «Gemalt nach dem Plan der Regie.» oder «Gemalt ohne Plan der Regie (alter Weg).»
+   - Fehlt ein Ort im Regiebuch (z.B. nur ein Ort für zwei Zimmer), darf die Regie einen neuen Ort nennen und beschreiben. Er gilt.
+   - «Handlung», «Erzähler» sind keine Person: die Regie liest die Handlung und entscheidet, wer zu sehen ist.
+   - Anschauen: die Regie bekommt ein früheres Bild vom selben Ort und eins vom anderen Ort («darf hier nicht erscheinen»). Wer auf einem Bildschirm ist, sitzt vor seinem eigenen Raum.
+   - Regie-Planung darf bis 2 Minuten brauchen (vorher 1½).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
 5. Ganze Szene nebeneinander prüfen. Noch nicht.

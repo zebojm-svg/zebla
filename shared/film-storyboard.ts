@@ -105,6 +105,8 @@ export interface FilmStoryboardPanel {
   regieCheck?: { ok: boolean; noteDe: string; stillUrl: string }
   /** Die Regie hat dieses Bild geplant: Ort, wer da ist, Kamera, Vorlagen. Bleibt beim Neumalen. */
   regiePlan?: FilmRegiePlan
+  /** Warum die Regie dieses Bild nicht planen konnte (kurz, deutsch). Dann wurde ohne Plan gemalt. */
+  regiePlanError?: string
   /** Weit (Raum), Nahaufnahme (Gesicht) oder Zwischenbild (Tür, Tee). */
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */

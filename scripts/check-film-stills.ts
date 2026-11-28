@@ -1139,4 +1139,12 @@ if (/stillAttachmentInstruction|buildFilmStillPrompt|editImageWithKontext|cropWi
   fail('Mit Plan: keine alten Ort-Regeln, kein FLUX-Heranfahren, kein Zuschneiden')
 }
 
+const plannedBranch = stillGenSrc.slice(stillGenSrc.indexOf('!correction && panel.regiePlan'))
+if (!plannedBranch.includes('PAINTED_WITH_PLAN_DE') || !stillGenSrc.includes('PAINTED_WITHOUT_PLAN_DE')) {
+  fail('Unter jedem Bild steht, ob nach Plan oder auf dem alten Weg gemalt wurde')
+}
+if (!stillGenSrc.includes('planErrorDe') || !stillGenSrc.includes('regiePlanErrorLineDe')) {
+  fail('Ohne Plan gemalt: der Grund steht beim Bild')
+}
+
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')

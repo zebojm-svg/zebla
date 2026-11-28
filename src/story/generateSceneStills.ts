@@ -20,14 +20,22 @@ export async function stillWithRegie(opts: {
   onResult?: (result: { dialog: Dialog; board: FilmStoryboard }) => void
 }): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   opts.onStatus?.(`Die Regie plant ${opts.label} …`)
+  let planErrorDe: string | undefined
+  let unplannedDe = ''
   try {
     const planned = await api.ai.filmPlanPanel(opts.dialogId, opts.panelId)
     opts.onResult?.({ dialog: planned.dialog, board: planned.board })
-  } catch {
-    /* Ohne Plan malt Zebla wie bisher. */
+    if (!planned.planned && !planned.reused) unplannedDe = planned.errorDe || 'Grund unbekannt'
+  } catch (err) {
+    planErrorDe = (err instanceof Error && err.message.trim()) || 'Die Anfrage an die Regie ist fehlgeschlagen'
+    unplannedDe = planErrorDe
   }
-  opts.onStatus?.(`Jetzt wird ${opts.label} gemalt …`)
-  let result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId)
+  opts.onStatus?.(
+    unplannedDe
+      ? `${opts.label}: Regie konnte nicht planen (${unplannedDe.replace(/[.\s]+$/, '')}). Gemalt wird ohne Plan …`
+      : `Jetzt wird ${opts.label} gemalt …`,
+  )
+  let result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, undefined, planErrorDe)
   opts.onResult?.(result)
   for (let tries = 0; ; tries++) {
     opts.onStatus?.(`Die Regie schaut ${opts.label} an …`)
@@ -41,10 +49,14 @@ export async function stillWithRegie(opts: {
     opts.onResult?.(result)
     if (judged.verdict.ok || tries >= REGIE_TRIES) return result
     opts.onStatus?.(`${opts.label}: ${judged.verdict.noteDe} Neu gemalt (${tries + 1} von ${REGIE_TRIES}) …`)
-    result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, {
-      fixEn: judged.verdict.fixEn || judged.verdict.noteDe,
-      freshRefs: judged.verdict.freshRefs,
-    })
+    result = await api.ai.filmStill(
+      opts.dialogId,
+      opts.panelId,
+      opts.styleId,
+      undefined,
+      { fixEn: judged.verdict.fixEn || judged.verdict.noteDe, freshRefs: judged.verdict.freshRefs },
+      planErrorDe,
+    )
     opts.onResult?.(result)
   }
 }

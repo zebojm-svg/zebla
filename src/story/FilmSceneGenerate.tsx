@@ -19,6 +19,7 @@ import {
 import { stillPackNumber } from '../../shared/film-still-pack'
 import { packSpeakerChoices } from '../../shared/speakers'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
+import { regiePlanErrorLineDe } from '../../shared/film-regie-plan'
 import {
   gazeNoteDe,
   sceneGrundbildPanel,
@@ -479,6 +480,15 @@ export function FilmPackActions({
   )
 }
 
+/** Unter jedem Bild: was die Regie geplant hat — oder warum sie nicht planen konnte. */
+export function FilmRegiePlanNote({ panel }: { panel: FilmStoryboardPanel }) {
+  if (panel.regiePlan?.cameraDe) return <p className="muted">Regie: {panel.regiePlan.cameraDe}</p>
+  if (panel.regiePlanError) {
+    return <p className="alert alert-warn">{regiePlanErrorLineDe(panel.regiePlanError)}</p>
+  }
+  return null
+}
+
 export function FilmBeatNotes({
   panel,
   dialog,
@@ -501,7 +511,7 @@ export function FilmBeatNotes({
     <div className="film-beat-notes-list">
       {panel.shot === 'closeup' ? (
         <p>
-          <strong>Kamera</strong> Nahaufnahme {panel.closeupSpeaker || ''} — Kamera wechselt den Platz, man schaut der Person ins Gesicht (nicht nur Kopf drehen)
+          <strong>Kamera</strong> Nahaufnahme {isStageSpeaker(panel.closeupSpeaker) ? '' : panel.closeupSpeaker || ''} — Kamera wechselt den Platz, man schaut der Person ins Gesicht (nicht nur Kopf drehen)
         </p>
       ) : panel.shot === 'insert' ? (
         <p>
@@ -808,7 +818,7 @@ export function FilmStillStrip({
               notes={
                 <>
                   {panelBusy ? <p className="film-beat-count">wird neu gemalt …</p> : null}
-                  {panel.regiePlan?.cameraDe ? <p className="muted">Regie: {panel.regiePlan.cameraDe}</p> : null}
+                  <FilmRegiePlanNote panel={panel} />
                   <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
                   {panel.harvestNoteDe ? (
                     <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
