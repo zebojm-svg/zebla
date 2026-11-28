@@ -5,7 +5,7 @@
  */
 
 import type { FilmContinuity } from './film-continuity.js'
-import type { FilmRegiePlan } from './film-regie-plan.js'
+import type { FilmRegiePlan, RegieAttempt } from './film-regie-plan.js'
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
@@ -107,6 +107,8 @@ export interface FilmStoryboardPanel {
   regiePlan?: FilmRegiePlan
   /** Warum die Regie dieses Bild nicht planen konnte (kurz, deutsch). Dann wurde ohne Plan gemalt. */
   regiePlanError?: string
+  /** So ist das Bild entstanden: jeder Malversuch mit Urteil (höchstens 6). */
+  regieAttempts?: RegieAttempt[]
   /** Weit (Raum), Nahaufnahme (Gesicht) oder Zwischenbild (Tür, Tee). */
   shot?: FilmShot
   /** Wer in der Nahaufnahme spricht. */

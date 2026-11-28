@@ -287,6 +287,10 @@ export function FilmExportPage() {
                       : null
                   }
                   error={stills.errors[scene.id]}
+                  status={sceneBusy ? stills.status : ''}
+                  onStop={stills.stop}
+                  stopping={stills.stopping}
+                  stoppedNote={stills.stopped[scene.id]}
                   onGenerate={(force) => void generateScene(scene.id, force)}
                   onRematch={() => {
                     void (async () => {

@@ -608,4 +608,20 @@ if (!pageSrc.includes('<FilmRegiePlanNote') || !sceneGenSrc.includes('<FilmRegie
   fail('Beide Bild-Ansichten zeigen den Plan der Regie')
 }
 
+if (!sceneGenSrc.includes('So ist das Bild entstanden') || !pageSrc.includes('<FilmStillHistory') || !sceneGenSrc.includes('<FilmStillHistory')) {
+  fail('Unter jedem Bild: zugeklappt, wie das Bild entstanden ist')
+}
+if (!sceneGenSrc.includes("'Anhalten'") || !sceneGenSrc.includes("'Szene weiter erzeugen'")) {
+  fail('Szene: «Anhalten» während dem Erzeugen und «Szene weiter erzeugen» danach')
+}
+const stillLoopSrc = readFileSync(new URL('../src/story/generateSceneStills.ts', import.meta.url), 'utf8')
+if ((stillLoopSrc.match(/if \(stop\(\)/g) ?? []).length < 5 || !stillLoopSrc.includes('shouldStop: () => stopRef.current')) {
+  fail('Anhalten: zwischen Planen, Malen, Anschauen und Bildern wird nachgeschaut')
+}
+if (stillLoopSrc.includes('AbortController') || !stillLoopSrc.includes('Angehalten nach Bild')) {
+  fail('Anhalten bricht keine laufende Anfrage ab und sagt, nach welchem Bild')
+}
+const exportSrc = readFileSync(new URL('../src/story/FilmExportPage.tsx', import.meta.url), 'utf8')
+if (!pageSrc.includes('onStop={stills.stop}') || !exportSrc.includes('onStop={stills.stop}')) fail('Beide Seiten haben «Anhalten»')
+
 console.log('OK: Storyboard nutzt Bibliothek, spiegelt, nimmt Regie an, fügt Zeilen ein')

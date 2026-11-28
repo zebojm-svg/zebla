@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
@@ -10,44 +10,56 @@ import {
 
 const REGIE_TRIES = 2
 
-/** Die Regie plant, dann wird gemalt, dann schaut die Regie hin. Passt es nicht, höchstens zweimal neu. Danach bleibt das Bild markiert. */
+type StillStep = { dialog: Dialog; board: FilmStoryboard }
+
+/**
+ * Die Regie plant, dann wird gemalt, dann schaut die Regie hin. Passt es nicht, höchstens zweimal neu. Danach bleibt das Bild markiert.
+ * «Anhalten» bricht keine laufende Anfrage ab: zwischen den Schritten wird nachgeschaut. Das letzte Bild bleibt.
+ */
 export async function stillWithRegie(opts: {
   dialogId: string
   panelId: string
   styleId: string
   label: string
   onStatus?: (text: string) => void
-  onResult?: (result: { dialog: Dialog; board: FilmStoryboard }) => void
-}): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  onResult?: (result: StillStep) => void
+  shouldStop?: () => boolean
+}): Promise<StillStep & { stopped?: boolean; painted?: boolean }> {
+  const stop = () => Boolean(opts.shouldStop?.())
   opts.onStatus?.(`Die Regie plant ${opts.label} …`)
   let planErrorDe: string | undefined
   let unplannedDe = ''
+  let planStep: StillStep | null = null
   try {
     const planned = await api.ai.filmPlanPanel(opts.dialogId, opts.panelId)
-    opts.onResult?.({ dialog: planned.dialog, board: planned.board })
+    planStep = { dialog: planned.dialog, board: planned.board }
+    opts.onResult?.(planStep)
     if (!planned.planned && !planned.reused) unplannedDe = planned.errorDe || 'Grund unbekannt'
   } catch (err) {
     planErrorDe = (err instanceof Error && err.message.trim()) || 'Die Anfrage an die Regie ist fehlgeschlagen'
     unplannedDe = planErrorDe
   }
+  if (stop() && planStep) return { ...planStep, stopped: true, painted: false }
   opts.onStatus?.(
     unplannedDe
       ? `${opts.label}: Regie konnte nicht planen (${unplannedDe.replace(/[.\s]+$/, '')}). Gemalt wird ohne Plan …`
       : `Jetzt wird ${opts.label} gemalt …`,
   )
-  let result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, undefined, planErrorDe)
+  let result: StillStep = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, undefined, planErrorDe)
   opts.onResult?.(result)
   for (let tries = 0; ; tries++) {
+    if (stop()) return { ...result, stopped: true, painted: true }
     opts.onStatus?.(`Die Regie schaut ${opts.label} an …`)
     let judged: Awaited<ReturnType<typeof api.ai.filmJudge>>
     try {
       judged = await api.ai.filmJudge(opts.dialogId, opts.panelId)
     } catch {
-      return result
+      return { ...result, painted: true }
     }
     result = { dialog: judged.dialog, board: judged.board }
     opts.onResult?.(result)
-    if (judged.verdict.ok || tries >= REGIE_TRIES) return result
+    if (judged.verdict.ok || tries >= REGIE_TRIES) return { ...result, painted: true }
+    if (stop()) return { ...result, stopped: true, painted: true }
     opts.onStatus?.(`${opts.label}: ${judged.verdict.noteDe} Neu gemalt (${tries + 1} von ${REGIE_TRIES}) …`)
     result = await api.ai.filmStill(
       opts.dialogId,
@@ -59,6 +71,17 @@ export async function stillWithRegie(opts: {
     )
     opts.onResult?.(result)
   }
+}
+
+/** Nummer des Bildes in seiner Szene (1, 2, 3 …), so wie Jean-Marie sie sieht. */
+function scenePictureNumber(panels: FilmStoryboardPanel[], panelId: string): number {
+  const ordered = [...panels].sort((a, b) => a.panelIndex - b.panelIndex)
+  return ordered.findIndex((item) => item.id === panelId) + 1
+}
+
+export function stoppedNoteDe(lastNumber: number | null): string {
+  const after = lastNumber ? `Angehalten nach Bild ${lastNumber}.` : 'Angehalten, bevor ein neues Bild fertig war.'
+  return `${after} Schreib unter dem Bild, was anders sein soll, und drück «Bild ändern». Danach «Szene weiter erzeugen».`
 }
 
 export async function generateSceneStills(opts: {
@@ -74,18 +97,18 @@ export async function generateSceneStills(opts: {
   }) => void
   onStatus?: (text: string) => void
   prepare?: boolean
-}): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  shouldStop?: () => boolean
+}): Promise<StillStep & { stoppedNoteDe?: string }> {
+  const stop = () => Boolean(opts.shouldStop?.())
+  let last: StillStep | null = null
   if (opts.prepare !== false) {
     for (let step = 0; step < 24; step++) {
       const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId)
       opts.onStatus?.(prepared.didDe)
-      opts.onProgress({
-        current: 0,
-        total: opts.panels.length,
-        dialog: prepared.dialog,
-        board: prepared.board,
-      })
+      last = { dialog: prepared.dialog, board: prepared.board }
+      opts.onProgress({ current: 0, total: opts.panels.length, ...last })
       if (prepared.done) break
+      if (stop()) return { ...last, stoppedNoteDe: stoppedNoteDe(null) }
     }
   }
   const queue = panelsNeedingStills(opts.panels, opts.styleId, opts.force)
@@ -93,8 +116,9 @@ export async function generateSceneStills(opts: {
     throw new Error('Diese Szene hat schon Standbilder. Für neu: «Szene nochmals erzeugen».')
   }
 
-  let last: { dialog: Dialog; board: FilmStoryboard } | null = null
+  let lastNumber: number | null = null
   for (let i = 0; i < queue.length; i++) {
+    if (stop() && last) return { ...last, stoppedNoteDe: stoppedNoteDe(lastNumber) }
     const panel = queue[i]!
     const result = await stillWithRegie({
       dialogId: opts.dialogId,
@@ -103,14 +127,17 @@ export async function generateSceneStills(opts: {
       label: `Bild ${i + 1} von ${queue.length}`,
       onStatus: opts.onStatus,
       onResult: (step) => opts.onProgress({ current: i, total: queue.length, ...step }),
+      shouldStop: opts.shouldStop,
     })
     last = result
+    if (result.painted !== false) lastNumber = scenePictureNumber(opts.panels, panel.id)
     opts.onProgress({
       current: i + 1,
       total: queue.length,
       dialog: result.dialog,
       board: result.board,
     })
+    if (result.stopped) return { ...result, stoppedNoteDe: stoppedNoteDe(lastNumber) }
   }
   if (!last) throw new Error('Kein Bild erzeugt.')
   return last
@@ -129,6 +156,15 @@ export function useSceneStills(
     total: number
   } | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [stopped, setStopped] = useState<Record<string, string>>({})
+  const [stopping, setStopping] = useState(false)
+  const stopRef = useRef(false)
+
+  const stop = () => {
+    stopRef.current = true
+    setStopping(true)
+    setStatus('Wird angehalten, sobald der laufende Schritt fertig ist …')
+  }
 
   const generate = async (
     sceneId: string,
@@ -149,23 +185,32 @@ export function useSceneStills(
     setBusyPanelId(null)
     setStatus('Erzeuge Szene …')
     setErrors((prev) => ({ ...prev, [sceneId]: '' }))
+    setStopped((prev) => ({ ...prev, [sceneId]: '' }))
     setProgress({ sceneId, current: 0, total: queue.length })
+    stopRef.current = false
+    setStopping(false)
     try {
-      await generateSceneStills({
+      const done = await generateSceneStills({
         dialogId,
         styleId,
         panels,
         force,
-        onStatus: (text) => setStatus(text),
+        onStatus: (text) => {
+          if (!stopRef.current) setStatus(text)
+        },
         onProgress: ({ current, total, dialog, board }) => {
           apply(dialog, board)
           setProgress({ sceneId, current, total })
         },
+        shouldStop: () => stopRef.current,
       })
+      if (done.stoppedNoteDe) setStopped((prev) => ({ ...prev, [sceneId]: done.stoppedNoteDe as string }))
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
       setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
     } finally {
+      stopRef.current = false
+      setStopping(false)
       setBusySceneId(null)
       setBusyPanelId(null)
       setStatus('')
@@ -229,5 +274,16 @@ export function useSceneStills(
     }
   }
 
-  return { busySceneId, busyPanelId, status, progress, errors, generate, generateOne }
+  return {
+    busySceneId,
+    busyPanelId,
+    status,
+    progress,
+    errors,
+    stopped,
+    stopping,
+    stop,
+    generate,
+    generateOne,
+  }
 }

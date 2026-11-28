@@ -29,11 +29,19 @@ Du hältst einmal fest, wo die Leute sind und wie sie aussehen. Ein Wort in eine
 «Afrika» an einer anderen Stelle macht die Leute in dieser Szene nicht zu anderen Menschen.
 together=false nur, wenn sie wirklich per Video, Zoom oder Bildschirm verbunden sind und nicht im selben Raum sitzen.
 Sonst together=true: sie sind physisch zusammen.
-lookEn beschreibt ein eigenes Gesicht, Haare, Kleidung, Brille, und was die Person am Körper oder in der Hand hat. Keine bekannte Figur aus einem Buch oder Film.
+PERSONEN — nur was man sieht. lookEn und lookDe beschreiben ausschliesslich das Aussehen, so dass ein Maler die Person jedes Mal gleich zeichnet:
+- Alter (ungefähr), Mann oder Frau,
+- Haare: Farbe, Länge, Frisur,
+- Hautfarbe,
+- Kleidung mit Farben (Oberteil, Hose oder Rock, Schuhe, wenn man sie sieht),
+- Brille, Schmuck, und was die Person trägt oder in der Hand hat.
+Charakter, Laune, Hobbys und was die Person tut gehören NICHT in lookEn oder lookDe (nicht «freundlich», nicht «spielt gern Gitarre»). Steht im Dialog nichts zum Aussehen, erfinde ein passendes, festes Aussehen.
+Keine bekannte Figur aus einem Buch oder Film.
 lookDe ist derselbe Inhalt auf Deutsch, in einfachen Sätzen. Jean-Marie liest ihn im Regiebuch.
-Bei Orten: lookEn und lookDe sagen, wie es dort aussieht und wer dort ist.
-Beschreibe jeden Ort so, dass man ihn aus jeder Richtung zeichnen kann: was an welcher Wand ist (Fenster, Tür, Regal, Bild, Möbel), wo die Person sitzt oder steht und in welche Richtung sie schaut.
+ORTE — konkret und unverwechselbar. lookEn und lookDe nennen bestimmte Möbel, Farben (Wände, Boden, Möbel) und Licht.
+Beschreibe jeden Ort so, dass man ihn aus jeder Richtung zeichnen kann: Wand für Wand, was an welcher Wand ist (Fenster, Tür, Regal, Bild, Möbel), wo die Person sitzt oder steht und in welche Richtung sie schaut.
 Ist eine Person an einem anderen Ort als die andere, bekommt jeder Ort einen eigenen Eintrag mit eigenem Namen.
+Zwei verschiedene Orte dürfen nie dieselbe Beschreibung haben. Gib jedem Ort andere Wandfarben, andere Möbel und eine andere Anordnung, so dass man auf einem Bild sofort erkennt, welcher Ort es ist. «Hell und freundlich» allein beschreibt keinen Ort.
 Kamera-Regeln für alle Bilder: Ein Gegenschuss zeigt die gegenüberliegende Wand. Die Leute schauen ihr Gegenüber oder das an, womit sie gerade beschäftigt sind, nicht den Zuschauer, ausser der Satz spricht den Zuschauer an.
 Stehen VORGABEN VON JEAN-MARIE unter der Geschichte, gelten sie. Sie gehen dem Dialog vor, wo sie sich widersprechen.
 Nur JSON:
@@ -41,8 +49,8 @@ Nur JSON:
   "situationDe": "ein deutscher Satz",
   "situationEn": "one English paragraph for the painter",
   "together": true,
-  "people": [{ "name": "Lena", "lookEn": "woman, short dark hair, green coat", "lookDe": "Frau, kurze dunkle Haare, grüner Mantel" }],
-  "places": [{ "name": "Küche", "lookEn": "bright kitchen, gas stove, window to the street", "lookDe": "helle Küche, Gasherd, Fenster zur Strasse" }],
+  "people": [{ "name": "Lena", "lookEn": "woman about 30, light skin, short dark brown bob, round black glasses, green wool coat over a white shirt, blue jeans", "lookDe": "Frau um 30, helle Haut, kurzer dunkelbrauner Bob, runde schwarze Brille, grüner Wollmantel über weissem Hemd, blaue Jeans" }],
+  "places": [{ "name": "Küche", "lookEn": "kitchen with yellow walls and grey tiled floor. Left wall: white gas stove and a shelf with red pots. Back wall: window to the street with blue curtains. Right wall: wooden door. Round wooden table in the middle; Lena sits on its far side facing the window.", "lookDe": "Küche mit gelben Wänden und grauem Fliesenboden. Linke Wand: weisser Gasherd, Regal mit roten Töpfen. Hintere Wand: Fenster zur Strasse mit blauen Vorhängen. Rechte Wand: Holztür. Runder Holztisch in der Mitte; Lena sitzt auf der hinteren Seite und schaut zum Fenster." }],
   "locksEn": ["same green coat in every frame"],
   "shots": [
     { "panelId": "die echte Bild-id", "viewKey": "kueche|weit", "sendViewKeys": [], "whyDe": "erster Blick auf die Küche" }
@@ -104,15 +112,40 @@ function panelsForContinuity(board?: FilmStoryboard) {
   }))
 }
 
+/** Ein schon gemaltes Bild, das die Regie beim Neu-Lesen ansieht. */
+export interface RegiebuchStill {
+  url: string
+  aboutDe: string
+}
+
+export const REGIEBUCH_STILLS_MAX = 4
+
 async function readStory(
   dialog: Dialog,
   board: FilmStoryboard | undefined,
   vorgabenDe: string,
+  stills: RegiebuchStill[] = [],
 ): Promise<FilmContinuity | null> {
   const text = storyTextForContinuity(dialog, board)
-  const ask = vorgabenDe.trim() ? `${text}\n\nVORGABEN VON JEAN-MARIE:\n${vorgabenDe}` : text
+  const images: Array<{ mimeType: string; data: string }> = []
+  const legend: string[] = []
+  for (const still of stills.slice(0, REGIEBUCH_STILLS_MAX)) {
+    const part = await imagePart(still.url)
+    if (!part) continue
+    images.push(part)
+    legend.push(`Bild ${images.length}: ${still.aboutDe}`)
+  }
+  const ask = [
+    text,
+    vorgabenDe.trim() ? `VORGABEN VON JEAN-MARIE:\n${vorgabenDe}` : '',
+    legend.length
+      ? `SCHON GEMALTE BILDER (angehängt, von der Regie gutgeheissen):\n${legend.join('\n')}\nNimm das Aussehen der Leute und Orte aus diesen Bildern, damit das Regiebuch zum Gemalten passt. Vorgaben von Jean-Marie gehen vor.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   try {
-    const raw = await regieJson<unknown>(SYSTEM, ask, [], {
+    const raw = await regieJson<unknown>(SYSTEM, ask, images, {
       temperature: 0.2,
       timeoutMs: 75_000,
       timeoutMessage: 'Die Regie hat die Geschichte nicht rechtzeitig gelesen.',
@@ -127,7 +160,7 @@ async function readStory(
 export async function ensureFilmContinuity(
   dialog: Dialog,
   board?: FilmStoryboard,
-  opts?: { fresh?: boolean },
+  opts?: { fresh?: boolean; stills?: RegiebuchStill[] },
 ): Promise<FilmContinuity> {
   const text = storyTextForContinuity(dialog, board)
   const key = continuitySourceKey(text)
@@ -147,7 +180,7 @@ export async function ensureFilmContinuity(
     ...(cached?.byUser ? { byUser: true, notesDe: cached.notesDe } : {}),
   }
   const vorgaben = cached?.byUser ? regiebuchVorgabenDe(regiebuchFromContinuity(cached)) : ''
-  const read = await readStory(dialog, board, vorgaben)
+  const read = await readStory(dialog, board, vorgaben, opts?.stills)
   if (read) return { ...read, ...keep }
   if (cached?.byUser) return { ...cached, sourceKey: key, shots: fallbackShots(panels) }
   return {

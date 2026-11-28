@@ -29,6 +29,54 @@ export interface FilmRegiePlan {
   refs: FilmRegiePlanRef[]
 }
 
+/** Ein Malversuch für ein Bild: was gemalt wurde, womit, und was die Regie dazu sagte. Nur Links und kurze Sätze. */
+export interface RegieAttempt {
+  stillUrl: string
+  at: string
+  planned: boolean
+  verdict?: { ok: boolean; noteDe: string }
+  /** Auftrag der Regie an den Maler für diesen Versuch (nach einem Fehler). */
+  fixEn?: string
+  /** Jean-Maries Hinweis bei «Bild ändern». */
+  hintDe?: string
+  /** Was dem Maler mitgeschickt wurde und wofür. */
+  refs?: Array<{ url: string; useEn: string }>
+}
+
+export const REGIE_ATTEMPTS_MAX = 6
+
+/** Neuer Versuch. fresh = neuer Durchgang für dieses Bild: alte Versuche fallen weg. */
+export function addRegieAttempt(
+  attempts: RegieAttempt[] | undefined,
+  attempt: RegieAttempt,
+  fresh: boolean,
+): RegieAttempt[] {
+  const clean: RegieAttempt = {
+    ...attempt,
+    ...(attempt.fixEn ? { fixEn: attempt.fixEn.slice(0, 400) } : {}),
+    ...(attempt.hintDe ? { hintDe: attempt.hintDe.slice(0, 300) } : {}),
+    refs: (attempt.refs ?? [])
+      .filter((ref) => ref.url.startsWith('http'))
+      .slice(0, 4)
+      .map((ref) => ({ url: ref.url, useEn: ref.useEn.slice(0, 200) })),
+  }
+  return [...(fresh ? [] : (attempts ?? [])), clean].slice(-REGIE_ATTEMPTS_MAX)
+}
+
+/** Urteil der Regie zum Versuch mit diesem Bild. */
+export function setRegieAttemptVerdict(
+  attempts: RegieAttempt[] | undefined,
+  stillUrl: string,
+  verdict: { ok: boolean; noteDe: string },
+): RegieAttempt[] | undefined {
+  if (!attempts?.length) return attempts
+  const at = attempts.map((item) => item.stillUrl).lastIndexOf(stillUrl)
+  if (at < 0) return attempts
+  return attempts.map((item, index) =>
+    index === at ? { ...item, verdict: { ok: verdict.ok, noteDe: verdict.noteDe.slice(0, 240) } } : item,
+  )
+}
+
 /** Eine Vorlage, die die Regie für ein Bild wählen kann. */
 export interface RegieRefOption {
   id: string

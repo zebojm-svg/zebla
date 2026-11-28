@@ -42,6 +42,8 @@ import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage, paintRegiePlannedStill } from './film-stills.js'
 import { planStoryPicture } from './film-regie-plan.js'
 import {
+  addRegieAttempt,
+  setRegieAttemptVerdict,
   PAINTED_WITH_PLAN_DE,
   PAINTED_WITHOUT_PLAN_DE,
   regiePlanErrorLineDe,
@@ -55,6 +57,8 @@ import {
   ensureFilmContinuity,
   ensureSpeakerPlate,
   judgeStoryStill,
+  REGIEBUCH_STILLS_MAX,
+  type RegiebuchStill,
   type RegieVerdict,
   jobsForLibrary,
   placePlate,
@@ -1151,13 +1155,38 @@ export async function judgeFilmPanel(
     continuity,
     panels: board.panels.map((item) =>
       item.id === panel.id
-        ? { ...item, regieCheck: { ok: verdict.ok, noteDe: verdict.noteDe, stillUrl: panel.stillUrl as string } }
+        ? {
+            ...item,
+            regieCheck: { ok: verdict.ok, noteDe: verdict.noteDe, stillUrl: panel.stillUrl as string },
+            regieAttempts: setRegieAttemptVerdict(item.regieAttempts, panel.stillUrl as string, verdict),
+          }
         : item,
     ),
   }
   const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(next) }, profile)
   if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Das Urteil der Regie konnte nicht gespeichert werden.')
   return { dialog: updated, board: updated.filmStoryboard, verdict }
+}
+
+/** Höchstens zwei gutgeheissene Bilder je Person, damit das Regiebuch zum Gemalten passt. */
+function regiebuchStills(board: FilmStoryboard): RegiebuchStill[] {
+  const out: RegiebuchStill[] = []
+  const perPerson = new Map<string, number>()
+  for (const panel of board.panels) {
+    const url = panel.stillUrl
+    if (!url?.startsWith('http') || out.some((item) => item.url === url)) continue
+    if (!(panel.regieCheck?.ok && panel.regieCheck.stillUrl === url)) continue
+    const people = panel.regiePlan
+      ? [...panel.regiePlan.bodies, ...panel.regiePlan.screens]
+      : [panelPersonName(panel)].filter(Boolean)
+    const wanted = people.filter((name) => (perPerson.get(name.toLowerCase()) ?? 0) < 2)
+    if (!wanted.length) continue
+    for (const name of wanted) perPerson.set(name.toLowerCase(), (perPerson.get(name.toLowerCase()) ?? 0) + 1)
+    const where = panel.regiePlan?.place ? ` am Ort ${panel.regiePlan.place}` : ''
+    out.push({ url, aboutDe: `zeigt ${people.join(', ')}${where}` })
+    if (out.length >= REGIEBUCH_STILLS_MAX) break
+  }
+  return out
 }
 
 /** Regiebuch: die Regie liest (fresh = noch einmal), oder sie übernimmt Jean-Maries Änderung. */
@@ -1172,7 +1201,10 @@ export async function regiebuchFilm(
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
   const continuity = opts.edit
     ? await applyRegiebuchEdit(dialog, board, opts.edit)
-    : await ensureFilmContinuity(dialog, board, { fresh: opts.fresh })
+    : await ensureFilmContinuity(dialog, board, {
+        fresh: opts.fresh,
+        stills: opts.fresh ? regiebuchStills(board) : [],
+      })
   const updated = await updateDialog(
     dialogId,
     userId,
@@ -1290,6 +1322,34 @@ export async function stillFilmPanel(
   }
 
   let nextSections = dialog.sections
+  const firstTry = !correction && !regie?.fixEn
+  const withAttempt = (
+    nextBoard: FilmStoryboard,
+    stillUrl: string,
+    planned: boolean,
+    refs: Array<{ url: string; useEn: string }>,
+  ): FilmStoryboard => ({
+    ...nextBoard,
+    panels: nextBoard.panels.map((p) =>
+      p.id === panelId
+        ? {
+            ...p,
+            regieAttempts: addRegieAttempt(
+              p.regieAttempts,
+              {
+                stillUrl,
+                at: new Date().toISOString(),
+                planned,
+                ...(regie?.fixEn ? { fixEn: regie.fixEn } : {}),
+                ...(correction ? { hintDe: correction } : {}),
+                refs,
+              },
+              firstTry,
+            ),
+          }
+        : p,
+    ),
+  })
   const persist = async (nextBoard: FilmStoryboard) => {
     const updated = await updateDialog(
       dialogId,
@@ -1344,7 +1404,7 @@ export async function stillFilmPanel(
         fixEn: regie?.fixEn,
       })
       const withNote = applyPanelHarvestNote(
-        applyPanelStill(working, panelId, url, resolvedStyle),
+        withAttempt(applyPanelStill(working, panelId, url, resolvedStyle), url, true, refs),
         panelId,
         [
           PAINTED_WITH_PLAN_DE,
@@ -1533,7 +1593,9 @@ export async function stillFilmPanel(
         beatTotal,
         inventory: dialog.filmInventory,
       })
-      next = applyPanelStill(next, panelId, closeUrl, resolvedStyle)
+      next = withAttempt(applyPanelStill(next, panelId, closeUrl, resolvedStyle), closeUrl, false, [
+        { url: newWideUrl, useEn: 'new wide picture of the room, the close-up is cut from it' },
+      ])
       const withNote = applyPanelHarvestNote(
         finishAfterCorrection(next, panelForGen),
         panelId,
@@ -1587,7 +1649,11 @@ export async function stillFilmPanel(
       inventory: dialog.filmInventory,
       library: editLibrary,
     })
-    let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
+    const sentRefs = [
+      ...directorRefs.map((ref) => ({ url: ref.url, useEn: ref.name })),
+      ...pack.items.map((item) => ({ url: item.url, useEn: `${item.role}: ${item.name}` })),
+    ].filter((ref, index, all) => all.findIndex((other) => other.url === ref.url) === index)
+    let withStill = withAttempt(applyPanelStill(boardForGen, panelId, url, resolvedStyle), url, false, sentRefs)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
       withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
     }

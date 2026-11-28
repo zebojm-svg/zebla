@@ -11,6 +11,7 @@ import {
   FilmRegiePlanNote,
   FilmSceneGenerateBar,
   FilmStillFixBar,
+  FilmStillHistory,
   FilmStyleTabs,
 } from './FilmSceneGenerate'
 import { stillPackNumber } from '../../shared/film-still-pack'
@@ -187,6 +188,7 @@ function PanelCard({
               )
             ) : null}
             <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
+            <FilmStillHistory panel={panel} />
             <div className="film-tweak">
               <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
                 {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
@@ -552,6 +554,9 @@ export function FilmStoryboardPage() {
                     onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
                     shotPlanDe={sceneShotPlanDe(panels)}
                     expectedShots={expectedSceneShotCount(dialog, scene.id)}
+                    onStop={stills.stop}
+                    stopping={stills.stopping}
+                    stoppedNote={stills.stopped[scene.id]}
                   />
                 <FilmScenePreviewPlayer
                   dialogId={dialog.id}
