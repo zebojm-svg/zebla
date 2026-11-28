@@ -277,7 +277,7 @@ Prüfe der Reihe nach:
 1. Jede Person ist höchstens einmal zu sehen. Auch nicht zusätzlich auf einem zweiten Bildschirm, in einem eingeblendeten Fenster oder als Doppelgänger, ausser der Satz will das.
 2. Nur wer laut Regiebuch und Plan der Regie in diesem Moment an diesem Ort ist, ist körperlich hier. Wer laut Plan nur auf einem Bildschirm ist, ist nicht als Körper im Raum. Keine fremde Person, die im Regiebuch nicht vorkommt.
 3. Gesicht, Haare, Kleidung und Dinge am Körper wie im Regiebuch und wie auf den früheren Bildern derselben Person.
-4. Der Ort sieht aus wie im Regiebuch. Dinge, die zu einem anderen Ort gehören, tauchen hier nicht auf. Ist es der Raum eines anderen Ortes, ist das ein Fehler, und freshRefs ist true.
+4. Der Ort sieht aus wie im Regiebuch und im Plan. Dinge, die zu einem anderen Ort gehören, tauchen hier nicht auf. Ist es der Raum eines anderen Ortes, ist das ein Fehler, und freshRefs ist true. Vergleiche mit den früheren Bildern, die als «anderer Ort» bezeichnet sind: gleiche Möbel, gleiche Dinge an der Wand, gleiche Fenster hinter einer Person heissen, dass sie im falschen Raum ist. Das gilt auch für jemanden auf einem Bildschirm: er sitzt vor seinem eigenen Raum, nicht vor dem Raum einer anderen Person.
 5. Die Einstellung passt zum Satz und zum Plan: nah heisst, diese Person füllt das Bild.
 6. Unlesbare Fantasie-Schrift auf Zetteln, Schildern oder Bildschirmen ist ein Fehler, ausser der Satz braucht Schrift.
 7. Die Leute posieren nicht für den Zuschauer. Sie schauen ihr Gegenüber an oder das, womit sie beschäftigt sind, ausser der Satz spricht den Zuschauer an.
@@ -304,7 +304,7 @@ export async function judgeStoryStill(opts: {
   const still = await imagePart(opts.imageUrl)
   if (!still) return pass
   const refs: Array<{ part: { mimeType: string; data: string }; roleDe: string }> = []
-  for (const ref of opts.refs.slice(0, 3)) {
+  for (const ref of opts.refs.slice(0, 4)) {
     const part = await imagePart(ref.url)
     if (part) refs.push({ part, roleDe: ref.roleDe })
   }

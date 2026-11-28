@@ -5,6 +5,7 @@
  */
 
 import type { FilmContinuity } from './film-continuity.js'
+import { isNarratorName, isStageSpeaker } from './types.js'
 
 export interface FilmRegiePlanRef {
   id: string
@@ -15,6 +16,8 @@ export interface FilmRegiePlanRef {
 
 export interface FilmRegiePlan {
   place: string
+  /** Nur wenn der Ort noch nicht im Regiebuch steht: wie er aussieht, englisch, von der Regie. */
+  placeLookEn?: string
   /** Körperlich im Bild. */
   bodies: string[]
   /** Nur auf einem Bildschirm zu sehen. */
@@ -44,29 +47,42 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
+/** «Amir (on screen)» ist Amir. Handlung, Erzähler usw. sind keine Personen. */
 function knownNames(raw: unknown, known: string[]): string[] {
-  if (!Array.isArray(raw)) return []
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' && raw.trim() ? raw.split(',') : []
   const out: string[] = []
-  for (const item of raw) {
-    const name = clip(item, 40)
-    if (!name) continue
-    const match = known.find((have) => sameName(have, name)) ?? (known.length ? undefined : name)
+  for (const item of list) {
+    const name = clip(item, 60)
+    if (!name || isStageSpeaker(name) || isNarratorName(name)) continue
+    const words = name.toLowerCase().split(/[^\p{L}\p{N}]+/u)
+    const match =
+      known.find((have) => sameName(have, name)) ??
+      known.find((have) => have.trim() && words.includes(have.trim().toLowerCase())) ??
+      (known.length ? undefined : name)
     if (match && !out.some((have) => sameName(have, match))) out.push(match)
   }
   return out.slice(0, 8)
 }
 
-export function sanitizeRegiePlan(
+export type RegiePlanRead = { plan: FilmRegiePlan; errorDe?: undefined } | { plan?: undefined; errorDe: string }
+
+/** Liest die Antwort der Regie. Ein Ort, der noch nicht im Regiebuch steht, gilt auch. */
+export function readRegiePlan(
   raw: unknown,
   opts: { places: string[]; people: string[]; options: RegieRefOption[] },
-): FilmRegiePlan | null {
-  if (!raw || typeof raw !== 'object') return null
-  const row = raw as Record<string, unknown>
+): RegiePlanRead {
+  const first = Array.isArray(raw) ? raw.find((item) => item && typeof item === 'object') : raw
+  if (!first || typeof first !== 'object') return { errorDe: 'Die Antwort der Regie war leer.' }
+  const row = first as Record<string, unknown>
   const paintEn = clip(row.paintEn, 1800)
   const cameraDe = clip(row.cameraDe, 240)
-  if (!paintEn || !cameraDe) return null
-  const placeRaw = clip(row.place, 40)
-  const place = opts.places.find((name) => sameName(name, placeRaw)) ?? placeRaw
+  if (!paintEn && !cameraDe) return { errorDe: 'Die Regie hat keinen Auftrag und keinen Kamera-Satz geschrieben.' }
+  if (!paintEn) return { errorDe: 'Die Regie hat keinen Auftrag an den Maler geschrieben.' }
+  if (!cameraDe) return { errorDe: 'Die Regie hat nicht gesagt, wo die Kamera steht.' }
+  const placeRaw = clip(row.place, 60)
+  const known = opts.places.find((name) => sameName(name, placeRaw))
+  const place = known ?? placeRaw
+  const placeLookEn = known ? '' : clip(row.placeLookEn, 400)
   const bodies = knownNames(row.bodies, opts.people)
   const screens = knownNames(row.screens, opts.people).filter((name) => !bodies.some((b) => sameName(b, name)))
   const refs: FilmRegiePlanRef[] = []
@@ -79,8 +95,23 @@ export function sanitizeRegiePlan(
     refs.push({ id, url: option.url, useEn })
     if (refs.length >= REGIE_PLAN_MAX_REFS) break
   }
-  return { place, bodies, screens, cameraDe, paintEn, refs }
+  return { plan: { place, ...(placeLookEn ? { placeLookEn } : {}), bodies, screens, cameraDe, paintEn, refs } }
 }
+
+export function sanitizeRegiePlan(
+  raw: unknown,
+  opts: { places: string[]; people: string[]; options: RegieRefOption[] },
+): FilmRegiePlan | null {
+  return readRegiePlan(raw, opts).plan ?? null
+}
+
+/** Unter dem Bild, wenn die Regie nicht planen konnte. */
+export function regiePlanErrorLineDe(reason: string): string {
+  return `Regie konnte dieses Bild nicht planen: ${reason.trim().replace(/[.\s]+$/, '')}. Gemalt wurde ohne Plan.`
+}
+
+export const PAINTED_WITH_PLAN_DE = 'Gemalt nach dem Plan der Regie.'
+export const PAINTED_WITHOUT_PLAN_DE = 'Gemalt ohne Plan der Regie (alter Weg).'
 
 export function isFilmRegiePlan(value: unknown): value is FilmRegiePlan {
   if (!value || typeof value !== 'object') return false
@@ -92,6 +123,7 @@ export function isFilmRegiePlan(value: unknown): value is FilmRegiePlan {
 export function regiePlanSummaryDe(plan: FilmRegiePlan): string {
   return [
     plan.place ? `Ort ${plan.place}` : '',
+    plan.placeLookEn ? `(neuer Ort, so sieht er aus: ${plan.placeLookEn.slice(0, 200)})` : '',
     plan.bodies.length ? `im Raum: ${plan.bodies.join(', ')}` : 'niemand im Raum',
     plan.screens.length ? `nur auf Bildschirm: ${plan.screens.join(', ')}` : '',
     `Kamera: ${plan.cameraDe}`,
@@ -135,12 +167,18 @@ export function regiePaintPromptEn(opts: {
     'FINISHED STILL FRAME for an illustrated story. One single coherent illustration, not a collage, not cut-outs, not a sketch.',
     `Art style (${opts.styleLabel}): ${opts.stylePrompt}`,
     `DIRECTOR'S INSTRUCTION FOR THIS PICTURE: ${opts.plan.paintEn}`,
-    place ? `Place ${place.name}: ${place.lookEn}` : opts.plan.place ? `Place: ${opts.plan.place}.` : '',
+    place
+      ? `Place ${place.name}: ${place.lookEn}`
+      : opts.plan.place
+        ? `Place ${opts.plan.place}${opts.plan.placeLookEn ? `: ${opts.plan.placeLookEn}` : '.'}`
+        : '',
     people.length ? `Looks (same in every picture): ${people.join(' ')}` : '',
     opts.plan.bodies.length
       ? `Physically present in this picture, each exactly once: ${opts.plan.bodies.join(', ')}.`
       : 'Nobody is physically present unless the instruction names them.',
-    opts.plan.screens.length ? `Seen only on a screen, not as a body in the room: ${opts.plan.screens.join(', ')}.` : '',
+    opts.plan.screens.length
+      ? `Seen only on a screen, not as a body in the room: ${opts.plan.screens.join(', ')}. Each of them is in their own place; what is behind them on the screen belongs to their place, not to the room the screen stands in.`
+      : '',
     'Each person appears once. No twins, no extra strangers.',
     'Eyes fully drawn: white sclera, coloured iris, dark pupil.',
     'No speech bubbles, no subtitles, no captions, no written stage directions on the image.',

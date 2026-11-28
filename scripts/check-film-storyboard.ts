@@ -600,4 +600,12 @@ const hasDe: Dialog = {
 }
 if (dialogNeedsNativeTranslation(hasDe)) fail('mit nativeText ist Deutsch da')
 
+const sceneGenSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.meta.url), 'utf8')
+if (!sceneGenSrc.includes('export function FilmRegiePlanNote') || !sceneGenSrc.includes('regiePlanErrorLineDe')) {
+  fail('Unter dem Bild: Kamera-Satz der Regie oder warum sie nicht planen konnte')
+}
+if (!pageSrc.includes('<FilmRegiePlanNote') || !sceneGenSrc.includes('<FilmRegiePlanNote')) {
+  fail('Beide Bild-Ansichten zeigen den Plan der Regie')
+}
+
 console.log('OK: Storyboard nutzt Bibliothek, spiegelt, nimmt Regie an, fügt Zeilen ein')

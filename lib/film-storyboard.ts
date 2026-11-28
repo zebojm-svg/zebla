@@ -41,7 +41,14 @@ import {
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage, paintRegiePlannedStill } from './film-stills.js'
 import { planStoryPicture } from './film-regie-plan.js'
-import { regiePlanSummaryDe, type FilmRegiePlan, type RegieRefOption } from '../shared/film-regie-plan.js'
+import {
+  PAINTED_WITH_PLAN_DE,
+  PAINTED_WITHOUT_PLAN_DE,
+  regiePlanErrorLineDe,
+  regiePlanSummaryDe,
+  type FilmRegiePlan,
+  type RegieRefOption,
+} from '../shared/film-regie-plan.js'
 import {
   briefForImage,
   applyRegiebuchEdit,
@@ -946,9 +953,22 @@ function panelLinesDe(dialog: Dialog, panel: FilmStoryboardPanel): string {
   return [text, panel.imageCue ? `Bild-Hinweis: ${panel.imageCue}` : ''].filter(Boolean).join('\n')
 }
 
+/** Eine echte Person, nicht «Handlung» oder «Erzähler». */
+function panelPersonName(panel: FilmStoryboardPanel): string {
+  return (
+    [panel.closeupSpeaker, ...panel.placements.map((item) => item.name)]
+      .map((name) => (name || '').trim())
+      .find((name) => name && !isStageSpeaker(name) && !isNarratorName(name)) ?? ''
+  )
+}
+
 function boardShotDe(panel: FilmStoryboardPanel): string {
   const shot = panel.shot ?? 'wide'
-  const who = (panel.closeupSpeaker || panel.placements[0]?.name || '').trim()
+  const stage = isStageSpeaker(panel.closeupSpeaker) || isNarratorName(panel.closeupSpeaker)
+  if (shot === 'closeup' && stage) {
+    return 'Regieanweisung ohne Sprecher: du entscheidest aus der Handlung, wer oder was nah zu sehen ist'
+  }
+  const who = panelPersonName(panel)
   return shot === 'closeup'
     ? `nah auf ${who || 'die Person, die spricht'}`
     : shot === 'insert'
@@ -959,7 +979,7 @@ function boardShotDe(panel: FilmStoryboardPanel): string {
 function earlierPanelDe(panel: FilmStoryboardPanel, number: number): string {
   const what = panel.regiePlan
     ? regiePlanSummaryDe(panel.regiePlan)
-    : `ohne Plan; Board: ${boardShotDe(panel)}`
+    : `ohne Plan gemalt, Ort unbekannt; Board: ${boardShotDe(panel)}`
   const wrong =
     panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl && !panel.regieCheck.ok
       ? ` — Regie fand einen Fehler: ${panel.regieCheck.noteDe}`
@@ -973,7 +993,7 @@ export async function planFilmPanel(
   userId: string,
   panelId: string,
   profile?: UserProfile | null,
-): Promise<{ dialog: Dialog; board: FilmStoryboard; planned: boolean }> {
+): Promise<{ dialog: Dialog; board: FilmStoryboard; planned: boolean; reused?: boolean; errorDe?: string }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
@@ -982,9 +1002,38 @@ export async function planFilmPanel(
   if (!panel) throw new Error('Bild nicht gefunden.')
   const scenePanels = board.panels.filter((item) => item.sceneId === panel.sceneId)
   if (!panelWantsOwnStill(panel, scenePanels) && previousStillUrlInScene(board, panel)) {
-    return { dialog, board, planned: false }
+    return { dialog, board, planned: false, reused: true }
   }
-  const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
+  let continuity = board.continuity
+  let read: Awaited<ReturnType<typeof planStoryPicture>>
+  try {
+    continuity = continuity ?? (await ensureFilmContinuity(dialog, board))
+    read = await askRegieForPlan(dialog, board, panel, index, continuity, userId)
+  } catch (err) {
+    const message = err instanceof Error ? err.message.trim() : ''
+    read = { errorDe: message.slice(0, 200) || 'Unbekannter Fehler beim Planen.' }
+  }
+  const next: FilmStoryboard = {
+    ...board,
+    ...(continuity ? { continuity } : {}),
+    panels: board.panels.map((item) =>
+      item.id === panel.id ? { ...item, regiePlan: read.plan, regiePlanError: read.errorDe } : item,
+    ),
+  }
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(next) }, profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Der Plan der Regie konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard, planned: Boolean(read.plan), errorDe: read.errorDe }
+}
+
+async function askRegieForPlan(
+  dialog: Dialog,
+  board: FilmStoryboard,
+  panel: FilmStoryboardPanel,
+  index: number,
+  continuity: FilmContinuity,
+  userId: string,
+) {
+  const scenePanels = board.panels.filter((item) => item.sceneId === panel.sceneId)
   const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
   const picks = dialog.catalogCast
   const options: RegieRefOption[] = []
@@ -1017,7 +1066,7 @@ export async function planFilmPanel(
   }
   const sceneBefore = scenePanels.filter((item) => item.panelIndex < panel.panelIndex)
   const sceneAfter = scenePanels.filter((item) => item.panelIndex > panel.panelIndex)
-  const plan = await planStoryPicture({
+  return planStoryPicture({
     continuity,
     linesDe: panelLinesDe(dialog, panel),
     beforeDe: sceneBefore.slice(-2).map((item) => panelLinesDe(dialog, item)).join('\n'),
@@ -1026,15 +1075,6 @@ export async function planFilmPanel(
     earlierDe: sceneBefore.map((item) => earlierPanelDe(item, board.panels.indexOf(item) + 1)).join('\n'),
     options,
   })
-  if (!plan && !panel.regiePlan) return { dialog, board, planned: false }
-  const next: FilmStoryboard = {
-    ...board,
-    continuity,
-    panels: board.panels.map((item) => (item.id === panel.id ? { ...item, regiePlan: plan ?? undefined } : item)),
-  }
-  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(next) }, profile)
-  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Der Plan der Regie konnte nicht gespeichert werden.')
-  return { dialog: updated, board: updated.filmStoryboard, planned: Boolean(plan) }
 }
 
 /** Die Regie schaut ein fertiges Bild an. Eigene Anfrage, damit Malen und Anschauen je unter drei Minuten bleiben. */
@@ -1058,7 +1098,7 @@ export async function judgeFilmPanel(
   }
   const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
   const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
-  const who = (panel.regiePlan?.bodies[0] || panel.closeupSpeaker || panel.placements[0]?.name || '').trim()
+  const who = (panel.regiePlan?.bodies[0] || panel.regiePlan?.screens[0] || panelPersonName(panel)).trim()
   const refs: Array<{ url: string; roleDe: string }> = []
   const plate = who
     ? pickedCastUrl(library, dialog.catalogCast?.personIds, who) || identityReferenceUrl(library, who)
@@ -1069,19 +1109,31 @@ export async function judgeFilmPanel(
     item.stillUrl !== panel.stillUrl &&
     !(item.regieCheck && item.regieCheck.stillUrl === item.stillUrl && !item.regieCheck.ok)
   if (plan?.place) {
-    const samePlace = [...earlier]
-      .reverse()
-      .find((item) => okStill(item) && item.regiePlan?.place.trim().toLowerCase() === plan.place.trim().toLowerCase())
+    const placeOf = (item: FilmStoryboardPanel) => item.regiePlan?.place.trim().toLowerCase() || ''
+    const here = plan.place.trim().toLowerCase()
+    const samePlace = [...earlier].reverse().find((item) => okStill(item) && placeOf(item) === here)
     if (samePlace?.stillUrl) {
       refs.push({
         url: samePlace.stillUrl,
         roleDe: `Früheres Bild am selben Ort ${plan.place}. Damals: ${regiePlanSummaryDe(samePlace.regiePlan as FilmRegiePlan)}`,
       })
     }
+    const otherPlaces = new Set<string>()
+    for (const item of [...earlier].reverse()) {
+      const there = placeOf(item)
+      if (!there || there === here || otherPlaces.has(there) || !okStill(item) || !item.stillUrl) continue
+      if (refs.some((ref) => ref.url === item.stillUrl)) continue
+      otherPlaces.add(there)
+      refs.push({
+        url: item.stillUrl,
+        roleDe: `Anderer Ort «${item.regiePlan?.place}» — darf hier nicht erscheinen. Sieht man diesen Raum (Wände, Möbel, Dinge an der Wand) im neuen Bild als Raum, ist das ein Fehler. Ausnahme: klein auf einem Bildschirm, wenn die Person, die laut Plan dort zu sehen ist, an diesem Ort ist.`,
+      })
+      if (otherPlaces.size >= 2) break
+    }
   } else {
     const sameWho = [...earlier]
       .reverse()
-      .find((item) => (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() === who.toLowerCase())
+      .find((item) => panelPersonName(item).toLowerCase() === who.toLowerCase())
     if (who && sameWho?.stillUrl) refs.push({ url: sameWho.stillUrl, roleDe: `Früheres Bild mit ${who}.` })
     for (const item of directorStillUrls(board.panels, continuity, panel.id)) {
       if (!refs.some((ref) => ref.url === item.url)) refs.push({ url: item.url, roleDe: `Früheres Bild: ${item.name}` })
@@ -1186,10 +1238,19 @@ export async function stillFilmPanel(
   profile?: UserProfile | null,
   note?: string,
   regie?: { fixEn: string; freshRefs: boolean },
+  planErrorDe?: string,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
-  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const loaded = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const board: FilmStoryboard = planErrorDe
+    ? {
+        ...loaded,
+        panels: loaded.panels.map((p) =>
+          p.id === panelId ? { ...p, regiePlan: undefined, regiePlanError: planErrorDe } : p,
+        ),
+      }
+    : loaded
   const found = board.panels.find((p) => p.id === panelId)
   if (!found) throw new Error('Bild nicht gefunden.')
   const scene = board.scenes.find((s) => s.id === found.sceneId)
@@ -1201,7 +1262,7 @@ export async function stillFilmPanel(
   )
   const correction = note?.trim()
   const panel = correction
-    ? { ...found, stillCorrection: correction, directorNote: correction }
+    ? { ...found, stillCorrection: correction, directorNote: correction, regiePlanError: undefined }
     : found
   const working: FilmStoryboard = correction
     ? {
@@ -1286,8 +1347,9 @@ export async function stillFilmPanel(
         applyPanelStill(working, panelId, url, resolvedStyle),
         panelId,
         [
+          PAINTED_WITH_PLAN_DE,
           regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
-          'Gemalt nach dem Plan der Regie.',
+          plan.refs.length ? `Mitgeschickt: ${plan.refs.length} Vorlage${plan.refs.length === 1 ? '' : 'n'}, von der Regie gewählt.` : '',
         ]
           .filter(Boolean)
           .join(' '),
@@ -1322,11 +1384,7 @@ export async function stillFilmPanel(
     const wide =
       grund && grund.id !== panelForGen.id ? grund : panelForGen
     const seatNames = (wide ?? panelForGen).placements.map((pl) => pl.name)
-    const speaker =
-      personNamedInCorrection(correction, seatNames) ||
-      panelForGen.closeupSpeaker ||
-      panelForGen.placements[0]?.name ||
-      ''
+    const speaker = personNamedInCorrection(correction, seatNames) || panelPersonName(panelForGen)
     const storyContinuity = await ensureFilmContinuity(dialog, boardForGen)
     const regieFix = !correction && regie?.fixEn ? regie.fixEn : ''
     const fresh = Boolean(regieFix && regie?.freshRefs)
@@ -1359,7 +1417,7 @@ export async function stillFilmPanel(
       }
     }
     const videoCall = isVideoCallSituation(continuityBriefEn, situationText)
-    const videoHost = (panelForGen.closeupSpeaker || speaker || '').trim()
+    const videoHost = (panelPersonName(panelForGen) || speaker).trim()
     const hostStill = videoCall
       ? [...boardForGen.panels]
           .slice(0, boardForGen.panels.findIndex((item) => item.id === panelForGen.id))
@@ -1538,13 +1596,15 @@ export async function stillFilmPanel(
       notedBoard,
       panelId,
       [
+        correction ? '' : PAINTED_WITHOUT_PLAN_DE,
+        !correction && panelForGen.regiePlanError ? regiePlanErrorLineDe(panelForGen.regiePlanError) : '',
         storyContinuity.situationDe ? `Lage: ${storyContinuity.situationDe}` : '',
         regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
         pack.noteDe,
         correction
           ? `Neu gemalt mit FLUX nach Hinweis: ${correction}`
           : isCloseup
-            ? `Nahaufnahme ${speaker}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
+            ? `Nahaufnahme${speaker ? ` ${speaker}` : ''}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
             : isInsert
               ? `Zwischenbild: ${panelForGen.imageCue || panelForGen.caption || 'Detail'} — nicht der ganze Raum.`
               : pieceNote
