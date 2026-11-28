@@ -6,6 +6,13 @@ import { regiebuchFromContinuity, type RegiebuchEdit } from '../../shared/film-c
 
 const EMPTY: RegiebuchEdit = { situationDe: '', people: [], places: [], notesDe: [] }
 
+function regiebuchFailDe(kind: 'read' | 'save', reason: string): string {
+  const why = reason.trim().replace(/[.\s]+$/, '') || 'Grund unbekannt'
+  return kind === 'read'
+    ? `Die Regie konnte die Geschichte nicht lesen: ${why}. Das bisherige Regiebuch bleibt.`
+    : `Die Regie konnte deine Änderung nicht übernehmen: ${why}. Das bisherige Regiebuch bleibt. Deine Änderung steht noch hier — bitte noch einmal speichern.`
+}
+
 export function FilmRegiebuch({
   dialogId,
   board,
@@ -33,7 +40,7 @@ export function FilmRegiebuch({
   const call = async (kind: 'read' | 'save') => {
     setBusy(kind)
     setError('')
-    setStatus(kind === 'read' ? 'Die Regie liest die Geschichte …' : 'Die Regie übernimmt deine Änderung …')
+    setStatus(kind === 'read' ? 'Die Regie liest die Geschichte … (kann bis zu 2½ Minuten dauern)' : 'Die Regie übernimmt deine Änderung …')
     try {
       const edit: RegiebuchEdit | undefined =
         kind === 'save'
@@ -46,6 +53,11 @@ export function FilmRegiebuch({
             }
           : undefined
       const result = await api.ai.filmRegiebuch(dialogId, edit ? { edit } : { fresh: true })
+      if (result.errorDe) {
+        setStatus('')
+        setError(regiebuchFailDe(kind, result.errorDe))
+        return
+      }
       setDraft(null)
       onApplied(result.dialog, result.board)
       setStatus(
@@ -55,7 +67,7 @@ export function FilmRegiebuch({
       )
     } catch (err) {
       setStatus('')
-      setError(err instanceof Error ? err.message : 'Das Regiebuch ging nicht.')
+      setError(regiebuchFailDe(kind, err instanceof Error ? err.message : 'Grund unbekannt'))
     } finally {
       setBusy('')
     }

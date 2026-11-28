@@ -54,7 +54,10 @@ import {
 import {
   briefForImage,
   applyRegiebuchEdit,
+  continuityIsCurrent,
   ensureFilmContinuity,
+  ensureFilmContinuityRead,
+  rereadFilmContinuity,
   ensureSpeakerPlate,
   judgeStoryStill,
   REGIEBUCH_STILLS_MAX,
@@ -1195,16 +1198,19 @@ export async function regiebuchFilm(
   userId: string,
   opts: { edit?: RegiebuchEdit; fresh?: boolean },
   profile?: UserProfile | null,
-): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+): Promise<{ dialog: Dialog; board: FilmStoryboard; errorDe?: string }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Zuerst «Bilder planen».')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
-  const continuity = opts.edit
+  const got: { continuity?: FilmContinuity; errorDe?: string } = opts.edit
     ? await applyRegiebuchEdit(dialog, board, opts.edit)
-    : await ensureFilmContinuity(dialog, board, {
-        fresh: opts.fresh,
-        stills: opts.fresh ? regiebuchStills(board) : [],
-      })
+    : opts.fresh
+      ? await rereadFilmContinuity(dialog, board, { stills: regiebuchStills(board) })
+      : { continuity: await ensureFilmContinuity(dialog, board) }
+  if (!got.continuity) {
+    return { dialog, board, errorDe: got.errorDe || 'Grund unbekannt' }
+  }
+  const continuity = got.continuity
   const updated = await updateDialog(
     dialogId,
     userId,
@@ -1227,6 +1233,25 @@ export async function prepareFilmReferences(
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   let board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  if (!continuityIsCurrent(dialog, board)) {
+    const got = await ensureFilmContinuityRead(dialog, board, { budgetMs: 120_000 })
+    const saved = await updateDialog(
+      dialogId,
+      userId,
+      { filmStoryboard: normalizeFilmStoryboard({ ...board, continuity: got.continuity }) },
+      profile,
+    )
+    if (!saved || !isFilmStoryboard(saved.filmStoryboard)) throw new Error('Das Regiebuch konnte nicht gespeichert werden.')
+    return {
+      dialog: saved,
+      board: saved.filmStoryboard,
+      pending: 1,
+      didDe: got.errorDe
+        ? `Die Regie konnte die Geschichte nicht lesen: ${got.errorDe.replace(/[.\s]+$/, '')}. Das bisherige Regiebuch bleibt.`
+        : 'Die Regie hat die Geschichte gelesen.',
+      done: false,
+    }
+  }
   const continuity = await ensureFilmContinuity(dialog, board)
   board = { ...board, continuity }
   const library = libraryForCompose(await listStoryAssets(userId))

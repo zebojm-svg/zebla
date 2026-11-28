@@ -207,6 +207,26 @@ export function fallbackContinuity(opts: {
   }
 }
 
+/** Ein Regiebuch, das die Regie wirklich gelesen oder Jean-Marie geschrieben hat — nicht der Ersatz ohne KI. */
+export function isRegieReading(note: FilmContinuity): boolean {
+  if (note.byUser) return true
+  if ([...note.people, ...note.places].some((item) => item.lookDe?.trim())) return true
+  const bare = fallbackContinuity({ text: '', people: [], places: [] })
+  const bareVideo = fallbackContinuity({ text: 'videochat', people: [], places: [] })
+  return Boolean(note.situationEn) && note.situationEn !== bare.situationEn && note.situationEn !== bareVideo.situationEn
+}
+
+/** Warum die Antwort der Regie nicht als Regiebuch taugt, kurz auf Deutsch. */
+export function continuityProblemDe(raw: unknown): string {
+  if (!raw || typeof raw !== 'object') return 'Die Antwort der Regie war kein Regiebuch'
+  const row = raw as Record<string, unknown>
+  const missing = [
+    typeof row.situationDe === 'string' && row.situationDe.trim() ? '' : '«Wo und wie» auf Deutsch',
+    typeof row.situationEn === 'string' && row.situationEn.trim() ? '' : '«Wo und wie» auf Englisch',
+  ].filter(Boolean)
+  return missing.length ? `In der Antwort fehlte ${missing.join(' und ')}` : 'Die Antwort der Regie war unvollständig'
+}
+
 function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }

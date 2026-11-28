@@ -11,7 +11,9 @@ import { isNarratorName, isStageSpeaker, type Dialog } from '../shared/types.js'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../shared/film-storyboard.js'
 import {
   continuityBriefEn,
+  continuityProblemDe,
   continuitySourceKey,
+  isRegieReading,
   fallbackContinuity,
   fallbackShots,
   referenceJobs,
@@ -56,7 +58,7 @@ Nur JSON:
     { "panelId": "die echte Bild-id", "viewKey": "kueche|weit", "sendViewKeys": [], "whyDe": "erster Blick auf die Küche" }
   ]
 }
-places.name ist ein oder zwei Wörter.
+places.name ist ein oder zwei Wörter. whyDe hat höchstens sechs Wörter.
 viewKey bleibt gleich, wenn die Kamera denselben Blick wieder zeigt.
 sendViewKeys nennt frühere viewKeys, deren Bilder mitmüssen: bei einer Nahaufnahme den weiten Blick, und den eigenen viewKey, wenn dieser Blick zurückkehrt. Beim ersten Mal eines Blicks ist sendViewKeys leer.`
 
@@ -120,21 +122,34 @@ export interface RegiebuchStill {
 
 export const REGIEBUCH_STILLS_MAX = 4
 
+/** Automatisch (vor Bildern): kurz, weil danach noch gemalt wird. Auf Knopfdruck im Regiebuch: fast die ganzen 180 s. */
+export const REGIEBUCH_AUTO_BUDGET_MS = 75_000
+export const REGIEBUCH_BUTTON_BUDGET_MS = 150_000
+const REPAIR_MIN_MS = 45_000
+
+export type ContinuityRead =
+  | { continuity: FilmContinuity; errorDe?: undefined }
+  | { continuity?: undefined; errorDe: string }
+
+/** Die Regie liest. Gelingt es nicht, kommt ein deutscher Grund zurück — nie still ein Ersatz-Regiebuch. */
 async function readStory(
   dialog: Dialog,
   board: FilmStoryboard | undefined,
   vorgabenDe: string,
-  stills: RegiebuchStill[] = [],
-): Promise<FilmContinuity | null> {
+  opts: { stills?: RegiebuchStill[]; budgetMs?: number } = {},
+): Promise<ContinuityRead> {
+  const started = Date.now()
+  const budget = opts.budgetMs ?? REGIEBUCH_AUTO_BUDGET_MS
   const text = storyTextForContinuity(dialog, board)
+  const picked = (opts.stills ?? []).slice(0, REGIEBUCH_STILLS_MAX)
+  const parts = await Promise.all(picked.map((still) => imagePart(still.url, 8_000)))
   const images: Array<{ mimeType: string; data: string }> = []
   const legend: string[] = []
-  for (const still of stills.slice(0, REGIEBUCH_STILLS_MAX)) {
-    const part = await imagePart(still.url)
-    if (!part) continue
+  parts.forEach((part, index) => {
+    if (!part) return
     images.push(part)
-    legend.push(`Bild ${images.length}: ${still.aboutDe}`)
-  }
+    legend.push(`Bild ${images.length}: ${picked[index]!.aboutDe}`)
+  })
   const ask = [
     text,
     vorgabenDe.trim() ? `VORGABEN VON JEAN-MARIE:\n${vorgabenDe}` : '',
@@ -144,49 +159,104 @@ async function readStory(
   ]
     .filter(Boolean)
     .join('\n\n')
-  try {
-    const raw = await regieJson<unknown>(SYSTEM, ask, images, {
-      temperature: 0.2,
-      timeoutMs: 75_000,
-      timeoutMessage: 'Die Regie hat die Geschichte nicht rechtzeitig gelesen.',
-    })
-    const clean = sanitizeContinuity(raw, text, panelsForContinuity(board))
-    return clean ? { ...clean, sourceKey: continuitySourceKey(text) } : null
-  } catch {
-    return null
+  const panels = panelsForContinuity(board)
+  const askRegie = async (extra: string, timeoutMs: number) => {
+    try {
+      const raw = await regieJson<unknown>(SYSTEM, extra ? `${ask}\n\n${extra}` : ask, images, {
+        temperature: 0.2,
+        timeoutMs,
+        timeoutMessage: `Die Regie hat länger als ${Math.round(timeoutMs / 1000)} Sekunden gebraucht`,
+      })
+      const answer = Array.isArray(raw) ? raw.find((item) => item && typeof item === 'object') : raw
+      const clean = sanitizeContinuity(answer, text, panels)
+      return clean
+        ? { continuity: { ...clean, sourceKey: continuitySourceKey(text) } }
+        : { errorDe: continuityProblemDe(answer) }
+    } catch (err) {
+      const message = err instanceof Error ? err.message.trim() : ''
+      return { errorDe: message.slice(0, 200) || 'Die Regie hat nicht geantwortet', failed: true }
+    }
   }
+  const first = await askRegie('', budget - (Date.now() - started))
+  if (first.continuity) return { continuity: first.continuity }
+  const left = budget - (Date.now() - started)
+  if ('failed' in first || left < REPAIR_MIN_MS) return { errorDe: first.errorDe as string }
+  const again = await askRegie(
+    `DEINE LETZTE ANTWORT WAR UNVOLLSTÄNDIG: ${first.errorDe}. Antworte noch einmal, nur mit dem ganzen JSON-Objekt. Halte dich kurz.`,
+    left - 3_000,
+  )
+  return again.continuity ? { continuity: again.continuity } : { errorDe: again.errorDe as string }
 }
 
-export async function ensureFilmContinuity(
-  dialog: Dialog,
-  board?: FilmStoryboard,
-  opts?: { fresh?: boolean; stills?: RegiebuchStill[] },
-): Promise<FilmContinuity> {
-  const text = storyTextForContinuity(dialog, board)
-  const key = continuitySourceKey(text)
-  const panels = panelsForContinuity(board)
+/** Das Regiebuch passt noch zur Geschichte: nicht neu lesen. */
+export function continuityIsCurrent(dialog: Dialog, board?: FilmStoryboard): boolean {
   const cached = board?.continuity
-  if (
-    !opts?.fresh &&
-    cached?.sourceKey === key &&
-    cached.situationEn &&
-    (panels.length === 0 || (cached.shots?.length ?? 0) > 0)
-  ) {
-    return cached
-  }
-  const keep = {
+  const panels = panelsForContinuity(board)
+  return Boolean(
+    cached?.sourceKey === continuitySourceKey(storyTextForContinuity(dialog, board)) &&
+      cached.situationEn &&
+      (panels.length === 0 || (cached.shots?.length ?? 0) > 0),
+  )
+}
+
+function keepFromCached(cached?: FilmContinuity) {
+  return {
     sideChecked: cached?.sideChecked,
     sideTries: cached?.sideTries,
     ...(cached?.byUser ? { byUser: true, notesDe: cached.notesDe } : {}),
   }
-  const vorgaben = cached?.byUser ? regiebuchVorgabenDe(regiebuchFromContinuity(cached)) : ''
-  const read = await readStory(dialog, board, vorgaben, opts?.stills)
-  if (read) return { ...read, ...keep }
-  if (cached?.byUser) return { ...cached, sourceKey: key, shots: fallbackShots(panels) }
+}
+
+/** Lesen misslungen: ein echtes Regiebuch bleibt, nur neue Bilder bekommen einfache Blicke. */
+function keepOldReading(cached: FilmContinuity, key: string, panels: ReturnType<typeof panelsForContinuity>): FilmContinuity {
   return {
-    ...fallbackContinuity({ text, people: peopleInDialog(dialog), places: placesOnBoard(board), panels }),
-    ...keep,
+    ...cached,
+    sourceKey: key,
+    shots: fallbackShots(panels).map((shot) => cached.shots?.find((have) => have.panelId === shot.panelId) ?? shot),
   }
+}
+
+/** Wie ensureFilmContinuity, sagt aber, ob und warum das Lesen misslang. */
+export async function ensureFilmContinuityRead(
+  dialog: Dialog,
+  board?: FilmStoryboard,
+  opts?: { budgetMs?: number },
+): Promise<{ continuity: FilmContinuity; read: boolean; errorDe?: string }> {
+  const cached = board?.continuity
+  if (cached && continuityIsCurrent(dialog, board)) return { continuity: cached, read: false }
+  const text = storyTextForContinuity(dialog, board)
+  const key = continuitySourceKey(text)
+  const panels = panelsForContinuity(board)
+  const vorgaben = cached?.byUser ? regiebuchVorgabenDe(regiebuchFromContinuity(cached)) : ''
+  const got = await readStory(dialog, board, vorgaben, { budgetMs: opts?.budgetMs })
+  if (got.continuity) return { continuity: { ...got.continuity, ...keepFromCached(cached) }, read: true }
+  if (cached && isRegieReading(cached)) {
+    return { continuity: keepOldReading(cached, key, panels), read: true, errorDe: got.errorDe }
+  }
+  return {
+    continuity: {
+      ...fallbackContinuity({ text, people: peopleInDialog(dialog), places: placesOnBoard(board), panels }),
+      ...keepFromCached(cached),
+    },
+    read: true,
+    errorDe: got.errorDe,
+  }
+}
+
+export async function ensureFilmContinuity(dialog: Dialog, board?: FilmStoryboard): Promise<FilmContinuity> {
+  return (await ensureFilmContinuityRead(dialog, board)).continuity
+}
+
+/** «Neu lesen» im Regiebuch. Misslingt es, bleibt das bisherige Regiebuch, und der Grund kommt zurück. */
+export async function rereadFilmContinuity(
+  dialog: Dialog,
+  board: FilmStoryboard,
+  opts?: { stills?: RegiebuchStill[] },
+): Promise<ContinuityRead> {
+  const cached = board.continuity
+  const vorgaben = cached?.byUser ? regiebuchVorgabenDe(regiebuchFromContinuity(cached)) : ''
+  const got = await readStory(dialog, board, vorgaben, { stills: opts?.stills, budgetMs: REGIEBUCH_BUTTON_BUDGET_MS })
+  return got.continuity ? { continuity: { ...got.continuity, ...keepFromCached(cached) } } : got
 }
 
 /** Jean-Marie hat das Regiebuch geändert. Die Regie liest die Geschichte mit seinen Sätzen als Vorgabe neu. */
@@ -194,15 +264,17 @@ export async function applyRegiebuchEdit(
   dialog: Dialog,
   board: FilmStoryboard,
   edit: RegiebuchEdit,
-): Promise<FilmContinuity> {
-  const read = await readStory(dialog, board, regiebuchVorgabenDe(edit))
-  if (!read) throw new Error('Die Regie konnte das Regiebuch nicht übernehmen. Bitte noch einmal speichern.')
+): Promise<ContinuityRead> {
+  const got = await readStory(dialog, board, regiebuchVorgabenDe(edit), { budgetMs: REGIEBUCH_BUTTON_BUDGET_MS })
+  if (!got.continuity) return got
   return {
-    ...read,
-    sideChecked: board.continuity?.sideChecked,
-    sideTries: board.continuity?.sideTries,
-    byUser: true,
-    notesDe: edit.notesDe,
+    continuity: {
+      ...got.continuity,
+      sideChecked: board.continuity?.sideChecked,
+      sideTries: board.continuity?.sideTries,
+      byUser: true,
+      notesDe: edit.notesDe,
+    },
   }
 }
 
@@ -284,9 +356,9 @@ function hasName(list: string[] | undefined, name: string): boolean {
   return (list ?? []).some((item) => item.trim().toLowerCase() === name.trim().toLowerCase())
 }
 
-async function imagePart(url: string): Promise<{ mimeType: string; data: string } | null> {
+async function imagePart(url: string, timeoutMs?: number): Promise<{ mimeType: string; data: string } | null> {
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : undefined)
     if (!res.ok) return null
     const data = Buffer.from(await res.arrayBuffer()).toString('base64')
     const mime = (res.headers.get('content-type') || 'image/png').split(';')[0] || 'image/png'

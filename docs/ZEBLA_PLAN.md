@@ -127,6 +127,7 @@ Bauschritte:
    - Regie-Planung darf bis 2 Minuten brauchen (vorher 1½).
    - **Anhalten:** Knopf neben der Statuszeile, solange eine Szene läuft. Der laufende Schritt läuft fertig, dann hört Zebla auf (nach Planen, Malen, Anschauen oder zwischen Bildern). Das letzte Bild bleibt. Danach: unter dem Bild schreiben, «Bild ändern», dann «Szene weiter erzeugen» (malt nur, was fehlt).
    - **Verlauf je Bild:** zugeklappt «So ist das Bild entstanden»: Plan, Vorlagen an den Maler (mit Zweck, englisch), jeder Versuch mit Bild, Urteil und Auftrag der Regie. Höchstens 6 Versuche; neuer Durchgang oder «Bilder planen» fängt leer an.
+   - **Neu lesen kaputt (28. Nov, behoben):** Lesen misslang (zu wenig Zeit für das längere Regiebuch), Zebla schrieb still ein leeres Ersatz-Regiebuch hinein und meldete «hat gelesen». Neu: ein echtes Regiebuch wird nie mehr überschrieben; misslingt es, steht «Die Regie konnte die Geschichte nicht lesen: Grund. Das bisherige Regiebuch bleibt.» «Neu lesen» darf 2½ Minuten brauchen; vor den Bildern ist Lesen ein eigener Schritt.
    - **Regiebuch besser:** Personen nur nach Aussehen (Alter, Haare, Haut, Kleidung mit Farben, Brille, was sie tragen) — kein Charakter. Orte Wand für Wand, mit Farben und Möbeln; zwei Orte nie gleich beschrieben. «Neu lesen» zeigt der Regie bis zu 4 schon gemalte, gutgeheissene Bilder.
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.

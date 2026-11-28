@@ -9,8 +9,10 @@ import { pickedCastUrl } from '../shared/catalog-cast.ts'
 import { paintingStyleText } from '../lib/ken-burns-style.ts'
 import {
   continuityBriefEn,
+  continuityProblemDe,
   continuitySourceKey,
   directorStillUrls,
+  isRegieReading,
   fallbackContinuity,
   fallbackShots,
   referenceJobs,
@@ -272,5 +274,37 @@ if (!contSrc.includes('SCHON GEMALTE BILDER') || !boardSrc.includes('regiebuchSt
   fail('Neu lesen: die Regie sieht gutgeheissene gemalte Bilder')
 }
 if (!boardSrc.includes('regieCheck?.ok && panel.regieCheck.stillUrl === url')) fail('nur Bilder, die die Regie gutgeheissen hat')
+
+{
+  const bare = fallbackContinuity({ text: 'Videochat', people: ['Amir'], places: ['Erste Begegnung'] })
+  if (isRegieReading(bare)) fail('der Ersatz ohne KI gilt nicht als gelesenes Regiebuch')
+  if (!isRegieReading({ ...bare, people: [{ name: 'Amir', lookEn: 'x', lookDe: 'Mann um 25' }] })) {
+    fail('ein Regiebuch mit deutschem Aussehen ist echt')
+  }
+  if (!isRegieReading({ ...bare, byUser: true })) fail('ein von Jean-Marie geändertes Regiebuch ist echt')
+  if (!continuityProblemDe({ people: [] }).includes('Wo und wie')) fail('eine unvollständige Antwort hat einen deutschen Grund')
+  const readSrc = contSrc.slice(contSrc.indexOf('async function readStory'), contSrc.indexOf('/** Das Regiebuch passt noch'))
+  if (readSrc.includes('return null') || !readSrc.includes('errorDe')) fail('Lesen misslingt nie still')
+  if (!readSrc.includes('Array.isArray(raw)')) fail('eine Antwort als Liste wird gelesen')
+  if (!readSrc.includes('Promise.all') || !readSrc.includes('imagePart(still.url, 8_000)')) fail('Bilder fürs Regiebuch parallel und mit kurzer Wartezeit')
+  if (!readSrc.includes('REPAIR_MIN_MS')) fail('bei unvollständiger Antwort einmal nachfragen, wenn Zeit bleibt')
+  if (!contSrc.includes('REGIEBUCH_BUTTON_BUDGET_MS = 150_000')) fail('«Neu lesen» darf bis 150 s brauchen')
+  const ensureSrc = contSrc.slice(contSrc.indexOf('export async function ensureFilmContinuityRead'), contSrc.indexOf('export async function ensureFilmContinuity('))
+  if (ensureSrc.indexOf('isRegieReading(cached)') < 0 || ensureSrc.indexOf('isRegieReading(cached)') > ensureSrc.indexOf('fallbackContinuity(')) {
+    fail('ein echtes Regiebuch wird nie durch den Ersatz überschrieben')
+  }
+  const bookFn = boardSrc.slice(boardSrc.indexOf('export async function regiebuchFilm'), boardSrc.indexOf('export async function prepareFilmReferences'))
+  if (!bookFn.includes('rereadFilmContinuity') || bookFn.indexOf('if (!got.continuity)') > bookFn.indexOf('updateDialog(')) {
+    fail('«Neu lesen» speichert bei einem Fehler nichts und gibt den Grund zurück')
+  }
+  const prepFn = boardSrc.slice(boardSrc.indexOf('export async function prepareFilmReferences'), boardSrc.indexOf('export async function stillFilmPanel'))
+  if (!prepFn.includes('continuityIsCurrent') || !prepFn.includes('Das bisherige Regiebuch bleibt')) {
+    fail('vor den Bildern: Lesen ist ein eigener Schritt und sagt, wenn es misslang')
+  }
+  const bookUi = readFileSync('src/story/FilmRegiebuch.tsx', 'utf8')
+  if (!bookUi.includes('result.errorDe') || !bookUi.includes('Das bisherige Regiebuch bleibt')) {
+    fail('das Regiebuch sagt, wenn die Regie nicht lesen konnte, statt «hat gelesen»')
+  }
+}
 
 console.log('OK film-continuity')
