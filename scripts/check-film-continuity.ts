@@ -440,8 +440,15 @@ if (!readFileSync('shared/film-room-plate.ts', 'utf8').includes('placesMissingRo
   fail('fehlende Raumbilder werden erkannt')
 }
 if (!boardSrc.includes('reviewFilmScene')) fail('Gesamtschau: ein Schritt je Anfrage')
-if (!readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8').includes('Szene prüfen')) {
-  fail('Szene prüfen: Knopf nach fertiger Szene')
+const sceneGenUi = readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8')
+if (!sceneGenUi.includes('Szene prüfen')) {
+  fail('Szene prüfen: Knopf in der Szene-Leiste')
+}
+if (!sceneGenUi.includes('film-scene-action-row') || !sceneGenUi.includes('stats.done > 0')) {
+  fail('Szene prüfen: sichtbar sobald ein Bild fertig ist (nicht erst wenn alle)')
+}
+if (sceneGenUi.includes('allDone && onReview')) {
+  fail('Szene prüfen: nicht nur wenn alle Bilder fertig')
 }
 if (!readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8').includes('Markierte Bilder ändern')) {
   fail('Markierte Bilder ändern: Sammelknopf')
