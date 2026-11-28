@@ -1100,8 +1100,17 @@ const stillFn = stillGenSrc.slice(
 if (!stillFn.includes('stillReferencePack')) {
   fail('Erstes Malen nutzt stillReferencePack')
 }
-if (!stillFn.includes('judgeStoryStill')) {
-  fail('Die Regie schaut das fertige Bild an und schickt es zurück, wenn es nicht zum Satz passt')
+if (!stillFn.includes('DIRECTOR FIX')) fail('Der Fehler, den die Regie sieht, geht an den Maler')
+{
+  const loop = readFileSync('src/story/generateSceneStills.ts', 'utf8')
+  if (!loop.includes('filmJudge') || !loop.includes('REGIE_TRIES = 2')) {
+    fail('Nach jedem Bild schaut die Regie hin, höchstens zwei neue Versuche')
+  }
+  const judge = readFileSync('lib/film-continuity.ts', 'utf8')
+  if (!judge.includes('höchstens einmal zu sehen')) fail('Regie prüft: jede Person höchstens einmal')
+  if (/\b(videochat|ente|schwan)\b/i.test(judge.slice(judge.indexOf('const JUDGE'), judge.indexOf('/**', judge.indexOf('const JUDGE'))))) {
+    fail('Die Bildprüfung kennt keine festen Orte oder Tiere')
+  }
 }
 if (!stillFn.includes('situationText')) {
   fail('Jedes Bild bekommt denselben Satz zur Lage')

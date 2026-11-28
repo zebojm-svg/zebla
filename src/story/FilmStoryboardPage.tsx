@@ -175,6 +175,15 @@ function PanelCard({
         notes={
           <>
             {painting ? <p className="film-beat-count">wird neu gemalt …</p> : null}
+            {panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl ? (
+              panel.regieCheck.ok ? (
+                <p className="muted">Regie: passt.</p>
+              ) : (
+                <p className="alert alert-warn">
+                  Regie: {panel.regieCheck.noteDe} Schreib unter dem Bild, was anders sein soll.
+                </p>
+              )
+            ) : null}
             <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
             <div className="film-tweak">
               <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>

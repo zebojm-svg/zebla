@@ -660,13 +660,24 @@ export const api = {
       panelId: string,
       styleId?: string,
       note?: string,
+      regie?: { fixEn: string; freshRefs: boolean },
     ) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
       }>(
         '/film-storyboard-still',
-        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, regie }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
+    filmJudge: (dialogId: string, panelId: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+        verdict: { ok: boolean; noteDe: string; fixEn: string; freshRefs: boolean }
+      }>(
+        '/film-storyboard-judge',
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
     filmPanelLayout: (

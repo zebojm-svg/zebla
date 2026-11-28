@@ -130,7 +130,7 @@ import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
 import { sanitizeRegiebuchEdit } from '../shared/film-continuity.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, regiebuchFilm, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, regiebuchFilm, judgeFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt } from '../lib/ai.js'
@@ -2025,11 +2025,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { dialogId, panelId, styleId, note } = req.body as {
+      const { dialogId, panelId, styleId, note, regie } = req.body as {
         dialogId?: string
         panelId?: string
         styleId?: string
         note?: string
+        regie?: { fixEn?: unknown; freshRefs?: unknown }
       }
       if (!dialogId?.trim() || !panelId?.trim()) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
@@ -2116,7 +2117,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         styleId?.trim(),
         profile,
         note?.trim(),
+        typeof regie?.fixEn === 'string' && regie.fixEn.trim()
+          ? { fixEn: regie.fixEn.trim().slice(0, 500), freshRefs: regie.freshRefs === true }
+          : undefined,
       )
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-storyboard-judge' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, panelId } = req.body as { dialogId?: string; panelId?: string }
+      if (!dialogId?.trim() || !panelId?.trim()) {
+        res.status(400).json({ error: 'dialogId und panelId fehlen.' })
+        return
+      }
+      const result = await judgeFilmPanel(dialogId.trim(), user.uid, panelId.trim(), profile)
       res.json(result)
       return
     }

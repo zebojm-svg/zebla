@@ -46,12 +46,20 @@ import {
   ensureFilmContinuity,
   ensureSpeakerPlate,
   judgeStoryStill,
+  type RegieVerdict,
   jobsForLibrary,
   runNextReferenceJob,
   sidePlate,
   stampReferenceFaces,
 } from './film-continuity.js'
-import { directorStillUrls, type FilmContinuity, type RegiebuchEdit } from '../shared/film-continuity.js'
+import {
+  directorStillUrls,
+  regiebuchFromContinuity,
+  regiebuchVorgabenDe,
+  type FilmContinuity,
+  type RegiebuchEdit,
+} from '../shared/film-continuity.js'
+import { identityReferenceUrl } from '../shared/library-identities.js'
 import { pickedCastUrl } from '../shared/catalog-cast.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
@@ -925,6 +933,67 @@ export async function planFilmPanelStillEdit(
   })
 }
 
+/** Die Regie schaut ein fertiges Bild an. Eigene Anfrage, damit Malen und Anschauen je unter drei Minuten bleiben. */
+export async function judgeFilmPanel(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard; verdict: RegieVerdict }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const index = board.panels.findIndex((item) => item.id === panelId)
+  const panel = board.panels[index]
+  const pass: RegieVerdict = { ok: true, noteDe: '', fixEn: '', freshRefs: false }
+  if (!panel?.stillUrl?.startsWith('http')) return { dialog, board, verdict: pass }
+  const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
+  const before = earlier[earlier.length - 1]
+  if (before?.sceneId === panel.sceneId && before.stillUrl === panel.stillUrl) {
+    return { dialog, board, verdict: pass }
+  }
+  const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
+  const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
+  const who = (panel.closeupSpeaker || panel.placements[0]?.name || '').trim()
+  const refs: Array<{ url: string; roleDe: string }> = []
+  const plate = who
+    ? pickedCastUrl(library, dialog.catalogCast?.personIds, who) || identityReferenceUrl(library, who)
+    : undefined
+  if (plate) refs.push({ url: plate, roleDe: `Stammbild von ${who}.` })
+  const sameWho = [...earlier]
+    .reverse()
+    .find((item) => (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() === who.toLowerCase())
+  if (who && sameWho?.stillUrl) refs.push({ url: sameWho.stillUrl, roleDe: `Früheres Bild mit ${who}.` })
+  for (const item of directorStillUrls(board.panels, continuity, panel.id)) {
+    if (!refs.some((ref) => ref.url === item.url)) refs.push({ url: item.url, roleDe: `Früheres Bild: ${item.name}` })
+  }
+  const shot = panel.shot ?? 'wide'
+  const verdict = await judgeStoryStill({
+    imageUrl: panel.stillUrl,
+    regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
+    lineDe: [panel.caption, panel.imageCue].filter(Boolean).join(' — '),
+    shotDe:
+      shot === 'closeup'
+        ? `nah auf ${who || 'die Person, die spricht'}`
+        : shot === 'insert'
+          ? 'Detail, nicht der ganze Ort'
+          : `weit${panel.settingHint ? `, Ort ${panel.settingHint}` : ''}`,
+    refs,
+  })
+  const next: FilmStoryboard = {
+    ...board,
+    continuity,
+    panels: board.panels.map((item) =>
+      item.id === panel.id
+        ? { ...item, regieCheck: { ok: verdict.ok, noteDe: verdict.noteDe, stillUrl: panel.stillUrl as string } }
+        : item,
+    ),
+  }
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(next) }, profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Das Urteil der Regie konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard, verdict }
+}
+
 /** Regiebuch: die Regie liest (fresh = noch einmal), oder sie übernimmt Jean-Maries Änderung. */
 export async function regiebuchFilm(
   dialogId: string,
@@ -1002,8 +1071,8 @@ export async function stillFilmPanel(
   styleId: string | undefined,
   profile?: UserProfile | null,
   note?: string,
+  regie?: { fixEn: string; freshRefs: boolean },
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
-  const startedAt = Date.now()
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
@@ -1121,7 +1190,11 @@ export async function stillFilmPanel(
       panelForGen.placements[0]?.name ||
       ''
     const storyContinuity = await ensureFilmContinuity(dialog, boardForGen)
-    const continuityBriefEn = briefForImage(storyContinuity)
+    const regieFix = !correction && regie?.fixEn ? regie.fixEn : ''
+    const fresh = Boolean(regieFix && regie?.freshRefs)
+    const continuityBriefEn = regieFix
+      ? `DIRECTOR FIX for this picture, the last try was wrong: ${regieFix} ${briefForImage(storyContinuity)}`
+      : briefForImage(storyContinuity)
     boardForGen = { ...boardForGen, continuity: storyContinuity }
     let faceLibrary = libraryForCompose(await listStoryAssets(userId).catch(() => []))
     if (!correction && speaker && !isNarratorName(speaker) && !isStageSpeaker(speaker)) {
@@ -1161,7 +1234,9 @@ export async function stillFilmPanel(
           )?.stillUrl
       : undefined
     const directorRefs = [
-      ...(videoCall
+      ...(fresh
+        ? []
+        : videoCall
         ? hostStill
           ? [{
               url: hostStill,
@@ -1275,8 +1350,8 @@ export async function stillFilmPanel(
     if (isCloseup && !correctionIsFaceOnly(correction)) {
       correctFromUrl = undefined
     }
-    const placeWideUrl = videoCall || isInsert ? undefined : grund?.stillUrl
-    const prevPlaceUrl = videoCall ? undefined : previousPlaceStillUrl(boardForGen, panelForGen)
+    const placeWideUrl = videoCall || isInsert || fresh ? undefined : grund?.stillUrl
+    const prevPlaceUrl = videoCall || fresh ? undefined : previousPlaceStillUrl(boardForGen, panelForGen)
     let editLibrary: ReturnType<typeof libraryForCompose> | undefined
     if (correction) {
       try {
@@ -1293,7 +1368,7 @@ export async function stillFilmPanel(
       inventory: dialog.filmInventory,
       library: editLibrary,
     })
-    let url = await generateFilmPanelStillImage({
+    const url = await generateFilmPanelStillImage({
       panel: panelForGen,
       scene,
       styleId: resolvedStyle,
@@ -1316,51 +1391,6 @@ export async function stillFilmPanel(
       inventory: dialog.filmInventory,
       library: editLibrary,
     })
-    let judgeDe = ''
-    // Vercel bricht nach 180 s ab: Anschauen und Neumalen nur, solange Zeit bleibt.
-    if (!correction && Date.now() - startedAt < 70_000) {
-      try {
-        const earlier = [...boardForGen.panels]
-          .slice(0, boardForGen.panels.findIndex((item) => item.id === panelForGen.id))
-          .reverse()
-          .find(
-            (item) =>
-              item.stillUrl?.startsWith('http') &&
-              (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() ===
-                (panelForGen.closeupSpeaker || speaker || '').trim().toLowerCase(),
-          )?.stillUrl
-        const verdict = await judgeStoryStill({
-          imageUrl: url,
-          earlierUrl: earlier,
-          situationDe: storyContinuity.situationDe,
-          lineDe: [panelForGen.caption, panelForGen.imageCue].filter(Boolean).join(' '),
-        })
-        if (!verdict.ok && verdict.fixEn && Date.now() - startedAt < 115_000) {
-          judgeDe = verdict.noteDe
-          url = await generateFilmPanelStillImage({
-            panel: panelForGen,
-            scene,
-            styleId: resolvedStyle,
-            previousStillUrl: earlier,
-            targetLanguage,
-            beatTotal,
-            speakerGender:
-              speakerGender(dialog, speaker) ?? genderFromKnownName(speaker),
-            speakerX: whoOnWide?.x,
-            speakerSitting: sittingFromPlacement(whoOnWide),
-            continuityEn: continuityForShot,
-            situationText,
-            continuityBriefEn: `${verdict.fixEn} ${continuityBriefEn}`,
-            directorRefs,
-            board: boardForGen,
-            inventory: dialog.filmInventory,
-            library: editLibrary,
-          })
-        }
-      } catch {
-        /* Das erste Bild bleibt, wenn die Regie das Bild nicht anschauen konnte. */
-      }
-    }
     let withStill = applyPanelStill(boardForGen, panelId, url, resolvedStyle)
     if (rewrite && !isCloseup && !isInsert && panelForGen.stillUrl) {
       withStill = replaceStillUrl(withStill, panelForGen.stillUrl, url, panelForGen.sceneId)
@@ -1371,7 +1401,7 @@ export async function stillFilmPanel(
       panelId,
       [
         storyContinuity.situationDe ? `Lage: ${storyContinuity.situationDe}` : '',
-        judgeDe ? `Regie hat nachgeschaut: ${judgeDe}` : '',
+        regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
         pack.noteDe,
         correction
           ? `Neu gemalt mit FLUX nach Hinweis: ${correction}`
