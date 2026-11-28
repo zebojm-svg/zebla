@@ -9,6 +9,7 @@ import {
   FilmPackFields,
   FilmPackSpeakerSelect,
   FilmRegiePlanNote,
+  FilmRegieCheckNote,
   FilmSceneGenerateBar,
   FilmStillFixBar,
   FilmStillHistory,
@@ -178,15 +179,7 @@ function PanelCard({
           <>
             {painting ? <p className="film-beat-count">wird neu gemalt …</p> : null}
             <FilmRegiePlanNote panel={panel} />
-            {panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl ? (
-              panel.regieCheck.ok ? (
-                <p className="muted">Regie: passt.</p>
-              ) : (
-                <p className="alert alert-warn">
-                  Regie: {panel.regieCheck.noteDe} Schreib unter dem Bild, was anders sein soll.
-                </p>
-              )
-            ) : null}
+            <FilmRegieCheckNote panel={panel} />
             <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
             <FilmStillHistory panel={panel} />
             <div className="film-tweak">

@@ -19,7 +19,8 @@ import {
 import { stillPackNumber } from '../../shared/film-still-pack'
 import { packSpeakerChoices } from '../../shared/speakers'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
-import { regiePlanErrorLineDe } from '../../shared/film-regie-plan'
+import { regiePlanErrorLineDe, regiePlanPlacesDe, type RegieAttempt } from '../../shared/film-regie-plan'
+import { regieCheckState } from '../../shared/film-regie-judge'
 import {
   gazeNoteDe,
   sceneGrundbildPanel,
@@ -509,11 +510,64 @@ export function FilmPackActions({
 
 /** Unter jedem Bild: was die Regie geplant hat — oder warum sie nicht planen konnte. */
 export function FilmRegiePlanNote({ panel }: { panel: FilmStoryboardPanel }) {
-  if (panel.regiePlan?.cameraDe) return <p className="muted">Regie: {panel.regiePlan.cameraDe}</p>
+  if (panel.regiePlan?.cameraDe) {
+    const places = regiePlanPlacesDe(panel.regiePlan)
+    return (
+      <p className="muted">
+        Regie: {panel.regiePlan.cameraDe}
+        {places ? (
+          <>
+            <br />
+            {places}
+          </>
+        ) : null}
+      </p>
+    )
+  }
   if (panel.regiePlanError) {
     return <p className="alert alert-warn">{regiePlanErrorLineDe(panel.regiePlanError)}</p>
   }
   return null
+}
+
+/** Unter jedem Bild: was die Regie beim Anschauen gefunden hat. «Nicht geprüft» sieht anders aus als «passt». */
+export function FilmRegieCheckNote({ panel }: { panel: FilmStoryboardPanel }) {
+  const paintedWithRegie = (panel.regieAttempts ?? []).some((attempt) => attempt.stillUrl === panel.stillUrl)
+  const state = regieCheckState(panel.regieCheck, panel.stillUrl, paintedWithRegie)
+  const check = panel.regieCheck
+  if (state === 'keins') return null
+  if (state === 'ungeprueft') {
+    return (
+      <p className="alert alert-info">
+        Regie: nicht geprüft.{' '}
+        {check?.stillUrl === panel.stillUrl && check?.noteDe
+          ? check.noteDe.replace(/^Nicht geprüft:\s*/, '')
+          : 'Angehalten oder die Verbindung war weg.'}{' '}
+        Das Bild kann Fehler haben.
+      </p>
+    )
+  }
+  if (state === 'passt') {
+    return (
+      <p className="muted">
+        Regie: passt.{check?.softDe ? <> Kleinigkeit: {check.softDe}</> : null}
+      </p>
+    )
+  }
+  return (
+    <p className="alert alert-warn">
+      Regie: {check?.noteDe} Schreib unter dem Bild, was anders sein soll.
+      {check?.softDe ? <> Kleinigkeit: {check.softDe}</> : null}
+    </p>
+  )
+}
+
+function attemptVerdictDe(verdict: RegieAttempt['verdict']): string {
+  if (!verdict) return 'Regie hat nicht angeschaut.'
+  const model = verdict.model ? ` (${verdict.model})` : ''
+  if (verdict.unchecked) return `Regie: ${verdict.noteDe}${model}`
+  const soft = verdict.softDe ? ` Kleinigkeit: ${verdict.softDe}` : ''
+  return verdict.ok ? `Regie: passt.${soft}${model}` : `Regie: ${verdict.noteDe}${soft}${model}`
 }
 
 function HistoryThumb({ url, children }: { url: string; children: ReactNode }) {
@@ -541,9 +595,20 @@ export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
         <>
           <h4>Plan der Regie</h4>
           <p>
-            {plan.place ? <>Ort: {plan.place}. </> : null}
+            {plan.place ? <>Ort der Kamera: {plan.place}. </> : null}
             Im Raum: {plan.bodies.length ? plan.bodies.join(', ') : 'niemand'}.
-            {plan.screens.length ? <> Nur auf einem Bildschirm: {plan.screens.join(', ')}.</> : null}
+            {plan.surfaces?.length
+              ? plan.surfaces.map((surface) => (
+                  <span key={surface.thing}>
+                    {' '}
+                    Auf {surface.thing}: {surface.people.join(', ') || surface.showsEn}
+                    {surface.place ? ` (${surface.place})` : ''}.
+                  </span>
+                ))
+              : plan.screens.length
+                ? <> Nur auf einem Bildschirm: {plan.screens.join(', ')}.</>
+                : null}
+            {plan.sameFraming ? <> Absichtlich derselbe Blick wie das vorige Bild.</> : null}
           </p>
           <p>Kamera: {plan.cameraDe}</p>
         </>
@@ -572,11 +637,14 @@ export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
                 {attempt.hintDe ? <> · Dein Hinweis: {attempt.hintDe}</> : null}
                 {attempt.fixEn ? <> · Auftrag der Regie an den Maler: {attempt.fixEn}</> : null}
                 <br />
-                {attempt.verdict
-                  ? attempt.verdict.ok
-                    ? 'Regie: passt.'
-                    : `Regie: ${attempt.verdict.noteDe}`
-                  : 'Regie hat nicht angeschaut.'}
+                {attemptVerdictDe(attempt.verdict)}
+                {attempt.copyOf ? <> · Fast gleich wie ein früheres Bild.</> : null}
+                {attempt.verdict?.seenDe ? (
+                  <>
+                    <br />
+                    <span className="muted">Die Regie sah: {attempt.verdict.seenDe}</span>
+                  </>
+                ) : null}
               </HistoryThumb>
             ))}
           </div>
@@ -916,6 +984,7 @@ export function FilmStillStrip({
                 <>
                   {panelBusy ? <p className="film-beat-count">wird neu gemalt …</p> : null}
                   <FilmRegiePlanNote panel={panel} />
+                  <FilmRegieCheckNote panel={panel} />
                   <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
                   {panel.harvestNoteDe ? (
                     <p className="muted film-harvest-note">{panel.harvestNoteDe}</p>
