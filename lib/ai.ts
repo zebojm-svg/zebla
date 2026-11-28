@@ -252,11 +252,21 @@ export async function regieJson<T>(
   images: Array<{ mimeType: string; data: string }> = [],
   opts?: Omit<ChatJsonOpts, 'model'>,
 ): Promise<T> {
+  return (await regieJsonWithModel<T>(system, user, images, opts)).value
+}
+
+/** Wie regieJson, sagt aber, welches Modell geantwortet hat (Pro oder Ersatz Flash). */
+export async function regieJsonWithModel<T>(
+  system: string,
+  user: string,
+  images: Array<{ mimeType: string; data: string }> = [],
+  opts?: Omit<ChatJsonOpts, 'model'>,
+): Promise<{ value: T; model: string }> {
   try {
-    return await chatJsonWithImages<T>(system, user, images, { ...opts, model: REGIE_MODEL })
+    return { value: await chatJsonWithImages<T>(system, user, images, { ...opts, model: REGIE_MODEL }), model: REGIE_MODEL }
   } catch (err) {
     if (!isGeminiModelMissing(err)) throw err
-    return chatJsonWithImages<T>(system, user, images, { ...opts, model: TEXT_MODEL })
+    return { value: await chatJsonWithImages<T>(system, user, images, { ...opts, model: TEXT_MODEL }), model: TEXT_MODEL }
   }
 }
 
