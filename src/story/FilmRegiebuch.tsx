@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { Dialog } from '../types'
 import type { FilmStoryboard } from '../../shared/film-storyboard'
+import { regieModelLineDe } from '../../shared/regie-model'
 import {
   placesTooAlike,
   regiebuchFromContinuity,
@@ -99,6 +100,9 @@ export function FilmRegiebuch({
         <p className="muted">Die Regie hat die Geschichte noch nicht gelesen.</p>
       ) : (
         <>
+          {note.readModel ? (
+            <p className="muted">Gelesen — {regieModelLineDe(note.readModel, note.readModelNoteDe)}</p>
+          ) : null}
           {needsGerman ? (
             <p className="alert alert-warn">
               Dieses Regiebuch ist noch aus der Zeit vor dem Deutschen. «Neu lesen» schreibt es auf

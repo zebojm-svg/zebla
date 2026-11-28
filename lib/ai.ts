@@ -44,6 +44,16 @@ import {
 } from '../shared/film-dialog-native.js'
 import { linesFromRaw, newLineId } from './ids.js'
 import { recordGeminiUsage } from './ai-usage-ledger.js'
+import {
+  googleErrorStatus,
+  googleRetryDelayMs,
+  regieBusyDe,
+  regieEnvNoteDe,
+  regieFallbackDe,
+  regieModelProblem,
+  REGIE_RETRY_MIN_LEFT_MS,
+  REGIE_RETRY_WAITS_MS,
+} from '../shared/regie-model.js'
 import { speechTextDiffersFromLineText } from '../shared/line-speech.js'
 import { CAST_APPEARANCE_GUIDE, IMAGE_ASPECT_RATIO, castIntegrityRules, paintingAppearance, paintingStyleText, PAINT_STYLE_FIRST } from './ken-burns-style.js'
 import {
@@ -215,9 +225,24 @@ export async function chatJsonWithImages<T>(
   images: Array<{ mimeType: string; data: string }> = [],
   opts?: ChatJsonOpts,
 ): Promise<T> {
-  await assertAiAllowed()
   const modelId = opts?.model?.trim() || TEXT_MODEL
   try {
+    return await chatJsonRaw<T>(system, user, images, opts)
+  } catch (err) {
+    throw new Error(geminiErrorMessage(err, modelId))
+  }
+}
+
+/** Wie chatJsonWithImages, aber mit der Original-Fehlermeldung von Google (für die Regie-Entscheidung). */
+async function chatJsonRaw<T>(
+  system: string,
+  user: string,
+  images: Array<{ mimeType: string; data: string }> = [],
+  opts?: ChatJsonOpts,
+): Promise<T> {
+  await assertAiAllowed()
+  const modelId = opts?.model?.trim() || TEXT_MODEL
+  {
     const model = getTextModel(opts?.temperature ?? 0.7, modelId)
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
       { text: `${system}\n\n---\n\n${user}` },
@@ -237,15 +262,23 @@ export async function chatJsonWithImages<T>(
     const content = result.response.text()
     if (!content) throw new Error('Keine Antwort von der KI erhalten.')
     return parseJson<T>(content)
-  } catch (err) {
-    throw new Error(geminiErrorMessage(err, modelId))
   }
 }
 
-/** Die Regie denkt gründlich: Pro. Kleine Aufgaben bleiben auf TEXT_MODEL (Flash). */
-export const REGIE_MODEL = process.env.GEMINI_REGIE_MODEL?.trim() || 'gemini-2.5-pro'
+const REGIE_PRO_DEFAULT = 'gemini-2.5-pro'
+const REGIE_MODEL_FROM_ENV = process.env.GEMINI_REGIE_MODEL?.trim() || ''
 
-/** Regie-Anfrage auf Pro; fehlt Pro am Schlüssel, dieselbe Frage auf Flash. */
+/** Die Regie denkt gründlich: Pro. Kleine Aufgaben bleiben auf TEXT_MODEL (Flash). */
+export const REGIE_MODEL = REGIE_MODEL_FROM_ENV || REGIE_PRO_DEFAULT
+
+/** Steht in Vercel ein anderes Regie-Modell als Pro, sagt die Regie es dazu. */
+function regieConfigNoteDe(): string | undefined {
+  return REGIE_MODEL_FROM_ENV && !/pro/i.test(REGIE_MODEL_FROM_ENV) ? regieEnvNoteDe(REGIE_MODEL_FROM_ENV) : undefined
+}
+
+const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** Regie-Anfrage auf Pro; nur wenn Pro am Schlüssel fehlt, dieselbe Frage auf Flash. */
 export async function regieJson<T>(
   system: string,
   user: string,
@@ -255,18 +288,80 @@ export async function regieJson<T>(
   return (await regieJsonWithModel<T>(system, user, images, opts)).value
 }
 
-/** Wie regieJson, sagt aber, welches Modell geantwortet hat (Pro oder Ersatz Flash). */
+/**
+ * Wie regieJson, sagt aber, welches Modell geantwortet hat und warum.
+ * - Pro überlastet (429/503 …): kurz warten, noch einmal Pro — solange die Zeit reicht.
+ * - Pro fehlt am Schlüssel (404 / kein Kontingent): Flash, mit Grund in `noteDe`.
+ * - Sonst (Zeitlimit, ungültige Antwort): Fehler, kein stiller Wechsel.
+ */
 export async function regieJsonWithModel<T>(
   system: string,
   user: string,
   images: Array<{ mimeType: string; data: string }> = [],
   opts?: Omit<ChatJsonOpts, 'model'>,
-): Promise<{ value: T; model: string }> {
+): Promise<{ value: T; model: string; noteDe?: string }> {
+  const budget = opts?.timeoutMs ?? TEXT_GEN_TIMEOUT_MS
+  const started = Date.now()
+  const left = () => budget - (Date.now() - started)
+  const configNote = regieConfigNoteDe()
+  let tries = 0
+  let lastStatus: number | undefined
+  for (;;) {
+    tries += 1
+    try {
+      const value = await chatJsonRaw<T>(system, user, images, {
+        ...opts,
+        model: REGIE_MODEL,
+        timeoutMs: Math.max(10_000, left()),
+      })
+      return configNote ? { value, model: REGIE_MODEL, noteDe: configNote } : { value, model: REGIE_MODEL }
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err ?? '')
+      const problem = regieModelProblem(raw)
+      lastStatus = googleErrorStatus(raw)
+      console.warn(`[regie] ${REGIE_MODEL} Versuch ${tries}: ${problem} ${raw.slice(0, 300)}`)
+      if (problem === 'missing' || problem === 'no-quota') {
+        if (REGIE_MODEL === TEXT_MODEL) throw new Error(geminiErrorMessage(err, REGIE_MODEL), { cause: err })
+        const noteDe = regieFallbackDe(problem, REGIE_MODEL, TEXT_MODEL, lastStatus)
+        const value = await chatJsonWithImages<T>(system, user, images, {
+          ...opts,
+          model: TEXT_MODEL,
+          timeoutMs: Math.max(20_000, left()),
+        })
+        return { value, model: TEXT_MODEL, noteDe }
+      }
+      if (problem !== 'busy') throw new Error(geminiErrorMessage(err, REGIE_MODEL), { cause: err })
+      const wait = Math.max(
+        REGIE_RETRY_WAITS_MS[tries - 1] ?? Number.POSITIVE_INFINITY,
+        googleRetryDelayMs(raw) ?? 0,
+      )
+      if (!Number.isFinite(wait) || left() - wait < REGIE_RETRY_MIN_LEFT_MS) {
+        throw new Error(regieBusyDe(REGIE_MODEL, tries, lastStatus), { cause: err })
+      }
+      await sleepMs(wait)
+    }
+  }
+}
+
+/** Gibt es das Regie-Modell am Schlüssel? Nur Nachschlagen bei Google, kein Text, kostet nichts. */
+export async function regieModelHealth(): Promise<{
+  model: string
+  fromEnv: boolean
+  available: boolean | null
+  status?: number
+  noteDe?: string
+}> {
+  const key = getApiKey()
+  const base = { model: REGIE_MODEL, fromEnv: Boolean(REGIE_MODEL_FROM_ENV), noteDe: regieConfigNoteDe() }
+  if (!key) return { ...base, available: null, noteDe: 'Kein GEMINI_API_KEY.' }
   try {
-    return { value: await chatJsonWithImages<T>(system, user, images, { ...opts, model: REGIE_MODEL }), model: REGIE_MODEL }
-  } catch (err) {
-    if (!isGeminiModelMissing(err)) throw err
-    return { value: await chatJsonWithImages<T>(system, user, images, { ...opts, model: TEXT_MODEL }), model: TEXT_MODEL }
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(REGIE_MODEL)}?key=${encodeURIComponent(key)}`,
+      { signal: AbortSignal.timeout(8_000) },
+    )
+    return { ...base, available: res.ok, status: res.status }
+  } catch {
+    return { ...base, available: null }
   }
 }
 

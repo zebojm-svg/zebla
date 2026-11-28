@@ -133,7 +133,7 @@ import { sanitizeRegiebuchEdit } from '../shared/film-continuity.js'
 import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
-import { generateFilmFromPrompt } from '../lib/ai.js'
+import { generateFilmFromPrompt, regieModelHealth } from '../lib/ai.js'
 import type { DialogSection, Dialog } from '../shared/types.js'
 
 function getRoute(req: VercelRequest): string {
@@ -164,6 +164,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (route === 'health' && req.method === 'GET') {
+      if (req.query.regie) {
+        res.json({ ok: true, service: 'zebla', regie: await regieModelHealth() })
+        return
+      }
       res.json({ ok: true, service: 'zebla' })
       return
     }

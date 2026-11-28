@@ -5,6 +5,7 @@
 import { readFileSync } from 'fs'
 import {
   bestAttemptIndex,
+  cameraViewFromText,
   nearCopy,
   nearCopyVerdict,
   NEAR_COPY_H,
@@ -24,6 +25,14 @@ import {
   regiePlanSummaryDe,
   setRegieAttemptVerdict,
 } from '../shared/film-regie-plan.ts'
+import {
+  googleErrorStatus,
+  googleRetryDelayMs,
+  regieFallbackDe,
+  regieModelLineDe,
+  regieModelProblem,
+} from '../shared/regie-model.ts'
+import { stillEditImageErrorDe } from '../shared/film-still-pack.ts'
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`)
@@ -208,6 +217,99 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
     fail('alter Plan: Bildschirm-Satz wie bisher')
   }
   if (regiePlanPlacesDe(old) !== 'Ort: Stadion. Nur auf einem Bildschirm: Trainer.') fail('alter Plan: Notiz mit Ort und Bildschirm')
+
+  const handy = readRegiePlan(
+    {
+      place: 'Stadion',
+      bodies: ['Mia'],
+      surfaces: [{ thing: 'Handy', people: [], place: '', showsEn: 'a text message from the coach', contentDe: 'eine Nachricht vom Trainer' }],
+      cameraDe: 'a',
+      paintEn: 'b',
+    },
+    opts,
+  ).plan
+  if (handy?.surfaces?.[0]?.contentDe !== 'eine Nachricht vom Trainer') fail('Fläche: deutscher Satz für die Seite wird gelesen')
+  if (regiePlanPlacesDe(handy) !== 'Ort: Stadion. Auf Handy: eine Nachricht vom Trainer.') fail('Seite zeigt deutsch, nicht den englischen Maler-Text')
+  if (!regiePaintPromptEn({ plan: handy, styleLabel: 'x', stylePrompt: 'y', languageEn: 'German' }).includes('a text message from the coach')) {
+    fail('der Maler bekommt weiter den englischen Text')
+  }
+  const oldSurface = { ...handy, surfaces: [{ thing: 'Handy', people: [], place: '', showsEn: 'a text message' }] }
+  if (/text message/.test(regiePlanPlacesDe(oldSurface))) fail('alter Plan ohne deutschen Satz: kein Englisch auf der Seite')
+}
+
+// Kamera: Beschreibung gegen Plan
+{
+  if (cameraViewFromText('Lena von hinten-rechts gesehen') !== 'hinten') fail('«von hinten-rechts» ist hinten')
+  if (cameraViewFromText('Halbnah auf Lena, von vorne-rechts.') !== 'vorne') fail('«von vorne-rechts» ist vorne')
+  if (cameraViewFromText('Camera behind Mia, from behind') !== 'hinten') fail('englisch «from behind» ist hinten')
+  if (cameraViewFromText('von vorne auf Mia, Tor hinten von hinten beleuchtet') !== undefined) fail('beides im Text: keine Entscheidung')
+  if (cameraViewFromText('über die Schulter') !== undefined) fail('unklar: keine Entscheidung')
+
+  const back = readJudgeAnswer(
+    answer({}, { seen: { camera: 'Lena von hinten-rechts gesehen, halbnah' } }),
+    'gemini-2.5-pro',
+    { plannedViewText: 'Halbnah auf Lena, von vorne-rechts.' },
+  )
+  if (back.ok || !back.failed.includes('kamera') || !back.noteDe.includes('von hinten') || !back.fixEn.includes('CAMERA')) {
+    fail('Beschreibung «von hinten», Plan «von vorne»: Kamera nicht bestanden, auch wenn die Regie «passt» angekreuzt hat')
+  }
+  const same = readJudgeAnswer(answer({}, { seen: { camera: 'von vorne' } }), 'm', { plannedViewText: 'von vorne-links' })
+  if (!same.ok) fail('gleiche Seite: passt')
+  const told = readJudgeAnswer(
+    answer({}, { compare: { planCamera: 'von der Seite', seenCamera: 'von oben', same: false } }),
+    'm',
+  )
+  if (told.ok || !told.failed.includes('kamera') || !told.noteDe.includes('von oben')) fail('sagt die Regie selbst «anders», ist Kamera nicht bestanden')
+  const noPlan = readJudgeAnswer(answer({}, { seen: { camera: 'von hinten' } }), 'm', {})
+  if (!noPlan.ok) fail('ohne Kamera im Plan kein Zwang')
+  const noted = readJudgeAnswer(answer({}), 'gemini-2.5-flash', { modelNoteDe: 'Flash statt Pro, weil …' })
+  if (storedRegieCheck(noted).modelNoteDe !== 'Flash statt Pro, weil …') fail('der Grund für Flash wird beim Bild gespeichert')
+}
+
+// Modell: nur bei «gibt es nicht» auf Flash, bei Überlastung noch einmal Pro
+{
+  const notFound =
+    '[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent: [404 Not Found] models/gemini-2.5-pro is not found for API version v1beta'
+  if (regieModelProblem(notFound) !== 'missing' || googleErrorStatus(notFound) !== 404) fail('404 = Modell fehlt')
+  const busy = '[GoogleGenerativeAI Error]: Error fetching from https://x: [503 Service Unavailable] The model is overloaded. Please try again later.'
+  if (regieModelProblem(busy) !== 'busy') fail('503 überlastet = noch einmal Pro, nicht Flash')
+  const quota = '[429 Too Many Requests] You exceeded your current quota. Please retry in 7.5s.'
+  if (regieModelProblem(quota) !== 'busy' || googleRetryDelayMs(quota) !== 7500) fail('429 = warten (so lange wie Google sagt), noch einmal Pro')
+  const none = '[429 Too Many Requests] Quota exceeded for metric: generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro'
+  if (regieModelProblem(none) !== 'no-quota') fail('Kontingent 0 = Pro steht dem Schlüssel nicht zur Verfügung')
+  if (regieModelProblem('Die Regie hat das Bild nicht rechtzeitig angeschaut') !== 'other') fail('Zeitlimit ist kein Grund für Flash')
+  if (regieModelProblem('Gemini-Modell „gemini-2.5-pro“ ist nicht verfügbar.') !== 'other') {
+    fail('unsere eigene deutsche Meldung zählt nicht als «Modell fehlt»')
+  }
+  const why = regieFallbackDe('missing', 'gemini-2.5-pro', 'gemini-2.5-flash', 404)
+  if (!why.startsWith('Flash statt Pro, weil') || !why.includes('404')) fail('Grund: «Flash statt Pro, weil …»')
+  if (regieModelLineDe('gemini-2.5-flash', why) !== `Modell: gemini-2.5-flash — ${why}`) fail('Verlauf zeigt Modell und Grund')
+
+  const ai = readFileSync('lib/ai.ts', 'utf8')
+  const fn = ai.slice(ai.indexOf('export async function regieJsonWithModel'), ai.indexOf('export async function regieModelHealth'))
+  if (!fn.includes('chatJsonRaw') || fn.includes('isGeminiModelMissing')) fail('Regie entscheidet an der Original-Meldung von Google')
+  if (!fn.includes("problem === 'busy'") && !fn.includes("problem !== 'busy'")) fail('Überlastung: noch einmal Pro')
+  if (!fn.includes('REGIE_RETRY_MIN_LEFT_MS')) fail('neuer Versuch nur, wenn die Zeit reicht')
+  const plan = readFileSync('lib/film-regie-plan.ts', 'utf8')
+  if (!plan.includes('regieJsonWithModel') || !plan.includes('modelNoteDe')) fail('der Plan merkt sich Modell und Grund')
+  const cont = readFileSync('lib/film-continuity.ts', 'utf8')
+  if (!cont.includes('readModel: read.model')) fail('das Regiebuch merkt sich, wer gelesen hat')
+}
+
+// Bild ändern: Grund auf Deutsch
+{
+  const reasons: Array<[string, RegExp]> = [
+    ['FLUX Kontext nicht gelungen (Replicate FLUX Kontext: Request was throttled. Your rate limit is reduced).', /zu oft gefragt/],
+    ['Replicate FLUX Kontext: Prediction failed: The input or output was flagged as sensitive (E005)', /Schutzfilter/],
+    ['[200] Kein Standbild erhalten.', /kein Bild zurückgegeben/],
+    ['Failed to fetch', /Verbindung/],
+    ['Something odd happened in the painter', /Grund: Something odd happened in the painter/],
+  ]
+  for (const [raw, want] of reasons) {
+    const shown = stillEditImageErrorDe(new Error(raw))
+    if (!want.test(shown) || !shown.includes('Das Bild konnte nicht neu gemalt werden')) fail(`Bild ändern nennt den Grund: ${raw} → ${shown}`)
+    if (stillEditImageErrorDe(new Error(shown)) !== shown) fail(`zweimal übersetzt bleibt derselbe Satz: ${shown}`)
+  }
 }
 
 // Quelltext: Anschauen, Planen, Malen, Schleife, Seite
@@ -218,7 +320,7 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
   if (!judgeFn.includes("uncheckedVerdict('Das Bild konnte nicht geladen werden')") || !judgeFn.includes('catch (err)')) {
     fail('fehlt das Bild oder klappt die Anfrage nicht: «nicht geprüft»')
   }
-  if (!judgeFn.includes('regieJsonWithModel') || !judgeFn.includes('readJudgeAnswer(value, model)')) fail('das Modell steht beim Urteil')
+  if (!judgeFn.includes('regieJsonWithModel') || !judgeFn.includes('readJudgeAnswer(value, model, { plannedViewText: opts.plannedCameraText, modelNoteDe: noteDe })')) fail('das Modell steht beim Urteil')
   for (const need of ['SATZ DAVOR', 'SATZ DANACH', 'AUFTRAG AN DEN MALER', 'JUDGE_REF_WIDTH']) {
     if (!judgeFn.includes(need)) fail(`Anschauen bekommt ${need}`)
   }
@@ -248,7 +350,7 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
   if (!planned.includes('grayThumb') || !planned.includes('nearCopy(mine, thumb)')) fail('der Maler-Schritt vergleicht mit früheren Bildern')
 
   const planSrc = readFileSync('lib/film-regie-plan.ts', 'utf8')
-  if (!planSrc.includes('regieJson<unknown>(PLAN, ask, images') || !planSrc.includes('PLAN_THUMB_WIDTH')) fail('die Regie sieht kleine Bilder der Vorlagen')
+  if (!planSrc.includes('regieJsonWithModel<unknown>(PLAN, ask, images') || !planSrc.includes('PLAN_THUMB_WIDTH')) fail('die Regie sieht kleine Bilder der Vorlagen')
   if (!planSrc.includes('do not copy pose or framing') || !planSrc.includes('sameFraming') || !planSrc.includes('surfaces')) {
     fail('Planen: Flächen, gleicher Blick, voriges Bild nicht als Bildaufbau')
   }

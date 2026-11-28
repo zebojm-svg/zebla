@@ -238,6 +238,9 @@ export function stillPromptForPanel(
   })
 }
 
+/** Replicate bremst bei wenig Guthaben: einmal so lange warten, dann noch einmal. */
+const FLUX_THROTTLE_WAIT_MS = 10_000
+
 export async function generateFilmPanelStillImage(opts: {
   panel: FilmStoryboardPanel
   scene?: FilmScene
@@ -267,9 +270,9 @@ export async function generateFilmPanelStillImage(opts: {
     if (!fluxLockAvailable()) {
       throw new Error(STILL_EDIT_FLUX_MISSING_DE)
     }
-    try {
+    const edit = () => {
       const refs = parseStillPackRefs(hint)
-      const moved = await editImageWithKontext({
+      return editImageWithKontext({
         prompt: stillEditKontextPrompt(hint, {
           packNumber: opts.board
             ? stillPackNumber(opts.board, opts.panel)
@@ -286,8 +289,20 @@ export async function generateFilmPanelStillImage(opts: {
         aspectRatio: '16:9',
         model: STILL_EDIT_FLUX_MODEL,
       })
+    }
+    try {
+      let moved: Awaited<ReturnType<typeof editImageWithKontext>>
+      try {
+        moved = await edit()
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err ?? '')
+        if (!/throttl|rate.?limit|too many requests/i.test(raw)) throw err
+        await new Promise((resolve) => setTimeout(resolve, FLUX_THROTTLE_WAIT_MS))
+        moved = await edit()
+      }
       return await uploadPng(moved.buffer, `film-stills/${randomUUID()}.png`)
     } catch (err) {
+      console.error('[bild-aendern] FLUX', err instanceof Error ? err.message : err)
       throw new Error(stillEditImageErrorDe(err))
     }
   }

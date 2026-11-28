@@ -57,6 +57,7 @@ import {
   regieFoundError,
   REGIE_PASS,
   roomRefAllowed,
+  cameraViewFromText,
   storedRegieCheck,
   uncheckedVerdict,
 } from '../shared/film-regie-judge.js'
@@ -1135,6 +1136,7 @@ export async function judgeFilmPanel(
       },
       planDe: plan ? regiePlanSummaryDe(plan) : boardShotDe(panel),
       paintEn: plan?.paintEn,
+      plannedCameraText: plan ? (cameraViewFromText(plan.cameraDe) ? plan.cameraDe : plan.cameraEn) : undefined,
       refs: judgeRefs({ board, index, continuity, library, picks: dialog.catalogCast }),
     })
   }
@@ -1155,6 +1157,7 @@ export async function judgeFilmPanel(
         softDe: chosen.verdict.softDe ?? '',
         seenDe: chosen.verdict.seenDe ?? '',
         model: chosen.verdict.model,
+        modelNoteDe: chosen.verdict.modelNoteDe,
         fixEn: '',
         freshRefs: false,
       }
@@ -1811,6 +1814,7 @@ export async function stillFilmPanel(
     return { dialog: updated, board: withNote }
   } catch (err) {
     const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
+    if (correction) console.error('[bild-aendern]', raw)
     const message = correction ? stillEditImageErrorDe(err) : raw
     const failed = applyPanelStillError(working, panelId, message)
     try {

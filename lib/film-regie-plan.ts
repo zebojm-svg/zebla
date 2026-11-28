@@ -1,4 +1,4 @@
-import { regieJson } from './ai.js'
+import { regieJsonWithModel } from './ai.js'
 import { imagePartFromUrl, type InlinePart } from './film-image-parts.js'
 import {
   regiebuchForPlanning,
@@ -18,7 +18,7 @@ Entscheide:
   place ist immer der Raum, in dem die Kamera steht. Alles um die Leute und um die Geräte herum (Wände, Boden, Möbel) gehört zu diesem Ort.
 - bodies: wer an diesem Ort körperlich im Bild ist.
 - screens: wer nur auf einem Bildschirm oder Foto im Bild zu sehen ist (leer, wenn niemand). Wer auf einem Bildschirm ist, ist dort an seinem eigenen Ort: hinter ihm sieht man seinen Raum, nicht den Raum, in dem der Bildschirm steht.
-- surfaces: jede Fläche im Bild, auf der etwas anderes zu sehen ist als der Raum der Kamera (Bildschirm, Fernseher, Telefon, Spiegel, Anzeigetafel, Foto, Leinwand). Für jede: thing (welches Gerät oder welcher Rahmen, kurz, deutsch), people (wer darauf zu sehen ist), place (welcher Ort darauf zu sehen ist, Name aus dem Regiebuch, leer wenn keiner), showsEn (was darauf zu sehen ist, englisch, konkret). Leer, wenn es keine solche Fläche gibt. Wer auf einer Fläche ist, steht nicht in bodies.
+- surfaces: jede Fläche im Bild, auf der etwas anderes zu sehen ist als der Raum der Kamera (Bildschirm, Fernseher, Telefon, Spiegel, Anzeigetafel, Foto, Leinwand). Für jede: thing (welches Gerät oder welcher Rahmen, kurz, deutsch), people (wer darauf zu sehen ist), place (welcher Ort darauf zu sehen ist, Name aus dem Regiebuch, leer wenn keiner), showsEn (was darauf zu sehen ist, englisch, konkret, für den Maler), contentDe (dasselbe als kurzer deutscher Satz für Jean-Marie, ohne Fachwörter). Leer, wenn es keine solche Fläche gibt. Wer auf einer Fläche ist, steht nicht in bodies.
 - wo die Kamera steht und wohin sie schaut. Was dann hinter den Leuten zu sehen ist, folgt aus der Beschreibung des Ortes: schaut die Kamera in die andere Richtung, sieht man die gegenüberliegende Wand.
 - cameraEn: ein englischer Satz mit Kamera-Standort, Richtung (von vorne, von der Seite, von hinten), Nähe und wohin jede Person schaut. Der Maler bekommt ihn am Schluss noch einmal.
 - sameFraming: true nur, wenn dieses Bild absichtlich fast gleich aussehen soll wie das vorige Bild. Sonst false.
@@ -35,7 +35,7 @@ Braucht dieser Satz eine neue Handlung, einen neuen Ausdruck oder einen neuen Bl
 paintEn ist der ganze Auftrag an den Maler, auf Englisch, konkret, mit Namen: der Raum, wer wo ist, Kamera-Standort und Blickrichtung, was im Hintergrund zu sehen ist, Blickrichtung der Leute, Ausdruck, Handlung, Gegenstände, und was auf jeder Fläche zu sehen ist.
 cameraDe ist ein kurzer deutscher Satz für Jean-Marie, ohne Fachwörter, z.B. "Nah auf Amir, von vorne. Hinter ihm das Bücherregal."
 Nur ein JSON-Objekt:
-{ "place": "", "placeLookEn": "", "bodies": [], "screens": [], "surfaces": [{ "thing": "", "people": [], "place": "", "showsEn": "" }], "cameraDe": "", "cameraEn": "", "sameFraming": false, "paintEn": "", "refs": [{ "id": "V1", "useEn": "" }] }`
+{ "place": "", "placeLookEn": "", "bodies": [], "screens": [], "surfaces": [{ "thing": "", "people": [], "place": "", "showsEn": "", "contentDe": "" }], "cameraDe": "", "cameraEn": "", "sameFraming": false, "paintEn": "", "refs": [{ "id": "V1", "useEn": "" }] }`
 
 /** Kleine Bilder der Vorlagen für die Regie: billig (höchstens 384 Pixel) und nicht zu viele. */
 export const PLAN_THUMB_WIDTH = 384
@@ -74,9 +74,9 @@ export async function planStoryPicture(opts: {
   ]
     .filter(Boolean)
     .join('\n\n')
-  let raw: unknown
+  let answer: { value: unknown; model: string; noteDe?: string }
   try {
-    raw = await regieJson<unknown>(PLAN, ask, images, {
+    answer = await regieJsonWithModel<unknown>(PLAN, ask, images, {
       temperature: 0.3,
       timeoutMs: 120_000,
       timeoutMessage: 'Die Regie hat länger als zwei Minuten gebraucht.',
@@ -85,9 +85,11 @@ export async function planStoryPicture(opts: {
     const message = err instanceof Error ? err.message.trim() : ''
     return { errorDe: message.slice(0, 200) || 'Die Regie hat nicht geantwortet.' }
   }
-  return readRegiePlan(raw, {
+  const read = readRegiePlan(answer.value, {
     places: opts.continuity.places.map((place) => place.name),
     people: opts.continuity.people.map((person) => person.name),
     options: opts.options,
   })
+  if (!read.plan) return read
+  return { plan: { ...read.plan, model: answer.model, ...(answer.noteDe ? { modelNoteDe: answer.noteDe } : {}) } }
 }
