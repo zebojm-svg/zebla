@@ -175,6 +175,7 @@ function PanelCard({
         notes={
           <>
             {painting ? <p className="film-beat-count">wird neu gemalt …</p> : null}
+            {panel.regiePlan?.cameraDe ? <p className="muted">Regie: {panel.regiePlan.cameraDe}</p> : null}
             {panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl ? (
               panel.regieCheck.ok ? (
                 <p className="muted">Regie: passt.</p>

@@ -39,7 +39,9 @@ import {
   type FilmStoryboardPanel,
 } from '../shared/film-storyboard.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
-import { generateFilmPanelStillImage } from './film-stills.js'
+import { generateFilmPanelStillImage, paintRegiePlannedStill } from './film-stills.js'
+import { planStoryPicture } from './film-regie-plan.js'
+import { regiePlanSummaryDe, type FilmRegiePlan, type RegieRefOption } from '../shared/film-regie-plan.js'
 import {
   briefForImage,
   applyRegiebuchEdit,
@@ -48,6 +50,7 @@ import {
   judgeStoryStill,
   type RegieVerdict,
   jobsForLibrary,
+  placePlate,
   runNextReferenceJob,
   sidePlate,
   stampReferenceFaces,
@@ -933,6 +936,107 @@ export async function planFilmPanelStillEdit(
   })
 }
 
+function panelLinesDe(dialog: Dialog, panel: FilmStoryboardPanel): string {
+  const lines = dialog.sections.flatMap((section) => section.lines)
+  const said = panel.lineIds
+    .map((id) => lines.find((line) => line.id === id))
+    .filter((line): line is DialogLine => Boolean(line))
+    .map((line) => `${line.speaker}: ${lineStoryText(line)}${line.cueImage ? ` (${line.cueImage})` : ''}`)
+  const text = said.length ? said.join('\n') : panel.caption
+  return [text, panel.imageCue ? `Bild-Hinweis: ${panel.imageCue}` : ''].filter(Boolean).join('\n')
+}
+
+function boardShotDe(panel: FilmStoryboardPanel): string {
+  const shot = panel.shot ?? 'wide'
+  const who = (panel.closeupSpeaker || panel.placements[0]?.name || '').trim()
+  return shot === 'closeup'
+    ? `nah auf ${who || 'die Person, die spricht'}`
+    : shot === 'insert'
+      ? 'Detail, nicht der ganze Ort'
+      : `weit${panel.settingHint ? `, Ort laut Board ${panel.settingHint}` : ''}`
+}
+
+function earlierPanelDe(panel: FilmStoryboardPanel, number: number): string {
+  const what = panel.regiePlan
+    ? regiePlanSummaryDe(panel.regiePlan)
+    : `ohne Plan; Board: ${boardShotDe(panel)}`
+  const wrong =
+    panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl && !panel.regieCheck.ok
+      ? ` — Regie fand einen Fehler: ${panel.regieCheck.noteDe}`
+      : ''
+  return `Bild ${number} «${panel.caption}»: ${what}${wrong}`
+}
+
+/** Die Regie plant ein Bild, bevor es gemalt wird. Eigene Anfrage, damit Planen, Malen und Anschauen je unter drei Minuten bleiben. */
+export async function planFilmPanel(
+  dialogId: string,
+  userId: string,
+  panelId: string,
+  profile?: UserProfile | null,
+): Promise<{ dialog: Dialog; board: FilmStoryboard; planned: boolean }> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const index = board.panels.findIndex((item) => item.id === panelId)
+  const panel = board.panels[index]
+  if (!panel) throw new Error('Bild nicht gefunden.')
+  const scenePanels = board.panels.filter((item) => item.sceneId === panel.sceneId)
+  if (!panelWantsOwnStill(panel, scenePanels) && previousStillUrlInScene(board, panel)) {
+    return { dialog, board, planned: false }
+  }
+  const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
+  const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
+  const picks = dialog.catalogCast
+  const options: RegieRefOption[] = []
+  const offer = (url: string | undefined, aboutDe: string) => {
+    if (!url?.startsWith('http') || options.some((option) => option.url === url)) return
+    options.push({ id: `V${options.length + 1}`, url, aboutDe })
+  }
+  for (const person of continuity.people) {
+    offer(
+      pickedCastUrl(library, picks?.personIds, person.name) || identityReferenceUrl(library, person.name),
+      `Stammbild von ${person.name}, von vorne, ohne Raum.`,
+    )
+    offer(sidePlate(library, person.name)?.imageUrl, `Seitenansicht von ${person.name}, ohne Raum.`)
+  }
+  for (const place of continuity.places) {
+    offer(
+      pickedCastUrl(library, picks?.placeIds, place.name) || placePlate(library, place.name)?.imageUrl,
+      `Raum-Vorlage «${place.name}», leer, ohne Leute.`,
+    )
+  }
+  const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
+  const shown = new Set<string>()
+  const recent = [...earlier].reverse().filter((item) => {
+    if (shown.has(item.stillUrl as string)) return false
+    shown.add(item.stillUrl as string)
+    return true
+  })
+  for (const item of recent.slice(0, 8).reverse()) {
+    offer(item.stillUrl, `Früheres fertiges ${earlierPanelDe(item, board.panels.indexOf(item) + 1)}`)
+  }
+  const sceneBefore = scenePanels.filter((item) => item.panelIndex < panel.panelIndex)
+  const sceneAfter = scenePanels.filter((item) => item.panelIndex > panel.panelIndex)
+  const plan = await planStoryPicture({
+    continuity,
+    linesDe: panelLinesDe(dialog, panel),
+    beforeDe: sceneBefore.slice(-2).map((item) => panelLinesDe(dialog, item)).join('\n'),
+    afterDe: sceneAfter.slice(0, 2).map((item) => panelLinesDe(dialog, item)).join('\n'),
+    shotDe: boardShotDe(panel),
+    earlierDe: sceneBefore.map((item) => earlierPanelDe(item, board.panels.indexOf(item) + 1)).join('\n'),
+    options,
+  })
+  if (!plan && !panel.regiePlan) return { dialog, board, planned: false }
+  const next: FilmStoryboard = {
+    ...board,
+    continuity,
+    panels: board.panels.map((item) => (item.id === panel.id ? { ...item, regiePlan: plan ?? undefined } : item)),
+  }
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(next) }, profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Der Plan der Regie konnte nicht gespeichert werden.')
+  return { dialog: updated, board: updated.filmStoryboard, planned: Boolean(plan) }
+}
+
 /** Die Regie schaut ein fertiges Bild an. Eigene Anfrage, damit Malen und Anschauen je unter drei Minuten bleiben. */
 export async function judgeFilmPanel(
   dialogId: string,
@@ -954,30 +1058,40 @@ export async function judgeFilmPanel(
   }
   const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
   const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
-  const who = (panel.closeupSpeaker || panel.placements[0]?.name || '').trim()
+  const who = (panel.regiePlan?.bodies[0] || panel.closeupSpeaker || panel.placements[0]?.name || '').trim()
   const refs: Array<{ url: string; roleDe: string }> = []
   const plate = who
     ? pickedCastUrl(library, dialog.catalogCast?.personIds, who) || identityReferenceUrl(library, who)
     : undefined
   if (plate) refs.push({ url: plate, roleDe: `Stammbild von ${who}.` })
-  const sameWho = [...earlier]
-    .reverse()
-    .find((item) => (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() === who.toLowerCase())
-  if (who && sameWho?.stillUrl) refs.push({ url: sameWho.stillUrl, roleDe: `Früheres Bild mit ${who}.` })
-  for (const item of directorStillUrls(board.panels, continuity, panel.id)) {
-    if (!refs.some((ref) => ref.url === item.url)) refs.push({ url: item.url, roleDe: `Früheres Bild: ${item.name}` })
+  const plan = panel.regiePlan
+  const okStill = (item: FilmStoryboardPanel) =>
+    item.stillUrl !== panel.stillUrl &&
+    !(item.regieCheck && item.regieCheck.stillUrl === item.stillUrl && !item.regieCheck.ok)
+  if (plan?.place) {
+    const samePlace = [...earlier]
+      .reverse()
+      .find((item) => okStill(item) && item.regiePlan?.place.trim().toLowerCase() === plan.place.trim().toLowerCase())
+    if (samePlace?.stillUrl) {
+      refs.push({
+        url: samePlace.stillUrl,
+        roleDe: `Früheres Bild am selben Ort ${plan.place}. Damals: ${regiePlanSummaryDe(samePlace.regiePlan as FilmRegiePlan)}`,
+      })
+    }
+  } else {
+    const sameWho = [...earlier]
+      .reverse()
+      .find((item) => (item.closeupSpeaker || item.placements[0]?.name || '').trim().toLowerCase() === who.toLowerCase())
+    if (who && sameWho?.stillUrl) refs.push({ url: sameWho.stillUrl, roleDe: `Früheres Bild mit ${who}.` })
+    for (const item of directorStillUrls(board.panels, continuity, panel.id)) {
+      if (!refs.some((ref) => ref.url === item.url)) refs.push({ url: item.url, roleDe: `Früheres Bild: ${item.name}` })
+    }
   }
-  const shot = panel.shot ?? 'wide'
   const verdict = await judgeStoryStill({
     imageUrl: panel.stillUrl,
     regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
     lineDe: [panel.caption, panel.imageCue].filter(Boolean).join(' — '),
-    shotDe:
-      shot === 'closeup'
-        ? `nah auf ${who || 'die Person, die spricht'}`
-        : shot === 'insert'
-          ? 'Detail, nicht der ganze Ort'
-          : `weit${panel.settingHint ? `, Ort ${panel.settingHint}` : ''}`,
+    shotDe: plan ? `Plan der Regie: ${regiePlanSummaryDe(plan)}` : boardShotDe(panel),
     refs,
   })
   const next: FilmStoryboard = {
@@ -1156,6 +1270,30 @@ export async function stillFilmPanel(
         const updated = await persist(withNote)
         return { dialog: updated, board: withNote }
       }
+    }
+    if (!correction && panel.regiePlan) {
+      const plan = panel.regiePlan
+      const paintedUrls = new Set(working.panels.map((item) => item.stillUrl).filter(Boolean))
+      const refs = regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs
+      const url = await paintRegiePlannedStill({
+        plan: { ...plan, refs },
+        continuity: working.continuity ?? (await ensureFilmContinuity(dialog, working)),
+        styleId: resolvedStyle,
+        targetLanguage,
+        fixEn: regie?.fixEn,
+      })
+      const withNote = applyPanelHarvestNote(
+        applyPanelStill(working, panelId, url, resolvedStyle),
+        panelId,
+        [
+          regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
+          'Gemalt nach dem Plan der Regie.',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      )
+      const updated = await persist(withNote)
+      return { dialog: updated, board: withNote }
     }
     if (!correction) {
       try {

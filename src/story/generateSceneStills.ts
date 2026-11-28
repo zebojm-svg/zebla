@@ -10,7 +10,7 @@ import {
 
 const REGIE_TRIES = 2
 
-/** Malen, dann schaut die Regie hin. Passt es nicht, höchstens zweimal neu. Danach bleibt das Bild markiert. */
+/** Die Regie plant, dann wird gemalt, dann schaut die Regie hin. Passt es nicht, höchstens zweimal neu. Danach bleibt das Bild markiert. */
 export async function stillWithRegie(opts: {
   dialogId: string
   panelId: string
@@ -19,6 +19,14 @@ export async function stillWithRegie(opts: {
   onStatus?: (text: string) => void
   onResult?: (result: { dialog: Dialog; board: FilmStoryboard }) => void
 }): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
+  opts.onStatus?.(`Die Regie plant ${opts.label} …`)
+  try {
+    const planned = await api.ai.filmPlanPanel(opts.dialogId, opts.panelId)
+    opts.onResult?.({ dialog: planned.dialog, board: planned.board })
+  } catch {
+    /* Ohne Plan malt Zebla wie bisher. */
+  }
+  opts.onStatus?.(`Jetzt wird ${opts.label} gemalt …`)
   let result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId)
   opts.onResult?.(result)
   for (let tries = 0; ; tries++) {

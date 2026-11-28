@@ -110,7 +110,15 @@ Zebla gibt das Ziel, die Regie entscheidet den nächsten Schritt. Heute bestimmt
 Bauschritte:
 
 1. Regiebuch anlegen und auf der Bilder-Seite zeigen, korrigierbar. **Gebaut:** oben auf Bilder, offen. Wo und wie, Personen, Orte, «Was sonst gilt», welches Bild woran anschliesst. «Regiebuch speichern» = die Regie liest neu mit deinen Sätzen als Vorgabe. «Neu lesen» behält die Vorgaben. «Bilder planen» löscht ein geändertes Regiebuch nicht. Ein schon gezeichnetes Stammbild bleibt; neu zeichnen nach einer Änderung kommt später.
-2. Regie prüft jedes Bild aus dem Regiebuch, zwei Versuche, dann Markierung. **Gebaut:** nach jedem Bild ein eigener Schritt «Regie schaut an» (Regiebuch, Satz, Stammbild, frühere Bilder derselben Person und desselben Blicks). Allgemeine Prüfung, keine Ortslisten: jede Person höchstens einmal, nur wer laut Regiebuch hier ist, gleiches Aussehen, Dinge eines anderen Ortes nicht hier, Einstellung passt, keine Fantasie-Schrift. Fehler geht als Auftrag an den Maler; übernimmt das Bild Falsches aus einem früheren Bild, malt er ohne Ortsbilder. Unter jedem Bild: «Regie: passt» oder der Fehler. Planen aus dem Regiebuch noch nicht.
+2. Regie prüft jedes Bild aus dem Regiebuch, zwei Versuche, dann Markierung. **Gebaut:** nach jedem Bild ein eigener Schritt «Regie schaut an» (Regiebuch, Satz, Stammbild, frühere Bilder derselben Person und desselben Blicks). Allgemeine Prüfung, keine Ortslisten: jede Person höchstens einmal, nur wer laut Regiebuch hier ist, gleiches Aussehen, Dinge eines anderen Ortes nicht hier, Einstellung passt, keine Fantasie-Schrift. Fehler geht als Auftrag an den Maler; übernimmt das Bild Falsches aus einem früheren Bild, malt er ohne Ortsbilder. Unter jedem Bild: «Regie: passt» oder der Fehler.
+   **2b. Planen aus dem Regiebuch — gebaut (28. Nov 2026), live noch nicht ausprobiert.** Anlass: Videochat Amir/Lena — Amir wurde zur Frau, Leute posierten für den Zuschauer, falscher Raum hinter der Person, Gegenschuss ohne andere Wand.
+   - Vor jedem Bild plant die Regie (Pro, eigene Anfrage): welcher Ort, wer körperlich da ist, wer nur auf einem Bildschirm, wo die Kamera steht und wohin sie schaut, welche Vorlagen (höchstens 3) mit und wofür.
+   - Ablauf je Bild: planen → malen → anschauen → bei Fehler neu malen (Plan bleibt, Korrektur dazu), höchstens zweimal.
+   - Orte im Regiebuch sagen, was an welcher Wand ist und wohin die Person schaut. Gegenschuss = andere Wand. Niemand posiert für den Zuschauer. Das steht im Regie-Text, nicht als Regel im Programm.
+   - Mit Plan malt der Maler nur nach dem Plan: keine alten Ortsregeln, kein Heranfahren mit FLUX. «Bild ändern» mit Hinweis geht noch den alten Weg.
+   - Unter jedem Bild ein Satz «Regie: …» (wo die Kamera steht).
+   - Alte Regiebücher: einmal «Neu lesen», damit die Orte die Wände beschreiben.
+   - Kosten: ein Pro-Aufruf mehr pro Bild (etwa 1–2 Rappen).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
 5. Ganze Szene nebeneinander prüfen. Noch nicht.

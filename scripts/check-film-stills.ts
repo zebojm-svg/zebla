@@ -1130,4 +1130,13 @@ if (!stillGenSrc.includes('markLaterPanelsStaleAfterCorrection')) {
   fail('Nach Bild ändern werden spätere Bilder der Szene markiert')
 }
 
+const painterSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
+const planPainter = painterSrc.slice(painterSrc.indexOf('export async function paintRegiePlannedStill'))
+if (!planPainter.includes('regieAttachmentLegendEn') || !planPainter.includes('paintWithGemini')) {
+  fail('Mit Plan: genau die Vorlagen der Regie, mit ihren Sätzen')
+}
+if (/stillAttachmentInstruction|buildFilmStillPrompt|editImageWithKontext|cropWideStillToSpeaker/.test(planPainter)) {
+  fail('Mit Plan: keine alten Ort-Regeln, kein FLUX-Heranfahren, kein Zuschneiden')
+}
+
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')
