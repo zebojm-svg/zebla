@@ -92,9 +92,20 @@ type Props = {
   onStyleChange: (styleId: string) => void
   busy: boolean
   extraDisabled?: boolean
-  progress?: { current: number; total: number; preparing?: boolean; stepDe?: string } | null
+  progress?: {
+    current: number
+    total: number
+    preparing?: boolean
+    stepDe?: string
+    reviewing?: boolean
+    reviewChecked?: number
+    reviewTotal?: number
+  } | null
   error?: string
   status?: string
+  completion?: { text: string; kind: 'success' | 'info' | 'warn' | 'error' }
+  runLog?: string[]
+  onDismissCompletion?: () => void
   onGenerate: (force: boolean, skipPlates?: boolean) => void
   onPreparePlates?: () => void
   onReview?: () => void
@@ -120,6 +131,9 @@ export function FilmSceneGenerateBar({
   progress,
   error,
   status,
+  completion,
+  runLog,
+  onDismissCompletion,
   onGenerate,
   onPreparePlates,
   onReview,
@@ -146,11 +160,13 @@ export function FilmSceneGenerateBar({
   const label = busy
     ? paintingOne
       ? 'Bild wird neu gemalt …'
-      : progress?.preparing
-        ? 'Vorbereitung …'
-        : progress && progress.current > 0
-          ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
-          : 'Erzeuge Szene …'
+      : progress?.reviewing
+        ? progress.stepDe || 'Szene prüfen …'
+        : progress?.preparing
+          ? 'Vorbereitung …'
+          : progress && progress.current > 0
+            ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
+            : 'Erzeuge Szene …'
     : allDone
       ? 'Szene neu erzeugen'
       : stats.done > 0
@@ -267,15 +283,17 @@ export function FilmSceneGenerateBar({
         <p className="film-scene-progress" aria-live="polite">
           {paintingOne
             ? `Bild in «${scene.title}» wird neu gemalt …`
-            : progress?.preparing
-              ? `Erzeuge Szene «${scene.title}» — ${progress.stepDe || status || 'Bibliothek und Stammbilder …'}`
-              : `Erzeuge Szene «${scene.title}»${
-                  progress && progress.current > 0
-                    ? ` — Bild ${progress.current} von ${progress.total}`
-                    : status
-                      ? ` — ${status}`
-                      : ' …'
-                }`}
+            : progress?.reviewing
+              ? `«${scene.title}» — ${progress.stepDe || status || 'Szene prüfen …'}`
+              : progress?.preparing
+                ? `Erzeuge Szene «${scene.title}» — ${progress.stepDe || status || 'Bibliothek und Stammbilder …'}`
+                : `Erzeuge Szene «${scene.title}»${
+                    progress && progress.current > 0
+                      ? ` — Bild ${progress.current} von ${progress.total}`
+                      : status
+                        ? ` — ${status}`
+                        : ' …'
+                  }`}
           {!paintingOne && status ? ` ${status}` : ''}
           {!paintingOne && onStop ? (
             <>
@@ -286,6 +304,41 @@ export function FilmSceneGenerateBar({
             </>
           ) : null}
         </p>
+      ) : null}
+      {!busy && completion ? (
+        <div
+          className={
+            completion.kind === 'error'
+              ? 'alert alert-error film-scene-completion'
+              : completion.kind === 'warn'
+                ? 'alert alert-warn film-scene-completion'
+                : completion.kind === 'info'
+                  ? 'alert alert-info film-scene-completion'
+                  : 'alert alert-info film-scene-completion film-scene-completion--ok'
+          }
+          role="status"
+          aria-live="polite"
+        >
+          <p>{completion.text}</p>
+          <p className="muted film-scene-completion-hint">
+            Die Bilder unten bleiben klickbar. «Szene weiter erzeugen» malt nur, was fehlt.
+          </p>
+          {onDismissCompletion ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onDismissCompletion}>
+              Weiter
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {!busy && runLog && runLog.length ? (
+        <details className="film-scene-run-log">
+          <summary className="muted">Was Zebla gemacht hat</summary>
+          <ul>
+            {runLog.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
       {!busy && stoppedNote ? <p className="alert alert-info">{stoppedNote}</p> : null}
       {!busy && stats.done > 0 && review ? (

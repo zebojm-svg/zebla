@@ -82,3 +82,52 @@ export function sceneReviewSummaryDe(review: FilmSceneReview | undefined): strin
   if (bad.length === 1) return `Ein Bild passt nicht: ${bad[0]!.noteDe}`
   return `${bad.length} Bilder passen nicht. Darunter steht, was die Regie meint.`
 }
+
+/** Wie viele fertige Bilder gehen in die Gesamtschau. */
+export function sceneReviewPanelCount(panels: FilmStoryboardPanel[]): number {
+  return panels.filter((panel) => panel.stillUrl?.startsWith('http')).length
+}
+
+/** So viele Schritte × zwei Bilder — danach hört die automatische Prüfung auf. */
+export const SCENE_REVIEW_AUTO_MAX_STEPS = 24
+
+/** Nach kompletter Neuerzeugung: automatische Prüfung höchstens so lange. */
+export const SCENE_REVIEW_AUTO_MAX_MS = 12 * 60 * 1000
+
+export function sceneReviewProgressDe(checked: number, total: number): string {
+  if (total <= 0) return 'Szene prüfen …'
+  return `Szene prüfen ${Math.min(Math.max(checked, 0), total)} von ${total}`
+}
+
+export function sceneReviewCheckedCount(review: FilmSceneReview | undefined, total: number): number {
+  if (total <= 0) return 0
+  const pending = review?.pending?.length ?? 0
+  return Math.max(0, total - pending)
+}
+
+export type SceneRunFinishKind = 'success' | 'info' | 'warn' | 'error'
+
+/** Abschluss-Satz für Jean-Marie nach Szene erzeugen / prüfen. */
+export function sceneRunFinishDe(opts: {
+  kind: SceneRunFinishKind
+  painted?: number
+  review?: FilmSceneReview
+  reasonDe?: string
+  reviewSkippedDe?: string
+}): string {
+  const reason = opts.reasonDe?.trim()
+  if (opts.kind === 'error' && reason) return `Fehler: ${reason}`
+  if (opts.kind === 'warn' && reason) return reason
+  const painted =
+    typeof opts.painted === 'number' && opts.painted > 0
+      ? `${opts.painted} Bild${opts.painted === 1 ? '' : 'er'} gemalt. `
+      : ''
+  const reviewLine = opts.review ? sceneReviewSummaryDe(opts.review) : ''
+  const skip = opts.reviewSkippedDe?.trim()
+  if (opts.kind === 'success') {
+    return [painted + 'Fertig.', reviewLine || skip].filter(Boolean).join(' ').trim()
+  }
+  if (reason) return `${painted}${reason}`
+  if (reviewLine) return `${painted}${reviewLine}`
+  return painted ? `${painted}Fertig.` : 'Fertig.'
+}

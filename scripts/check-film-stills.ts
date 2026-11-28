@@ -408,6 +408,25 @@ if (editTimeout.includes('Diese Szene erzeugen')) {
   fail('Bild-ändern-Timeout darf nicht Diese Szene erzeugen sagen')
 }
 
+{
+  const hook = readFileSync('src/story/generateSceneStills.ts', 'utf8')
+  const sceneReviewShared = readFileSync('shared/film-scene-review.ts', 'utf8')
+  if (!hook.includes('SCENE_GENERATE_OVERALL_TIMEOUT_MS') || !hook.includes('sceneGenerateOverallTimeoutDe')) {
+    fail('Szene erzeugen: Gesamt-Zeitlimit auf der Seite')
+  }
+  if (!hook.includes('sceneReviewProgressDe') || !sceneReviewShared.includes('Szene prüfen')) {
+    fail('Gesamtschau: Fortschritt Szene prüfen X von Y')
+  }
+  if (!hook.includes('setSceneCompletion') || !hook.includes('runSceneReview(sceneId, panels')) {
+    fail('Nach Ganze Szene neu: Abschluss-Satz und automatische Prüfung')
+  }
+  if (!hook.includes('SCENE_REVIEW_AUTO_MAX_MS')) fail('Gesamtschau nach Neuerzeugung: Zeitdeckel')
+  const ux = readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8')
+  if (!ux.includes('film-scene-completion') || !ux.includes('Weiter')) {
+    fail('Nach dem Lauf: Abschluss-Kasten mit Weiter-Knopf')
+  }
+}
+
 const talk = panelDialogueLines(s1[0]!, dialog)
 if (
   !talk.some(
