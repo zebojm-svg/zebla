@@ -684,7 +684,7 @@ export const api = {
         FILM_STEP_CLIENT_TIMEOUT_MS,
         { signal },
       ),
-    filmSceneReview: (dialogId: string, sceneId: string, fresh = true) =>
+    filmSceneReview: (dialogId: string, sceneId: string, fresh = true, signal?: AbortSignal) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
@@ -694,7 +694,8 @@ export const api = {
       }>(
         '/film-scene-review',
         { method: 'POST', body: JSON.stringify({ dialogId, sceneId, fresh }) },
-        IMAGE_CLIENT_TIMEOUT_MS,
+        FILM_STEP_CLIENT_TIMEOUT_MS,
+        { signal },
       ),
     filmRoomPlate: (dialogId: string, place: string, note?: string, styleId?: string) =>
       request<{

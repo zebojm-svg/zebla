@@ -597,11 +597,22 @@ export function FilmStoryboardPage() {
                     extraDisabled={locked && stills.busySceneId !== scene.id}
                     progress={
                       stills.progress?.sceneId === scene.id
-                        ? { current: stills.progress.current, total: stills.progress.total }
+                        ? {
+                            current: stills.progress.current,
+                            total: stills.progress.total,
+                            preparing: stills.progress.preparing,
+                            stepDe: stills.progress.stepDe,
+                            reviewing: stills.progress.reviewing,
+                            reviewChecked: stills.progress.reviewChecked,
+                            reviewTotal: stills.progress.reviewTotal,
+                          }
                         : null
                     }
                     error={stills.errors[scene.id]}
                     status={stills.busySceneId === scene.id ? stills.status : ''}
+                    completion={stills.completion[scene.id]}
+                    runLog={stills.runLog[scene.id]}
+                    onDismissCompletion={() => stills.clearCompletion(scene.id)}
                     onGenerate={(force, skipPlates) =>
                       void stills.generate(scene.id, panels, activeStyle, force, skipPlates)
                     }
@@ -614,7 +625,7 @@ export function FilmStoryboardPage() {
                         }
                       })()
                     }
-                    onReview={() => void stills.reviewScene(scene.id, true)}
+                    onReview={() => void stills.reviewScene(scene.id, panels, true)}
                     onRepaintReview={() =>
                       void stills.repaintReviewIssues(scene.id, panels, activeStyle, scene.sceneReview)
                     }

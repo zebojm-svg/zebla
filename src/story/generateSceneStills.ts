@@ -2,12 +2,27 @@ import { useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { Dialog } from '../types'
 import type { FilmStoryboard, FilmStoryboardPanel } from '../../shared/film-storyboard'
-import { panelsNeedingStills, stillTimeoutHintDe } from '../../shared/film-stills'
+import {
+  panelsNeedingStills,
+  sceneGenerateOverallTimeoutDe,
+  SCENE_GENERATE_OVERALL_TIMEOUT_MS,
+  stillTimeoutHintDe,
+} from '../../shared/film-stills'
 import {
   stillEditImageErrorDe,
   STILL_EDIT_PAINT_STATUS_DE,
 } from '../../shared/film-still-pack'
-import { sceneBatchRepaintIds, type FilmSceneReview } from '../../shared/film-scene-review'
+import {
+  sceneBatchRepaintIds,
+  SCENE_REVIEW_AUTO_MAX_MS,
+  SCENE_REVIEW_AUTO_MAX_STEPS,
+  sceneReviewCheckedCount,
+  sceneReviewPanelCount,
+  sceneReviewProgressDe,
+  sceneRunFinishDe,
+  type FilmSceneReview,
+  type SceneRunFinishKind,
+} from '../../shared/film-scene-review'
 import { RefApprovalRequired, type RefApprovalBlock } from '../../shared/film-ref-approval'
 
 const REGIE_TRIES = 2
@@ -141,6 +156,7 @@ export async function prepareReferences(opts: {
   onStatus?: (text: string) => void
   onStep?: (step: StillStep, prepareDe: string) => void
   shouldStop?: () => boolean
+  checkDeadline?: () => void
   signal?: AbortSignal
 }): Promise<{
   last: StillStep | null
@@ -150,6 +166,7 @@ export async function prepareReferences(opts: {
 }> {
   let last: StillStep | null = null
   for (let step = 0; step < PREPARE_STEPS_MAX; step++) {
+    opts.checkDeadline?.()
     if (opts.shouldStop?.()) return { last, stopped: true }
     const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId, opts.skipPlates, opts.signal)
     opts.onStatus?.(prepared.didDe)
@@ -168,6 +185,20 @@ export type SceneStillsProgress = {
   total: number
   preparing?: boolean
   stepDe?: string
+  reviewing?: boolean
+  reviewChecked?: number
+  reviewTotal?: number
+}
+
+export type SceneRunCompletion = {
+  text: string
+  kind: SceneRunFinishKind
+  at: string
+}
+
+function appendRunLog(lines: string[], line: string): string[] {
+  const next = [...lines, `${new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} — ${line}`]
+  return next.slice(-8)
 }
 
 export async function generateSceneStills(opts: {
@@ -181,6 +212,7 @@ export async function generateSceneStills(opts: {
   prepare?: boolean
   skipPlates?: boolean
   shouldStop?: () => boolean
+  checkDeadline?: () => void
   signal?: AbortSignal
 }): Promise<
   StillStep & {
@@ -191,6 +223,9 @@ export async function generateSceneStills(opts: {
   }
 > {
   const stop = () => Boolean(opts.shouldStop?.())
+  const tick = () => {
+    opts.checkDeadline?.()
+  }
   let last: StillStep | null = null
   if (opts.prepare !== false) {
     const prepared = await prepareReferences({
@@ -207,6 +242,7 @@ export async function generateSceneStills(opts: {
           ...step,
         }),
       shouldStop: opts.shouldStop,
+      checkDeadline: opts.checkDeadline,
       signal: opts.signal,
     })
     last = prepared.last
@@ -221,6 +257,7 @@ export async function generateSceneStills(opts: {
 
   let lastNumber: number | null = null
   for (let i = 0; i < queue.length; i++) {
+    tick()
     if (stop() && last) return { ...last, stoppedNoteDe: stoppedNoteDe(lastNumber) }
     const panel = queue[i]!
     const result = await stillWithRegie({
@@ -267,13 +304,30 @@ export function useSceneStills(
   const [stopped, setStopped] = useState<Record<string, string>>({})
   const [stopping, setStopping] = useState(false)
   const [refHighlightIds, setRefHighlightIds] = useState<string[]>([])
+  const [completion, setCompletion] = useState<Record<string, SceneRunCompletion>>({})
+  const [runLog, setRunLog] = useState<Record<string, string[]>>({})
   const stopRef = useRef(false)
   const runAbortRef = useRef<AbortController | null>(null)
+
+  const logScene = (sceneId: string, line: string) => {
+    setRunLog((prev) => ({ ...prev, [sceneId]: appendRunLog(prev[sceneId] ?? [], line) }))
+  }
+
+  const setSceneCompletion = (sceneId: string, text: string, kind: SceneRunFinishKind) => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    setCompletion((prev) => ({
+      ...prev,
+      [sceneId]: { text: trimmed, kind, at: new Date().toISOString() },
+    }))
+    logScene(sceneId, trimmed)
+  }
 
   const applyRefBlock = (sceneId: string, block: RefApprovalBlock) => {
     setRefHighlightIds(block.panelIds)
     setErrors((prev) => ({ ...prev, [sceneId]: block.messageDe }))
     setStopped((prev) => ({ ...prev, [sceneId]: block.messageDe }))
+    setSceneCompletion(sceneId, `Abgebrochen: ${block.messageDe}`, 'warn')
   }
 
   const stop = () => {
@@ -283,15 +337,105 @@ export function useSceneStills(
     setStatus('Wird angehalten …')
   }
 
-  const runSceneReview = async (sceneId: string, fresh = true) => {
-    if (!dialogId) return
-    setStatus('Die Regie schaut die ganze Szene an …')
+  const runSceneReview = async (
+    sceneId: string,
+    panels: FilmStoryboardPanel[],
+    fresh = true,
+    opts?: { signal?: AbortSignal; auto?: boolean },
+  ): Promise<{ review?: FilmSceneReview; finishKind: SceneRunFinishKind; finishDe: string }> => {
+    if (!dialogId) {
+      return { finishKind: 'error', finishDe: 'Fehler: Keine Geschichte geladen.' }
+    }
+    const reviewTotal = sceneReviewPanelCount(panels)
+    const started = Date.now()
     setErrors((prev) => ({ ...prev, [sceneId]: '' }))
-    for (let step = 0; step < 40; step++) {
-      const result = await api.ai.filmSceneReview(dialogId, sceneId, step === 0 && fresh)
-      apply(result.dialog, result.board)
-      setStatus(result.didDe)
-      if (result.done) break
+    let lastReview: FilmSceneReview | undefined
+    let lastErrorDe = ''
+    let incomplete = false
+
+    for (let step = 0; step < SCENE_REVIEW_AUTO_MAX_STEPS; step++) {
+      if (stopRef.current) {
+        return {
+          review: lastReview,
+          finishKind: 'warn',
+          finishDe: sceneRunFinishDe({
+            kind: 'warn',
+            review: lastReview,
+            reasonDe: 'Abgebrochen. Fertige Bilder bleiben.',
+          }),
+        }
+      }
+      if (Date.now() - started > SCENE_REVIEW_AUTO_MAX_MS) {
+        incomplete = true
+        lastErrorDe = 'Die Szene-Prüfung hat zu lange gedauert. Unten «Szene prüfen» noch einmal.'
+        break
+      }
+      const checkedBefore = sceneReviewCheckedCount(lastReview, reviewTotal)
+      const progressDe = sceneReviewProgressDe(checkedBefore, reviewTotal)
+      setStatus(progressDe)
+      setProgress({
+        sceneId,
+        current: reviewTotal,
+        total: reviewTotal,
+        reviewing: true,
+        reviewChecked: checkedBefore,
+        reviewTotal,
+        stepDe: progressDe,
+      })
+      try {
+        const result = await api.ai.filmSceneReview(
+          dialogId,
+          sceneId,
+          step === 0 && fresh,
+          opts?.signal,
+        )
+        apply(result.dialog, result.board)
+        lastReview = result.review
+        const checked = sceneReviewCheckedCount(result.review, reviewTotal)
+        const stepDe = sceneReviewProgressDe(checked, reviewTotal)
+        setStatus(stepDe)
+        setProgress({
+          sceneId,
+          current: reviewTotal,
+          total: reviewTotal,
+          reviewing: true,
+          reviewChecked: checked,
+          reviewTotal,
+          stepDe,
+        })
+        logScene(sceneId, result.done ? result.didDe : stepDe)
+        if (result.done) {
+          const kind: SceneRunFinishKind = result.review.ok ? 'success' : 'info'
+          return {
+            review: result.review,
+            finishKind: kind,
+            finishDe: sceneRunFinishDe({ kind, review: result.review }),
+          }
+        }
+      } catch (err) {
+        lastErrorDe =
+          err instanceof Error ? stillTimeoutHintDe(err.message) : 'Szene-Prüfung fehlgeschlagen.'
+        logScene(sceneId, lastErrorDe)
+        break
+      }
+    }
+
+    if (incomplete || lastErrorDe) {
+      const reason = lastErrorDe || 'Die Szene-Prüfung ist nicht fertig. Unten «Szene prüfen» weitermachen.'
+      return {
+        review: lastReview,
+        finishKind: 'warn',
+        finishDe: sceneRunFinishDe({ kind: 'warn', review: lastReview, reasonDe: reason }),
+      }
+    }
+    return {
+      review: lastReview,
+      finishKind: 'warn',
+      finishDe: sceneRunFinishDe({
+        kind: 'warn',
+        review: lastReview,
+        reasonDe: 'Die Szene-Prüfung ist nicht fertig. Unten «Szene prüfen» weitermachen.',
+      }),
     }
   }
 
@@ -318,10 +462,21 @@ export function useSceneStills(
     setStopped((prev) => ({ ...prev, [sceneId]: '' }))
     setRefHighlightIds([])
     setProgress({ sceneId, current: 0, total: queue.length })
+    setCompletion((prev) => {
+      const next = { ...prev }
+      delete next[sceneId]
+      return next
+    })
+    logScene(sceneId, force ? 'Ganze Szene neu erzeugen gestartet.' : 'Szene erzeugen gestartet.')
     stopRef.current = false
     setStopping(false)
     const runAbort = new AbortController()
     runAbortRef.current = runAbort
+    const deadline = Date.now() + SCENE_GENERATE_OVERALL_TIMEOUT_MS
+    const checkDeadline = () => {
+      if (Date.now() > deadline) throw new Error(sceneGenerateOverallTimeoutDe())
+    }
+    let paintedCount = 0
     try {
       const done = await generateSceneStills({
         dialogId,
@@ -335,24 +490,46 @@ export function useSceneStills(
         onProgress: ({ current, total, preparing, stepDe, dialog, board }) => {
           apply(dialog, board)
           setProgress({ sceneId, current, total, preparing, stepDe })
+          if (!preparing && current > 0) paintedCount = current
         },
         shouldStop: () => stopRef.current,
+        checkDeadline,
         signal: runAbort.signal,
         onRefBlock: (block) => applyRefBlock(sceneId, block),
       })
       if (done.refApprovalBlock) {
         applyRefBlock(sceneId, done.refApprovalBlock)
+        return
       }
       if (done.portraitErrorDe) {
-        setErrors((prev) => ({ ...prev, [sceneId]: done.portraitErrorDe as string }))
+        const msg = done.portraitErrorDe as string
+        setErrors((prev) => ({ ...prev, [sceneId]: msg }))
+        setSceneCompletion(sceneId, `Fehler: ${msg}`, 'error')
+        return
       }
       if (done.plateErrorDe) {
-        setErrors((prev) => ({ ...prev, [sceneId]: done.plateErrorDe as string }))
+        const msg = done.plateErrorDe as string
+        setErrors((prev) => ({ ...prev, [sceneId]: msg }))
+        setSceneCompletion(sceneId, `Fehler: ${msg}`, 'error')
+        return
       }
-      if (done.stoppedNoteDe) setStopped((prev) => ({ ...prev, [sceneId]: done.stoppedNoteDe as string }))
+      if (done.stoppedNoteDe) {
+        const note = done.stoppedNoteDe as string
+        setStopped((prev) => ({ ...prev, [sceneId]: note }))
+        setSceneCompletion(sceneId, `Abgebrochen. ${note}`, 'warn')
+        return
+      }
+      paintedCount = queue.length
       const fullRegen = force && queue.length === panels.length
-      if (fullRegen && !done.stoppedNoteDe && !done.plateErrorDe) {
-        await runSceneReview(sceneId, true)
+      if (fullRegen) {
+        const review = await runSceneReview(sceneId, panels, true, { signal: runAbort.signal, auto: true })
+        setSceneCompletion(sceneId, review.finishDe, review.finishKind)
+      } else {
+        setSceneCompletion(
+          sceneId,
+          sceneRunFinishDe({ kind: 'success', painted: paintedCount }),
+          'success',
+        )
       }
     } catch (err) {
       if (err instanceof RefApprovalRequired) {
@@ -360,9 +537,14 @@ export function useSceneStills(
       } else {
         const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
         if (raw === 'Angehalten.') {
-          setStopped((prev) => ({ ...prev, [sceneId]: stoppedNoteDe(null) }))
+          const note = stoppedNoteDe(null)
+          setStopped((prev) => ({ ...prev, [sceneId]: note }))
+          setSceneCompletion(sceneId, `Abgebrochen. ${note}`, 'warn')
         } else {
-          setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
+          const shown = stillTimeoutHintDe(raw)
+          setErrors((prev) => ({ ...prev, [sceneId]: shown }))
+          const prefix = paintedCount > 0 ? `${paintedCount} Bilder fertig. ` : ''
+          setSceneCompletion(sceneId, `Fehler: ${prefix}${shown}`, 'error')
         }
       }
     } finally {
@@ -449,23 +631,42 @@ export function useSceneStills(
     stopped,
     stopping,
     refHighlightIds,
+    completion,
+    runLog,
+    clearCompletion: (sceneId: string) => {
+      setCompletion((prev) => {
+        const next = { ...prev }
+        delete next[sceneId]
+        return next
+      })
+    },
     clearRefHighlight: () => setRefHighlightIds([]),
     stop,
     generate,
     generateOne,
-    reviewScene: async (sceneId: string, fresh = true) => {
+    reviewScene: async (sceneId: string, panels: FilmStoryboardPanel[], fresh = true) => {
       if (!dialogId || busySceneId) return
       setBusySceneId(sceneId)
+      setCompletion((prev) => {
+        const next = { ...prev }
+        delete next[sceneId]
+        return next
+      })
+      logScene(sceneId, 'Szene prüfen gestartet.')
+      const runAbort = new AbortController()
+      runAbortRef.current = runAbort
       try {
-        await runSceneReview(sceneId, fresh)
+        const review = await runSceneReview(sceneId, panels, fresh, { signal: runAbort.signal })
+        setSceneCompletion(sceneId, review.finishDe, review.finishKind)
       } catch (err) {
-        setErrors((prev) => ({
-          ...prev,
-          [sceneId]: err instanceof Error ? err.message : 'Szene-Prüfung fehlgeschlagen.',
-        }))
+        const shown = err instanceof Error ? stillTimeoutHintDe(err.message) : 'Szene-Prüfung fehlgeschlagen.'
+        setErrors((prev) => ({ ...prev, [sceneId]: shown }))
+        setSceneCompletion(sceneId, `Fehler: ${shown}`, 'error')
       } finally {
+        runAbortRef.current = null
         setBusySceneId(null)
         setStatus('')
+        setProgress(null)
       }
     },
     repaintReviewIssues: async (
@@ -511,6 +712,14 @@ export function useSceneStills(
       }
       setBusySceneId(null)
       setStatus('')
+      const done = ids.length
+      setSceneCompletion(
+        sceneId,
+        done
+          ? `${done} markierte Bild${done === 1 ? '' : 'er'} bearbeitet — schau die Bilder an.`
+          : 'Kein markiertes Bild zum Ändern.',
+        done ? 'info' : 'warn',
+      )
     },
   }
 }

@@ -1215,3 +1215,10 @@ export function stillTimeoutHintDe(message: string): string {
   return message
 }
 
+/** Ganze Szene neu: die Seite gibt nach dieser Zeit auf (fertige Bilder bleiben). */
+export const SCENE_GENERATE_OVERALL_TIMEOUT_MS = 50 * 60 * 1000
+
+export function sceneGenerateOverallTimeoutDe(): string {
+  return 'Die ganze Szene hat zu lange gedauert (mehr als 50 Minuten). Die fertigen Bilder bleiben. «Szene weiter erzeugen» malt nur, was fehlt.'
+}
+
