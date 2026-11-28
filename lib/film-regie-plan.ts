@@ -52,6 +52,8 @@ export async function planStoryPicture(opts: {
   options: RegieRefOption[]
   /** «Bild ändern»: Jean-Maries Hinweis hat Vorrang vor dem bisherigen Plan. */
   hintDe?: string
+  /** Bildnummern, die Jean-Marie als Vorlage verbietet (ganzes Board, Bild 1, 2, …). */
+  excludedPackNumbers?: number[]
 }): Promise<RegiePlanRead> {
   const shown = opts.options.slice(-PLAN_THUMBS_MAX)
   const thumbs = await Promise.all(
@@ -65,9 +67,13 @@ export async function planStoryPicture(opts: {
     thumbIds.push(shown[index]!.id)
   })
   const hint = opts.hintDe?.trim()
+  const excluded = (opts.excludedPackNumbers ?? []).filter((n) => Number.isInteger(n) && n > 0)
   const ask = [
     hint
       ? `HINWEIS VON JEAN-MARIE (höchste Priorität — Plan und Auftrag daran ausrichten): ${hint}`
+      : '',
+    excluded.length
+      ? `VERBOTENE VORLAGEN: ${excluded.map((n) => `Bild ${n}`).join(', ')} — nimm diese früheren Stills nicht in refs auf; sie stehen auch nicht in der Vorlagen-Liste.`
       : '',
     `REGIEBUCH:\n${regiebuchForPlanning(opts.continuity)}`,
     `DAVOR:\n${opts.beforeDe || '—'}`,

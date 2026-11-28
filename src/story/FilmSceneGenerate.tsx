@@ -1053,7 +1053,7 @@ export function FilmStillFixBar({
           className="input"
           value={note}
           disabled={busy}
-          placeholder="z.B. wie in Bild 3, Ramo steht am Herd"
+          placeholder="z.B. wie in Bild 3 · ohne Referenz von Bild 5"
           onChange={(e) => {
             const next = e.target.value
             setNote(next)
@@ -1089,7 +1089,8 @@ export function FilmStillFixBar({
       ) : null}
       {!busy && shownError ? <div className="alert alert-error">{shownError}</div> : null}
       <p className="muted film-tweak-hint">
-        Nummer steht am Bild. «wie in Bild 3» nimmt genau dieses Foto mit.
+        Bildnummer durch die ganze Geschichte (Bild 1, 2, … — steht oben am Foto). «wie in Bild 3» schickt dieses
+        Foto mit. «ohne Referenz von Bild 5» oder «Bild 5 nicht» lässt dieses Päckchen als Vorlage weg.
       </p>
     </div>
   )

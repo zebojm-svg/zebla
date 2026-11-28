@@ -148,7 +148,10 @@ import {
 import { ensurePanelPieces } from './film-panel-pieces.js'
 import { DEFAULT_STORY_ART_STYLE, getStoryArtStyle, isStoryArtStyleId, paintingStyleId } from '../shared/story-art-styles.js'
 import {
+  blockedStillUrlsForHint,
   catalogForPlanner,
+  filterStillEditCatalogForHint,
+  parseExcludedStillPackRefs,
   stillEditCatalog,
   stillEditFigures,
   stillEditImageErrorDe,
@@ -1004,11 +1007,15 @@ export async function planFilmPanelStillEdit(
       DEFAULT_STORY_ART_STYLE,
   )
   const inventory = dialog.filmInventory || deriveFilmInventory(dialog)
-  const catalog = stillEditCatalog({
-    board: working,
-    panel,
-    inventory,
-  })
+  const catalog = filterStillEditCatalogForHint(
+    stillEditCatalog({
+      board: working,
+      panel,
+      inventory,
+    }),
+    working,
+    correction,
+  )
   return planStillEditPackzettel({
     stillNumber: stillPackNumber(working, panel),
     panelId: panel.id,
@@ -1136,7 +1143,11 @@ async function askRegieForPlan(
       `Raumbild «${place.name}», leer, ohne Leute: die feste Einrichtung. Geht immer mit, wenn das Bild an diesem Ort spielt.`,
     )
   }
-  const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
+  const hint = edit?.hintDe?.trim()
+  const blocked = blockedStillUrlsForHint(board, hint)
+  const earlier = board.panels
+    .slice(0, index)
+    .filter((item) => item.stillUrl?.startsWith('http') && !blocked.has(item.stillUrl as string))
   const shown = new Set<string>()
   const recent = [...earlier].reverse().filter((item) => {
     if (shown.has(item.stillUrl as string)) return false
@@ -1144,9 +1155,11 @@ async function askRegieForPlan(
     return true
   })
   for (const item of recent.slice(0, 8).reverse()) {
-    offer(item.stillUrl, `Früheres fertiges ${earlierPanelDe(item, board.panels.indexOf(item) + 1)}`)
+    offer(
+      item.stillUrl,
+      `Früheres fertiges ${earlierPanelDe(item, stillPackNumber(board, item))}`,
+    )
   }
-  const hint = edit?.hintDe?.trim()
   if (hint && panel.stillUrl?.startsWith('http')) {
     offer(
       panel.stillUrl,
@@ -1155,7 +1168,7 @@ async function askRegieForPlan(
   }
   if (hint) {
     const named = stillUrlForPackRef(board, hint, panel.stillUrl)
-    if (named?.startsWith('http') && named !== panel.stillUrl) {
+    if (named?.startsWith('http') && named !== panel.stillUrl && !blocked.has(named)) {
       offer(
         named,
         'Ein anderes Bild-Päckchen, das Jean-Marie im Hinweis nannte — nur für Aussehen oder Haltung, nicht als Raum-Vorlage.',
@@ -1170,9 +1183,12 @@ async function askRegieForPlan(
     beforeDe: sceneBefore.slice(-2).map((item) => panelLinesDe(dialog, item)).join('\n'),
     afterDe: sceneAfter.slice(0, 2).map((item) => panelLinesDe(dialog, item)).join('\n'),
     shotDe: boardShotDe(panel),
-    earlierDe: sceneBefore.map((item) => earlierPanelDe(item, board.panels.indexOf(item) + 1)).join('\n'),
+    earlierDe: sceneBefore
+      .map((item) => earlierPanelDe(item, stillPackNumber(board, item)))
+      .join('\n'),
     options,
     hintDe: hint,
+    excludedPackNumbers: hint ? parseExcludedStillPackRefs(hint) : [],
   })
 }
 
@@ -1798,9 +1814,10 @@ export async function stillFilmPanel(
       const plan = planForPaint
       const paintedUrls = new Set(working.panels.map((item) => item.stillUrl).filter(Boolean))
       const copied = regie?.fixEn ? panel.regieAttempts?.[panel.regieAttempts.length - 1]?.copyOf : undefined
-      const chosen = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs).filter(
-        (ref) => ref.url !== copied,
-      )
+      const refBlocked = correction ? blockedStillUrlsForHint(working, correction) : new Set<string>()
+      const chosen = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs)
+        .filter((ref) => ref.url !== copied)
+        .filter((ref) => !refBlocked.has(ref.url))
       const plateLibrary = libraryForCompose(await listStoryAssets(userId).catch(() => []))
       const plateOf = (name: string) => roomPlateUrl(working.continuity, plateLibrary, dialog.catalogCast, name)
       const cameraPlate = plan.place ? plateOf(plan.place) : undefined
@@ -1823,7 +1840,10 @@ export async function stillFilmPanel(
             prevStill,
             ...refs.map((ref) => ref.url),
           ].filter(
-            (url): url is string => Boolean(url?.startsWith('http')) && (paintedUrls.has(url as string) || url === panel.stillUrl),
+            (url): url is string =>
+              Boolean(url?.startsWith('http')) &&
+              (paintedUrls.has(url as string) || url === panel.stillUrl) &&
+              !refBlocked.has(url as string),
           )
       const fixEn = [regie?.fixEn, correction].filter(Boolean).join(' ')
       const painted = await paintRegiePlannedStill({
@@ -1938,22 +1958,25 @@ export async function stillFilmPanel(
                 videoHost.toLowerCase(),
           )?.stillUrl
       : undefined
+    const refBlocked = correction ? blockedStillUrlsForHint(boardForGen, correction) : new Set<string>()
     const directorRefs = [
       ...(fresh
         ? []
         : videoCall
-        ? hostStill
+        ? hostStill && !refBlocked.has(hostStill)
           ? [{
               url: hostStill,
               name: `Früheres Bild von ${videoHost}: gleiche Kleidung, gleiches Headset, gleiche Möbel. Keine zweite Person übernehmen.`,
               role: 'identity' as const,
             }]
           : []
-        : directorStillUrls(boardForGen.panels, storyContinuity, panelForGen.id).map((item) => ({
-            url: item.url,
-            name: item.name,
-            role: 'grundbild' as const,
-          }))),
+        : directorStillUrls(boardForGen.panels, storyContinuity, panelForGen.id)
+            .filter((item) => !refBlocked.has(item.url))
+            .map((item) => ({
+              url: item.url,
+              name: item.name,
+              role: 'grundbild' as const,
+            }))),
       ...panelForGen.placements.flatMap((placement) => {
         const side = sidePlate(faceLibrary, placement.name)
         if (!side?.imageUrl) return []
@@ -2074,6 +2097,7 @@ export async function stillFilmPanel(
       board: boardForGen,
       inventory: dialog.filmInventory,
       library: editLibrary,
+      blockedStillUrls: refBlocked.size ? refBlocked : undefined,
     })
     const url = await generateFilmPanelStillImage({
       panel: panelForGen,

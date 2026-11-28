@@ -538,9 +538,12 @@ export function stillReferencePack(
     library?: StillPackLibraryAsset[]
     /** Frühere Blicke und Seitenansichten, die die Regie für DIESES Bild ausgewählt hat. */
     directorRefs?: Array<{ url: string; name: string; role?: 'grundbild' | 'identity' }>
+    /** Still-URLs von «ohne Bild N» — kein anderes Päckchen als Vorlage. */
+    blockedStillUrls?: Set<string>
   },
 ): { urls: string[]; items: StillRefItem[]; instruction: string; noteDe: string } {
   const http = (u?: string): u is string => Boolean(u && u.startsWith('http'))
+  const blocked = opts?.blockedStillUrls
   const place = panelPlaceKey(panel)
   const closeup = panel.shot === 'closeup'
   const insert = panel.shot === 'insert'
@@ -562,6 +565,7 @@ export function stillReferencePack(
   const items: StillRefItem[] = []
   const add = (item: StillRefItem) => {
     if (!http(item.url) || items.some((x) => x.url === item.url)) return
+    if (blocked?.has(item.url) && (item.role === 'grundbild' || editing)) return
     items.push(item)
   }
 

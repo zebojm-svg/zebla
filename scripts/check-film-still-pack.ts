@@ -32,6 +32,9 @@ import {
   stillNumberInScene,
   stillPackNumber,
   parseStillPackRefs,
+  parseExcludedStillPackRefs,
+  filterStillEditCatalogForHint,
+  blockedStillUrlsForHint,
   stillUrlForPackRef,
   panelByStillPackNumber,
   stillPackzettelAttachEn,
@@ -190,6 +193,17 @@ if (parseStillPackRefs('#3').join(',') !== '3') fail('#3 ist Bild 3')
 if (parseStillPackRefs('Ramo allein am Herd').length !== 0) {
   fail('ohne Zahl kein Bild-Verweis — kein Stichwort allein/Herd')
 }
+if (JSON.stringify(parseExcludedStillPackRefs('ohne Referenz von Bild 5')) !== JSON.stringify([5])) {
+  fail('«ohne Referenz von Bild 5» sperrt Bild 5')
+}
+if (JSON.stringify(parseExcludedStillPackRefs('Bild 3 nicht als Referenz')) !== JSON.stringify([3])) {
+  fail('«Bild 3 nicht als Referenz» sperrt Bild 3')
+}
+if (
+  JSON.stringify(parseStillPackRefs('wie in Bild 3, ohne Referenz von Bild 5')) !== JSON.stringify([3])
+) {
+  fail('Sperre und «wie in Bild 3» zusammen: nur positive Nummer')
+}
 if (stillUrlForPackRef(board, 'wie in Bild 1, Ramo allein', table.stillUrl) !== stove.stillUrl) {
   fail('FLUX nimmt das Still von Bild 1, nicht das aktuelle Tischbild')
 }
@@ -198,6 +212,13 @@ if (stillUrlForPackRef(board, 'Ramo allein am Herd', table.stillUrl) !== table.s
 }
 
 const catalog = stillEditCatalog({ board, panel: table, inventory })
+const blockedCatalog = filterStillEditCatalogForHint(catalog, board, 'ohne Referenz von Bild 1')
+if (blockedCatalog.some((it) => it.id === 'still-stove')) {
+  fail('gesperrtes Bild 1 fehlt im Katalog für die Drehbuch-KI')
+}
+if (!blockedStillUrlsForHint(board, 'ohne Bild 1').has(stove.stillUrl!)) {
+  fail('Bild 1 Still-URL ist gesperrt')
+}
 const byKind = (kind: StillCatalogItem['kind']) => catalog.filter((it) => it.kind === kind)
 
 if (!byKind('current').some((it) => it.id === 'current-table' && it.url === table.stillUrl)) {
@@ -908,7 +929,16 @@ const uxSrc = readFileSync(new URL('../src/story/FilmSceneGenerate.tsx', import.
 if (!uxSrc.includes('Bild ändern')) fail('Knopf Bild ändern bleibt')
 if (!uxSrc.includes('keiner (stumm)')) fail('Sprecher kann keiner sein')
 if (!uxSrc.includes('Handlung')) fail('Päckchen hat das Feld Handlung')
-if (!uxSrc.includes('wie in Bild 3')) fail('Hinweis erklärt «wie in Bild 3»')
+if (!uxSrc.includes('wie in Bild 3') || !uxSrc.includes('ohne Referenz von Bild 5')) {
+  fail('Hinweis erklärt «wie in Bild 3» und Referenz sperren')
+}
+if (!stillFnSrc.includes('parseExcludedStillPackRefs') || !stillFnSrc.includes('blockedStillUrlsForHint')) {
+  fail('Bild ändern filtert gesperrte Bildnummern')
+}
+const stillPackSrc = readFileSync(new URL('../shared/film-still-pack.ts', import.meta.url), 'utf8')
+if (!stillPackSrc.includes('parseExcludedStillPackRefs') || !stillPackSrc.includes('filterStillEditCatalogForHint')) {
+  fail('Shared: Referenz sperren parsen und Katalog filtern')
+}
 if (!uxSrc.includes('Danach einfügen')) fail('Päckchen dazwischen einfügen')
 if (!uxSrc.includes('Löschen')) fail('Päckchen löschen')
 if (!uxSrc.includes('placeholder=')) fail('Kurzer Hinweis bleibt das Eingabefeld')

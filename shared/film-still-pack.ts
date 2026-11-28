@@ -152,22 +152,87 @@ export function panelByStillPackNumber(
   return normalizeFilmStoryboard(board).panels[n - 1]
 }
 
+/** «ohne Bild 5», «Bild 3 nicht», «ohne Referenz von Bild 5» — diese Päckchen nicht als Vorlage. */
+export function parseExcludedStillPackRefs(hint: string): number[] {
+  const out: number[] = []
+  const seen = new Set<number>()
+  const patterns = [
+    /ohne\s+ref(?:erenz)?\s+von\s+bild\s*(\d+)/gi,
+    /ohne\s+referenz\s+(?:von\s+)?bild\s*(\d+)/gi,
+    /nicht\s+bild\s*(\d+)\s+als\s+referenz/gi,
+    /bild\s*(\d+)\s+nicht(?:\s+als\s+referenz)?/gi,
+    /nicht\s+bild\s*(\d+)/gi,
+    /ohne\s+bild\s*(\d+)/gi,
+  ]
+  for (const re of patterns) {
+    re.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(hint))) {
+      const n = Number(m[1])
+      if (!Number.isInteger(n) || n < 1 || seen.has(n)) continue
+      seen.add(n)
+      out.push(n)
+    }
+  }
+  return out
+}
+
+export function blockedStillUrlsForHint(
+  board: FilmStoryboard | undefined,
+  hint: string | undefined,
+): Set<string> {
+  const blocked = new Set<string>()
+  if (!board || !hint?.trim()) return blocked
+  for (const n of parseExcludedStillPackRefs(hint)) {
+    const url = panelByStillPackNumber(board, n)?.stillUrl?.trim()
+    if (url?.startsWith('http')) blocked.add(url)
+  }
+  return blocked
+}
+
 /**
- * «wie in Bild 3», «Bild 3», «#3» — nur die Nummer, kein Stichwort-Restage.
- * Zebla versteht den Satz nicht; die Zahl wählt das Foto.
+ * «wie in Bild 3», «Bild 3», «#3» — positive Vorlage (nicht «ohne Bild 3»).
+ * Bildnummer = durchlaufend über das ganze Board (Bild 1, Bild 2, …).
  */
 export function parseStillPackRefs(hint: string): number[] {
+  const excluded = new Set(parseExcludedStillPackRefs(hint))
   const out: number[] = []
   const seen = new Set<number>()
   const re = /(?:wie\s+in\s+)?bild\s*(\d+)|#\s*(\d+)/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(hint))) {
     const n = Number(m[1] || m[2])
-    if (!Number.isInteger(n) || n < 1 || seen.has(n)) continue
+    if (!Number.isInteger(n) || n < 1 || seen.has(n) || excluded.has(n)) continue
+    if (m[1] && !/^wie\s+in\s+/i.test(m[0])) {
+      const start = m.index
+      const len = m[0].length
+      const before = hint.slice(Math.max(0, start - 48), start).toLowerCase()
+      const after = hint.slice(start + len, start + len + 48).toLowerCase()
+      if (/(?:^|[\s,])ohne\s*$/.test(before) || /^\s*nicht(?:\s+als\s+referenz)?/.test(after)) continue
+      if (/nicht\s+bild\s*\d*\s*$/i.test(before) && /^\s*als\s+referenz/.test(after)) continue
+    }
     seen.add(n)
     out.push(n)
   }
   return out
+}
+
+export function filterStillEditCatalogForHint(
+  catalog: StillCatalogItem[],
+  board: FilmStoryboard,
+  hint: string,
+): StillCatalogItem[] {
+  const blocked = blockedStillUrlsForHint(board, hint)
+  if (!blocked.size) return catalog
+  return catalog.filter((item) => {
+    if (item.id.startsWith('still-')) {
+      const panelId = item.id.slice('still-'.length)
+      const panel = normalizeFilmStoryboard(board).panels.find((p) => p.id === panelId)
+      if (panel && blocked.has(item.url)) return false
+    }
+    if (item.kind === 'still' && blocked.has(item.url)) return false
+    return true
+  })
 }
 
 /** FLUX-Eingangsfoto: erstes genanntes Bild-Päckchen mit Still, sonst das aktuelle. */
@@ -279,12 +344,13 @@ export function stillEditCatalog(opts: {
     )
   }
 
-  scene.forEach((other, i) => {
+  scene.forEach((other) => {
     if (other.id === panel.id) return
     if (!httpUrl(other.stillUrl)) return
+    const packN = stillPackNumber(board, other)
     add({
       id: `still-${other.id}`,
-      label: `anderes Still der Szene — Bild ${i + 1} (${placeShelfLabel(panelPlaceKey(other))}): ${shortCue(other)}`,
+      label: `anderes Still — Bild ${packN} (${placeShelfLabel(panelPlaceKey(other))}): ${shortCue(other)}`,
       url: other.stillUrl,
       kind: 'still',
     })
@@ -366,6 +432,7 @@ Regeln:
 - Neue Stellung / neues Bild (andere Leute, anderer Platz im Raum, allein, Gäste weg, steht am Herd statt sitzt): das aktuelle Still NICHT listen — Gemini kopiert sonst die Gäste.
 - Mini-Retusche (fröhlicher, Mund, Prospekt fehlt): das aktuelle Still listen.
 - Gesicht/Kleidung, Küche/Herd, Kanne nur listen, wenn sie für die Änderung helfen.
+- Sagt der User «ohne Bild N», «Bild N nicht», «ohne Referenz von Bild N» oder ähnlich: keine id von einem anderen Still mit dieser Bildnummer im Label.
 - imagePrompt sagt der Bild-KI was zu sehen ist. Zebla hängt keine Extra-Sperre «keep these EXACT people / same seats» an.`
 }
 
@@ -405,8 +472,12 @@ export function stillEditPlannerCatalogLines(catalog: StillEditPlannerCatalogIte
 export function stillEditPlannerUser(input: StillEditPlannerInput): string {
   const catalogLines = stillEditPlannerCatalogLines(input.catalog)
   const figures = input.figures.filter(Boolean).join(', ') || '—'
+  const blocked = parseExcludedStillPackRefs(input.userHint)
   return [
     `Der User möchte Bild Nummer ${input.stillNumber} (id ${input.panelId}) verändern wie folgt: ${input.userHint}`,
+    blocked.length
+      ? `Gesperrte Referenz-Bildnummern (diese Stills nicht in imageIds): ${blocked.map((n) => `Bild ${n}`).join(', ')}.`
+      : '',
     '',
     `Deutscher Dialog dieser Zeile: ${input.dialogDe}`,
     `Figuren: ${figures}`,
@@ -1014,11 +1085,16 @@ export function resolveStillEditPaint(opts: {
   figures: string[]
   place: string
   styleLabel?: string
+  board?: FilmStoryboard
 }): StillEditPaintJob {
+  const catalog =
+    opts.board && opts.userHint.trim()
+      ? filterStillEditCatalogForHint(opts.catalog, opts.board, opts.userHint)
+      : opts.catalog
   const pack = tryStillEditPackzettel(opts.packFromClient)
   if (pack) {
-    const picked = pickStillCatalogImages(opts.catalog, pack.imageIds)
-    if (picked.length > 0 || opts.catalog.length === 0) {
+    const picked = pickStillCatalogImages(catalog, pack.imageIds)
+    if (picked.length > 0 || catalog.length === 0) {
       return {
         mode: 'packzettel',
         prompt: pack.imagePrompt,
@@ -1027,7 +1103,7 @@ export function resolveStillEditPaint(opts: {
       }
     }
   }
-  const picked = pickStillCatalogForDirectPaint(opts.catalog)
+  const picked = pickStillCatalogForDirectPaint(catalog)
   return {
     mode: 'direct',
     prompt: stillEditDirectPaintPrompt({
