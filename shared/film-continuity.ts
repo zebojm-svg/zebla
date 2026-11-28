@@ -50,6 +50,10 @@ export interface FilmContinuity {
   byUser?: boolean
   /** Was sonst gilt, von Jean-Marie, eine Sache pro Zeile. */
   notesDe?: string[]
+  /** Welches Modell die Geschichte gelesen hat. */
+  readModel?: string
+  /** Warum nicht Pro («Flash statt Pro, weil …»). */
+  readModelNoteDe?: string
 }
 
 /** Was im Regiebuch auf Deutsch steht und geändert werden kann. */

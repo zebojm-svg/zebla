@@ -168,15 +168,23 @@ async function readStory(
   const panels = panelsForContinuity(board)
   const askRegie = async (extra: string, timeoutMs: number) => {
     try {
-      const raw = await regieJson<unknown>(SYSTEM, extra ? `${ask}\n\n${extra}` : ask, images, {
+      const read = await regieJsonWithModel<unknown>(SYSTEM, extra ? `${ask}\n\n${extra}` : ask, images, {
         temperature: 0.2,
         timeoutMs,
         timeoutMessage: `Die Regie hat länger als ${Math.round(timeoutMs / 1000)} Sekunden gebraucht`,
       })
+      const raw = read.value
       const answer = Array.isArray(raw) ? raw.find((item) => item && typeof item === 'object') : raw
       const clean = sanitizeContinuity(answer, text, panels)
       return clean
-        ? { continuity: { ...clean, sourceKey: continuitySourceKey(text) } }
+        ? {
+            continuity: {
+              ...clean,
+              sourceKey: continuitySourceKey(text),
+              readModel: read.model,
+              ...(read.noteDe ? { readModelNoteDe: read.noteDe } : {}),
+            },
+          }
         : { errorDe: continuityProblemDe(answer) }
     } catch (err) {
       const message = err instanceof Error ? err.message.trim() : ''
@@ -402,13 +410,16 @@ SCHRITT 1 — HINSCHAUEN. Beschreibe nüchtern, was auf Bild 1 wirklich zu sehen
 SCHRITT 2 — PRÜFEN. Vergleiche deine Beschreibung mit Regiebuch, Plan, Sätzen und den anderen Bildern. Beantworte jede Prüfung mit pass true oder false:
 ${REGIE_CHECKS.map((rule) => `- ${rule.id}: ${rule.askDe}`).join('\n')}
 
+Deine eigene Beschreibung aus Schritt 1 gilt. Widerspricht sie dem Plan (Kamera von einer anderen Seite, Möbel an einer anderen Wand, eine Person mehr oder weniger), muss die passende Prüfung false sein. Im Zweifel false, mit kurzem Grund.
 Der Ort der Kamera ist der Raum um die Leute und um die Geräte. Was auf einer Fläche (Bildschirm, Spiegel, Tafel) zu sehen ist, gehört zum Ort, den der Plan für diese Fläche nennt. Ein Raum um ein Gerät ist kein Fehler, nur weil auf dem Gerät ein anderer Ort zu sehen ist.
 Das vorige Bild und frühere Bilder sind zum Vergleichen da. Sie können selbst falsch sein; massgebend sind Regiebuch und Plan.
 
 Nur JSON:
 { "seen": { "people": "", "bodyParts": "", "surfaces": "", "place": "", "camera": "", "gaze": "", "action": "" },
+  "compare": { "planCamera": "", "seenCamera": "", "same": true },
   "checks": [{ "id": "personen", "pass": true, "noteDe": "" }],
   "fixEn": "", "freshRefs": false }
+compare: planCamera = von wo die Kamera laut Plan schaut (von vorne, von der Seite, von hinten), seenCamera = von wo sie auf Bild 1 wirklich schaut, same = ob das übereinstimmt.
 checks enthält jede Prüfung genau einmal, mit ihrer id.
 noteDe nur bei pass false: ein kurzer deutscher Satz für Jean-Marie, ohne Fachwörter, was falsch ist.
 fixEn: was der Maler beim nächsten Versuch anders machen muss, englisch, konkret, mit Namen, nur zu den nicht bestandenen Prüfungen.
@@ -430,6 +441,8 @@ export async function judgeStoryStill(opts: {
   linesDe: { before: string; now: string; after: string }
   planDe: string
   paintEn?: string
+  /** Kamera laut Plan (deutsch und englisch), für den Abgleich mit dem, was die Regie sieht. */
+  plannedCameraText?: string
   refs: Array<{ url: string; roleDe: string }>
 }): Promise<RegieVerdict> {
   const picked = opts.refs.slice(0, JUDGE_MAX_REFS)
@@ -456,12 +469,12 @@ export async function judgeStoryStill(opts: {
     .filter(Boolean)
     .join('\n\n')
   try {
-    const { value, model } = await regieJsonWithModel<unknown>(JUDGE, ask, [still, ...refs.map((ref) => ref.part)], {
+    const { value, model, noteDe } = await regieJsonWithModel<unknown>(JUDGE, ask, [still, ...refs.map((ref) => ref.part)], {
       temperature: 0.1,
       timeoutMs: JUDGE_TIMEOUT_MS,
       timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut',
     })
-    return readJudgeAnswer(value, model)
+    return readJudgeAnswer(value, model, { plannedViewText: opts.plannedCameraText, modelNoteDe: noteDe })
   } catch (err) {
     const message = err instanceof Error ? err.message.trim() : ''
     return uncheckedVerdict(message.slice(0, 160) || 'Die Regie hat nicht geantwortet')
