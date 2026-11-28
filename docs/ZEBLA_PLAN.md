@@ -142,7 +142,7 @@ Bauschritte:
    **2d. Nach dem ersten Lauf (28. Nov 2026):**
    - Regie = Pro. Flash nur, wenn Google Pro am Schlüssel nicht kennt oder kein Kontingent hat — dann steht «Flash statt Pro, weil …» beim Urteil, beim Plan und im Regiebuch. Pro überlastet: kurz warten, noch einmal Pro; reicht die Zeit nicht, «nicht geprüft» mit Grund.
    - Kamera: sieht die Regie «von hinten», der Plan sagt «von vorne» (oder umgekehrt), ist Kamera ein Fehler, auch wenn sie «passt» angekreuzt hat. Möbel an anderer Wand als geplant = Fehler am Ort.
-   - Bild ändern: rote Meldung sagt den Grund auf Deutsch (Bild-KI zu oft gefragt, Schutzfilter, kein Bild zurück, Verbindung weg, sonst der kurze Original-Grund).
+   - Bild ändern: rote Meldung sagt den Grund auf Deutsch (Bild-KI zu oft gefragt, Schutzfilter, kein Bild zurück, Verbindung weg, sonst kurzer Grund). Interne Programmfehler (kein Englisch-Chaos) → nur «noch einmal Bild ändern».
    - Seite deutsch: was auf einem Bildschirm zu sehen ist, steht deutsch; Englisch nur für den Maler.
    - Mit Regie-Plan zeigt «Mehr» nicht mehr den alten Sitzplan/Blick/Gesicht vom Board (Daten bleiben).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.

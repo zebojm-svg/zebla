@@ -956,6 +956,12 @@ export function stillEditReasonDe(raw: string): string {
   if (/stamm-bild fehlt|kein bild zum ändern|still.*fehlt/i.test(raw)) {
     return `${STILL_EDIT_REASON_HEAD}: Es gibt kein altes Bild, von dem die Bild-KI ausgehen kann. Zuerst «Bild malen», dann ändern.`
   }
+  if (
+    /assignment to constant|referenceerror|typeerror|syntaxerror|rangeerror|urierror|evalerror/i.test(raw) ||
+    /is not defined|is not a function|cannot read propert|cannot set propert|unexpected token/i.test(raw)
+  ) {
+    return STILL_EDIT_IMAGE_ERROR_DE
+  }
   return ''
 }
 

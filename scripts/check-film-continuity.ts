@@ -251,6 +251,9 @@ if (!stillFn.includes('paintRegiePlannedStill')) fail('mit Plan malt Zebla nach 
 if (!stillFn.includes('askRegieForPlan') || !stillFn.includes('hintDe: correction')) {
   fail('Bild ändern: Regie plant neu mit Hinweis, dann dieselben Vorlagen wie erstes Malen')
 }
+if (!/\blet working\b/.test(stillFn) || !/\blet panel\b/.test(stillFn)) {
+  fail('Bild ändern: Plan und Board dürfen nach dem Hinweis nachgezogen werden (kein const)')
+}
 const apiSrc = readFileSync('api/[...slug].ts', 'utf8')
 if (!apiSrc.includes("'film-storyboard-plan'") || !apiSrc.includes('planFilmPanel(')) fail('Planen ist eine eigene Anfrage')
 const loopSrc = readFileSync('src/story/generateSceneStills.ts', 'utf8')

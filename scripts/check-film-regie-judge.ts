@@ -307,6 +307,7 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
     ['[200] Kein Standbild erhalten.', /kein Bild zurückgegeben/],
     ['Failed to fetch', /Verbindung/],
     ['Something odd happened in the painter', /Grund: Something odd happened in the painter/],
+    ['Assignment to constant variable.', /Das Bild konnte nicht neu gemalt werden\. Bitte noch einmal «Bild ändern»\./],
   ]
   for (const [raw, want] of reasons) {
     const shown = stillEditImageErrorDe(new Error(raw))

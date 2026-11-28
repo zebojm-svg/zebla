@@ -1765,12 +1765,12 @@ export async function stillFilmPanel(
       DEFAULT_STORY_ART_STYLE,
   )
   const correction = note?.trim()
-  const panel = correction
+  let panel = correction
     ? { ...found, stillCorrection: correction, directorNote: correction, regiePlanError: undefined }
     : found
   const continuityForRefs = board.continuity ?? (await ensureFilmContinuity(dialog, board))
   assertRefApprovalForGeneration(board, panelId, { continuity: continuityForRefs, hint: correction })
-  const working: FilmStoryboard = correction
+  let working: FilmStoryboard = correction
     ? {
         ...board,
         panels: board.panels.map((p) => (p.id === panelId ? panel : p)),
