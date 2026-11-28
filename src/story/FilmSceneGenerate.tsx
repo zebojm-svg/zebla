@@ -170,15 +170,39 @@ export function FilmSceneGenerateBar({
           Raumbilder zuerst zeichnen
         </button>
       ) : null}
-      {!busy && stats.done > 0 && !allDone ? (
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={extraDisabled}
-          onClick={() => onGenerate(true)}
-        >
-          Ganze Szene neu erzeugen
-        </button>
+      {!busy && stats.done > 0 ? (
+        <div className="film-scene-action-row">
+          {!allDone ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={extraDisabled}
+              onClick={() => onGenerate(true)}
+            >
+              Ganze Szene neu erzeugen
+            </button>
+          ) : null}
+          {onReview ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={extraDisabled}
+              onClick={onReview}
+            >
+              Szene prüfen
+            </button>
+          ) : null}
+          {batchRepaintIds.length && onRepaintReview ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={extraDisabled}
+              onClick={onRepaintReview}
+            >
+              Markierte Bilder ändern ({batchRepaintIds.length})
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {onRematch ? (
         <button
@@ -220,20 +244,10 @@ export function FilmSceneGenerateBar({
         </p>
       ) : null}
       {!busy && stoppedNote ? <p className="alert alert-info">{stoppedNote}</p> : null}
-      {!busy && allDone && onReview ? (
-        <div className="film-scene-review-bar">
-          <button type="button" className="btn btn-secondary" disabled={extraDisabled || busy} onClick={onReview}>
-            Szene prüfen
-          </button>
-          {review ? (
-            <p className={review.ok ? 'muted' : 'alert alert-warn'}>{sceneReviewSummaryDe(review)}</p>
-          ) : null}
-          {batchRepaintIds.length && onRepaintReview ? (
-            <button type="button" className="btn btn-secondary" disabled={extraDisabled || busy} onClick={onRepaintReview}>
-              Markierte Bilder ändern ({batchRepaintIds.length})
-            </button>
-          ) : null}
-        </div>
+      {!busy && stats.done > 0 && review ? (
+        <p className={review.ok ? 'muted film-scene-review-summary' : 'alert alert-warn film-scene-review-summary'}>
+          {sceneReviewSummaryDe(review)}
+        </p>
       ) : null}
       {error ? <div className="alert alert-error">{error}</div> : null}
       {hint ? (

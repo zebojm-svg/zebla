@@ -3584,12 +3584,15 @@ html[dir='rtl'] .slideshow-topbar {
   gap: var(--space-xs);
 }
 
-.film-scene-review-bar {
+.film-scene-action-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
   align-items: center;
-  margin-top: var(--space-sm);
+}
+
+.film-scene-review-summary {
+  margin: 0;
 }
 
 .film-regiebuch-field textarea {

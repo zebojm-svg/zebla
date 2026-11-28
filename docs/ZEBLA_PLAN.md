@@ -147,7 +147,7 @@ Bauschritte:
    - Mit Regie-Plan zeigt «Mehr» nicht mehr den alten Sitzplan/Blick/Gesicht vom Board (Daten bleiben).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
-5. **Ganze Szene nebeneinander prüfen — gebaut.** Knopf «Szene prüfen»: Regie liest den Dialog, kleine Bilder (~384 px) und Raumbilder, höchstens zwei Bilder je Anfrage (Vercel). Danach sind betroffene Bilder angehakt, Hinweis im Feld. Jean-Marie kann auch selbst «Korrigieren» und Hinweis setzen. «Markierte Bilder ändern» malt nur diese, der Reihe nach, mit dem Hinweis je Bild (Regie plant + malt). «Bild ändern» unter einem Bild wirkt sofort, einzeln. Nach «Ganze Szene neu erzeugen» läuft die Prüfung einmal von selbst. Fast gleiches Bild: nur Hinweis an die Regie, Gegenschuss darf.
+5. **Ganze Szene nebeneinander prüfen — gebaut.** Knopf «Szene prüfen» in der grünen Leiste je Szene (Seite Bilder), sobald mindestens ein Bild fertig ist — in einer Zeile mit «Ganze Szene neu erzeugen» und «Markierte Bilder ändern». Regie liest Dialog, kleine Bilder (~384 px), Raumbilder, je Anfrage höchstens zwei. Danach sind betroffene Bilder angehakt, Hinweis im Feld; Jean-Marie kann «Korrigieren». Nach kompletter Neuerzeugung läuft Prüfung einmal von selbst.
 6. Feste Sätze herausnehmen. Noch nicht.
 
 ## Stand (2026-10)
