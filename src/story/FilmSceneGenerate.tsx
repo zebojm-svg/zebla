@@ -21,6 +21,7 @@ import { packSpeakerChoices } from '../../shared/speakers'
 import { sceneHarvestNotesDe } from '../../shared/film-library-harvest'
 import { regiePlanErrorLineDe, regiePlanPlacesDe, type RegieAttempt } from '../../shared/film-regie-plan'
 import { regieCheckState } from '../../shared/film-regie-judge'
+import { regieModelLineDe } from '../../shared/regie-model'
 import {
   gazeNoteDe,
   sceneGrundbildPanel,
@@ -536,6 +537,8 @@ export function FilmRegieCheckNote({ panel }: { panel: FilmStoryboardPanel }) {
   const state = regieCheckState(panel.regieCheck, panel.stillUrl, paintedWithRegie)
   const check = panel.regieCheck
   if (state === 'keins') return null
+  const modelNote =
+    check?.stillUrl === panel.stillUrl && check?.modelNoteDe ? <> {check.modelNoteDe}</> : null
   if (state === 'ungeprueft') {
     return (
       <p className="alert alert-info">
@@ -543,28 +546,28 @@ export function FilmRegieCheckNote({ panel }: { panel: FilmStoryboardPanel }) {
         {check?.stillUrl === panel.stillUrl && check?.noteDe
           ? check.noteDe.replace(/^Nicht geprüft:\s*/, '')
           : 'Angehalten oder die Verbindung war weg.'}{' '}
-        Das Bild kann Fehler haben.
+        Das Bild kann Fehler haben.{modelNote}
       </p>
     )
   }
   if (state === 'passt') {
     return (
       <p className="muted">
-        Regie: passt.{check?.softDe ? <> Kleinigkeit: {check.softDe}</> : null}
+        Regie: passt.{check?.softDe ? <> Kleinigkeit: {check.softDe}</> : null}{modelNote}
       </p>
     )
   }
   return (
     <p className="alert alert-warn">
       Regie: {check?.noteDe} Schreib unter dem Bild, was anders sein soll.
-      {check?.softDe ? <> Kleinigkeit: {check.softDe}</> : null}
+      {check?.softDe ? <> Kleinigkeit: {check.softDe}</> : null}{modelNote}
     </p>
   )
 }
 
 function attemptVerdictDe(verdict: RegieAttempt['verdict']): string {
   if (!verdict) return 'Regie hat nicht angeschaut.'
-  const model = verdict.model ? ` (${verdict.model})` : ''
+  const model = verdict.model ? ` (${regieModelLineDe(verdict.model, verdict.modelNoteDe)})` : ''
   if (verdict.unchecked) return `Regie: ${verdict.noteDe}${model}`
   const soft = verdict.softDe ? ` Kleinigkeit: ${verdict.softDe}` : ''
   return verdict.ok ? `Regie: passt.${soft}${model}` : `Regie: ${verdict.noteDe}${soft}${model}`
@@ -601,7 +604,7 @@ export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
               ? plan.surfaces.map((surface) => (
                   <span key={surface.thing}>
                     {' '}
-                    Auf {surface.thing}: {surface.people.join(', ') || surface.showsEn}
+                    Auf {surface.thing}: {[surface.people.join(', '), surface.contentDe].filter(Boolean).join(' — ') || 'etwas zu sehen'}
                     {surface.place ? ` (${surface.place})` : ''}.
                   </span>
                 ))
@@ -611,6 +614,7 @@ export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
             {plan.sameFraming ? <> Absichtlich derselbe Blick wie das vorige Bild.</> : null}
           </p>
           <p>Kamera: {plan.cameraDe}</p>
+          {plan.model ? <p className="muted">Geplant — {regieModelLineDe(plan.model, plan.modelNoteDe)}</p> : null}
         </>
       ) : panel.regiePlanError ? (
         <p className="muted">{regiePlanErrorLineDe(panel.regiePlanError)}</p>
@@ -672,6 +676,26 @@ export function FilmBeatNotes({
   const seats = seatingNoteDe((wide ?? panel).placements)
   const speaker = panel.closeupSpeaker || panelDialogueLines(panel, dialog)[0]?.speaker || ''
   const gaze = gazeNoteDe(speaker, panelAddressee(panel, dialog), look)
+  const plan = panel.regiePlan
+  if (plan) {
+    return (
+      <div className="film-beat-notes-list">
+        <p>
+          <strong>Im Raum</strong> {plan.bodies.length ? plan.bodies.join(', ') : 'niemand'}
+        </p>
+        {!hideCues && panel.speechCue ? (
+          <p>
+            <strong>Sprache</strong> {panel.speechCue}
+          </p>
+        ) : null}
+        {!hideCues && panel.soundCue ? (
+          <p>
+            <strong>Ton</strong> {panel.soundCue}
+          </p>
+        ) : null}
+      </div>
+    )
+  }
   return (
     <div className="film-beat-notes-list">
       {panel.shot === 'closeup' ? (

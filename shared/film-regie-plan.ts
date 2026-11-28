@@ -26,8 +26,10 @@ export interface FilmRegieSurface {
   people: string[]
   /** Welcher Ort darauf zu sehen ist (Name aus dem Regiebuch), leer wenn keiner. */
   place: string
-  /** Was darauf zu sehen ist, englisch, für den Maler. */
+  /** Was darauf zu sehen ist, englisch, nur für den Maler. */
   showsEn: string
+  /** Dasselbe auf Deutsch, für die Seite. Fehlt bei älteren Plänen. */
+  contentDe?: string
 }
 
 export interface FilmRegiePlan {
@@ -50,6 +52,10 @@ export interface FilmRegiePlan {
   /** Der ganze Auftrag an den Maler. */
   paintEn: string
   refs: FilmRegiePlanRef[]
+  /** Welches Modell geplant hat. */
+  model?: string
+  /** Warum nicht Pro («Flash statt Pro, weil …»). */
+  modelNoteDe?: string
 }
 
 /** Ein Malversuch für ein Bild: was gemalt wurde, womit, und was die Regie dazu sagte. Nur Links und kurze Sätze. */
@@ -171,6 +177,7 @@ export function readRegiePlan(
     const entry = item as Record<string, unknown>
     const thing = clip(entry.thing, 60)
     const showsEn = clip(entry.showsEn ?? entry.shows, 400)
+    const contentDe = clip(entry.contentDe, 200)
     const placeRawSurface = clip(entry.place, 60)
     const people = knownNames(entry.people, opts.people).filter((name) => !bodies.some((b) => sameName(b, name)))
     if (!thing || (!showsEn && !people.length && !placeRawSurface)) continue
@@ -179,6 +186,7 @@ export function readRegiePlan(
       people,
       place: placeForName(opts.places, placeRawSurface) ?? placeRawSurface,
       showsEn,
+      ...(contentDe ? { contentDe } : {}),
     })
     if (surfaces.length >= 4) break
   }
@@ -238,7 +246,7 @@ function surfaceDe(surface: FilmRegieSurface): string {
   const who = surface.people.length ? surface.people.join(', ') : ''
   const where = surface.place ? `Ort ${surface.place}` : ''
   const what = [who, where].filter(Boolean).join(' vor ')
-  return `auf ${surface.thing}: ${what || surface.showsEn.slice(0, 80) || 'etwas'}`
+  return `auf ${surface.thing}: ${what || surface.contentDe || surface.showsEn.slice(0, 80) || 'etwas'}`
 }
 
 /** Kurz, für die Regie beim nächsten Bild und für das Urteil. */
@@ -269,7 +277,8 @@ export function regiePlanPlacesDe(plan: FilmRegiePlan): string {
     ...surfaces.map((surface) => {
       const who = surface.people.join(', ')
       const where = surface.place ? ` (${surface.place})` : ''
-      return `Auf ${surface.thing}: ${who || surface.showsEn.slice(0, 60) || 'etwas'}${where}.`
+      const what = who || surface.contentDe?.slice(0, 80)
+      return what ? `Auf ${surface.thing}: ${what}${where}.` : `Auf ${surface.thing}${where}: etwas zu sehen.`
     }),
     looseScreens.length ? `Nur auf einem Bildschirm: ${looseScreens.join(', ')}.` : '',
   ]
