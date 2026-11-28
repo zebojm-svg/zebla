@@ -20,7 +20,7 @@ function namesMatch(assetName: string, want: string): boolean {
 }
 
 export function pickedCastUrl(
-  library: Array<{ id: string; name?: string; imageUrl?: string }>,
+  library: Array<{ id: string; name?: string; imageUrl?: string; tags?: string[] }>,
   ids: string[] | undefined,
   name: string,
 ): string | undefined {
@@ -28,6 +28,7 @@ export function pickedCastUrl(
   for (const id of ids) {
     const asset = library.find((item) => item.id === id)
     if (!asset?.imageUrl?.startsWith('http')) continue
+    if ((asset.tags ?? []).includes('stammbild:verworfen')) continue
     if (namesMatch(asset.name || '', name)) return asset.imageUrl
   }
   return undefined

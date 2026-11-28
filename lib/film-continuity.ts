@@ -32,7 +32,9 @@ import {
   portraitFailedDe,
   portraitFor,
   portraitLookKey,
+  portraitNeedsRedraw,
   portraitPaintUrl,
+  portraitPreparePauseDe,
   portraitRefUrl,
   portraitStateDe,
   portraitTextDrift,
@@ -47,6 +49,15 @@ import {
   withRoomPlate,
   type FilmRoomPlate,
 } from '../shared/film-room-plate.js'
+
+export class PortraitPreparePaused extends Error {
+  readonly messageDe: string
+  constructor(messageDe: string) {
+    super(messageDe)
+    this.name = 'PortraitPreparePaused'
+    this.messageDe = messageDe
+  }
+}
 
 const SYSTEM = `Du liest eine ganze Bildergeschichte, bevor irgendein Bild gemalt wird.
 Du hältst einmal fest, wo die Leute sind und wie sie aussehen. Ein Wort in einer einzelnen Zeile ändert das nicht.
@@ -364,10 +375,22 @@ function portraitAssetMeta(
   library: StoryLibraryAsset[],
   picks: string[] | undefined,
   name: string,
+  continuity?: FilmContinuity,
 ): { url: string; description?: string; assetId?: string } | undefined {
+  const stamp = continuity ? portraitFor(continuity.portraitStamps, name) : undefined
+  if (stamp?.url?.startsWith('http')) {
+    const fromStamp = library.find((item) => item.imageUrl === stamp.url)
+    if (fromStamp && !(fromStamp.tags ?? []).includes('stammbild:verworfen')) {
+      return { url: stamp.url, description: fromStamp.description, assetId: fromStamp.id }
+    }
+  }
   const chosenId = picks?.find((id) => {
     const asset = library.find((item) => item.id === id)
-    return asset?.imageUrl?.startsWith('http') && namesMatch(asset.name || '', name)
+    return (
+      asset?.imageUrl?.startsWith('http') &&
+      !(asset.tags ?? []).includes('stammbild:verworfen') &&
+      namesMatch(asset.name || '', name)
+    )
   })
   if (chosenId) {
     const asset = library.find((item) => item.id === chosenId)
@@ -453,15 +476,16 @@ export async function ensureSpeakerPlate(opts: {
     headAngleId: 'front',
     armPoseId: 'relaxed',
   })
+  const prior = portraitFor(opts.continuity?.portraitStamps, opts.name)
   const stamp: FilmPortraitStamp = {
     name: opts.name,
     lookKey: portraitLookKey(opts.lookEn),
     url: saved.imageUrl as string,
     assetId: saved.id,
-    checked: true,
-    ok: true,
-    noteDe: 'Neu gezeichnet nach Regiebuch.',
-    tries: 1,
+    checked: opts.force ? false : true,
+    ok: opts.force ? undefined : true,
+    noteDe: opts.force ? 'Neu gezeichnet — die Regie schaut noch.' : 'Neu gezeichnet nach Regiebuch.',
+    tries: (prior?.tries ?? 0) + 1,
     at: new Date().toISOString(),
   }
   const continuity = opts.continuity
@@ -632,7 +656,7 @@ export function jobsForLibrary(
   return referenceJobs({
     continuity,
     hasFront: (name) => Boolean(portraitRefUrl(library, picks, name)),
-    portraitAsset: (name) => portraitAssetMeta(library, picks?.personIds, name),
+    portraitAsset: (name) => portraitAssetMeta(library, picks?.personIds, name, continuity),
     hasSide: (name) => Boolean(sidePlate(library, name)),
     hasPlace: (name) => Boolean(roomPlateUrl(continuity, library, picks, name)),
   })
@@ -672,13 +696,21 @@ export async function runNextReferenceJob(opts: {
         : `Stammbild von ${job.name} gezeichnet.`,
     }
   }
+  if (job.kind === 'person-front-blocked') {
+    const stamp = portraitFor(opts.continuity.portraitStamps, job.name)
+    throw new PortraitPreparePaused(portraitPreparePauseDe(job.name, stamp?.noteDe || ''))
+  }
   if (job.kind === 'person-front-check') {
-    const asset = portraitAssetMeta(opts.library, opts.picks?.personIds, job.name)
+    const asset = portraitAssetMeta(opts.library, opts.picks?.personIds, job.name, opts.continuity)
     const url = asset?.url
     if (!url) {
       return { ...opts, didDe: `Stammbild von ${job.name} fehlt noch.` }
     }
-    if (portraitTextDrift(asset.description ?? '', look) && !portraitFor(opts.continuity.portraitStamps, job.name)?.checked) {
+    const priorStamp = portraitFor(opts.continuity.portraitStamps, job.name)
+    if (
+      portraitTextDrift(asset.description ?? '', look) &&
+      (!priorStamp?.checked || portraitNeedsRedraw(priorStamp))
+    ) {
       const plated = await ensureSpeakerPlate({
         userId: opts.userId,
         library: opts.library,
@@ -715,6 +747,10 @@ export async function runNextReferenceJob(opts: {
     }
     const nextCont = { ...opts.continuity, portraitStamps: withPortraitStamp(opts.continuity.portraitStamps, stamp) }
     if (checked && !checked.ok) {
+      if (!portraitNeedsRedraw(stamp)) {
+        const pauseDe = portraitPreparePauseDe(job.name, checked.noteDe)
+        throw new PortraitPreparePaused(pauseDe)
+      }
       const plated = await ensureSpeakerPlate({
         userId: opts.userId,
         library: opts.library,

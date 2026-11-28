@@ -95,6 +95,7 @@ import {
   type RegiebuchStill,
   type RegieVerdict,
   jobsForLibrary,
+  PortraitPreparePaused,
   runNextReferenceJob,
   placePlate,
   sidePlate,
@@ -1650,6 +1651,7 @@ export async function prepareFilmReferences(
   didDe: string
   done: boolean
   plateErrorDe?: string
+  portraitErrorDe?: string
 }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
@@ -1697,6 +1699,16 @@ export async function prepareFilmReferences(
           picks,
         })
   } catch (err) {
+    if (err instanceof PortraitPreparePaused) {
+      return {
+        dialog,
+        board,
+        pending: open(continuity, library).length,
+        didDe: err.messageDe,
+        done: false,
+        portraitErrorDe: err.messageDe,
+      }
+    }
     if (!isPlateJob(next)) throw err
     const reason = err instanceof Error ? err.message : ''
     const plateErrorDe = roomPlateFailedDe(next!.name, reason.replace(/https?:\/\/\S+/g, '').slice(0, 160))

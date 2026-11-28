@@ -13,8 +13,18 @@ export const FILM_PLAN_TIMEOUT_MS = 118_000
  */
 export const IMAGE_CLIENT_TIMEOUT_MS = 188_000
 
+/** Vorbereitung, Plan, Regie schaut an: nach 120 s Abbruch, damit «Anhalten» und Fehler nicht ewig warten. */
+export const FILM_STEP_CLIENT_TIMEOUT_MS = 120_000
+
 /** Übersetzen / Birkenbihl: ein längerer Text, eine KI-Antwort. */
 export const TEXT_AI_TIMEOUT_MS = FILM_PLAN_TIMEOUT_MS
+
+const FILM_STEP_PATHS = new Set([
+  '/film-storyboard-prepare',
+  '/film-storyboard-plan',
+  '/film-storyboard-judge',
+  '/film-scene-review',
+])
 
 const IMAGE_GEN_PATHS = new Set([
   '/image',
@@ -55,7 +65,16 @@ export function isStillEditPlanPath(path: string): boolean {
   return STILL_EDIT_PLAN_PATHS.has(apiPathOnly(path))
 }
 
+export function isFilmStepPath(path: string): boolean {
+  return FILM_STEP_PATHS.has(apiPathOnly(path))
+}
+
 export function clientTimeoutMessage(path: string, reason: 'abort' | 'server'): string {
+  if (isFilmStepPath(path)) {
+    return reason === 'server'
+      ? 'Der Schritt hat auf dem Server zu lange gedauert (mehr als zwei Minuten). Bitte «Anhalten» oder Seite neu laden — fertige Bilder bleiben. Noch einmal «Szene weiter erzeugen».'
+      : 'Der Schritt hat länger als zwei Minuten gedauert. Bitte «Anhalten» oder warten bis der laufende Schritt fertig ist — dann «Szene weiter erzeugen».'
+  }
   if (isStillEditPlanPath(path)) {
     return 'Die Drehbuch-KI hat den Packzettel nicht geliefert (Zeitlimit). Bitte noch einmal «Bild ändern».'
   }

@@ -1,6 +1,7 @@
 import {
   portraitFor,
   portraitNeedsCheck,
+  portraitAutoBlocked,
   portraitNeedsRedraw,
   portraitTextDrift,
   type FilmPortraitStamp,
@@ -123,6 +124,7 @@ export function sanitizeRegiebuchEdit(raw: unknown): RegiebuchEdit | null {
 
 export type FilmRefJob =
   | { kind: 'person-front'; name: string; force?: boolean }
+  | { kind: 'person-front-blocked'; name: string }
   | { kind: 'person-front-check'; name: string }
   | { kind: 'person-side'; name: string }
   | { kind: 'person-check'; name: string }
@@ -368,6 +370,10 @@ export function referenceJobs(opts: {
     const url = asset?.url
     if (!opts.hasFront(person.name) || !url) {
       jobs.push({ kind: 'person-front', name: person.name })
+      continue
+    }
+    if (portraitAutoBlocked(stamp)) {
+      jobs.push({ kind: 'person-front-blocked', name: person.name })
       continue
     }
     if (portraitNeedsRedraw(stamp) && stamp?.url === url) {

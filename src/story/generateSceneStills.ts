@@ -27,6 +27,7 @@ export async function stillWithRegie(opts: {
   onResult?: (result: StillStep) => void
   onRefBlock?: (block: RefApprovalBlock) => void
   shouldStop?: () => boolean
+  signal?: AbortSignal
 }): Promise<StillStep & { stopped?: boolean; painted?: boolean; refApprovalBlock?: RefApprovalBlock }> {
   const stop = () => Boolean(opts.shouldStop?.())
   opts.onStatus?.(`Die Regie plant ${opts.label} …`)
@@ -34,7 +35,7 @@ export async function stillWithRegie(opts: {
   let unplannedDe = ''
   let planStep: StillStep | null = null
   try {
-    const planned = await api.ai.filmPlanPanel(opts.dialogId, opts.panelId)
+    const planned = await api.ai.filmPlanPanel(opts.dialogId, opts.panelId, opts.signal)
     planStep = { dialog: planned.dialog, board: planned.board }
     opts.onResult?.(planStep)
     if (planned.refApprovalBlock) {
@@ -55,7 +56,15 @@ export async function stillWithRegie(opts: {
   )
   let result: StillStep
   try {
-    result = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, undefined, planErrorDe)
+    result = await api.ai.filmStill(
+      opts.dialogId,
+      opts.panelId,
+      opts.styleId,
+      undefined,
+      undefined,
+      planErrorDe,
+      opts.signal,
+    )
   } catch (err) {
     const block = err instanceof RefApprovalRequired ? err.block : null
     if (block && planStep) {
@@ -72,7 +81,7 @@ export async function stillWithRegie(opts: {
     let judged: Awaited<ReturnType<typeof api.ai.filmJudge>>
     const last = tries >= REGIE_TRIES
     try {
-      judged = await api.ai.filmJudge(opts.dialogId, opts.panelId, last)
+      judged = await api.ai.filmJudge(opts.dialogId, opts.panelId, last, opts.signal)
     } catch {
       opts.onStatus?.(`${opts.label}: Die Regie konnte nicht anschauen. Das Bild bleibt, nicht geprüft.`)
       return { ...result, painted: true }
@@ -101,6 +110,7 @@ export async function stillWithRegie(opts: {
       undefined,
       { fixEn: judged.verdict.fixEn || judged.verdict.noteDe, freshRefs: judged.verdict.freshRefs },
       planErrorDe,
+      opts.signal,
     )
     opts.onResult?.(result)
   }
@@ -129,16 +139,23 @@ export async function prepareReferences(opts: {
   styleId?: string
   skipPlates?: boolean
   onStatus?: (text: string) => void
-  onStep?: (step: StillStep) => void
+  onStep?: (step: StillStep, prepareDe: string) => void
   shouldStop?: () => boolean
-}): Promise<{ last: StillStep | null; plateErrorDe?: string; stopped?: boolean }> {
+  signal?: AbortSignal
+}): Promise<{
+  last: StillStep | null
+  plateErrorDe?: string
+  portraitErrorDe?: string
+  stopped?: boolean
+}> {
   let last: StillStep | null = null
   for (let step = 0; step < PREPARE_STEPS_MAX; step++) {
     if (opts.shouldStop?.()) return { last, stopped: true }
-    const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId, opts.skipPlates)
+    const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId, opts.skipPlates, opts.signal)
     opts.onStatus?.(prepared.didDe)
     last = { dialog: prepared.dialog, board: prepared.board }
-    opts.onStep?.(last)
+    opts.onStep?.(last, prepared.didDe)
+    if (prepared.portraitErrorDe) return { last, portraitErrorDe: prepared.portraitErrorDe }
     if (prepared.plateErrorDe) return { last, plateErrorDe: prepared.plateErrorDe }
     if (prepared.done) return { last }
     if (opts.shouldStop?.()) return { last, stopped: true }
@@ -146,23 +163,33 @@ export async function prepareReferences(opts: {
   return { last }
 }
 
+export type SceneStillsProgress = {
+  current: number
+  total: number
+  preparing?: boolean
+  stepDe?: string
+}
+
 export async function generateSceneStills(opts: {
   dialogId: string
   styleId: string
   panels: FilmStoryboardPanel[]
   force?: boolean
-  onProgress: (info: {
-    current: number
-    total: number
-    dialog: Dialog
-    board: FilmStoryboard
-  }) => void
+  onProgress: (info: SceneStillsProgress & { dialog: Dialog; board: FilmStoryboard }) => void
   onStatus?: (text: string) => void
   onRefBlock?: (block: RefApprovalBlock) => void
   prepare?: boolean
   skipPlates?: boolean
   shouldStop?: () => boolean
-}): Promise<StillStep & { stoppedNoteDe?: string; plateErrorDe?: string; refApprovalBlock?: RefApprovalBlock }> {
+  signal?: AbortSignal
+}): Promise<
+  StillStep & {
+    stoppedNoteDe?: string
+    plateErrorDe?: string
+    portraitErrorDe?: string
+    refApprovalBlock?: RefApprovalBlock
+  }
+> {
   const stop = () => Boolean(opts.shouldStop?.())
   let last: StillStep | null = null
   if (opts.prepare !== false) {
@@ -171,10 +198,19 @@ export async function generateSceneStills(opts: {
       styleId: opts.styleId,
       skipPlates: opts.skipPlates,
       onStatus: opts.onStatus,
-      onStep: (step) => opts.onProgress({ current: 0, total: opts.panels.length, ...step }),
+      onStep: (step, prepareDe) =>
+        opts.onProgress({
+          current: 0,
+          total: opts.panels.length,
+          preparing: true,
+          stepDe: prepareDe,
+          ...step,
+        }),
       shouldStop: opts.shouldStop,
+      signal: opts.signal,
     })
     last = prepared.last
+    if (prepared.portraitErrorDe && last) return { ...last, portraitErrorDe: prepared.portraitErrorDe }
     if (prepared.plateErrorDe && last) return { ...last, plateErrorDe: prepared.plateErrorDe }
     if (prepared.stopped && last) return { ...last, stoppedNoteDe: stoppedNoteDe(null) }
   }
@@ -193,15 +229,18 @@ export async function generateSceneStills(opts: {
       styleId: opts.styleId,
       label: `Bild ${i + 1} von ${queue.length}`,
       onStatus: opts.onStatus,
-      onResult: (step) => opts.onProgress({ current: i, total: queue.length, ...step }),
+      onResult: (step) =>
+        opts.onProgress({ current: i, total: queue.length, preparing: false, ...step }),
       onRefBlock: opts.onRefBlock,
       shouldStop: opts.shouldStop,
+      signal: opts.signal,
     })
     last = result
     if (result.painted !== false) lastNumber = scenePictureNumber(opts.panels, panel.id)
     opts.onProgress({
       current: i + 1,
       total: queue.length,
+      preparing: false,
       dialog: result.dialog,
       board: result.board,
     })
@@ -221,16 +260,15 @@ export function useSceneStills(
   const [busySceneId, setBusySceneId] = useState<string | null>(null)
   const [busyPanelId, setBusyPanelId] = useState<string | null>(null)
   const [status, setStatus] = useState('')
-  const [progress, setProgress] = useState<{
-    sceneId: string
-    current: number
-    total: number
-  } | null>(null)
+  const [progress, setProgress] = useState<
+    ({ sceneId: string } & SceneStillsProgress) | null
+  >(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [stopped, setStopped] = useState<Record<string, string>>({})
   const [stopping, setStopping] = useState(false)
   const [refHighlightIds, setRefHighlightIds] = useState<string[]>([])
   const stopRef = useRef(false)
+  const runAbortRef = useRef<AbortController | null>(null)
 
   const applyRefBlock = (sceneId: string, block: RefApprovalBlock) => {
     setRefHighlightIds(block.panelIds)
@@ -240,8 +278,9 @@ export function useSceneStills(
 
   const stop = () => {
     stopRef.current = true
+    runAbortRef.current?.abort()
     setStopping(true)
-    setStatus('Wird angehalten, sobald der laufende Schritt fertig ist …')
+    setStatus('Wird angehalten …')
   }
 
   const runSceneReview = async (sceneId: string, fresh = true) => {
@@ -281,6 +320,8 @@ export function useSceneStills(
     setProgress({ sceneId, current: 0, total: queue.length })
     stopRef.current = false
     setStopping(false)
+    const runAbort = new AbortController()
+    runAbortRef.current = runAbort
     try {
       const done = await generateSceneStills({
         dialogId,
@@ -291,15 +332,19 @@ export function useSceneStills(
         onStatus: (text) => {
           if (!stopRef.current) setStatus(text)
         },
-        onProgress: ({ current, total, dialog, board }) => {
+        onProgress: ({ current, total, preparing, stepDe, dialog, board }) => {
           apply(dialog, board)
-          setProgress({ sceneId, current, total })
+          setProgress({ sceneId, current, total, preparing, stepDe })
         },
         shouldStop: () => stopRef.current,
+        signal: runAbort.signal,
         onRefBlock: (block) => applyRefBlock(sceneId, block),
       })
       if (done.refApprovalBlock) {
         applyRefBlock(sceneId, done.refApprovalBlock)
+      }
+      if (done.portraitErrorDe) {
+        setErrors((prev) => ({ ...prev, [sceneId]: done.portraitErrorDe as string }))
       }
       if (done.plateErrorDe) {
         setErrors((prev) => ({ ...prev, [sceneId]: done.plateErrorDe as string }))
@@ -314,10 +359,15 @@ export function useSceneStills(
         applyRefBlock(sceneId, err.block)
       } else {
         const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
-        setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
+        if (raw === 'Angehalten.') {
+          setStopped((prev) => ({ ...prev, [sceneId]: stoppedNoteDe(null) }))
+        } else {
+          setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
+        }
       }
     } finally {
       stopRef.current = false
+      runAbortRef.current = null
       setStopping(false)
       setBusySceneId(null)
       setBusyPanelId(null)

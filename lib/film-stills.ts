@@ -238,8 +238,9 @@ export function stillPromptForPanel(
   })
 }
 
-/** Replicate bremst bei wenig Guthaben: einmal so lange warten, dann noch einmal. */
+/** Replicate bremst bei wenig Guthaben: einmal so lange warten, dann noch einmal — nicht öfter. */
 const FLUX_THROTTLE_WAIT_MS = 10_000
+const FLUX_EDIT_MAX_ATTEMPTS = 2
 
 export async function generateFilmPanelStillImage(opts: {
   panel: FilmStoryboardPanel
@@ -292,15 +293,23 @@ export async function generateFilmPanelStillImage(opts: {
     }
     try {
       let moved: Awaited<ReturnType<typeof editImageWithKontext>>
-      try {
-        moved = await edit()
-      } catch (err) {
-        const raw = err instanceof Error ? err.message : String(err ?? '')
-        if (!/throttl|rate.?limit|too many requests/i.test(raw)) throw err
-        await new Promise((resolve) => setTimeout(resolve, FLUX_THROTTLE_WAIT_MS))
-        moved = await edit()
+      let lastErr: unknown
+      for (let attempt = 0; attempt < FLUX_EDIT_MAX_ATTEMPTS; attempt++) {
+        try {
+          moved = await edit()
+          lastErr = undefined
+          break
+        } catch (err) {
+          lastErr = err
+          const raw = err instanceof Error ? err.message : String(err ?? '')
+          if (attempt + 1 >= FLUX_EDIT_MAX_ATTEMPTS || !/throttl|rate.?limit|too many requests/i.test(raw)) {
+            throw err
+          }
+          await new Promise((resolve) => setTimeout(resolve, FLUX_THROTTLE_WAIT_MS))
+        }
       }
-      return await uploadPng(moved.buffer, `film-stills/${randomUUID()}.png`)
+      if (lastErr) throw lastErr
+      return await uploadPng(moved!.buffer, `film-stills/${randomUUID()}.png`)
     } catch (err) {
       console.error('[bild-aendern] FLUX', err instanceof Error ? err.message : err)
       throw new Error(stillEditImageErrorDe(err))

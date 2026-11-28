@@ -92,7 +92,7 @@ type Props = {
   onStyleChange: (styleId: string) => void
   busy: boolean
   extraDisabled?: boolean
-  progress?: { current: number; total: number } | null
+  progress?: { current: number; total: number; preparing?: boolean; stepDe?: string } | null
   error?: string
   status?: string
   onGenerate: (force: boolean, skipPlates?: boolean) => void
@@ -146,9 +146,11 @@ export function FilmSceneGenerateBar({
   const label = busy
     ? paintingOne
       ? 'Bild wird neu gemalt …'
-      : progress && progress.current > 0
-        ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
-        : 'Erzeuge Szene …'
+      : progress?.preparing
+        ? 'Vorbereitung …'
+        : progress && progress.current > 0
+          ? `Erzeuge Szene … Bild ${progress.current} von ${progress.total}`
+          : 'Erzeuge Szene …'
     : allDone
       ? 'Szene neu erzeugen'
       : stats.done > 0
@@ -265,9 +267,15 @@ export function FilmSceneGenerateBar({
         <p className="film-scene-progress" aria-live="polite">
           {paintingOne
             ? `Bild in «${scene.title}» wird neu gemalt …`
-            : `Erzeuge Szene «${scene.title}»${
-                progress ? ` — Bild ${progress.current} von ${progress.total}` : ' …'
-              }`}
+            : progress?.preparing
+              ? `Erzeuge Szene «${scene.title}» — ${progress.stepDe || status || 'Bibliothek und Stammbilder …'}`
+              : `Erzeuge Szene «${scene.title}»${
+                  progress && progress.current > 0
+                    ? ` — Bild ${progress.current} von ${progress.total}`
+                    : status
+                      ? ` — ${status}`
+                      : ' …'
+                }`}
           {!paintingOne && status ? ` ${status}` : ''}
           {!paintingOne && onStop ? (
             <>

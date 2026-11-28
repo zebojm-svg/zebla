@@ -116,6 +116,21 @@ export function portraitFailedDe(name: string, reason: string): string {
   return `Das Stammbild von ${name} konnte nicht gezeichnet werden: ${why}.`
 }
 
+/** Nach höchstens PORTRAIT_AUTO_TRIES automatischen Neuzeichnungen: Szene anhalten, Jean-Marie entscheidet. */
+export function portraitPreparePauseDe(name: string, noteDe: string): string {
+  const detail = noteDe.trim().replace(/[.\s]+$/, '') || 'passt nicht zum Regiebuch'
+  return [
+    `Stammbild «${name}» passt nach ${PORTRAIT_AUTO_TRIES} Versuchen noch nicht (${detail}).`,
+    'Im Regiebuch «Stammbild neu zeichnen» oder die Beschreibung anpassen.',
+    'Oder im Katalog ein anderes Bild wählen.',
+    'Danach «Szene weiter erzeugen» — es malt nur, was fehlt.',
+  ].join(' ')
+}
+
+export function portraitAutoBlocked(stamp: FilmPortraitStamp | undefined): boolean {
+  return Boolean(stamp && stamp.checked && stamp.ok === false && !stamp.byUser && (stamp.tries ?? 0) >= PORTRAIT_AUTO_TRIES)
+}
+
 /** Was in der Bibliothek oder im Katalog liegt — auch wenn es noch nicht zum Regiebuch passt. */
 export function portraitRefUrl(
   library: StoryLibraryAsset[],

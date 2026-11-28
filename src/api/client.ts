@@ -2,6 +2,7 @@ import {
   clientTimeoutMessage,
   DEFAULT_API_TIMEOUT_MS,
   FILM_PLAN_TIMEOUT_MS,
+  FILM_STEP_CLIENT_TIMEOUT_MS,
   IMAGE_CLIENT_TIMEOUT_MS,
   isStillEditPlanPath,
   TEXT_AI_TIMEOUT_MS,
@@ -24,10 +25,13 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter
 }
 
+type RequestExtra = { signal?: AbortSignal }
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   timeoutMs = DEFAULT_API_TIMEOUT_MS,
+  extra?: RequestExtra,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -41,6 +45,8 @@ async function request<T>(
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const onRunAbort = () => controller.abort()
+  extra?.signal?.addEventListener('abort', onRunAbort)
 
   let res: Response
   try {
@@ -51,12 +57,16 @@ async function request<T>(
     })
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
+      if (extra?.signal?.aborted) {
+        throw new Error('Angehalten.')
+      }
       throw new Error(clientTimeoutMessage(path, 'abort'))
     }
     if (isStillEditPlanPath(path)) throw new Error(STILL_EDIT_PLANNER_GOOGLE_DE)
     throw err
   } finally {
     clearTimeout(timer)
+    extra?.signal?.removeEventListener('abort', onRunAbort)
   }
 
   const text = await res.text()
@@ -659,7 +669,7 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, ...opts }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
-    filmPrepare: (dialogId: string, styleId?: string, skipPlates = false) =>
+    filmPrepare: (dialogId: string, styleId?: string, skipPlates = false, signal?: AbortSignal) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
@@ -667,10 +677,12 @@ export const api = {
         didDe: string
         done: boolean
         plateErrorDe?: string
+        portraitErrorDe?: string
       }>(
         '/film-storyboard-prepare',
         { method: 'POST', body: JSON.stringify({ dialogId, styleId, skipPlates }) },
-        IMAGE_CLIENT_TIMEOUT_MS,
+        FILM_STEP_CLIENT_TIMEOUT_MS,
+        { signal },
       ),
     filmSceneReview: (dialogId: string, sceneId: string, fresh = true) =>
       request<{
@@ -711,6 +723,7 @@ export const api = {
       note?: string,
       regie?: { fixEn: string; freshRefs: boolean },
       planErrorDe?: string,
+      signal?: AbortSignal,
     ) =>
       request<{
         dialog: import('../types').Dialog
@@ -719,8 +732,9 @@ export const api = {
         '/film-storyboard-still',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, styleId, note, regie, planErrorDe }) },
         IMAGE_CLIENT_TIMEOUT_MS,
+        { signal },
       ),
-    filmPlanPanel: (dialogId: string, panelId: string) =>
+    filmPlanPanel: (dialogId: string, panelId: string, signal?: AbortSignal) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
@@ -731,9 +745,10 @@ export const api = {
       }>(
         '/film-storyboard-plan',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
-        IMAGE_CLIENT_TIMEOUT_MS,
+        FILM_STEP_CLIENT_TIMEOUT_MS,
+        { signal },
       ),
-    filmJudge: (dialogId: string, panelId: string, pickBest = false) =>
+    filmJudge: (dialogId: string, panelId: string, pickBest = false, signal?: AbortSignal) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
@@ -742,7 +757,8 @@ export const api = {
       }>(
         '/film-storyboard-judge',
         { method: 'POST', body: JSON.stringify({ dialogId, panelId, pickBest }) },
-        IMAGE_CLIENT_TIMEOUT_MS,
+        FILM_STEP_CLIENT_TIMEOUT_MS,
+        { signal },
       ),
     filmPanelLayout: (
       dialogId: string,
