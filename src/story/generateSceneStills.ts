@@ -81,7 +81,7 @@ function scenePictureNumber(panels: FilmStoryboardPanel[], panelId: string): num
 
 export function stoppedNoteDe(lastNumber: number | null): string {
   const after = lastNumber ? `Angehalten nach Bild ${lastNumber}.` : 'Angehalten, bevor ein neues Bild fertig war.'
-  return `${after} Schreib unter dem Bild, was anders sein soll, und drück «Bild ändern». Danach «Szene weiter erzeugen».`
+  return `${after} Schreib unter dem Bild, was anders sein soll, und drück «Bild ändern». Danach «Szene weiter erzeugen» (malt nur, was fehlt) oder «Ganze Szene neu erzeugen» (malt alle Bilder neu).`
 }
 
 export async function generateSceneStills(opts: {

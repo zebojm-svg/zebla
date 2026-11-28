@@ -131,6 +131,16 @@ export function FilmSceneGenerateBar({
       >
         {label}
       </button>
+      {!busy && stats.done > 0 && !allDone ? (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={extraDisabled}
+          onClick={() => onGenerate(true)}
+        >
+          Ganze Szene neu erzeugen
+        </button>
+      ) : null}
       {onRematch ? (
         <button
           type="button"
