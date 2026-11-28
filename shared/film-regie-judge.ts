@@ -51,7 +51,7 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
     hard: true,
     labelDe: 'Ort',
     askDe:
-      'Der Raum um die Leute und um die Geräte (Wände, Boden, Fenster, Möbel, Dinge an der Wand) ist der Ort der Kamera aus dem Plan. Er passt zum Regiebuch, zur Raum-Vorlage und zu früheren Bildern desselben Ortes. Nichts davon gehört zu einem anderen Ort.',
+      'Der Raum um die Leute und um die Geräte (Wände, Boden, Fenster, Möbel, Dinge an der Wand) ist der Ort der Kamera aus dem Plan. Er passt zum Regiebuch, zur Raum-Vorlage und zu früheren Bildern desselben Ortes. Nichts davon gehört zu einem anderen Ort. Stellen Plan oder Regiebuch ein Möbel an eine bestimmte Wand oder Seite und du siehst es an einer anderen, ist diese Prüfung nicht bestanden.',
   },
   {
     id: 'flaechen',
@@ -71,7 +71,7 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
     hard: true,
     labelDe: 'Kamera',
     askDe:
-      'Kamera-Standort, Richtung (von vorne, von der Seite, von hinten) und Nähe sind wie im Plan. Der Hintergrund passt zur Blickrichtung: schaut die Kamera in die andere Richtung als auf einem früheren Bild am selben Ort, ist die gegenüberliegende Wand zu sehen.',
+      'Kamera-Standort, Richtung (von vorne, von der Seite, von hinten) und Nähe sind wie im Plan. Vergleiche dazu deine Beschreibung unter camera mit dem Plan: sagt der Plan «von vorne» und du hast «von hinten» gesehen (oder umgekehrt), ist diese Prüfung nicht bestanden. Der Hintergrund passt zur Blickrichtung: schaut die Kamera in die andere Richtung als auf einem früheren Bild am selben Ort, ist die gegenüberliegende Wand zu sehen.',
   },
   {
     id: 'blick',
@@ -116,6 +116,8 @@ export interface RegieVerdict {
   /** Was die Regie auf dem Bild gesehen hat, kurz. */
   seenDe: string
   model?: string
+  /** Warum nicht das gewünschte Modell geantwortet hat («Flash statt Pro, weil …»). */
+  modelNoteDe?: string
 }
 
 export const REGIE_PASS: RegieVerdict = {
@@ -187,8 +189,62 @@ function seenSummary(raw: unknown): string {
     .slice(0, 500)
 }
 
+export type CameraView = 'vorne' | 'hinten'
+
+const VIEW_FRONT =
+  /\bvon\s+vorn(?:e)?\b|\bvorn(?:e)?[- ](?:rechts|links)\b|\bfrontal\b|\bfrom\s+the\s+front\b|\bfront[- ](?:left|right)\b|\bfront\s+view\b/i
+const VIEW_BACK =
+  /\bvon\s+hinten\b|\bhinten[- ](?:rechts|links)\b|\bRückenansicht\b|\bfrom\s+behind\b|\bfrom\s+the\s+back\b|\bback[- ](?:left|right)\b|\bback\s+view\b/i
+
+/** «von vorne» oder «von hinten» — nur wenn der Text eindeutig ist, sonst nichts. */
+export function cameraViewFromText(text: string | undefined): CameraView | undefined {
+  const value = text ?? ''
+  const front = VIEW_FRONT.test(value)
+  const back = VIEW_BACK.test(value)
+  if (front === back) return undefined
+  return front ? 'vorne' : 'hinten'
+}
+
+function cameraSeenText(seen: unknown): string {
+  if (typeof seen === 'string') return seen
+  if (!seen || typeof seen !== 'object') return ''
+  const camera = (seen as Record<string, unknown>).camera
+  return typeof camera === 'string' ? camera : ''
+}
+
+/**
+ * Widerspricht die eigene Beschreibung der Regie dem Plan bei der Kamera, ist «kamera» nicht bestanden —
+ * egal was sie angekreuzt hat. Allgemein: nur «von vorne» gegen «von hinten», oder die Regie sagt selbst «anders».
+ */
+export function cameraContradictionDe(
+  row: Record<string, unknown>,
+  plannedViewText?: string,
+): string {
+  const compare = row.compare && typeof row.compare === 'object' ? (row.compare as Record<string, unknown>) : undefined
+  const seenView = cameraViewFromText(cameraSeenText(row.seen)) ?? cameraViewFromText(clip(compare?.seenCamera, 200))
+  const plannedView = cameraViewFromText(plannedViewText) ?? cameraViewFromText(clip(compare?.planCamera, 200))
+  if (seenView && plannedView && seenView !== plannedView) {
+    return `Die Kamera schaut von ${seenView}, geplant war von ${plannedView}.`
+  }
+  if (compare && passValue(compare.same) === false) {
+    const seen = clip(compare.seenCamera, 120)
+    const plan = clip(compare.planCamera, 120)
+    return seen && plan ? `Kamera anders als geplant: gesehen «${seen}», geplant «${plan}».` : 'Kamera anders als geplant.'
+  }
+  return ''
+}
+
 /** Liest die Antwort der Regie. Fehlt die Prüfliste, gilt das Bild als nicht geprüft — nie still als «passt». */
-export function readJudgeAnswer(raw: unknown, model?: string): RegieVerdict {
+export function readJudgeAnswer(
+  raw: unknown,
+  model?: string,
+  opts: { plannedViewText?: string; modelNoteDe?: string } = {},
+): RegieVerdict {
+  const verdict = readJudgeChecks(raw, model, opts.plannedViewText)
+  return opts.modelNoteDe ? { ...verdict, modelNoteDe: opts.modelNoteDe } : verdict
+}
+
+function readJudgeChecks(raw: unknown, model?: string, plannedViewText?: string): RegieVerdict {
   const row = (Array.isArray(raw) ? raw.find((item) => item && typeof item === 'object') : raw) as
     | Record<string, unknown>
     | undefined
@@ -217,6 +273,12 @@ export function readJudgeAnswer(raw: unknown, model?: string): RegieVerdict {
   if (answered.size < Math.ceil(REGIE_CHECKS.length / 2)) {
     return uncheckedVerdict('Die Regie hat die Prüfliste nicht ausgefüllt', model)
   }
+  const contradiction = cameraContradictionDe(row, plannedViewText)
+  let fixEn = clip(row.fixEn, 600)
+  if (contradiction && answered.get('kamera')?.pass !== false) {
+    answered.set('kamera', { pass: false, noteDe: contradiction })
+    fixEn = `${fixEn} CAMERA: paint the view exactly as the plan says (front or back as planned); the last try showed the other side.`.trim()
+  }
   const failedRules = REGIE_CHECKS.filter((rule) => answered.get(rule.id)?.pass === false)
   const hard = failedRules.filter((rule) => rule.hard)
   const soft = failedRules.filter((rule) => !rule.hard)
@@ -226,7 +288,7 @@ export function readJudgeAnswer(raw: unknown, model?: string): RegieVerdict {
     ok,
     checked: true,
     noteDe: ok ? '' : hard.map(noteOf).join(' ').slice(0, 300),
-    fixEn: ok ? '' : clip(row.fixEn, 600),
+    fixEn: ok ? '' : fixEn.slice(0, 700),
     freshRefs: !ok && row.freshRefs === true && hard.some((rule) => rule.id === 'ort' || rule.id === 'flaechen'),
     failed: hard.map((rule) => rule.id),
     softDe: soft.map(noteOf).join(' ').slice(0, 200),
@@ -243,6 +305,7 @@ export interface StoredRegieCheck {
   failed?: string[]
   softDe?: string
   model?: string
+  modelNoteDe?: string
 }
 
 export function storedRegieCheck(verdict: RegieVerdict): StoredRegieCheck {
@@ -253,6 +316,7 @@ export function storedRegieCheck(verdict: RegieVerdict): StoredRegieCheck {
     ...(verdict.failed.length ? { failed: verdict.failed } : {}),
     ...(verdict.softDe ? { softDe: verdict.softDe.slice(0, 200) } : {}),
     ...(verdict.model ? { model: verdict.model.slice(0, 60) } : {}),
+    ...(verdict.modelNoteDe ? { modelNoteDe: verdict.modelNoteDe.slice(0, 200) } : {}),
   }
 }
 
