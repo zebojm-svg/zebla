@@ -44,7 +44,7 @@ import {
   sceneReviewPending,
   SCENE_REVIEW_BATCH,
 } from './film-scene-review.js'
-import { sceneReviewSummaryDe } from '../shared/film-scene-review.js'
+import { applySceneReviewMarks, sceneReviewSummaryDe } from '../shared/film-scene-review.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage, paintRegiePlannedStill } from './film-stills.js'
 import { planStoryPicture } from './film-regie-plan.js'
@@ -645,6 +645,8 @@ export async function saveFilmPack(
     directorNote?: string
     soundCue?: string
     nativeText?: string
+    stillCorrection?: string | null
+    stillMarkRedo?: boolean | null
   },
   profile?: UserProfile | null,
 ): Promise<{ dialog: Dialog; board: FilmStoryboard }> {
@@ -731,6 +733,31 @@ export async function saveFilmPack(
   }
   if (fields.directorNote !== undefined) {
     board = applyPanelDirectorNote(board, panelId, fields.directorNote)
+  }
+  if (fields.stillCorrection !== undefined || fields.stillMarkRedo !== undefined) {
+    const correction =
+      fields.stillCorrection === undefined || fields.stillCorrection === null
+        ? undefined
+        : fields.stillCorrection.trim()
+    board = {
+      ...board,
+      panels: board.panels.map((p) => {
+        if (p.id !== panelId) return p
+        const mark =
+          fields.stillMarkRedo !== undefined && fields.stillMarkRedo !== null
+            ? Boolean(fields.stillMarkRedo)
+            : correction
+              ? true
+              : p.stillMarkRedo
+        return {
+          ...p,
+          ...(fields.stillCorrection !== undefined
+            ? { stillCorrection: correction || undefined }
+            : {}),
+          stillMarkRedo: mark ? true : undefined,
+        }
+      }),
+    }
   }
   if (fields.speaker !== undefined) {
     const speaker = (fields.speaker || '').trim()
@@ -2159,10 +2186,13 @@ export async function reviewFilmScene(
     panelIds: batch,
   })
   const review = mergeSceneReview(sceneId, prev, issues, rest, summaryDe, model)
-  const nextBoard: FilmStoryboard = {
+  let nextBoard: FilmStoryboard = {
     ...board,
     continuity,
     scenes: board.scenes.map((item) => (item.id === sceneId ? { ...item, sceneReview: review } : item)),
+  }
+  if (!review.pending?.length) {
+    nextBoard = applySceneReviewMarks(nextBoard, sceneId, review)
   }
   const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(nextBoard) }, profile)
   if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Die Szene-Prüfung konnte nicht gespeichert werden.')

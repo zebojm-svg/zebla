@@ -4135,6 +4135,25 @@ html[dir='rtl'] .slideshow-topbar {
   font-size: 0.82rem;
 }
 
+.film-still-fix-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  margin: 0 0.75rem 0.35rem;
+  cursor: pointer;
+}
+
+.film-still-fix--marked .film-still-fix-mark {
+  font-weight: 500;
+}
+
+.film-panel--mark-redo {
+  outline: 2px solid var(--warning);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
 .film-still-fix {
   padding-bottom: 0.55rem;
 }

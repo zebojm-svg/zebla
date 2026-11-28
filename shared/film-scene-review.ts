@@ -2,6 +2,8 @@
  * Ganze Szene nebeneinander prüfen: Dialog + kleine Bilder, Regie meldet Fehler je Bild.
  */
 
+import type { FilmStoryboard, FilmStoryboardPanel } from './film-storyboard.js'
+
 export interface FilmSceneReviewIssue {
   panelId: string
   panelIndex: number
@@ -23,7 +25,53 @@ export interface FilmSceneReview {
 
 export function sceneReviewRedoIds(review: FilmSceneReview | undefined): string[] {
   if (!review?.issues?.length) return []
-  return review.issues.filter((item) => !item.ok).map((item) => item.panelId)
+  return review.issues
+    .filter((item) => !item.ok)
+    .sort((a, b) => a.panelIndex - b.panelIndex)
+    .map((item) => item.panelId)
+}
+
+/** Jean-Marie hat Bilder zum Nachmalen angehakt (Reihenfolge wie im Board). */
+export function sceneMarkedPanelIds(panels: FilmStoryboardPanel[]): string[] {
+  return panels
+    .filter((panel) => panel.stillMarkRedo && panel.stillUrl?.startsWith('http'))
+    .sort((a, b) => a.panelIndex - b.panelIndex)
+    .map((panel) => panel.id)
+}
+
+/** Nach «Szene prüfen»: betroffene Bilder ankreuzen und Regie-Hinweis ins Feld legen. */
+export function applySceneReviewMarks(
+  board: FilmStoryboard,
+  sceneId: string,
+  review: FilmSceneReview,
+): FilmStoryboard {
+  if (review.pending?.length) return board
+  const badIds = new Set(sceneReviewRedoIds(review))
+  if (!badIds.size) return board
+  return {
+    ...board,
+    updatedAt: new Date().toISOString(),
+    panels: board.panels.map((panel) => {
+      if (panel.sceneId !== sceneId || !badIds.has(panel.id)) return panel
+      const issue = review.issues.find((item) => item.panelId === panel.id)
+      const regieHint = issue?.fixEn?.trim() || issue?.noteDe?.trim() || ''
+      const stillCorrection = panel.stillCorrection?.trim() || regieHint
+      return {
+        ...panel,
+        stillMarkRedo: true,
+        ...(stillCorrection ? { stillCorrection } : {}),
+      }
+    }),
+  }
+}
+
+export function sceneBatchRepaintIds(
+  panels: FilmStoryboardPanel[],
+  review: FilmSceneReview | undefined,
+): string[] {
+  const marked = sceneMarkedPanelIds(panels)
+  if (marked.length) return marked
+  return sceneReviewRedoIds(review)
 }
 
 export function sceneReviewSummaryDe(review: FilmSceneReview | undefined): string {

@@ -100,6 +100,8 @@ export interface FilmStoryboardPanel {
   stillError?: string
   /** Was an diesem Bild korrigiert werden soll (nur dieses Bild neu). */
   stillCorrection?: string
+  /** Für «Markierte Bilder ändern» — Hinweis steht in stillCorrection. */
+  stillMarkRedo?: boolean
   /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
   harvestNoteDe?: string
   /** Die Regie hat dieses Bild angeschaut. Gilt nur, solange stillUrl dasselbe Bild ist. */
@@ -883,6 +885,7 @@ export function buildBoardFromDrafts(
       stillStyleId: prev?.stillStyleId,
       stillError: prev?.stillError,
       stillCorrection: prev?.stillCorrection,
+      stillMarkRedo: prev?.stillMarkRedo,
       harvestNoteDe: prev?.harvestNoteDe,
     }
   })
