@@ -308,6 +308,8 @@ export function regiePaintPromptEn(opts: {
   stylePrompt: string
   languageEn: string
   fixEn?: string
+  /** Das Raumbild des Kamera-Ortes ist angehängt. */
+  roomPlateAttached?: boolean
 }): string {
   const inPlan = (name: string) =>
     [...opts.plan.bodies, ...opts.plan.screens].some((have) => sameName(have, name))
@@ -345,6 +347,9 @@ export function regiePaintPromptEn(opts: {
       : opts.plan.place
         ? `Place ${opts.plan.place} (the room the camera stands in)${opts.plan.placeLookEn ? `: ${opts.plan.placeLookEn}` : '.'}`
         : '',
+    opts.roomPlateAttached && cameraPlace
+      ? `FURNITURE PLAN: the attached ROOM PLATE of ${cameraPlace} is the fixed furniture plan. Same furniture, same number of pieces, same walls, same windows and doors. Do not add a second piece of the same furniture, do not move or turn furniture into the middle of the room. Another camera angle of this same room is fine.`
+      : '',
     ...surfaceLines,
     people.length ? `Looks (same in every picture): ${people.join(' ')}` : '',
     opts.plan.bodies.length

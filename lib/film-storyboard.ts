@@ -49,6 +49,7 @@ import {
   regiePlanErrorLineDe,
   regiePlanSummaryDe,
   type FilmRegiePlan,
+  type FilmRegiePlanRef,
   type RegieRefOption,
 } from '../shared/film-regie-plan.js'
 import {
@@ -62,6 +63,16 @@ import {
   uncheckedVerdict,
 } from '../shared/film-regie-judge.js'
 import {
+  roomPlateFailedDe,
+  roomPlateFor,
+  roomPlateRoleDe,
+  roomPlateStateDe,
+  roomPlateUseEn,
+  surfacePlateUseEn,
+  withRoomPlate,
+  type FilmRoomPlate,
+} from '../shared/film-room-plate.js'
+import {
   briefForImage,
   applyRegiebuchEdit,
   continuityIsCurrent,
@@ -70,12 +81,14 @@ import {
   rereadFilmContinuity,
   ensureSpeakerPlate,
   judgeStoryStill,
+  judgeRoomPlate,
+  paintRoomPlate,
+  roomPlateUrl,
   JUDGE_MAX_REFS,
   REGIEBUCH_STILLS_MAX,
   type RegiebuchStill,
   type RegieVerdict,
   jobsForLibrary,
-  placePlate,
   runNextReferenceJob,
   sidePlate,
   stampReferenceFaces,
@@ -1072,8 +1085,8 @@ async function askRegieForPlan(
   }
   for (const place of continuity.places) {
     offer(
-      pickedCastUrl(library, picks?.placeIds, place.name) || placePlate(library, place.name)?.imageUrl,
-      `Raum-Vorlage «${place.name}», leer, ohne Leute.`,
+      roomPlateUrl(continuity, library, picks, place.name),
+      `Raumbild «${place.name}», leer, ohne Leute: die feste Einrichtung. Geht immer mit, wenn das Bild an diesem Ort spielt.`,
     )
   }
   const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
@@ -1202,6 +1215,8 @@ function judgeRefs(opts: {
     if (!url?.startsWith('http') || url === panel.stillUrl || refs.some((ref) => ref.url === url)) return
     if (refs.length < JUDGE_MAX_REFS) refs.push({ url, roleDe })
   }
+  const roomPlate = (name: string) => roomPlateUrl(continuity, library, picks, name)
+  if (plan?.place) add(roomPlate(plan.place), roomPlateRoleDe(plan.place))
   const prev = board.panels[index - 1]
   if (prev?.stillUrl) {
     add(
@@ -1212,8 +1227,6 @@ function judgeRefs(opts: {
   const roomNames = continuity.places.map((item) => item.name)
   const room = (name: string) => (placeForName(roomNames, name) ?? name).trim().toLowerCase()
   const placeOf = (item: FilmStoryboardPanel) => (item.regiePlan?.place ? room(item.regiePlan.place) : '')
-  const roomPlate = (name: string) => pickedCastUrl(library, picks?.placeIds, name) || placePlate(library, name)?.imageUrl
-  if (plan?.place) add(roomPlate(plan.place), `Raum-Vorlage «${plan.place}», leer: so sieht der Ort der Kamera aus.`)
   const who = plan
     ? [...plan.bodies, ...plan.screens]
     : [panelPersonName(panel)].filter(Boolean)
@@ -1313,13 +1326,104 @@ export async function regiebuchFilm(
   return { dialog: updated, board: updated.filmStoryboard }
 }
 
+/**
+ * «Raumbild neu zeichnen» / «Raumbild ändern» im Regiebuch. Eine Anfrage: zeichnen, dann schaut die Regie einmal hin.
+ * Gespeichert wird auf dem frischen Stand, nur das Raumbild dieses Ortes ändert sich.
+ */
+export async function redrawRoomPlate(
+  dialogId: string,
+  userId: string,
+  placeName: string,
+  opts: { note?: string; styleId?: string; profile?: UserProfile | null },
+): Promise<{ dialog: Dialog; board: FilmStoryboard; noteDe: string }> {
+  const started = Date.now()
+  const dialog = await getDialog(dialogId, userId, opts.profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const continuity = board.continuity
+  const place = continuity?.places.find((item) => item.name.trim().toLowerCase() === placeName.trim().toLowerCase())
+  if (!continuity || !place) throw new Error(`Den Ort «${placeName}» gibt es im Regiebuch nicht.`)
+  const old = roomPlateFor(continuity.plates, place.name)
+  const fromPlan = dialog.filmPlan?.scenes.find((scene) => scene.styleId)?.styleId
+  const style = paintingStyleId(
+    (opts.styleId && isStoryArtStyleId(opts.styleId) ? opts.styleId : undefined) ||
+      (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
+      DEFAULT_STORY_ART_STYLE,
+  )
+  const hint = opts.note?.trim()
+  let painted: Awaited<ReturnType<typeof paintRoomPlate>>
+  try {
+    painted = await paintRoomPlate({
+      userId,
+      name: place.name,
+      lookEn: place.lookEn,
+      styleId: isStoryArtStyleId(style) ? style : undefined,
+      ...(hint && old ? { change: { fromUrl: old.url, hintDe: hint } } : {}),
+      ...(hint && !old ? { fixEn: hint } : {}),
+    })
+  } catch (err) {
+    throw new Error(roomPlateFailedDe(place.name, err instanceof Error ? err.message.slice(0, 160) : ''), { cause: err })
+  }
+  const left = 170_000 - (Date.now() - started)
+  const checked =
+    left > 45_000
+      ? await judgeRoomPlate({ url: painted.asset.imageUrl as string, name: place.name, lookEn: place.lookEn, timeoutMs: left - 15_000 })
+      : null
+  const plate: FilmRoomPlate = {
+    place: place.name,
+    url: painted.asset.imageUrl as string,
+    assetId: painted.asset.id,
+    tries: (old?.tries ?? 0) + 1,
+    byUser: true,
+    ...(hint ? { hintDe: hint } : {}),
+    ...(checked
+      ? { checked: true, ok: checked.ok, noteDe: checked.noteDe, fixEn: checked.fixEn, model: checked.model }
+      : {}),
+    at: new Date().toISOString(),
+  }
+  const fresh = await getDialog(dialogId, userId, opts.profile)
+  if (!fresh || !isFilmStoryboard(fresh.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const freshBoard = normalizeFilmStoryboard(fresh.filmStoryboard)
+  const nextBoard: FilmStoryboard = {
+    ...freshBoard,
+    continuity: {
+      ...(freshBoard.continuity ?? continuity),
+      plates: withRoomPlate((freshBoard.continuity ?? continuity).plates, plate),
+    },
+  }
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(nextBoard) }, opts.profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Das Raumbild konnte nicht gespeichert werden.')
+  const paintedHere = freshBoard.panels.some(
+    (panel) => panel.stillUrl && panel.regiePlan?.place?.trim().toLowerCase() === place.name.trim().toLowerCase(),
+  )
+  return {
+    dialog: updated,
+    board: updated.filmStoryboard,
+    noteDe: [
+      `Raumbild «${place.name}» neu gezeichnet.`,
+      checked ? roomPlateStateDe(plate) : 'Die Regie konnte es noch nicht anschauen; sie macht das vor dem nächsten Bild.',
+      paintedHere ? 'Bilder, die schon an diesem Ort gemalt sind, haben noch die alte Einrichtung: «Ganze Szene neu erzeugen» malt sie nach dem neuen Raumbild.' : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  }
+}
+
 /** Ein Referenzbild oder ein Vergleich. Die Seite ruft das so oft auf, bis alles steht. */
 export async function prepareFilmReferences(
   dialogId: string,
   userId: string,
   styleId: string | undefined,
   profile?: UserProfile | null,
-): Promise<{ dialog: Dialog; board: FilmStoryboard; pending: number; didDe: string; done: boolean }> {
+  opts?: { skipPlates?: boolean },
+): Promise<{
+  dialog: Dialog
+  board: FilmStoryboard
+  pending: number
+  didDe: string
+  done: boolean
+  plateErrorDe?: string
+}> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   let board = normalizeFilmStoryboard(dialog.filmStoryboard)
@@ -1346,10 +1450,18 @@ export async function prepareFilmReferences(
   board = { ...board, continuity }
   const library = libraryForCompose(await listStoryAssets(userId))
   const picks = dialog.catalogCast
-  const pendingBefore = jobsForLibrary(continuity, library, picks).length
-  const step =
-    pendingBefore === 0
-      ? { library, continuity, didDe: 'Die Referenzen stehen.' }
+  const isPlateJob = (job: { kind: string } | undefined) => job?.kind === 'place' || job?.kind === 'place-check'
+  const open = (c: FilmContinuity, l: typeof library) =>
+    jobsForLibrary(c, l, picks).filter((job) => !(opts?.skipPlates && isPlateJob(job)))
+  const next = open(continuity, library)[0]
+  let step: { library: typeof library; continuity: FilmContinuity; didDe: string }
+  try {
+    step = !next
+      ? {
+          library,
+          continuity,
+          didDe: opts?.skipPlates ? 'Die Referenzen stehen. Ohne Raumbild weiter, wie gewählt.' : 'Die Referenzen stehen.',
+        }
       : await runNextReferenceJob({
           userId,
           library,
@@ -1357,8 +1469,14 @@ export async function prepareFilmReferences(
           styleId: paintingStyleId(styleId),
           picks,
         })
+  } catch (err) {
+    if (!isPlateJob(next)) throw err
+    const reason = err instanceof Error ? err.message : ''
+    const plateErrorDe = roomPlateFailedDe(next!.name, reason.replace(/https?:\/\/\S+/g, '').slice(0, 160))
+    return { dialog, board, pending: open(continuity, library).length, didDe: plateErrorDe, done: false, plateErrorDe }
+  }
   board = { ...board, continuity: step.continuity }
-  const pending = jobsForLibrary(step.continuity, step.library, picks).length
+  const pending = open(step.continuity, step.library).length
   const updated = await updateDialog(
     dialogId,
     userId,
@@ -1513,9 +1631,22 @@ export async function stillFilmPanel(
       const plan = panel.regiePlan
       const paintedUrls = new Set(working.panels.map((item) => item.stillUrl).filter(Boolean))
       const copied = regie?.fixEn ? panel.regieAttempts?.[panel.regieAttempts.length - 1]?.copyOf : undefined
-      const refs = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs).filter(
+      const chosen = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs).filter(
         (ref) => ref.url !== copied,
       )
+      const plateLibrary = libraryForCompose(await listStoryAssets(userId).catch(() => []))
+      const plateOf = (name: string) => roomPlateUrl(working.continuity, plateLibrary, dialog.catalogCast, name)
+      const cameraPlate = plan.place ? plateOf(plan.place) : undefined
+      const plateRefs: FilmRegiePlanRef[] = []
+      if (cameraPlate) plateRefs.push({ id: 'R1', url: cameraPlate, useEn: roomPlateUseEn(plan.place) })
+      for (const surface of plan.surfaces ?? []) {
+        if (!surface.place || surface.place.trim().toLowerCase() === plan.place.trim().toLowerCase()) continue
+        const url = plateOf(surface.place)
+        if (url && !plateRefs.some((ref) => ref.url === url) && plateRefs.length < 2) {
+          plateRefs.push({ id: `R${plateRefs.length + 1}`, url, useEn: surfacePlateUseEn(surface.place, surface.thing) })
+        }
+      }
+      const refs = [...plateRefs, ...chosen.filter((ref) => !plateRefs.some((plate) => plate.url === ref.url))]
       const at = working.panels.findIndex((item) => item.id === panelId)
       const prevStill = at > 0 ? working.panels[at - 1]?.stillUrl : undefined
       const compareUrls = plan.sameFraming
@@ -1530,6 +1661,7 @@ export async function stillFilmPanel(
         targetLanguage,
         fixEn: regie?.fixEn,
         compareUrls,
+        roomPlateUrl: cameraPlate,
       })
       const url = painted.url
       const withNote = applyPanelHarvestNote(
@@ -1538,7 +1670,12 @@ export async function stillFilmPanel(
         [
           PAINTED_WITH_PLAN_DE,
           regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
-          refs.length ? `Mitgeschickt: ${refs.length} Vorlage${refs.length === 1 ? '' : 'n'}, von der Regie gewählt.` : '',
+          cameraPlate
+            ? `Raumbild «${plan.place}» mitgeschickt: Einrichtung bleibt fest.`
+            : plan.place
+              ? `Ohne Raumbild «${plan.place}»: die Einrichtung kann von Bild zu Bild abweichen.`
+              : '',
+          chosen.length ? `Dazu ${chosen.length} Vorlage${chosen.length === 1 ? '' : 'n'}, von der Regie gewählt.` : '',
           painted.copyOf ? 'Fast gleich wie ein früheres Bild.' : '',
         ]
           .filter(Boolean)
@@ -1816,9 +1953,10 @@ export async function stillFilmPanel(
     const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
     if (correction) console.error('[bild-aendern]', raw)
     const message = correction ? stillEditImageErrorDe(err) : raw
-    const failed = applyPanelStillError(working, panelId, message)
     try {
-      await saveBoard(dialogId, userId, failed, profile)
+      const fresh = await getDialog(dialogId, userId, profile)
+      const latest = fresh && isFilmStoryboard(fresh.filmStoryboard) ? normalizeFilmStoryboard(fresh.filmStoryboard) : working
+      await saveBoard(dialogId, userId, applyPanelStillError(latest, panelId, message), profile)
     } catch {
       /* Speichern des Fehlers ist optional */
     }

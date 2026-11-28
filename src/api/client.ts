@@ -644,16 +644,27 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, ...opts }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
-    filmPrepare: (dialogId: string, styleId?: string) =>
+    filmPrepare: (dialogId: string, styleId?: string, skipPlates = false) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
         pending: number
         didDe: string
         done: boolean
+        plateErrorDe?: string
       }>(
         '/film-storyboard-prepare',
-        { method: 'POST', body: JSON.stringify({ dialogId, styleId }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, styleId, skipPlates }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
+    filmRoomPlate: (dialogId: string, place: string, note?: string, styleId?: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+        noteDe: string
+      }>(
+        '/film-room-plate',
+        { method: 'POST', body: JSON.stringify({ dialogId, place, note, styleId }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
     filmStill: (

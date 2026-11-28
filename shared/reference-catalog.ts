@@ -27,6 +27,7 @@ export function roomLikePrompt(opts: {
       : 'Draw one clear empty room. This picture is the reference for every later picture of this place.',
     `Room name: ${opts.name}.`,
     `What belongs in this room: ${opts.description.trim()}`,
+    'Wide view from one corner at eye height, so the whole furniture plan is readable: which pieces, how many, against which wall. Each piece of furniture named above appears exactly as often as described, at the wall or side described, standing straight against it unless described otherwise. Add no other large furniture.',
   ]
   if (change) {
     lines.push(`Change ONLY this, keep the room recognizable: ${change}`)

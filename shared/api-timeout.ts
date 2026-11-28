@@ -7,8 +7,11 @@ export const DEFAULT_API_TIMEOUT_MS = 55_000
  */
 export const FILM_PLAN_TIMEOUT_MS = 118_000
 
-/** Ein einzelnes Bild. Die Funktion darf 180 s laufen. */
-export const IMAGE_CLIENT_TIMEOUT_MS = 170_000
+/**
+ * Ein einzelnes Bild. Die Funktion darf 180 s laufen; die Seite wartet etwas länger,
+ * damit sie nie aufgibt, während der Server noch malt und danach speichert (sonst überschreibt er spätere Änderungen).
+ */
+export const IMAGE_CLIENT_TIMEOUT_MS = 188_000
 
 /** Übersetzen / Birkenbihl: ein längerer Text, eine KI-Antwort. */
 export const TEXT_AI_TIMEOUT_MS = FILM_PLAN_TIMEOUT_MS

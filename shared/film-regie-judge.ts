@@ -9,6 +9,7 @@ export type RegieCheckId =
   | 'koerper'
   | 'aussehen'
   | 'ort'
+  | 'einrichtung'
   | 'flaechen'
   | 'handlung'
   | 'kamera'
@@ -54,6 +55,13 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
       'Der Raum um die Leute und um die Geräte (Wände, Boden, Fenster, Möbel, Dinge an der Wand) ist der Ort der Kamera aus dem Plan. Er passt zum Regiebuch, zur Raum-Vorlage und zu früheren Bildern desselben Ortes. Nichts davon gehört zu einem anderen Ort. Stellen Plan oder Regiebuch ein Möbel an eine bestimmte Wand oder Seite und du siehst es an einer anderen, ist diese Prüfung nicht bestanden.',
   },
   {
+    id: 'einrichtung',
+    hard: true,
+    labelDe: 'Einrichtung',
+    askDe:
+      'Ist ein RAUMBILD angehängt: dieselben Möbel wie dort, in derselben Anzahl und an denselben Wänden, Fenster und Türen an denselben Stellen. Ein zusätzliches Möbelstück (auch ein zweites gleiches), ein fehlendes, ein verschobenes oder schräg in den Raum gedrehtes ist nicht bestanden. Erlaubt: eine andere Blickrichtung im selben Raum (dann sieht man andere Wände desselben Raums), Leute und kleine Dinge davor. Ohne Raumbild ist diese Prüfung bestanden.',
+  },
+  {
     id: 'flaechen',
     hard: true,
     labelDe: 'Bild im Bild',
@@ -96,6 +104,9 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
 ]
 
 const RULE_IDS = new Set<string>(REGIE_CHECKS.map((rule) => rule.id))
+
+/** Fehler am Raum: das Bild taugt nicht als Raum-Vorlage, beim nächsten Versuch ohne frühere Bilder. */
+const ROOM_CHECKS = new Set<string>(['ort', 'einrichtung', 'flaechen'])
 
 export function isHardCheck(id: string): boolean {
   return REGIE_CHECKS.some((rule) => rule.id === id && rule.hard)
@@ -289,7 +300,7 @@ function readJudgeChecks(raw: unknown, model?: string, plannedViewText?: string)
     checked: true,
     noteDe: ok ? '' : hard.map(noteOf).join(' ').slice(0, 300),
     fixEn: ok ? '' : fixEn.slice(0, 700),
-    freshRefs: !ok && row.freshRefs === true && hard.some((rule) => rule.id === 'ort' || rule.id === 'flaechen'),
+    freshRefs: !ok && row.freshRefs === true && hard.some((rule) => ROOM_CHECKS.has(rule.id)),
     failed: hard.map((rule) => rule.id),
     softDe: soft.map(noteOf).join(' ').slice(0, 200),
     seenDe: seenSummary(row.seen),
@@ -332,7 +343,7 @@ export function regieFoundError(check: StoredRegieCheck | undefined): boolean {
 export function roomRefAllowed(check: StoredRegieCheck | undefined): boolean {
   if (!regieFoundError(check)) return true
   if (!check?.failed?.length) return false
-  return !check.failed.some((id) => id === 'ort' || id === 'flaechen')
+  return !check.failed.some((id) => ROOM_CHECKS.has(id))
 }
 
 /** Der beste Versuch: wenigste harte Fehler; bei Gleichstand der spätere. Nicht geprüfte Versuche zählen nicht. */

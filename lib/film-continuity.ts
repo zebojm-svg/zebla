@@ -28,6 +28,13 @@ import {
   type FilmRefJob,
 } from '../shared/film-continuity.js'
 import { lineStoryText } from '../shared/film-dialog-native.js'
+import {
+  readRoomPlateAnswer,
+  roomPlateFor,
+  roomPlateNeedsRedraw,
+  withRoomPlate,
+  type FilmRoomPlate,
+} from '../shared/film-room-plate.js'
 
 const SYSTEM = `Du liest eine ganze Bildergeschichte, bevor irgendein Bild gemalt wird.
 Du hältst einmal fest, wo die Leute sind und wie sie aussehen. Ein Wort in einer einzelnen Zeile ändert das nicht.
@@ -227,6 +234,7 @@ function keepFromCached(cached?: FilmContinuity) {
   return {
     sideChecked: cached?.sideChecked,
     sideTries: cached?.sideTries,
+    ...(cached?.plates?.length ? { plates: cached.plates } : {}),
     ...(cached?.byUser ? { byUser: true, notesDe: cached.notesDe } : {}),
   }
 }
@@ -296,10 +304,24 @@ export async function applyRegiebuchEdit(
       ...got.continuity,
       sideChecked: board.continuity?.sideChecked,
       sideTries: board.continuity?.sideTries,
+      plates: platesAfterEdit(board.continuity, edit),
       byUser: true,
       notesDe: edit.notesDe,
     },
   }
+}
+
+/** Hat Jean-Marie die Beschreibung eines Ortes geändert, muss sein Raumbild neu: es zeigt sonst die alte Einrichtung. */
+function platesAfterEdit(cached: FilmContinuity | undefined, edit: RegiebuchEdit): FilmRoomPlate[] | undefined {
+  const plates = cached?.plates
+  if (!plates?.length) return undefined
+  const kept = plates.filter((plate) => {
+    const before = cached?.places.find((place) => place.name.trim().toLowerCase() === plate.place.trim().toLowerCase())
+    const after = edit.places.find((place) => place.name.trim().toLowerCase() === plate.place.trim().toLowerCase())
+    if (!after) return true
+    return (before?.lookDe ?? '').trim() === after.lookDe.trim()
+  })
+  return kept.length ? kept : undefined
 }
 
 export function briefForImage(note: FilmContinuity): string {
@@ -402,7 +424,7 @@ SCHRITT 1 — HINSCHAUEN. Beschreibe nüchtern, was auf Bild 1 wirklich zu sehen
 - people: jede Person (auch halb, am Rand, im Hintergrund, auf einer Fläche), mit Haaren und Kleidung
 - bodyParts: jede sichtbare Hand, jeder Arm, jedes Bein, jeder Fuss, jeder Kopf, und zu wem es gehört. Gehört etwas zu niemandem, schreib das.
 - surfaces: Bildschirme, Fernseher, Telefone, Spiegel, Tafeln, Bilder an der Wand, und was darauf zu sehen ist. Ein Bild oder Fenster, das frei in der Luft schwebt, nennst du extra.
-- place: Wände (Farbe), Boden, Fenster, Türen, Möbel, auffällige Dinge, und wo im Bild sie sind
+- place: Wände (Farbe), Boden, Fenster, Türen, jedes Möbelstück mit Anzahl (zwei gleiche = zwei), auffällige Dinge, und wo im Bild sie sind (an welcher Wand, gerade oder schräg)
 - camera: von wo die Kamera schaut (von vorne, von der Seite, von hinten) und wie nah
 - gaze: wohin jede Person schaut
 - action: was die Leute gerade tun
@@ -507,7 +529,7 @@ export function jobsForLibrary(
     continuity,
     hasFront: (name) => Boolean(pickedCastUrl(library, picks?.personIds, name) || identityReferenceUrl(library, name)),
     hasSide: (name) => Boolean(sidePlate(library, name)),
-    hasPlace: (name) => Boolean(pickedCastUrl(library, picks?.placeIds, name) || placePlate(library, name)),
+    hasPlace: (name) => Boolean(roomPlateUrl(continuity, library, picks, name)),
   })
 }
 
@@ -615,21 +637,143 @@ export async function runNextReferenceJob(opts: {
     }
   }
   const place = opts.continuity.places.find((item) => item.name.trim().toLowerCase() === job.name.trim().toLowerCase())
-  const drawn = await generateStoryEnvironment(place?.lookEn || job.name, job.name, styleId)
-  const saved = await saveStoryAsset(opts.userId, {
-    type: 'environment',
+  const lookEn = place?.lookEn || job.name
+  if (job.kind === 'place-check') {
+    const plate = roomPlateFor(opts.continuity.plates, job.name)
+    if (!plate) return { ...opts, didDe: `Raumbild «${job.name}» fehlt noch.` }
+    const checked = await judgeRoomPlate({ url: plate.url, name: job.name, lookEn })
+    const next: FilmRoomPlate = checked
+      ? { ...plate, checked: true, ok: checked.ok, noteDe: checked.noteDe, fixEn: checked.fixEn, model: checked.model }
+      : { ...plate, checked: true, ok: true, noteDe: 'Die Regie konnte das Raumbild nicht anschauen; es bleibt.' }
+    return {
+      library: opts.library,
+      continuity: { ...opts.continuity, plates: withRoomPlate(opts.continuity.plates, next) },
+      didDe: !checked
+        ? `Raumbild «${job.name}»: die Regie konnte es nicht anschauen. Es bleibt.`
+        : checked.ok
+          ? `Raumbild «${job.name}» passt zur Beschreibung.`
+          : roomPlateNeedsRedraw(next)
+            ? `Raumbild «${job.name}» passt nicht (${checked.noteDe.replace(/[.\s]+$/, '')}). Es wird noch einmal gezeichnet.`
+            : `Raumbild «${job.name}» passt nicht ganz (${checked.noteDe.replace(/[.\s]+$/, '')}). Es bleibt; im Regiebuch kannst du es ändern.`,
+    }
+  }
+  const old = roomPlateFor(opts.continuity.plates, job.name)
+  const legacy = old ? undefined : placePlate(opts.library, job.name)
+  if (legacy?.imageUrl && legacy.description?.trim() === lookEn.trim()) {
+    return {
+      library: opts.library,
+      continuity: {
+        ...opts.continuity,
+        plates: withRoomPlate(opts.continuity.plates, {
+          place: job.name,
+          url: legacy.imageUrl,
+          assetId: legacy.id,
+          tries: 1,
+          at: new Date().toISOString(),
+        }),
+      },
+      didDe: `Raumbild «${job.name}» aus der Bibliothek übernommen.`,
+    }
+  }
+  const painted = await paintRoomPlate({
+    userId: opts.userId,
     name: job.name,
-    description: place?.lookEn || job.name,
-    imageUrl: drawn.imageUrl,
-    tags: roomPlateTags(styleId, place?.lookEn || job.name),
+    lookEn,
     styleId,
-    prompt: drawn.prompt,
+    fixEn: old?.fixEn,
   })
   return {
-    library: [saved, ...opts.library],
-    continuity: opts.continuity,
-    didDe: `Raum ${job.name} als Referenz gezeichnet.`,
+    library: [painted.asset, ...opts.library],
+    continuity: {
+      ...opts.continuity,
+      plates: withRoomPlate(opts.continuity.plates, {
+        place: job.name,
+        url: painted.asset.imageUrl as string,
+        assetId: painted.asset.id,
+        tries: (old?.tries ?? 0) + 1,
+        at: new Date().toISOString(),
+      }),
+    },
+    didDe: `Raumbild «${job.name}» gezeichnet (leer, feste Einrichtung).`,
   }
+}
+
+/** Zeichnet das leere Raumbild eines Ortes und legt es in die Bibliothek. Mit Hinweis: das alte Bild ändern. */
+export async function paintRoomPlate(opts: {
+  userId: string
+  name: string
+  lookEn: string
+  styleId?: StoryArtStyleId
+  fixEn?: string
+  change?: { fromUrl: string; hintDe: string }
+}): Promise<{ asset: StoryLibraryAsset }> {
+  const description = opts.fixEn
+    ? `${opts.lookEn}\nThe last try was wrong: ${opts.fixEn}`
+    : opts.lookEn
+  const drawn = await generateStoryEnvironment(
+    description,
+    opts.name,
+    opts.styleId,
+    opts.change ? { imageUrl: opts.change.fromUrl, change: opts.change.hintDe } : undefined,
+  )
+  const asset = await saveStoryAsset(opts.userId, {
+    type: 'environment',
+    name: opts.name,
+    description: opts.lookEn,
+    imageUrl: drawn.imageUrl,
+    tags: roomPlateTags(opts.styleId, opts.lookEn),
+    styleId: opts.styleId,
+    prompt: drawn.prompt,
+  })
+  return { asset }
+}
+
+const ROOM_PLATE_JUDGE = `Du bist die Regie einer Bildergeschichte. Bild 1 ist das Raumbild eines Ortes: leer, die feste Einrichtung für alle späteren Bilder an diesem Ort.
+Zuerst beschreibst du nüchtern, was zu sehen ist: Wände, Fenster, Türen, jedes Möbelstück mit Anzahl und Platz im Bild (links, rechts, hinten, Mitte).
+Dann prüfst du gegen die Beschreibung des Ortes:
+- empty: keine Person, kein Gesicht, keine Silhouette, kein Körperteil.
+- furniture: jedes Möbelstück aus der Beschreibung ist da, in der beschriebenen Anzahl; kein zusätzliches grosses Möbelstück, das nicht beschrieben ist.
+- layout: Möbel, Fenster und Türen stehen an der Wand oder Seite, die die Beschreibung nennt; man sieht den Raum weit genug, um die Einrichtung zu erkennen.
+Kleine Dinge (Deko, Pflanzen, Licht) sind frei.
+Nur JSON: { "seenDe": "", "empty": true, "furniture": true, "layout": true, "ok": true, "noteDe": "", "fixEn": "" }
+ok ist nur true, wenn empty, furniture und layout true sind. noteDe: ein kurzer deutscher Satz für Jean-Marie, ohne Fachwörter, was falsch ist (leer, wenn alles passt). fixEn: was beim Neuzeichnen anders sein muss, englisch, konkret.`
+
+/** Die Regie schaut das Raumbild einmal an: leer und Einrichtung wie beschrieben. null = konnte nicht anschauen. */
+export async function judgeRoomPlate(opts: {
+  url: string
+  name: string
+  lookEn: string
+  timeoutMs?: number
+}): Promise<{ ok: boolean; noteDe: string; fixEn: string; model: string } | null> {
+  const image = await imagePartFromUrl(opts.url, { timeoutMs: 15_000 })
+  if (!image) return null
+  try {
+    const { value, model } = await regieJsonWithModel<unknown>(
+      ROOM_PLATE_JUDGE,
+      `ORT: ${opts.name}\nBESCHREIBUNG (englisch): ${opts.lookEn}`,
+      [image],
+      {
+        temperature: 0.1,
+        timeoutMs: opts.timeoutMs ?? 100_000,
+        timeoutMessage: 'Die Regie hat das Raumbild nicht rechtzeitig angeschaut',
+      },
+    )
+    const read = readRoomPlateAnswer(value)
+    return read ? { ...read, model } : null
+  } catch {
+    return null
+  }
+}
+
+/** Raumbild eines Ortes: im Katalog gewählt, sonst das für diese Geschichte gezeichnete. */
+export function roomPlateUrl(
+  continuity: FilmContinuity | undefined,
+  library: StoryLibraryAsset[],
+  picks: CatalogCast | null | undefined,
+  name: string,
+): string | undefined {
+  if (!name.trim()) return undefined
+  return pickedCastUrl(library, picks?.placeIds, name) || roomPlateFor(continuity?.plates, name)?.url
 }
 
 export function stampReferenceFaces(

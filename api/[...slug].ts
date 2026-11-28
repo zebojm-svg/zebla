@@ -130,7 +130,7 @@ import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
 import { sanitizeRegiebuchEdit } from '../shared/film-continuity.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt, regieModelHealth } from '../lib/ai.js'
@@ -2089,12 +2089,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { dialogId, styleId } = req.body as { dialogId?: string; styleId?: string }
+      const { dialogId, styleId, skipPlates } = req.body as { dialogId?: string; styleId?: string; skipPlates?: boolean }
       if (!dialogId?.trim()) {
         res.status(400).json({ error: 'dialogId fehlt.' })
         return
       }
-      const result = await prepareFilmReferences(dialogId.trim(), user.uid, styleId?.trim(), profile)
+      const result = await prepareFilmReferences(dialogId.trim(), user.uid, styleId?.trim(), profile, {
+        skipPlates: skipPlates === true,
+      })
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-room-plate' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, place, note, styleId } = req.body as {
+        dialogId?: string
+        place?: string
+        note?: string
+        styleId?: string
+      }
+      if (!dialogId?.trim() || !place?.trim()) {
+        res.status(400).json({ error: 'dialogId oder Ort fehlt.' })
+        return
+      }
+      const result = await redrawRoomPlate(dialogId.trim(), user.uid, place.trim(), {
+        note: note?.trim(),
+        styleId: styleId?.trim(),
+        profile,
+      })
       res.json(result)
       return
     }

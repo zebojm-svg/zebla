@@ -407,6 +407,8 @@ export async function paintRegiePlannedStill(opts: {
   fixEn?: string
   /** Frühere Bilder, denen das neue nicht fast gleichen darf (voriges Bild, mitgeschickte frühere Bilder). */
   compareUrls?: string[]
+  /** Raumbild des Kamera-Ortes (steht auch in plan.refs). */
+  roomPlateUrl?: string
 }): Promise<{ url: string; copyOf?: string }> {
   const loaded = await Promise.all(
     opts.plan.refs.map(async (ref) => ({ ref, image: await fetchImageAsInline(ref.url) })),
@@ -423,6 +425,7 @@ export async function paintRegiePlannedStill(opts: {
       stylePrompt: getStoryStylePrompt(opts.styleId),
       languageEn: filmStillLanguageEn(opts.targetLanguage),
       fixEn: opts.fixEn,
+      roomPlateAttached: Boolean(opts.roomPlateUrl && refs.some((item) => item.ref.url === opts.roomPlateUrl)),
     }),
   })
   const buffer = await paintWithGemini(parts)

@@ -1,3 +1,5 @@
+import { roomPlateFor, roomPlateNeedsCheck, roomPlateNeedsRedraw, type FilmRoomPlate } from './film-room-plate.js'
+
 /**
  * Eine Regie liest die ganze Geschichte einmal.
  * Dieser Satz geht mit jedem Bild mit. Ein Wort in einer Zeile ändert ihn nicht.
@@ -54,6 +56,8 @@ export interface FilmContinuity {
   readModel?: string
   /** Warum nicht Pro («Flash statt Pro, weil …»). */
   readModelNoteDe?: string
+  /** Raumbild je Ort: feste Einrichtung, für diese Geschichte gezeichnet. */
+  plates?: FilmRoomPlate[]
 }
 
 /** Was im Regiebuch auf Deutsch steht und geändert werden kann. */
@@ -113,6 +117,7 @@ export type FilmRefJob =
   | { kind: 'person-side'; name: string }
   | { kind: 'person-check'; name: string }
   | { kind: 'place'; name: string }
+  | { kind: 'place-check'; name: string }
 
 export function continuitySourceKey(text: string): string {
   let hash = 0
@@ -360,7 +365,9 @@ export function referenceJobs(opts: {
   for (const place of opts.continuity.places) {
     const name = place.name.trim()
     if (name.length < 2 || name.length > 40) continue
-    if (!opts.hasPlace(name)) jobs.push({ kind: 'place', name })
+    const plate = roomPlateFor(opts.continuity.plates, name)
+    if (!opts.hasPlace(name) || roomPlateNeedsRedraw(plate)) jobs.push({ kind: 'place', name })
+    else if (roomPlateNeedsCheck(plate)) jobs.push({ kind: 'place-check', name })
   }
   return jobs
 }

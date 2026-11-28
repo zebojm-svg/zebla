@@ -99,6 +99,34 @@ export function stoppedNoteDe(lastNumber: number | null): string {
   return `${after} Schreib unter dem Bild, was anders sein soll, und drück «Bild ändern». Danach «Szene weiter erzeugen» (malt nur, was fehlt) oder «Ganze Szene neu erzeugen» (malt alle Bilder neu).`
 }
 
+/** So viele Vorbereitungs-Schritte höchstens (Stammbilder, Seitenansichten, Raumbilder und ihre Prüfung). */
+const PREPARE_STEPS_MAX = 48
+
+/**
+ * Bibliothek zuerst: Stammbilder und Raumbilder, ein Schritt je Anfrage, bis alles steht.
+ * Misslingt ein Raumbild, hört es auf und sagt es — ohne Raumbild weiter nur, wenn Jean-Marie das wählt.
+ */
+export async function prepareReferences(opts: {
+  dialogId: string
+  styleId?: string
+  skipPlates?: boolean
+  onStatus?: (text: string) => void
+  onStep?: (step: StillStep) => void
+  shouldStop?: () => boolean
+}): Promise<{ last: StillStep | null; plateErrorDe?: string; stopped?: boolean }> {
+  let last: StillStep | null = null
+  for (let step = 0; step < PREPARE_STEPS_MAX; step++) {
+    const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId, opts.skipPlates)
+    opts.onStatus?.(prepared.didDe)
+    last = { dialog: prepared.dialog, board: prepared.board }
+    opts.onStep?.(last)
+    if (prepared.plateErrorDe) return { last, plateErrorDe: prepared.plateErrorDe }
+    if (prepared.done) return { last }
+    if (opts.shouldStop?.()) return { last, stopped: true }
+  }
+  return { last }
+}
+
 export async function generateSceneStills(opts: {
   dialogId: string
   styleId: string
@@ -112,19 +140,23 @@ export async function generateSceneStills(opts: {
   }) => void
   onStatus?: (text: string) => void
   prepare?: boolean
+  skipPlates?: boolean
   shouldStop?: () => boolean
-}): Promise<StillStep & { stoppedNoteDe?: string }> {
+}): Promise<StillStep & { stoppedNoteDe?: string; plateErrorDe?: string }> {
   const stop = () => Boolean(opts.shouldStop?.())
   let last: StillStep | null = null
   if (opts.prepare !== false) {
-    for (let step = 0; step < 24; step++) {
-      const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId)
-      opts.onStatus?.(prepared.didDe)
-      last = { dialog: prepared.dialog, board: prepared.board }
-      opts.onProgress({ current: 0, total: opts.panels.length, ...last })
-      if (prepared.done) break
-      if (stop()) return { ...last, stoppedNoteDe: stoppedNoteDe(null) }
-    }
+    const prepared = await prepareReferences({
+      dialogId: opts.dialogId,
+      styleId: opts.styleId,
+      skipPlates: opts.skipPlates,
+      onStatus: opts.onStatus,
+      onStep: (step) => opts.onProgress({ current: 0, total: opts.panels.length, ...step }),
+      shouldStop: opts.shouldStop,
+    })
+    last = prepared.last
+    if (prepared.plateErrorDe && last) return { ...last, plateErrorDe: prepared.plateErrorDe }
+    if (prepared.stopped && last) return { ...last, stoppedNoteDe: stoppedNoteDe(null) }
   }
   const queue = panelsNeedingStills(opts.panels, opts.styleId, opts.force)
   if (queue.length === 0) {
