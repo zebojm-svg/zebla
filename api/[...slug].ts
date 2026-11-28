@@ -1886,8 +1886,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (route === 'film-storyboard-pack' && req.method === 'POST') {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
-      const { dialogId, panelId, speaker, imageCue, directorNote, soundCue, nativeText, stillCorrection, stillMarkRedo } =
-        req.body as {
+      const {
+        dialogId,
+        panelId,
+        speaker,
+        imageCue,
+        directorNote,
+        soundCue,
+        nativeText,
+        stillCorrection,
+        stillMarkRedo,
+        refApprovedByUser,
+      } = req.body as {
         dialogId?: string
         panelId?: string
         speaker?: string | null

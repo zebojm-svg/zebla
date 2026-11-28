@@ -218,6 +218,52 @@ export function parseStillPackRefs(hint: string): number[] {
   return out
 }
 
+/**
+ * Nur Raum/Layout von einem Bild-Päckchen — ohne dauerhafte «Vorlage freigeben».
+ * Vollständige Vorlage bleibt nur mit Freigabe oder «wie in Bild N».
+ */
+export function parseRoomLayoutOnlyPackRefs(hint: string): number[] {
+  const out: number[] = []
+  const seen = new Set<number>()
+  const patterns = [
+    /nur\s+(?:den\s+)?raum(?:\s*\/\s*layout)?\s+(?:von|in|wie)\s+bild\s*(\d+)/gi,
+    /nur\s+layout\s+von\s+bild\s*(\d+)/gi,
+    /raum\s+wieder\s+wie\s+in\s+bild\s*(\d+)/gi,
+    /raum\s+(?:nur\s+)?wie\s+(?:in\s+)?bild\s*(\d+)/gi,
+    /nur\s+raum\s+von\s+bild\s*(\d+)/gi,
+    /einmalig\s+(?:als\s+vorlage\s+)?(?:von\s+)?bild\s*(\d+)/gi,
+    /bild\s*(\d+)\s*[,;.]\s*nur\s+(?:raum|layout)/gi,
+    /bild\s*(\d+)[^.]{0,40}\bnicht\s+freigeben\b/gi,
+  ]
+  for (const re of patterns) {
+    re.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(hint))) {
+      const n = Number(m[1])
+      if (!Number.isInteger(n) || n < 1 || seen.has(n)) continue
+      seen.add(n)
+      out.push(n)
+    }
+  }
+  return out
+}
+
+export function packRefIsRoomLayoutOnly(hint: string, packNumber: number): boolean {
+  return parseRoomLayoutOnlyPackRefs(hint).includes(packNumber)
+}
+
+/** Raumfarbe/Layout aus Regiebuch oder Katalog-Raumbild, nicht aus Stimmungshinweis. */
+export function wantsRegiebuchRoomLock(hint: string): boolean {
+  const t = hint.toLowerCase()
+  return /raum\s+wie\s+regiebuch|wände?\s+[^.]{0,40}regiebuch|regiebuch[^.]{0,40}wände?|raum\s+nur\s+vom\s+raumbild|raum\s+vom\s+raumbild|nur\s+vom\s+raumbild|wände?\s+unverändert|waende\s+unveraendert|hellbeige\s+laut\s+regiebuch/.test(
+    t,
+  )
+}
+
+export function roomLayoutRefMessageDe(packNumber: number): string {
+  return `Bild ${packNumber}: nur Raum/Layout als einmalige Vorlage — kein Freigeben nötig. Gesichter und Kleidung nicht von diesem Bild übernehmen.`
+}
+
 export function filterStillEditCatalogForHint(
   catalog: StillCatalogItem[],
   board: FilmStoryboard,
@@ -246,7 +292,9 @@ export function stillUrlForPackRef(
   if (board) {
     for (const n of parseStillPackRefs(hint)) {
       const url = panelByStillPackNumber(board, n)?.stillUrl?.trim()
-      if (http(url) && stillUrlOkAsRefSource(board, url)) return url
+      if (!http(url)) continue
+      if (stillUrlOkAsRefSource(board, url)) return url
+      if (packRefIsRoomLayoutOnly(hint, n)) return url
     }
   }
   const current = currentUrl?.trim()
@@ -433,7 +481,7 @@ Regeln:
 - Nur ids aus dem Katalog. Unbekannte ids lässt Zebla weg.
 - Höchstens ${STILL_EDIT_PACK_MAX} ids.
 - Neue Stellung / neues Bild (andere Leute, anderer Platz im Raum, allein, Gäste weg, steht am Herd statt sitzt): das aktuelle Still NICHT listen — Gemini kopiert sonst die Gäste.
-- Mini-Retusche (fröhlicher, Mund, Prospekt fehlt): das aktuelle Still listen.
+- Mini-Retusche / Stimmung (fröhlicher, Mund, Gesicht, Mimik): nur Mimik — das aktuelle Still listen; imagePrompt sagt ausdrücklich: Wände und Möbel unverändert, nur Gesichtsausdruck.
 - Gesicht/Kleidung, Küche/Herd, Kanne nur listen, wenn sie für die Änderung helfen.
 - Sagt der User «ohne Bild N», «Bild N nicht», «ohne Referenz von Bild N» oder ähnlich: keine id von einem anderen Still mit dieser Bildnummer im Label.
 - imagePrompt sagt der Bild-KI was zu sehen ist. Zebla hängt keine Extra-Sperre «keep these EXACT people / same seats» an.`

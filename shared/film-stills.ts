@@ -37,13 +37,68 @@ export const STILL_EDIT_DIRECTOR_DE = 'Hinweis ist die Regie; Fotos sind Aussehe
  * Bild ändern: Hinweis zuerst, höchste Priorität, einmal wiederholt.
  * Kein Stichwort-Parser — der wörtliche Hinweis ist die Regie.
  */
+/** Nur Mimik/Stimmung — Wände, Möbel und Farben bleiben fest. */
+export function correctionIsMoodOnly(note?: string): boolean {
+  const t = (note || '').toLowerCase()
+  if (!t || correctionRewritesPerson(t)) return false
+  if (
+    /kamera|herd|tisch|wandfarbe|möbel|moebel|steht|sitzt|allein|gäste|gaeste|layout|fenster|regal|sofa|farbe\s+der\s+wand/.test(
+      t,
+    )
+  ) {
+    return false
+  }
+  return /mund|lächel|laechl|mimik|augenbrau|lid|facial|weint|freut|zorn|überrascht|ueberrascht|fröhlich|froehlich|fröhlicher|traurig|ausdruck|gesicht|stimmung|etwas\s+fröhlich|etwas\s+froehlich/.test(
+    t,
+  )
+}
+
+export function stillEditMoodOnlyLockEn(hint?: string): string {
+  if (!correctionIsMoodOnly(hint)) return ''
+  return (
+    'ROOM AND COLOR LOCK (mood hint): Change ONLY the named person facial expression (eyes, eyebrows, mouth). ' +
+    'FORBIDDEN: repainting walls, changing wall color or lighting tint, furniture, window, desk, bookshelf, floor, or room layout. ' +
+    'Keep wall colors exactly as in the input photo and Regiebuch room plate (e.g. hellbeige light beige, NOT yellow). ' +
+    'People, clothes, poses, and camera unchanged unless the hint names them. '
+  )
+}
+
+function wantsRegiebuchRoomLockInline(hint: string): boolean {
+  const t = hint.toLowerCase()
+  return /raum\s+wie\s+regiebuch|wände?\s+[^.]{0,40}regiebuch|regiebuch[^.]{0,40}wände?|raum\s+nur\s+vom\s+raumbild|raum\s+vom\s+raumbild|nur\s+vom\s+raumbild|wände?\s+unverändert|waende\s+unveraendert|hellbeige\s+laut\s+regiebuch/.test(
+    t,
+  )
+}
+
+export function regiebuchRoomHintEn(hint?: string): string {
+  const h = (hint || '').trim()
+  if (!h) return ''
+  if (!wantsRegiebuchRoomLockInline(h)) return ''
+  return (
+    'Room geometry and wall colors follow the Regiebuch and the catalog room plate (Raumbild), not a mood word in the hint. ' +
+    'Do not copy yellow or wrong tints from an old scene still. '
+  )
+}
+
 export function stillEditHintPriorityEn(hint?: string): string {
   const h = (hint || '').trim()
   if (!h) return ''
+  const moodLock = stillEditMoodOnlyLockEn(h)
+  const roomLock = regiebuchRoomHintEn(h)
+  if (moodLock) {
+    return (
+      `HIGHEST PRIORITY DIRECTOR NOTE (user hint, verbatim): ${h} ` +
+      `Repeat: ${h} ` +
+      moodLock +
+      roomLock +
+      `${STILL_EDIT_DIRECTOR_DE}`
+    )
+  }
   return (
     `HIGHEST PRIORITY DIRECTOR NOTE (user hint, verbatim): ${h} ` +
     `Repeat: ${h} ` +
     `If the original camera, seating chart, or who-is-in-frame conflicts with this hint, FOLLOW THE HINT. ` +
+    (roomLock ? `${roomLock} ` : '') +
     `Original plan blocking is fallback only when the hint is silent. ` +
     `${STILL_EDIT_DIRECTOR_DE}`
   )
@@ -68,6 +123,8 @@ export type StillEditPackContext = {
 
 export function stillEditKontextPrompt(hint: string, pack?: StillEditPackContext): string {
   const h = hint.trim()
+  const moodLock = stillEditMoodOnlyLockEn(h)
+  const roomLock = regiebuchRoomHintEn(h)
   const source =
     pack?.sourcePackNumber && pack.sourcePackNumber > 0
       ? `The input photo is still pack Bild ${pack.sourcePackNumber}. `
@@ -87,9 +144,13 @@ export function stillEditKontextPrompt(hint: string, pack?: StillEditPackContext
   return (
     `Change the picture so it matches this instruction (verbatim): ${h} ` +
     `Repeat: ${h} ` +
+    (moodLock ? `${moodLock} ` : '') +
+    (roomLock ? `${roomLock} ` : '') +
     source +
     (packBits ? `${packBits} ` : '') +
-    `This is a full restage if the instruction asks for different people, a different place in the room, or a different camera — not a small color tweak. ` +
+    (moodLock
+      ? `This is a facial-expression retouch only — not a room repaint. `
+      : `This is a full restage if the instruction asks for different people, a different place in the room, or a different camera — not a small color tweak. `) +
     `Do not keep people, seats, or camera from the input photo when they conflict with the instruction. ` +
     `Keep the drawing style. Keep face and clothes of whoever the instruction still wants in the shot. ` +
     `No text, no subtitles, no speech bubbles on the image. ` +
@@ -859,9 +920,7 @@ export function stillAttachmentInstruction(opts: {
 
 /** Nur Mimik auf einer bestehenden Nahaufnahme — sonst neu filmen, nicht den Ausschnitt behalten. */
 export function correctionIsFaceOnly(note?: string): boolean {
-  const t = (note || '').toLowerCase()
-  if (!t || correctionRewritesPerson(t)) return false
-  return /mund|lächel|mimik|augenbrau|lid|facial|weint|freut|zorn|überrascht/.test(t)
+  return correctionIsMoodOnly(note)
 }
 
 function insertCameraHeightEn(cue: string): string {

@@ -4,7 +4,13 @@
  */
 
 import { directorStillUrls, type FilmContinuity } from './film-continuity.js'
-import { panelByStillPackNumber, parseStillPackRefs, stillPackNumber } from './film-still-pack.js'
+import {
+  packRefIsRoomLayoutOnly,
+  panelByStillPackNumber,
+  parseStillPackRefs,
+  roomLayoutRefMessageDe,
+  stillPackNumber,
+} from './film-still-pack.js'
 import type { FilmRegiePlanRef } from './film-regie-plan.js'
 import {
   normalizeFilmStoryboard,
@@ -198,6 +204,10 @@ export function blockedPackNumbersFromHint(
     const url = panel?.stillUrl
     if (!url?.startsWith('http')) continue
     if (stillUrlOkAsRefSource(board, url)) continue
+    if (packRefIsRoomLayoutOnly(hint, n)) {
+      messages.push(roomLayoutRefMessageDe(n))
+      continue
+    }
     blocked.push(n)
     messages.push(refNotApprovedMessageDe(n))
   }
@@ -208,9 +218,17 @@ export function blockedPackNumbersFromHint(
 export function filterRegiePlanRefs(
   board: FilmStoryboard | undefined,
   refs: FilmRegiePlanRef[],
+  hint?: string,
 ): FilmRegiePlanRef[] {
   if (!board) return refs
-  return refs.filter((ref) => stillUrlOkAsRefSource(board, ref.url))
+  const trimmed = hint?.trim()
+  return refs.filter((ref) => {
+    if (stillUrlOkAsRefSource(board, ref.url)) return true
+    if (!trimmed) return false
+    const owner = panelForStillUrl(board, ref.url)
+    if (!owner) return true
+    return packRefIsRoomLayoutOnly(trimmed, stillPackNumber(board, owner))
+  })
 }
 
 function noteBlockedUrl(

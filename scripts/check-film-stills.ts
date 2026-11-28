@@ -682,6 +682,7 @@ if (manAttach.toLowerCase().includes('first a crop') || manAttach.toLowerCase().
   fail('Anhang darf keinen Pixel-Ausschnitt als erstes Foto schicken')
 }
 if (!correctionIsFaceOnly('Mund etwas offener')) fail('Mund = nur Mimik')
+if (!correctionIsFaceOnly('etwas fröhlicher')) fail('fröhlicher = nur Mimik, keine Wandfarbe')
 if (correctionIsFaceOnly('Schöme ist ein Mann')) fail('Mann ist kein Mimik-Fix')
 if (correctionIsFaceOnly('Kamera näher')) fail('Kamera näher ist keine Mimik')
 if (!closeupCameraLine('Ramo').toLowerCase().includes('cropped screenshot')) {

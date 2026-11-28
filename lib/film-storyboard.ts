@@ -128,7 +128,9 @@ import {
   applyPanelStill,
   applyPanelStillError,
   correctionIsFaceOnly,
+  correctionIsMoodOnly,
   correctionRewritesPerson,
+  stillEditMoodOnlyLockEn,
   genderFromPictureNote,
   markLaterPanelsStaleAfterCorrection,
   personNamedInCorrection,
@@ -152,6 +154,7 @@ import {
   blockedStillUrlsForHint,
   catalogForPlanner,
   filterStillEditCatalogForHint,
+  packRefIsRoomLayoutOnly,
   parseExcludedStillPackRefs,
   stillEditCatalog,
   stillEditFigures,
@@ -1206,9 +1209,14 @@ async function askRegieForPlan(
     if (messages.length) refWarnParts.push(...messages)
     const named = stillUrlForPackRef(board, hint, panel.stillUrl)
     if (named?.startsWith('http') && named !== panel.stillUrl && !blocked.has(named)) {
+      const namedPack = board.panels.find((item) => item.stillUrl === named)
+      const namedNum = namedPack ? stillPackNumber(board, namedPack) : 0
+      const roomOnly = namedNum > 0 && packRefIsRoomLayoutOnly(hint, namedNum)
       offer(
         named,
-        'Ein anderes Bild-Päckchen, das Jean-Marie im Hinweis nannte — nur für Aussehen oder Haltung, nicht als Raum-Vorlage.',
+        roomOnly
+          ? `Nur Raum/Layout von Bild ${namedNum} (einmalig, ohne Freigabe) — Möbel und Wände, keine Gesichter von dort übernehmen.`
+          : 'Ein anderes Bild-Päckchen, das Jean-Marie im Hinweis nannte — nur für Aussehen oder Haltung, nicht als Raum-Vorlage.',
       )
     } else if (blockedByApproval.length) {
       for (const n of blockedByApproval) {
@@ -1235,7 +1243,7 @@ async function askRegieForPlan(
     excludedPackNumbers: hint ? parseExcludedStillPackRefs(hint) : [],
   })
   if (!read.plan) return read
-  const filteredRefs = filterRegiePlanRefs(board, read.plan.refs)
+  const filteredRefs = filterRegiePlanRefs(board, read.plan.refs, hint)
   const dropped = read.plan.refs.length - filteredRefs.length
   const warnPieces = [...refWarnParts]
   if (dropped > 0) {
@@ -1899,6 +1907,7 @@ export async function stillFilmPanel(
         (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs)
           .filter((ref) => ref.url !== copied)
           .filter((ref) => !refBlocked.has(ref.url)),
+        correction,
       )
       const plateLibrary = libraryForCompose(await listStoryAssets(userId).catch(() => []))
       const plateOf = (name: string) => roomPlateUrl(working.continuity, plateLibrary, dialog.catalogCast, name)
@@ -1928,7 +1937,13 @@ export async function stillFilmPanel(
               !refBlocked.has(url as string) &&
               stillUrlOkAsRefSource(working, url as string),
           )
-      const fixEn = [regie?.fixEn, correction].filter(Boolean).join(' ')
+      const fixEn = [
+        regie?.fixEn,
+        correction,
+        correction && correctionIsMoodOnly(correction) ? stillEditMoodOnlyLockEn(correction) : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
       const painted = await paintRegiePlannedStill({
         plan: { ...plan, refs },
         continuity: working.continuity ?? (await ensureFilmContinuity(dialog, working)),

@@ -1217,7 +1217,7 @@ export function FilmStillFixBar({
           className="input"
           value={note}
           disabled={busy}
-          placeholder="z.B. wie in Bild 3 · ohne Referenz von Bild 5"
+          placeholder="z.B. Gesicht etwas fröhlicher · nur Raum von Bild 3"
           onChange={(e) => {
             const next = e.target.value
             setNote(next)
@@ -1256,9 +1256,11 @@ export function FilmStillFixBar({
         <p className="alert alert-warn">{refBlocked.messages.join(' ')}</p>
       ) : null}
       <p className="muted film-tweak-hint">
-        Bildnummer durch die ganze Geschichte (Bild 1, 2, … — steht oben am Foto). «wie in Bild 3» schickt dieses
-        Foto nur mit, wenn du dort «{REF_APPROVE_LABEL_DE}» gewählt hast. «ohne Referenz von Bild 5» oder «Bild 5 nicht»
-        lässt dieses Päckchen als Vorlage weg.
+        Bildnummer über die ganze Geschichte (oben am Foto). Stimmung («fröhlicher», «Gesicht …») ändert nur die Mimik —
+        Wände bleiben wie Regiebuch/Raumbild («Wände unverändert hellbeige laut Regiebuch»). «wie in Bild 3» braucht «
+        {REF_APPROVE_LABEL_DE}» auf Bild 3. «nur Raum von Bild 3» oder «Raum wieder wie in Bild 3» nutzt nur
+        Einrichtung/Layout einmalig, ohne Freigabe — keine Gesichter von dort. «Raum vom Raumbild» / «Raum wie
+        Regiebuch»: Katalog-Raumbild. «ohne Referenz von Bild 5» lässt Bild 5 weg.
       </p>
     </div>
   )

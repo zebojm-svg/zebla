@@ -31,6 +31,7 @@ import {
   stillEditPlannerSystem,
   stillNumberInScene,
   stillPackNumber,
+  packRefIsRoomLayoutOnly,
   parseStillPackRefs,
   parseExcludedStillPackRefs,
   filterStillEditCatalogForHint,
@@ -221,6 +222,15 @@ if (stillUrlForPackRef(board, 'Ramo allein am Herd', table.stillUrl) !== table.s
 const lockedBoard = applyPanelRefApproval(board, 'stove', false)
 if (stillUrlForPackRef(lockedBoard, 'wie in Bild 1, Ramo allein', table.stillUrl) !== table.stillUrl) {
   fail('«wie in Bild 1» ohne Freigabe: kein Still von Bild 1')
+}
+if (stillUrlForPackRef(lockedBoard, 'Raum wieder wie in Bild 1', table.stillUrl) !== stove.stillUrl) {
+  fail('«Raum wieder wie in Bild 1» ohne Freigabe: Raum/Layout einmalig')
+}
+if (!packRefIsRoomLayoutOnly('nur Raum von Bild 3, nicht freigeben', 3)) {
+  fail('«nur Raum von Bild 3» ist Raum-Layout')
+}
+if (blockedPackNumbersFromHint(lockedBoard, 'Raum wieder wie in Bild 1').blocked.length !== 0) {
+  fail('Raum-only blockiert nicht die Generierung')
 }
 if (stillUrlOkAsRefSource(lockedBoard, stove.stillUrl!)) fail('ohne Freigabe kein Szenen-Still als Vorlage')
 if (!stillUrlOkAsRefSource(lockedBoard, 'https://example.com/kitchen-empty.png')) {
@@ -905,6 +915,9 @@ const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPan
 if (!genFn.includes('stillReferencePack')) fail('Erstes Malen nutzt stillReferencePack')
 if (!stillFn.includes('hintDe: correction')) fail('Bild ändern: Hinweis an die Regie')
 if (!stillFnSrc.includes('stillUrlForPackRef')) fail('Bild ändern: «wie in Bild n» als Vorlage')
+if (!stillEditKontextPrompt('etwas fröhlicher').includes('ROOM AND COLOR LOCK')) {
+  fail('Stimmungshinweis sperrt Raum/Farbe im FLUX-Prompt')
+}
 if (!genFn.includes('editImageWithKontext')) fail('Nahaufnahme darf FLUX Kontext behalten')
 if (!pngSrc.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
 if (!pngSrc.includes('STILL_EDIT_IMAGE_TIMEOUT_DE')) fail('Zeitlimit kommt in der roten Box')
@@ -1017,6 +1030,9 @@ if (!apiSrc.includes('film-storyboard-remove-panel') || !apiSrc.includes('remove
 }
 if (!apiSrc.includes('film-storyboard-pack') || !apiSrc.includes('saveFilmPack')) {
   fail('API speichert Sprecher, Handlung und Regie')
+}
+if (!apiSrc.includes('stillMarkRedo,\n        refApprovedByUser,')) {
+  fail('API film-storyboard-pack liest refApprovedByUser aus dem Body')
 }
 
 const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), 'utf8')
