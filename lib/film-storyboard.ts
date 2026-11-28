@@ -71,6 +71,7 @@ import {
 } from './film-continuity.js'
 import {
   directorStillUrls,
+  placeForName,
   regiebuchFromContinuity,
   regiebuchVorgabenDe,
   type FilmContinuity,
@@ -1116,8 +1117,10 @@ export async function judgeFilmPanel(
     item.stillUrl !== panel.stillUrl &&
     !(item.regieCheck && item.regieCheck.stillUrl === item.stillUrl && !item.regieCheck.ok)
   if (plan?.place) {
-    const placeOf = (item: FilmStoryboardPanel) => item.regiePlan?.place.trim().toLowerCase() || ''
-    const here = plan.place.trim().toLowerCase()
+    const roomNames = continuity.places.map((item) => item.name)
+    const room = (name: string) => (placeForName(roomNames, name) ?? name).trim().toLowerCase()
+    const placeOf = (item: FilmStoryboardPanel) => (item.regiePlan?.place ? room(item.regiePlan.place) : '')
+    const here = room(plan.place)
     const samePlace = [...earlier].reverse().find((item) => okStill(item) && placeOf(item) === here)
     if (samePlace?.stillUrl) {
       refs.push({
@@ -1133,7 +1136,7 @@ export async function judgeFilmPanel(
       otherPlaces.add(there)
       refs.push({
         url: item.stillUrl,
-        roleDe: `Anderer Ort «${item.regiePlan?.place}» — darf hier nicht erscheinen. Sieht man diesen Raum (Wände, Möbel, Dinge an der Wand) im neuen Bild als Raum, ist das ein Fehler. Ausnahme: klein auf einem Bildschirm, wenn die Person, die laut Plan dort zu sehen ist, an diesem Ort ist.`,
+        roleDe: `Anderer Ort «${placeForName(roomNames, item.regiePlan?.place ?? '') ?? item.regiePlan?.place}» — darf hier nicht erscheinen. Sieht man diesen Raum (Wände, Möbel, Dinge an der Wand) im neuen Bild als Raum, ist das ein Fehler. Ausnahme: klein auf einem Bildschirm, wenn die Person, die laut Plan dort zu sehen ist, an diesem Ort ist.`,
       })
       if (otherPlaces.size >= 2) break
     }
@@ -1185,7 +1188,10 @@ function regiebuchStills(board: FilmStoryboard): RegiebuchStill[] {
     const wanted = people.filter((name) => (perPerson.get(name.toLowerCase()) ?? 0) < 2)
     if (!wanted.length) continue
     for (const name of wanted) perPerson.set(name.toLowerCase(), (perPerson.get(name.toLowerCase()) ?? 0) + 1)
-    const where = panel.regiePlan?.place ? ` am Ort ${panel.regiePlan.place}` : ''
+    const room = panel.regiePlan?.place
+      ? (placeForName(board.continuity?.places.map((item) => item.name) ?? [], panel.regiePlan.place) ?? panel.regiePlan.place)
+      : ''
+    const where = room ? ` am Ort ${room}` : ''
     out.push({ url, aboutDe: `zeigt ${people.join(', ')}${where}` })
     if (out.length >= REGIEBUCH_STILLS_MAX) break
   }
