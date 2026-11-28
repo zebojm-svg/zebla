@@ -177,4 +177,5 @@ Jean-Marie muss nicht im Voraus wissen, was er will. Ein Satz plus Screenshot re
 - **Dieser Stadtplan** ist die Ideendatei. Keine Extra-Dokumente «für später».
 - **Cloud-Agent** (läuft im Hintergrund, macht einen Vorschlag zum Mergen): gut für «das Bild stimmt nicht» / «mach das so». Nicht für stundenlanges Suchen ohne Ziel.
 - **Live-Test** nach dem Merge auf [zebla.zebotools.ch](https://zebla.zebotools.ch). Git-Vorschau: Google-Login geht nicht.
+- **28. Nov.:** Nach «Raumbild/Gesamtschau» war login und Startseite tot (Fehler «Server-Zeitlimit» — in Wahrheit startete die API gar nicht). Fix auf main, `check-api-boot.ts` vor Deploy.
 - **Nicht mergen**, bis Jean-Marie ja sagt.
