@@ -3546,6 +3546,42 @@ html[dir='rtl'] .slideshow-topbar {
   font-weight: 600;
 }
 
+.film-regiebuch-place {
+  margin-bottom: var(--space-md);
+}
+
+.film-room-plate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  margin: var(--space-sm) 0 var(--space-md);
+}
+
+.film-room-plate-thumb img {
+  display: block;
+  width: 120px;
+  height: auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.film-room-plate-actions {
+  flex: 1;
+  min-width: 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.film-scene-review-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+  margin-top: var(--space-sm);
+}
+
 .film-regiebuch-field textarea {
   width: 100%;
   resize: vertical;

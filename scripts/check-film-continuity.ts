@@ -406,5 +406,14 @@ const bookUi = readFileSync('src/story/FilmRegiebuch.tsx', 'utf8')
 if (!bookUi.includes('tidyContinuity(board.continuity)')) fail('die Seite zeigt das aufgeräumte Regiebuch')
 if (!bookUi.includes('placesTooAlike') || !bookUi.includes('sehen fast gleich aus')) fail('fast gleiche Zimmer: Hinweis auf «Neu lesen»')
 if (!bookUi.includes('failed to fetch')) fail('abgebrochene Verbindung steht auf Deutsch da')
+if (!bookUi.includes('Raumbild')) fail('Regiebuch: Raumbild zeichnen und ändern')
+if (!readFileSync('shared/film-room-plate.ts', 'utf8').includes('placesMissingRoomPlate')) {
+  fail('fehlende Raumbilder werden erkannt')
+}
+if (!boardSrc.includes('reviewFilmScene')) fail('Gesamtschau: ein Schritt je Anfrage')
+if (!readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8').includes('Szene prüfen')) {
+  fail('Szene prüfen: Knopf nach fertiger Szene')
+}
+if (!readFileSync('api/[...slug].ts', 'utf8').includes('film-scene-review')) fail('Gesamtschau: eigene Anfrage')
 
 console.log('OK film-continuity')

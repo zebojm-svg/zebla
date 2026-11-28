@@ -7,6 +7,7 @@ import {
   stillEditImageErrorDe,
   STILL_EDIT_PAINT_STATUS_DE,
 } from '../../shared/film-still-pack'
+import { sceneReviewRedoIds, type FilmSceneReview } from '../../shared/film-scene-review'
 
 const REGIE_TRIES = 2
 
@@ -40,6 +41,7 @@ export async function stillWithRegie(opts: {
     unplannedDe = planErrorDe
   }
   if (stop() && planStep) return { ...planStep, stopped: true, painted: false }
+  if (stop()) return { ...planStep!, stopped: true, painted: false }
   opts.onStatus?.(
     unplannedDe
       ? `${opts.label}: Regie konnte nicht planen (${unplannedDe.replace(/[.\s]+$/, '')}). Gemalt wird ohne Plan …`
@@ -116,6 +118,7 @@ export async function prepareReferences(opts: {
 }): Promise<{ last: StillStep | null; plateErrorDe?: string; stopped?: boolean }> {
   let last: StillStep | null = null
   for (let step = 0; step < PREPARE_STEPS_MAX; step++) {
+    if (opts.shouldStop?.()) return { last, stopped: true }
     const prepared = await api.ai.filmPrepare(opts.dialogId, opts.styleId, opts.skipPlates)
     opts.onStatus?.(prepared.didDe)
     last = { dialog: prepared.dialog, board: prepared.board }
@@ -213,11 +216,24 @@ export function useSceneStills(
     setStatus('Wird angehalten, sobald der laufende Schritt fertig ist …')
   }
 
+  const runSceneReview = async (sceneId: string, fresh = true) => {
+    if (!dialogId) return
+    setStatus('Die Regie schaut die ganze Szene an …')
+    setErrors((prev) => ({ ...prev, [sceneId]: '' }))
+    for (let step = 0; step < 40; step++) {
+      const result = await api.ai.filmSceneReview(dialogId, sceneId, step === 0 && fresh)
+      apply(result.dialog, result.board)
+      setStatus(result.didDe)
+      if (result.done) break
+    }
+  }
+
   const generate = async (
     sceneId: string,
     panels: FilmStoryboardPanel[],
     styleId: string,
     force: boolean,
+    skipPlates = false,
   ) => {
     if (!dialogId) return
     if (busySceneId) {
@@ -242,6 +258,7 @@ export function useSceneStills(
         styleId,
         panels,
         force,
+        skipPlates,
         onStatus: (text) => {
           if (!stopRef.current) setStatus(text)
         },
@@ -251,7 +268,14 @@ export function useSceneStills(
         },
         shouldStop: () => stopRef.current,
       })
+      if (done.plateErrorDe) {
+        setErrors((prev) => ({ ...prev, [sceneId]: done.plateErrorDe as string }))
+      }
       if (done.stoppedNoteDe) setStopped((prev) => ({ ...prev, [sceneId]: done.stoppedNoteDe as string }))
+      const fullRegen = force && queue.length === panels.length
+      if (fullRegen && !done.stoppedNoteDe && !done.plateErrorDe) {
+        await runSceneReview(sceneId, true)
+      }
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Standbild fehlgeschlagen.'
       setErrors((prev) => ({ ...prev, [sceneId]: stillTimeoutHintDe(raw) }))
@@ -281,6 +305,7 @@ export function useSceneStills(
       }))
       return
     }
+    setStopped((prev) => ({ ...prev, [sceneId]: '' }))
     setBusySceneId(sceneId)
     setBusyPanelId(panel.id)
     setStatus(STILL_EDIT_PAINT_STATUS_DE)
@@ -332,5 +357,63 @@ export function useSceneStills(
     stop,
     generate,
     generateOne,
+    reviewScene: async (sceneId: string, fresh = true) => {
+      if (!dialogId || busySceneId) return
+      setBusySceneId(sceneId)
+      try {
+        await runSceneReview(sceneId, fresh)
+      } catch (err) {
+        setErrors((prev) => ({
+          ...prev,
+          [sceneId]: err instanceof Error ? err.message : 'Szene-Prüfung fehlgeschlagen.',
+        }))
+      } finally {
+        setBusySceneId(null)
+        setStatus('')
+      }
+    },
+    repaintReviewIssues: async (
+      sceneId: string,
+      panels: FilmStoryboardPanel[],
+      styleId: string,
+      review: FilmSceneReview | undefined,
+    ) => {
+      if (!dialogId) return
+      const ids = sceneReviewRedoIds(review)
+      if (!ids.length) return
+      setBusySceneId(sceneId)
+      for (let i = 0; i < ids.length; i++) {
+        const panelId = ids[i]!
+        const panel = panels.find((item) => item.id === panelId)
+        if (!panel) continue
+        const issue = review?.issues.find((item) => item.panelId === panelId)
+        setStatus(`Neu malen (${i + 1} von ${ids.length}) …`)
+        try {
+          if (issue?.fixEn) {
+            await api.ai.filmStill(dialogId, panelId, styleId, undefined, {
+              fixEn: issue.fixEn,
+              freshRefs: false,
+            })
+            await api.ai.filmJudge(dialogId, panelId, true)
+          } else {
+            await stillWithRegie({
+              dialogId,
+              panelId,
+              styleId,
+              label: `Bild ${i + 1}`,
+              onStatus: setStatus,
+              onResult: (step) => apply(step.dialog, step.board),
+            })
+          }
+        } catch (err) {
+          setErrors((prev) => ({
+            ...prev,
+            [panelId]: err instanceof Error ? err.message : 'Neu malen fehlgeschlagen.',
+          }))
+        }
+      }
+      setBusySceneId(null)
+      setStatus('')
+    },
   }
 }

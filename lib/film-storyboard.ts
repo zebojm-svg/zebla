@@ -38,6 +38,13 @@ import {
   type FilmStoryboard,
   type FilmStoryboardPanel,
 } from '../shared/film-storyboard.js'
+import {
+  mergeSceneReview,
+  reviewSceneBatch,
+  sceneReviewPending,
+  SCENE_REVIEW_BATCH,
+} from './film-scene-review.js'
+import { sceneReviewSummaryDe } from '../shared/film-scene-review.js'
 import { generateCheapStoryboardSketch } from './film-sketch.js'
 import { generateFilmPanelStillImage, paintRegiePlannedStill } from './film-stills.js'
 import { planStoryPicture } from './film-regie-plan.js'
@@ -54,7 +61,6 @@ import {
 } from '../shared/film-regie-plan.js'
 import {
   bestAttemptIndex,
-  nearCopyVerdict,
   regieFoundError,
   REGIE_PASS,
   roomRefAllowed,
@@ -90,6 +96,7 @@ import {
   type RegieVerdict,
   jobsForLibrary,
   runNextReferenceJob,
+  placePlate,
   sidePlate,
   stampReferenceFaces,
 } from './film-continuity.js'
@@ -1085,7 +1092,7 @@ async function askRegieForPlan(
   }
   for (const place of continuity.places) {
     offer(
-      roomPlateUrl(continuity, library, picks, place.name),
+      roomPlateUrl(continuity, library, picks, place.name) || placePlate(library, place.name)?.imageUrl,
       `Raumbild «${place.name}», leer, ohne Leute: die feste Einrichtung. Geht immer mit, wenn das Bild an diesem Ort spielt.`,
     )
   }
@@ -1135,24 +1142,21 @@ export async function judgeFilmPanel(
   const plan = panel.regiePlan
   const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
   let verdict: RegieVerdict
-  if (attempt?.copyOf && !plan?.sameFraming) {
-    verdict = nearCopyVerdict()
-  } else {
-    const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
-    verdict = await judgeStoryStill({
-      imageUrl: panel.stillUrl,
-      regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
-      linesDe: {
-        before: index > 0 ? panelLinesDe(dialog, board.panels[index - 1]!) : '',
-        now: panelLinesDe(dialog, panel),
-        after: board.panels[index + 1] ? panelLinesDe(dialog, board.panels[index + 1]!) : '',
-      },
-      planDe: plan ? regiePlanSummaryDe(plan) : boardShotDe(panel),
-      paintEn: plan?.paintEn,
-      plannedCameraText: plan ? (cameraViewFromText(plan.cameraDe) ? plan.cameraDe : plan.cameraEn) : undefined,
-      refs: judgeRefs({ board, index, continuity, library, picks: dialog.catalogCast }),
-    })
-  }
+  const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
+  const verdict = await judgeStoryStill({
+    imageUrl: panel.stillUrl,
+    regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
+    linesDe: {
+      before: index > 0 ? panelLinesDe(dialog, board.panels[index - 1]!) : '',
+      now: panelLinesDe(dialog, panel),
+      after: board.panels[index + 1] ? panelLinesDe(dialog, board.panels[index + 1]!) : '',
+    },
+    planDe: plan ? regiePlanSummaryDe(plan) : boardShotDe(panel),
+    paintEn: plan?.paintEn,
+    plannedCameraText: plan ? (cameraViewFromText(plan.cameraDe) ? plan.cameraDe : plan.cameraEn) : undefined,
+    refs: judgeRefs({ board, index, continuity, library, picks: dialog.catalogCast }),
+    nearCopyOfUrl: attempt?.copyOf && !plan?.sameFraming ? attempt.copyOf : undefined,
+  })
   let stillUrl = panel.stillUrl
   const attempts = setRegieAttemptVerdict(panel.regieAttempts, stillUrl, { ...storedRegieCheck(verdict), seenDe: verdict.seenDe })
   let pickedAttempt: number | undefined
@@ -1962,6 +1966,63 @@ export async function stillFilmPanel(
     }
     throw new Error(message)
   }
+}
+
+/** Ein Schritt der Gesamtschau: höchstens zwei Bilder je Anfrage. */
+export async function reviewFilmScene(
+  dialogId: string,
+  userId: string,
+  sceneId: string,
+  profile?: UserProfile | null,
+  opts?: { fresh?: boolean },
+): Promise<{
+  dialog: Dialog
+  board: FilmStoryboard
+  review: import('../shared/film-scene-review.js').FilmSceneReview
+  done: boolean
+  didDe: string
+}> {
+  const dialog = await getDialog(dialogId, userId, profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const scene = board.scenes.find((item) => item.id === sceneId)
+  if (!scene) throw new Error('Szene nicht gefunden.')
+  const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
+  const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
+  const prev = opts?.fresh ? undefined : scene.sceneReview
+  let pending = opts?.fresh ? [] : sceneReviewPending(board, sceneId, prev)
+  if (!pending.length) {
+    pending = board.panels
+      .filter((panel) => panel.sceneId === sceneId && panel.stillUrl?.startsWith('http'))
+      .map((panel) => panel.id)
+  }
+  const batch = pending.slice(0, SCENE_REVIEW_BATCH)
+  const rest = pending.slice(SCENE_REVIEW_BATCH)
+  const { issues, summaryDe, model } = await reviewSceneBatch({
+    dialog,
+    board,
+    sceneId,
+    continuity,
+    library,
+    picks: dialog.catalogCast,
+    panelIds: batch,
+  })
+  const review = mergeSceneReview(sceneId, prev, issues, rest, summaryDe, model)
+  const nextBoard: FilmStoryboard = {
+    ...board,
+    continuity,
+    scenes: board.scenes.map((item) => (item.id === sceneId ? { ...item, sceneReview: review } : item)),
+  }
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(nextBoard) }, profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Die Szene-Prüfung konnte nicht gespeichert werden.')
+  const freshBoard = updated.filmStoryboard
+  const freshScene = freshBoard.scenes.find((item) => item.id === sceneId)
+  const finalReview = freshScene?.sceneReview ?? review
+  const done = !finalReview.pending?.length
+  const didDe = done
+    ? sceneReviewSummaryDe(finalReview)
+    : `Regie schaut weiter … noch ${finalReview.pending!.length} Bild${finalReview.pending!.length === 1 ? '' : 'er'}.`
+  return { dialog: updated, board: freshBoard, review: finalReview, done, didDe }
 }
 
 export async function saveFilmPlan(

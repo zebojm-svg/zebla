@@ -130,7 +130,7 @@ import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
 import { sanitizeRegiebuchEdit } from '../shared/film-continuity.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary, reviewFilmScene } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt, regieModelHealth } from '../lib/ai.js'
@@ -2097,6 +2097,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const result = await prepareFilmReferences(dialogId.trim(), user.uid, styleId?.trim(), profile, {
         skipPlates: skipPlates === true,
       })
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-scene-review' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, sceneId, fresh } = req.body as { dialogId?: string; sceneId?: string; fresh?: boolean }
+      if (!dialogId?.trim() || !sceneId?.trim()) {
+        res.status(400).json({ error: 'dialogId oder sceneId fehlt.' })
+        return
+      }
+      const result = await reviewFilmScene(dialogId.trim(), user.uid, sceneId.trim(), profile, { fresh: fresh === true })
       res.json(result)
       return
     }

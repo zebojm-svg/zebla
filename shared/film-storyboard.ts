@@ -120,10 +120,14 @@ export interface FilmStoryboardPanel {
   refNeeds?: FilmRefNeeds
 }
 
+import type { FilmSceneReview } from './film-scene-review.js'
+
 export interface FilmScene {
   id: string
   title: string
   noteDe: string
+  /** Letzte Gesamtschau dieser Szene. */
+  sceneReview?: FilmSceneReview
 }
 
 export interface FilmStoryboard {

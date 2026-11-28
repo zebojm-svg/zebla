@@ -29,6 +29,8 @@ import {
   seatingNoteDe,
   stillLibraryHintDe,
 } from '../../shared/film-stills'
+import { placesMissingRoomPlate } from '../../shared/film-room-plate'
+import { sceneReviewRedoIds, sceneReviewSummaryDe } from '../../shared/film-scene-review'
 import { FilmStillPicture } from './FilmStillArrange'
 
 export function FilmStyleTabs({
@@ -71,6 +73,7 @@ type Props = {
   dialogId: string
   scene: FilmScene
   panels: FilmStoryboardPanel[]
+  board?: FilmStoryboard | null
   styleId: string
   onStyleChange: (styleId: string) => void
   busy: boolean
@@ -78,7 +81,10 @@ type Props = {
   progress?: { current: number; total: number } | null
   error?: string
   status?: string
-  onGenerate: (force: boolean) => void
+  onGenerate: (force: boolean, skipPlates?: boolean) => void
+  onPreparePlates?: () => void
+  onReview?: () => void
+  onRepaintReview?: () => void
   onRematch?: () => void
   shotPlanDe?: string
   expectedShots?: number
@@ -92,6 +98,7 @@ export function FilmSceneGenerateBar({
   dialogId,
   scene,
   panels,
+  board,
   styleId,
   busy,
   extraDisabled,
@@ -99,6 +106,9 @@ export function FilmSceneGenerateBar({
   error,
   status,
   onGenerate,
+  onPreparePlates,
+  onReview,
+  onRepaintReview,
   onRematch,
   shotPlanDe,
   expectedShots,
@@ -111,6 +121,9 @@ export function FilmSceneGenerateBar({
   const harvestNotes = sceneHarvestNotesDe(panels)
   const allDone = stats.total > 0 && stats.pending === 0
   const paintingOne = Boolean(busy && progress && progress.total === 1)
+  const missingPlates = placesMissingRoomPlate(board?.continuity?.places, board?.continuity?.plates)
+  const review = scene.sceneReview
+  const reviewBad = sceneReviewRedoIds(review)
   const label = busy
     ? paintingOne
       ? 'Bild wird neu gemalt …'
@@ -129,10 +142,28 @@ export function FilmSceneGenerateBar({
         type="button"
         className="btn btn-story-studio film-scene-make"
         disabled={busy || extraDisabled || stats.total === 0}
-        onClick={() => onGenerate(allDone)}
+        onClick={() => {
+          if (missingPlates.length && !allDone) {
+            if (
+              !window.confirm(
+                `Ohne Raumbild kann sich die Einrichtung ändern: ${missingPlates.map((n) => `«${n}»`).join(', ')}. Trotzdem ohne Raumbild starten?`,
+              )
+            ) {
+              return
+            }
+            onGenerate(allDone, true)
+            return
+          }
+          onGenerate(allDone, false)
+        }}
       >
         {label}
       </button>
+      {!busy && missingPlates.length && !allDone && onPreparePlates ? (
+        <button type="button" className="btn btn-secondary" disabled={extraDisabled} onClick={onPreparePlates}>
+          Raumbilder zuerst zeichnen
+        </button>
+      ) : null}
       {!busy && stats.done > 0 && !allDone ? (
         <button
           type="button"
@@ -183,6 +214,21 @@ export function FilmSceneGenerateBar({
         </p>
       ) : null}
       {!busy && stoppedNote ? <p className="alert alert-info">{stoppedNote}</p> : null}
+      {!busy && allDone && onReview ? (
+        <div className="film-scene-review-bar">
+          <button type="button" className="btn btn-secondary" disabled={extraDisabled || busy} onClick={onReview}>
+            Szene prüfen
+          </button>
+          {review ? (
+            <p className={review.ok ? 'muted' : 'alert alert-warn'}>{sceneReviewSummaryDe(review)}</p>
+          ) : null}
+          {reviewBad.length && onRepaintReview ? (
+            <button type="button" className="btn btn-secondary" disabled={extraDisabled || busy} onClick={onRepaintReview}>
+              Nur markierte Bilder neu malen ({reviewBad.length})
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {error ? <div className="alert alert-error">{error}</div> : null}
       {hint ? (
         <p className="alert alert-warn">

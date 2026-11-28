@@ -471,6 +471,7 @@ export function FilmStoryboardPage() {
           <FilmRegiebuch
             dialogId={dialog.id}
             board={board}
+            styleId={activeStyle}
             disabled={locked}
             onApplied={apply}
           />
@@ -525,6 +526,7 @@ export function FilmStoryboardPage() {
                     dialogId={dialog.id}
                     scene={scene}
                     panels={panels}
+                    board={board}
                     styleId={activeStyle}
                     onStyleChange={(next) => setStyles((prev) => ({ ...prev, [scene.id]: next }))}
                     busy={stills.busySceneId === scene.id}
@@ -536,13 +538,21 @@ export function FilmStoryboardPage() {
                     }
                     error={stills.errors[scene.id]}
                     status={stills.busySceneId === scene.id ? stills.status : ''}
-                    onGenerate={(force) =>
-                      void stills.generate(
-                        scene.id,
-                        panels,
-                        activeStyle,
-                        force,
-                      )
+                    onGenerate={(force, skipPlates) =>
+                      void stills.generate(scene.id, panels, activeStyle, force, skipPlates)
+                    }
+                    onPreparePlates={() =>
+                      void (async () => {
+                        for (let step = 0; step < 48; step++) {
+                          const prepared = await api.ai.filmPrepare(id, activeStyle)
+                          apply(prepared.dialog, prepared.board)
+                          if (prepared.done || prepared.plateErrorDe) break
+                        }
+                      })()
+                    }
+                    onReview={() => void stills.reviewScene(scene.id, true)}
+                    onRepaintReview={() =>
+                      void stills.repaintReviewIssues(scene.id, panels, activeStyle, scene.sceneReview)
                     }
                     onRematch={() => void run(() => api.ai.filmLibraryRematch(id))}
                     shotPlanDe={sceneShotPlanDe(panels)}

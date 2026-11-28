@@ -466,6 +466,8 @@ export async function judgeStoryStill(opts: {
   /** Kamera laut Plan (deutsch und englisch), für den Abgleich mit dem, was die Regie sieht. */
   plannedCameraText?: string
   refs: Array<{ url: string; roleDe: string }>
+  /** Bildvergleich ohne KI: mögliche Kopie — die Regie entscheidet (Gegenschuss = ok). */
+  nearCopyOfUrl?: string
 }): Promise<RegieVerdict> {
   const picked = opts.refs.slice(0, JUDGE_MAX_REFS)
   const [still, ...parts] = await Promise.all([
@@ -486,6 +488,9 @@ export async function judgeStoryStill(opts: {
     `SATZ ZU DIESEM BILD: ${opts.linesDe.now || '—'}`,
     `SATZ DANACH: ${opts.linesDe.after || '—'}`,
     'Was erst im Satz danach passiert, muss hier noch nicht zu sehen sein.',
+    opts.nearCopyOfUrl
+      ? `HINWEIS BILDVERGLEICH: Das neue Bild sieht dem angehängten früheren Bild sehr ähnlich (fast gleicher Aufbau). Entscheide in der Prüfung «neu»: Gegenschuss, Nahaufnahme nach Weitbild oder ein anderes bewusstes Wiederholen ist erlaubt. Nur false, wenn dieses Bild wirklich kaum Neues zum Satz zeigt.`
+      : '',
     legend,
   ]
     .filter(Boolean)

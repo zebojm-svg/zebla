@@ -85,6 +85,17 @@ export function roomPlateStateDe(plate: FilmRoomPlate | undefined): string {
 }
 
 /** Antwort der Regie zum Raumbild lesen. Ohne klares Ja/Nein: nicht geprüft. */
+/** Orte im Regiebuch, die noch kein gespeichertes Raumbild haben. */
+export function placesMissingRoomPlate(
+  places: Array<{ name: string }> | undefined,
+  plates: FilmRoomPlate[] | undefined,
+): string[] {
+  return (places ?? [])
+    .map((place) => place.name.trim())
+    .filter(Boolean)
+    .filter((name) => !roomPlateFor(plates, name))
+}
+
 export function readRoomPlateAnswer(raw: unknown): { ok: boolean; noteDe: string; fixEn: string } | null {
   const row = (Array.isArray(raw) ? raw.find((item) => item && typeof item === 'object') : raw) as
     | Record<string, unknown>

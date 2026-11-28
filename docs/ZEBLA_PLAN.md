@@ -89,7 +89,7 @@ Warum das Bisherige die Wiedererkennung verliert:
 Reihenfolge:
 
 1. Katalog: Figur, Raum, Geräusch anlegen oder wählen. **Gebaut.**
-2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. **Gebaut:** Lage, Gesichter, Orte, und welcher Blick zu welchem früheren Bild gehört. Vor den Szenenbildern: Stammbild, davon abhängige Seitenansicht (einmal geprüft), Raum. Alles im Katalog. Ein Wort in einer Zeile ändert die Lage nicht. Bekannte Figuren nicht nachmachen.
+2. Regie liest die ganze Geschichte und schreibt den Zusammenhang. **Gebaut:** Lage, Gesichter, Orte, und welcher Blick zu welchem früheren Bild gehört. Vor den Szenenbildern: Stammbild, Seitenansicht (einmal geprüft), **Raumbild je Ort** (leer, Einrichtung fest; Regie prüft; im Regiebuch sichtbar mit «Raumbild zeichnen/ändern»). Fehlt ein Raumbild: Warnung, «Raumbilder zuerst zeichnen» oder bewusst ohne. Ein Wort in einer Zeile ändert die Lage nicht.
 3. Jedes Bild der Geschichte neu, mit diesen Referenzen. Noch nicht.
 4. «Raum wie dieser, andere Möbel» im Katalog. **Gebaut.** In der Geschichte noch nicht von allein.
 
@@ -147,7 +147,7 @@ Bauschritte:
    - Mit Regie-Plan zeigt «Mehr» nicht mehr den alten Sitzplan/Blick/Gesicht vom Board (Daten bleiben).
 3. Etappen mit Fortschritt statt ein langer Knopfdruck. Noch nicht.
 4. Fragen an Jean-Marie. Noch nicht.
-5. Ganze Szene nebeneinander prüfen. Noch nicht.
+5. **Ganze Szene nebeneinander prüfen — gebaut.** Knopf «Szene prüfen»: Regie liest den Dialog, kleine Bilder (~384 px) und Raumbilder, höchstens zwei Bilder je Anfrage (Vercel). «Nur markierte Bilder neu malen». Nach «Ganze Szene neu erzeugen» läuft die Prüfung einmal von selbst. Fast gleiches Bild: nur Hinweis an die Regie, Gegenschuss darf.
 6. Feste Sätze herausnehmen. Noch nicht.
 
 ## Stand (2026-10)

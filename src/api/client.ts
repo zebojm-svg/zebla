@@ -657,6 +657,18 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, styleId, skipPlates }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
+    filmSceneReview: (dialogId: string, sceneId: string, fresh = true) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+        review: import('../../shared/film-scene-review').FilmSceneReview
+        done: boolean
+        didDe: string
+      }>(
+        '/film-scene-review',
+        { method: 'POST', body: JSON.stringify({ dialogId, sceneId, fresh }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     filmRoomPlate: (dialogId: string, place: string, note?: string, styleId?: string) =>
       request<{
         dialog: import('../types').Dialog

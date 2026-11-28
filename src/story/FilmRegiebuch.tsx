@@ -9,6 +9,11 @@ import {
   tidyContinuity,
   type RegiebuchEdit,
 } from '../../shared/film-continuity'
+import {
+  placesMissingRoomPlate,
+  roomPlateFor,
+  roomPlateStateDe,
+} from '../../shared/film-room-plate'
 
 const EMPTY: RegiebuchEdit = { situationDe: '', people: [], places: [], notesDe: [] }
 
@@ -26,18 +31,21 @@ export function FilmRegiebuch({
   dialogId,
   board,
   disabled,
+  styleId,
   onApplied,
 }: {
   dialogId: string
   board: FilmStoryboard
   disabled: boolean
+  styleId?: string
   onApplied: (dialog: Dialog, board: FilmStoryboard) => void
 }) {
   const note = board.continuity ? tidyContinuity(board.continuity) : undefined
   const [draft, setDraft] = useState<{ book: RegiebuchEdit; notesText: string } | null>(null)
-  const [busy, setBusy] = useState<'' | 'read' | 'save'>('')
+  const [busy, setBusy] = useState<'' | 'read' | 'save' | `plate:${string}`>('')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [plateHints, setPlateHints] = useState<Record<string, string>>({})
   const dirty = draft !== null
   const book = draft?.book ?? (note ? regiebuchFromContinuity(note) : EMPTY)
   const notesText = draft?.notesText ?? (note?.notesDe ?? []).join('\n')
@@ -47,6 +55,7 @@ export function FilmRegiebuch({
     [...(note?.people ?? []), ...(note?.places ?? [])].some((item) => !item.lookDe?.trim())
 
   const alike = note ? placesTooAlike(note.places) : []
+  const missingPlates = placesMissingRoomPlate(note?.places, note?.plates)
 
   const call = async (kind: 'read' | 'save') => {
     setBusy(kind)
@@ -79,6 +88,24 @@ export function FilmRegiebuch({
     } catch (err) {
       setStatus('')
       setError(regiebuchFailDe(kind, err instanceof Error ? err.message : 'Grund unbekannt'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const redrawPlate = async (placeName: string) => {
+    const busyKey = `plate:${placeName}` as const
+    setBusy(busyKey)
+    setError('')
+    setStatus(`Raumbild «${placeName}» …`)
+    try {
+      const hint = plateHints[placeName]?.trim()
+      const result = await api.ai.filmRoomPlate(dialogId, placeName, hint || undefined, styleId)
+      onApplied(result.dialog, result.board)
+      setStatus(result.noteDe)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Das Raumbild konnte nicht gezeichnet werden.')
+      setStatus('')
     } finally {
       setBusy('')
     }
@@ -117,6 +144,13 @@ export function FilmRegiebuch({
             </p>
           ) : null}
 
+          {missingPlates.length ? (
+            <p className="alert alert-warn">
+              Noch kein Raumbild für: {missingPlates.map((name) => `«${name}»`).join(', ')}. Beim
+              «Szene erzeugen» zeichnet Zebla sie zuerst — oder unten beim Ort «Raumbild zeichnen».
+            </p>
+          ) : null}
+
           <label className="film-regiebuch-field">
             <span>Wo und wie</span>
             <textarea
@@ -148,24 +182,57 @@ export function FilmRegiebuch({
           ))}
 
           {book.places.length ? <h3>Orte</h3> : null}
-          {book.places.map((place, index) => (
-            <label key={`o-${place.name}`} className="film-regiebuch-field">
-              <span>{place.name}</span>
-              <textarea
-                rows={2}
-                value={place.lookDe}
-                disabled={locked}
-                onChange={(e) =>
-                  change({
-                    ...book,
-                    places: book.places.map((item, i) =>
-                      i === index ? { ...item, lookDe: e.target.value } : item,
-                    ),
-                  })
-                }
-              />
-            </label>
-          ))}
+          {book.places.map((place, index) => {
+            const plate = roomPlateFor(note.plates, place.name)
+            const plateBusy = busy === `plate:${place.name}`
+            return (
+              <div key={`o-${place.name}`} className="film-regiebuch-place">
+                <label className="film-regiebuch-field">
+                  <span>{place.name}</span>
+                  <textarea
+                    rows={2}
+                    value={place.lookDe}
+                    disabled={locked}
+                    onChange={(e) =>
+                      change({
+                        ...book,
+                        places: book.places.map((item, i) =>
+                          i === index ? { ...item, lookDe: e.target.value } : item,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <div className="film-room-plate-row">
+                  {plate?.url ? (
+                    <a href={plate.url} target="_blank" rel="noreferrer" className="film-room-plate-thumb">
+                      <img src={plate.url} alt="" width={120} height={68} />
+                    </a>
+                  ) : (
+                    <p className="muted">Noch kein Raumbild.</p>
+                  )}
+                  <div className="film-room-plate-actions">
+                    <p className="muted">{roomPlateStateDe(plate)}</p>
+                    <input
+                      className="input"
+                      disabled={locked}
+                      placeholder="Hinweis fürs Neuzeichnen (optional)"
+                      value={plateHints[place.name] ?? ''}
+                      onChange={(e) => setPlateHints((prev) => ({ ...prev, [place.name]: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={locked}
+                      onClick={() => void redrawPlate(place.name)}
+                    >
+                      {plateBusy ? '…' : plate ? 'Raumbild ändern' : 'Raumbild zeichnen'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
 
           <label className="film-regiebuch-field">
             <span>Was sonst gilt (eine Sache pro Zeile)</span>

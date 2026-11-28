@@ -335,11 +335,12 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
 
   const board = readFileSync('lib/film-storyboard.ts', 'utf8')
   const judgeFn2 = board.slice(board.indexOf('export async function judgeFilmPanel'), board.indexOf('/** Höchstens zwei gutgeheissene Bilder'))
-  for (const need of ['Voriges Bild', 'Raum-Vorlage', 'Stammbild von', 'plan.surfaces', 'roomRefAllowed', 'pickBest', 'bestAttemptIndex', 'nearCopyVerdict', 'paintEn: plan?.paintEn']) {
+  for (const need of ['Voriges Bild', 'Raum-Vorlage', 'Stammbild von', 'plan.surfaces', 'roomRefAllowed', 'pickBest', 'bestAttemptIndex', 'nearCopyOfUrl', 'paintEn: plan?.paintEn']) {
     if (!judgeFn2.includes(need)) fail(`Anschauen: ${need}`)
   }
   if (!/who\.slice\(0, 3\)/.test(judgeFn2)) fail('Stammbilder aller Leute im Bild, höchstens drei')
   const stillFn = board.slice(board.indexOf('export async function stillFilmPanel'), board.indexOf('export async function saveFilmPlan'))
+  if (judgeFn.includes('nearCopyVerdict()')) fail('fast gleiches Bild: die Regie entscheidet, nicht automatisch')
   if (!stillFn.includes('compareUrls') || !stillFn.includes('painted.copyOf') || !stillFn.includes('ref.url !== copied')) {
     fail('nach dem Malen: Bildvergleich, und beim nächsten Versuch ohne das kopierte Bild')
   }
