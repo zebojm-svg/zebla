@@ -638,6 +638,7 @@ export const api = {
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
+        errorDe?: string
       }>(
         '/film-regiebuch',
         { method: 'POST', body: JSON.stringify({ dialogId, ...opts }) },
