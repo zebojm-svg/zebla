@@ -52,6 +52,15 @@ import {
   type RegieRefOption,
 } from '../shared/film-regie-plan.js'
 import {
+  bestAttemptIndex,
+  nearCopyVerdict,
+  regieFoundError,
+  REGIE_PASS,
+  roomRefAllowed,
+  storedRegieCheck,
+  uncheckedVerdict,
+} from '../shared/film-regie-judge.js'
+import {
   briefForImage,
   applyRegiebuchEdit,
   continuityIsCurrent,
@@ -60,6 +69,7 @@ import {
   rereadFilmContinuity,
   ensureSpeakerPlate,
   judgeStoryStill,
+  JUDGE_MAX_REFS,
   REGIEBUCH_STILLS_MAX,
   type RegiebuchStill,
   type RegieVerdict,
@@ -78,7 +88,8 @@ import {
   type RegiebuchEdit,
 } from '../shared/film-continuity.js'
 import { identityReferenceUrl } from '../shared/library-identities.js'
-import { pickedCastUrl } from '../shared/catalog-cast.js'
+import { pickedCastUrl, type CatalogCast } from '../shared/catalog-cast.js'
+import type { StoryLibraryAsset } from '../shared/story-types.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
   applyPanelHarvestNote,
@@ -988,10 +999,12 @@ function earlierPanelDe(panel: FilmStoryboardPanel, number: number): string {
   const what = panel.regiePlan
     ? regiePlanSummaryDe(panel.regiePlan)
     : `ohne Plan gemalt, Ort unbekannt; Board: ${boardShotDe(panel)}`
-  const wrong =
-    panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl && !panel.regieCheck.ok
-      ? ` — Regie fand einen Fehler: ${panel.regieCheck.noteDe}`
-      : ''
+  const check = panel.regieCheck && panel.regieCheck.stillUrl === panel.stillUrl ? panel.regieCheck : undefined
+  const wrong = !regieFoundError(check)
+    ? ''
+    : roomRefAllowed(check)
+      ? ` — Regie fand einen Fehler, aber nicht am Raum: ${check!.noteDe}`
+      : ` — Regie fand einen Fehler: ${check!.noteDe}`
   return `Bild ${number} «${panel.caption}»: ${what}${wrong}`
 }
 
@@ -1091,71 +1104,62 @@ export async function judgeFilmPanel(
   userId: string,
   panelId: string,
   profile?: UserProfile | null,
-): Promise<{ dialog: Dialog; board: FilmStoryboard; verdict: RegieVerdict }> {
+  opts?: { pickBest?: boolean },
+): Promise<{ dialog: Dialog; board: FilmStoryboard; verdict: RegieVerdict; pickedAttempt?: number }> {
   const dialog = await getDialog(dialogId, userId, profile)
   if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
   const board = normalizeFilmStoryboard(dialog.filmStoryboard)
   const index = board.panels.findIndex((item) => item.id === panelId)
   const panel = board.panels[index]
-  const pass: RegieVerdict = { ok: true, noteDe: '', fixEn: '', freshRefs: false }
-  if (!panel?.stillUrl?.startsWith('http')) return { dialog, board, verdict: pass }
+  if (!panel?.stillUrl?.startsWith('http')) return { dialog, board, verdict: uncheckedVerdict('Kein Bild da') }
   const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
   const before = earlier[earlier.length - 1]
   if (before?.sceneId === panel.sceneId && before.stillUrl === panel.stillUrl) {
-    return { dialog, board, verdict: pass }
+    return { dialog, board, verdict: REGIE_PASS }
   }
-  const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
-  const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
-  const who = (panel.regiePlan?.bodies[0] || panel.regiePlan?.screens[0] || panelPersonName(panel)).trim()
-  const refs: Array<{ url: string; roleDe: string }> = []
-  const plate = who
-    ? pickedCastUrl(library, dialog.catalogCast?.personIds, who) || identityReferenceUrl(library, who)
-    : undefined
-  if (plate) refs.push({ url: plate, roleDe: `Stammbild von ${who}.` })
+  const attempt = [...(panel.regieAttempts ?? [])].reverse().find((item) => item.stillUrl === panel.stillUrl)
   const plan = panel.regiePlan
-  const okStill = (item: FilmStoryboardPanel) =>
-    item.stillUrl !== panel.stillUrl &&
-    !(item.regieCheck && item.regieCheck.stillUrl === item.stillUrl && !item.regieCheck.ok)
-  if (plan?.place) {
-    const roomNames = continuity.places.map((item) => item.name)
-    const room = (name: string) => (placeForName(roomNames, name) ?? name).trim().toLowerCase()
-    const placeOf = (item: FilmStoryboardPanel) => (item.regiePlan?.place ? room(item.regiePlan.place) : '')
-    const here = room(plan.place)
-    const samePlace = [...earlier].reverse().find((item) => okStill(item) && placeOf(item) === here)
-    if (samePlace?.stillUrl) {
-      refs.push({
-        url: samePlace.stillUrl,
-        roleDe: `Früheres Bild am selben Ort ${plan.place}. Damals: ${regiePlanSummaryDe(samePlace.regiePlan as FilmRegiePlan)}`,
-      })
-    }
-    const otherPlaces = new Set<string>()
-    for (const item of [...earlier].reverse()) {
-      const there = placeOf(item)
-      if (!there || there === here || otherPlaces.has(there) || !okStill(item) || !item.stillUrl) continue
-      if (refs.some((ref) => ref.url === item.stillUrl)) continue
-      otherPlaces.add(there)
-      refs.push({
-        url: item.stillUrl,
-        roleDe: `Anderer Ort «${placeForName(roomNames, item.regiePlan?.place ?? '') ?? item.regiePlan?.place}» — darf hier nicht erscheinen. Sieht man diesen Raum (Wände, Möbel, Dinge an der Wand) im neuen Bild als Raum, ist das ein Fehler. Ausnahme: klein auf einem Bildschirm, wenn die Person, die laut Plan dort zu sehen ist, an diesem Ort ist.`,
-      })
-      if (otherPlaces.size >= 2) break
-    }
+  const continuity = board.continuity ?? (await ensureFilmContinuity(dialog, board))
+  let verdict: RegieVerdict
+  if (attempt?.copyOf && !plan?.sameFraming) {
+    verdict = nearCopyVerdict()
   } else {
-    const sameWho = [...earlier]
-      .reverse()
-      .find((item) => panelPersonName(item).toLowerCase() === who.toLowerCase())
-    if (who && sameWho?.stillUrl) refs.push({ url: sameWho.stillUrl, roleDe: `Früheres Bild mit ${who}.` })
-    for (const item of directorStillUrls(board.panels, continuity, panel.id)) {
-      if (!refs.some((ref) => ref.url === item.url)) refs.push({ url: item.url, roleDe: `Früheres Bild: ${item.name}` })
+    const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
+    verdict = await judgeStoryStill({
+      imageUrl: panel.stillUrl,
+      regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
+      linesDe: {
+        before: index > 0 ? panelLinesDe(dialog, board.panels[index - 1]!) : '',
+        now: panelLinesDe(dialog, panel),
+        after: board.panels[index + 1] ? panelLinesDe(dialog, board.panels[index + 1]!) : '',
+      },
+      planDe: plan ? regiePlanSummaryDe(plan) : boardShotDe(panel),
+      paintEn: plan?.paintEn,
+      refs: judgeRefs({ board, index, continuity, library, picks: dialog.catalogCast }),
+    })
+  }
+  let stillUrl = panel.stillUrl
+  const attempts = setRegieAttemptVerdict(panel.regieAttempts, stillUrl, { ...storedRegieCheck(verdict), seenDe: verdict.seenDe })
+  let pickedAttempt: number | undefined
+  if (opts?.pickBest && verdict.checked && !verdict.ok) {
+    const best = bestAttemptIndex(attempts)
+    const chosen = best >= 0 ? attempts?.[best] : undefined
+    if (chosen && chosen.stillUrl !== stillUrl && chosen.verdict) {
+      stillUrl = chosen.stillUrl
+      pickedAttempt = best + 1
+      verdict = {
+        ...verdict,
+        ok: chosen.verdict.ok,
+        noteDe: chosen.verdict.noteDe,
+        failed: (chosen.verdict.failed ?? []) as RegieVerdict['failed'],
+        softDe: chosen.verdict.softDe ?? '',
+        seenDe: chosen.verdict.seenDe ?? '',
+        model: chosen.verdict.model,
+        fixEn: '',
+        freshRefs: false,
+      }
     }
   }
-  const verdict = await judgeStoryStill({
-    imageUrl: panel.stillUrl,
-    regiebuchDe: regiebuchVorgabenDe(regiebuchFromContinuity(continuity)),
-    lineDe: [panel.caption, panel.imageCue].filter(Boolean).join(' — '),
-    shotDe: plan ? `Plan der Regie: ${regiePlanSummaryDe(plan)}` : boardShotDe(panel),
-    refs,
-  })
   const next: FilmStoryboard = {
     ...board,
     continuity,
@@ -1163,15 +1167,92 @@ export async function judgeFilmPanel(
       item.id === panel.id
         ? {
             ...item,
-            regieCheck: { ok: verdict.ok, noteDe: verdict.noteDe, stillUrl: panel.stillUrl as string },
-            regieAttempts: setRegieAttemptVerdict(item.regieAttempts, panel.stillUrl as string, verdict),
+            stillUrl,
+            regieCheck: { ...storedRegieCheck(verdict), stillUrl },
+            regieAttempts: attempts,
           }
         : item,
     ),
   }
   const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(next) }, profile)
   if (!updated || !isFilmStoryboard(updated.filmStoryboard)) throw new Error('Das Urteil der Regie konnte nicht gespeichert werden.')
-  return { dialog: updated, board: updated.filmStoryboard, verdict }
+  return { dialog: updated, board: updated.filmStoryboard, verdict, ...(pickedAttempt ? { pickedAttempt } : {}) }
+}
+
+/**
+ * Was die Regie zum Vergleichen mitbekommt, höchstens JUDGE_MAX_REFS Bilder:
+ * voriges Bild, Raum-Vorlage, Stammbilder aller Leute im Bild, ein früheres Bild vom selben Ort,
+ * der Ort auf einer Fläche, ein Bild von einem anderen Ort als Warnung.
+ */
+function judgeRefs(opts: {
+  board: FilmStoryboard
+  index: number
+  continuity: FilmContinuity
+  library: StoryLibraryAsset[]
+  picks?: CatalogCast | null
+}): Array<{ url: string; roleDe: string }> {
+  const { board, index, continuity, library, picks } = opts
+  const panel = board.panels[index]!
+  const plan = panel.regiePlan
+  const refs: Array<{ url: string; roleDe: string }> = []
+  const add = (url: string | undefined, roleDe: string) => {
+    if (!url?.startsWith('http') || url === panel.stillUrl || refs.some((ref) => ref.url === url)) return
+    if (refs.length < JUDGE_MAX_REFS) refs.push({ url, roleDe })
+  }
+  const prev = board.panels[index - 1]
+  if (prev?.stillUrl) {
+    add(
+      prev.stillUrl,
+      `Voriges Bild (Bild ${index}). ${prev.regiePlan ? `Damals: ${regiePlanSummaryDe(prev.regiePlan)}` : ''} Zum Vergleich für «neu» und für den Anschluss.`,
+    )
+  }
+  const roomNames = continuity.places.map((item) => item.name)
+  const room = (name: string) => (placeForName(roomNames, name) ?? name).trim().toLowerCase()
+  const placeOf = (item: FilmStoryboardPanel) => (item.regiePlan?.place ? room(item.regiePlan.place) : '')
+  const roomPlate = (name: string) => pickedCastUrl(library, picks?.placeIds, name) || placePlate(library, name)?.imageUrl
+  if (plan?.place) add(roomPlate(plan.place), `Raum-Vorlage «${plan.place}», leer: so sieht der Ort der Kamera aus.`)
+  const who = plan
+    ? [...plan.bodies, ...plan.screens]
+    : [panelPersonName(panel)].filter(Boolean)
+  for (const name of who.slice(0, 3)) {
+    add(pickedCastUrl(library, picks?.personIds, name) || identityReferenceUrl(library, name), `Stammbild von ${name}.`)
+  }
+  const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
+  const usable = (item: FilmStoryboardPanel) =>
+    item.stillUrl !== panel.stillUrl &&
+    roomRefAllowed(item.regieCheck && item.regieCheck.stillUrl === item.stillUrl ? item.regieCheck : undefined)
+  if (plan?.place) {
+    const here = room(plan.place)
+    const samePlace = [...earlier].reverse().find((item) => usable(item) && placeOf(item) === here)
+    if (samePlace?.stillUrl) {
+      add(
+        samePlace.stillUrl,
+        `Früheres Bild am selben Ort ${plan.place}. Damals: ${regiePlanSummaryDe(samePlace.regiePlan as FilmRegiePlan)}`,
+      )
+    }
+    for (const surface of plan.surfaces ?? []) {
+      if (!surface.place || room(surface.place) === here) continue
+      add(roomPlate(surface.place), `Raum-Vorlage «${surface.place}»: dieser Ort ist auf ${surface.thing} zu sehen, nur dort.`)
+    }
+    const shownOnSurface = new Set((plan.surfaces ?? []).map((surface) => (surface.place ? room(surface.place) : '')))
+    const otherPlaces = new Set<string>()
+    for (const item of [...earlier].reverse()) {
+      const there = placeOf(item)
+      if (!there || there === here || otherPlaces.has(there) || !usable(item) || !item.stillUrl) continue
+      otherPlaces.add(there)
+      const name = placeForName(roomNames, item.regiePlan?.place ?? '') ?? item.regiePlan?.place
+      add(
+        item.stillUrl,
+        shownOnSurface.has(there)
+          ? `Anderer Ort «${name}». Als Raum um die Kamera darf er hier nicht erscheinen; laut Plan ist er nur auf einer Fläche zu sehen.`
+          : `Anderer Ort «${name}» — darf hier nicht erscheinen, weder als Raum noch auf einer Fläche.`,
+      )
+      if (otherPlaces.size >= 1) break
+    }
+  } else {
+    for (const item of directorStillUrls(board.panels, continuity, panel.id)) add(item.url, `Früheres Bild: ${item.name}`)
+  }
+  return refs
 }
 
 /** Höchstens zwei gutgeheissene Bilder je Person, damit das Regiebuch zum Gemalten passt. */
@@ -1359,6 +1440,7 @@ export async function stillFilmPanel(
     stillUrl: string,
     planned: boolean,
     refs: Array<{ url: string; useEn: string }>,
+    copyOf?: string,
   ): FilmStoryboard => ({
     ...nextBoard,
     panels: nextBoard.panels.map((p) =>
@@ -1373,6 +1455,7 @@ export async function stillFilmPanel(
                 planned,
                 ...(regie?.fixEn ? { fixEn: regie.fixEn } : {}),
                 ...(correction ? { hintDe: correction } : {}),
+                ...(copyOf ? { copyOf } : {}),
                 refs,
               },
               firstTry,
@@ -1426,21 +1509,34 @@ export async function stillFilmPanel(
     if (!correction && panel.regiePlan) {
       const plan = panel.regiePlan
       const paintedUrls = new Set(working.panels.map((item) => item.stillUrl).filter(Boolean))
-      const refs = regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs
-      const url = await paintRegiePlannedStill({
+      const copied = regie?.fixEn ? panel.regieAttempts?.[panel.regieAttempts.length - 1]?.copyOf : undefined
+      const refs = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs).filter(
+        (ref) => ref.url !== copied,
+      )
+      const at = working.panels.findIndex((item) => item.id === panelId)
+      const prevStill = at > 0 ? working.panels[at - 1]?.stillUrl : undefined
+      const compareUrls = plan.sameFraming
+        ? []
+        : [prevStill, ...refs.map((ref) => ref.url)].filter(
+            (url): url is string => Boolean(url?.startsWith('http')) && paintedUrls.has(url as string) && url !== panel.stillUrl,
+          )
+      const painted = await paintRegiePlannedStill({
         plan: { ...plan, refs },
         continuity: working.continuity ?? (await ensureFilmContinuity(dialog, working)),
         styleId: resolvedStyle,
         targetLanguage,
         fixEn: regie?.fixEn,
+        compareUrls,
       })
+      const url = painted.url
       const withNote = applyPanelHarvestNote(
-        withAttempt(applyPanelStill(working, panelId, url, resolvedStyle), url, true, refs),
+        withAttempt(applyPanelStill(working, panelId, url, resolvedStyle), url, true, refs, painted.copyOf),
         panelId,
         [
           PAINTED_WITH_PLAN_DE,
           regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
-          plan.refs.length ? `Mitgeschickt: ${plan.refs.length} Vorlage${plan.refs.length === 1 ? '' : 'n'}, von der Regie gewählt.` : '',
+          refs.length ? `Mitgeschickt: ${refs.length} Vorlage${refs.length === 1 ? '' : 'n'}, von der Regie gewählt.` : '',
+          painted.copyOf ? 'Fast gleich wie ein früheres Bild.' : '',
         ]
           .filter(Boolean)
           .join(' '),

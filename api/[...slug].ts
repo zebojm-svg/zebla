@@ -2145,12 +2145,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
       await gateAi(user.uid)
-      const { dialogId, panelId } = req.body as { dialogId?: string; panelId?: string }
+      const { dialogId, panelId, pickBest } = req.body as { dialogId?: string; panelId?: string; pickBest?: boolean }
       if (!dialogId?.trim() || !panelId?.trim()) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
         return
       }
-      const result = await judgeFilmPanel(dialogId.trim(), user.uid, panelId.trim(), profile)
+      const result = await judgeFilmPanel(dialogId.trim(), user.uid, panelId.trim(), profile, { pickBest: pickBest === true })
       res.json(result)
       return
     }

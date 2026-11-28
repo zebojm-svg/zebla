@@ -6,6 +6,8 @@ import { assertAiAllowed } from './ai-authorize.js'
  */
 
 import { randomUUID } from 'crypto'
+import { fetchImageBuffer, grayThumb } from './film-image-parts.js'
+import { nearCopy } from '../shared/film-regie-judge.js'
 import { geminiImageModelCandidates, isGeminiImageUnavailable } from './gemini-image-model.js'
 import {
   closeupLooksLikeWideCrop,
@@ -388,7 +390,9 @@ export async function paintRegiePlannedStill(opts: {
   styleId?: string
   targetLanguage?: string
   fixEn?: string
-}): Promise<string> {
+  /** Frühere Bilder, denen das neue nicht fast gleichen darf (voriges Bild, mitgeschickte frühere Bilder). */
+  compareUrls?: string[]
+}): Promise<{ url: string; copyOf?: string }> {
   const loaded = await Promise.all(
     opts.plan.refs.map(async (ref) => ({ ref, image: await fetchImageAsInline(ref.url) })),
   )
@@ -407,5 +411,28 @@ export async function paintRegiePlannedStill(opts: {
     }),
   })
   const buffer = await paintWithGemini(parts)
-  return await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
+  const url = await uploadPng(buffer, `film-stills/${randomUUID()}.png`)
+  const copyOf = await nearCopyOf(buffer, opts.compareUrls ?? [], refs)
+  return copyOf ? { url, copyOf } : { url }
+}
+
+/** Ist das neue Bild fast eine Kopie eines dieser früheren Bilder? Schon geladene Vorlagen werden nicht noch einmal geholt. */
+async function nearCopyOf(
+  buffer: Buffer,
+  urls: string[],
+  loaded: Array<{ ref: FilmRegiePlanRef; image: InlineImage }>,
+): Promise<string | undefined> {
+  const wanted = [...new Set(urls.filter((url) => url.startsWith('http')))].slice(0, 4)
+  if (!wanted.length) return undefined
+  const mine = await grayThumb(buffer)
+  if (!mine) return undefined
+  const thumbs = await Promise.all(
+    wanted.map(async (url) => {
+      const have = loaded.find((item) => item.ref.url === url)?.image
+      const data = have ? Buffer.from(have.data, 'base64') : (await fetchImageBuffer(url, 8_000))?.buffer
+      return data ? grayThumb(data) : null
+    }),
+  )
+  const index = thumbs.findIndex((thumb) => thumb && nearCopy(mine, thumb))
+  return index >= 0 ? wanted[index] : undefined
 }

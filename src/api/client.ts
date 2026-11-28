@@ -684,14 +684,15 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
-    filmJudge: (dialogId: string, panelId: string) =>
+    filmJudge: (dialogId: string, panelId: string, pickBest = false) =>
       request<{
         dialog: import('../types').Dialog
         board: import('../../shared/film-storyboard').FilmStoryboard
-        verdict: { ok: boolean; noteDe: string; fixEn: string; freshRefs: boolean }
+        verdict: import('../../shared/film-regie-judge').RegieVerdict
+        pickedAttempt?: number
       }>(
         '/film-storyboard-judge',
-        { method: 'POST', body: JSON.stringify({ dialogId, panelId }) },
+        { method: 'POST', body: JSON.stringify({ dialogId, panelId, pickBest }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
     filmPanelLayout: (

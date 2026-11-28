@@ -6,6 +6,7 @@
 
 import { tidyContinuity, type FilmContinuity } from './film-continuity.js'
 import type { FilmRegiePlan, RegieAttempt } from './film-regie-plan.js'
+import type { StoredRegieCheck } from './film-regie-judge.js'
 import { characterBaseName } from './character-parts.js'
 import { canonicalIdentityAssets, isCutoutFromStill } from './library-identities.js'
 import { lineSpeechText } from './line-speech.js'
@@ -102,7 +103,7 @@ export interface FilmStoryboardPanel {
   /** Nach dem Erzeugen: Figuren und Hintergrund in der Bibliothek. */
   harvestNoteDe?: string
   /** Die Regie hat dieses Bild angeschaut. Gilt nur, solange stillUrl dasselbe Bild ist. */
-  regieCheck?: { ok: boolean; noteDe: string; stillUrl: string }
+  regieCheck?: StoredRegieCheck & { stillUrl: string }
   /** Die Regie hat dieses Bild geplant: Ort, wer da ist, Kamera, Vorlagen. Bleibt beim Neumalen. */
   regiePlan?: FilmRegiePlan
   /** Warum die Regie dieses Bild nicht planen konnte (kurz, deutsch). Dann wurde ohne Plan gemalt. */

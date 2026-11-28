@@ -47,18 +47,33 @@ export async function stillWithRegie(opts: {
   )
   let result: StillStep = await api.ai.filmStill(opts.dialogId, opts.panelId, opts.styleId, undefined, undefined, planErrorDe)
   opts.onResult?.(result)
+  let judgeRetried = false
   for (let tries = 0; ; tries++) {
     if (stop()) return { ...result, stopped: true, painted: true }
     opts.onStatus?.(`Die Regie schaut ${opts.label} an …`)
     let judged: Awaited<ReturnType<typeof api.ai.filmJudge>>
+    const last = tries >= REGIE_TRIES
     try {
-      judged = await api.ai.filmJudge(opts.dialogId, opts.panelId)
+      judged = await api.ai.filmJudge(opts.dialogId, opts.panelId, last)
     } catch {
+      opts.onStatus?.(`${opts.label}: Die Regie konnte nicht anschauen. Das Bild bleibt, nicht geprüft.`)
       return { ...result, painted: true }
     }
     result = { dialog: judged.dialog, board: judged.board }
     opts.onResult?.(result)
-    if (judged.verdict.ok || tries >= REGIE_TRIES) return { ...result, painted: true }
+    if (!judged.verdict.checked) {
+      if (!judgeRetried && !stop()) {
+        judgeRetried = true
+        tries--
+        opts.onStatus?.(`${opts.label}: ${judged.verdict.noteDe} Die Regie schaut noch einmal …`)
+        continue
+      }
+      return { ...result, painted: true }
+    }
+    if (judged.pickedAttempt) {
+      opts.onStatus?.(`${opts.label}: Die Regie nimmt Versuch ${judged.pickedAttempt}, er hat am wenigsten Fehler.`)
+    }
+    if (judged.verdict.ok || last) return { ...result, painted: true }
     if (stop()) return { ...result, stopped: true, painted: true }
     opts.onStatus?.(`${opts.label}: ${judged.verdict.noteDe} Neu gemalt (${tries + 1} von ${REGIE_TRIES}) …`)
     result = await api.ai.filmStill(

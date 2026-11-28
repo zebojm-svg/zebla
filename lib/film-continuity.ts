@@ -1,4 +1,6 @@
-import { regieJson } from './ai.js'
+import { regieJson, regieJsonWithModel } from './ai.js'
+import { imagePartFromUrl, type InlinePart } from './film-image-parts.js'
+import { readJudgeAnswer, REGIE_CHECKS, uncheckedVerdict, type RegieVerdict } from '../shared/film-regie-judge.js'
 import { saveStoryAsset, setStoryAssetTags } from './story-library.js'
 import { generateStoryCharacter, generateStoryEnvironment } from './story-asset-gen.js'
 import { CHARACTER_REFERENCE_LINE, REFERENCE_TAG } from '../shared/reference-catalog.js'
@@ -382,68 +384,87 @@ async function imagePart(url: string, timeoutMs?: number): Promise<{ mimeType: s
   }
 }
 
-export interface RegieVerdict {
-  ok: boolean
-  noteDe: string
-  fixEn: string
-  /** Das Bild hat Dinge aus einem falschen früheren Bild übernommen: beim nächsten Versuch ohne Ortsbilder. */
-  freshRefs: boolean
-}
+export type { RegieVerdict } from '../shared/film-regie-judge.js'
 
-const JUDGE = `Du bist die Regie einer Bildergeschichte. Du siehst das neue Bild, dein Regiebuch und den Satz aus dem Dialog.
-Du urteilst nur daraus. Es gibt keine Liste von Orten, Tieren oder Geräten. Was hier gilt, steht im Regiebuch und im Satz.
-Prüfe der Reihe nach:
-1. Jede Person ist höchstens einmal zu sehen. Auch nicht zusätzlich auf einem zweiten Bildschirm, in einem eingeblendeten Fenster oder als Doppelgänger, ausser der Satz will das.
-2. Nur wer laut Regiebuch und Plan der Regie in diesem Moment an diesem Ort ist, ist körperlich hier. Wer laut Plan nur auf einem Bildschirm ist, ist nicht als Körper im Raum. Keine fremde Person, die im Regiebuch nicht vorkommt.
-3. Gesicht, Haare, Kleidung und Dinge am Körper wie im Regiebuch und wie auf den früheren Bildern derselben Person.
-4. Der Ort sieht aus wie im Regiebuch und im Plan. Dinge, die zu einem anderen Ort gehören, tauchen hier nicht auf. Ist es der Raum eines anderen Ortes, ist das ein Fehler, und freshRefs ist true. Vergleiche mit den früheren Bildern, die als «anderer Ort» bezeichnet sind: gleiche Möbel, gleiche Dinge an der Wand, gleiche Fenster hinter einer Person heissen, dass sie im falschen Raum ist. Das gilt auch für jemanden auf einem Bildschirm: er sitzt vor seinem eigenen Raum, nicht vor dem Raum einer anderen Person.
-5. Die Einstellung passt zum Satz und zum Plan: nah heisst, diese Person füllt das Bild.
-6. Unlesbare Fantasie-Schrift auf Zetteln, Schildern oder Bildschirmen ist ein Fehler, ausser der Satz braucht Schrift.
-7. Die Leute posieren nicht für den Zuschauer. Sie schauen ihr Gegenüber an oder das, womit sie beschäftigt sind, ausser der Satz spricht den Zuschauer an.
-8. Der Hintergrund passt zur Blickrichtung der Kamera und zur Beschreibung des Ortes: schaut die Kamera in die andere Richtung als auf einem früheren Bild am selben Ort, ist die gegenüberliegende Wand zu sehen.
-Licht und Gesichtsausdruck sind frei, solange sie zum Satz passen.
-JSON: { "ok": true, "noteDe": "", "fixEn": "", "freshRefs": false }
-ok ist false nur bei einem klaren Fehler aus der Liste.
-noteDe: ein kurzer deutscher Satz für Jean-Marie, was falsch ist (leer wenn ok).
-fixEn: was der Maler beim nächsten Versuch anders machen muss, englisch, konkret, mit Namen.
-freshRefs ist true, wenn das neue Bild Dinge aus einem der früheren Bilder übernommen hat, die nicht hierher gehören.`
+const JUDGE = `Du bist die Regie einer Bildergeschichte. Du prüfst ein frisch gemaltes Bild (Bild 1), bevor es in den Film kommt.
+Du urteilst nur aus Regiebuch, Plan, den Sätzen und den angehängten Bildern. Es gibt keine festen Regeln für bestimmte Orte, Tiere oder Geräte.
+Sei streng wie ein aufmerksamer Zuschauer: was er sofort als falsch sieht, ist ein Fehler. Licht, kleine Möbeldetails und der genaue Gesichtsausdruck sind frei, solange sie zum Satz passen.
+
+SCHRITT 1 — HINSCHAUEN. Beschreibe nüchtern, was auf Bild 1 wirklich zu sehen ist, bevor du urteilst. Nicht was zu sehen sein sollte.
+- people: jede Person (auch halb, am Rand, im Hintergrund, auf einer Fläche), mit Haaren und Kleidung
+- bodyParts: jede sichtbare Hand, jeder Arm, jedes Bein, jeder Fuss, jeder Kopf, und zu wem es gehört. Gehört etwas zu niemandem, schreib das.
+- surfaces: Bildschirme, Fernseher, Telefone, Spiegel, Tafeln, Bilder an der Wand, und was darauf zu sehen ist. Ein Bild oder Fenster, das frei in der Luft schwebt, nennst du extra.
+- place: Wände (Farbe), Boden, Fenster, Türen, Möbel, auffällige Dinge, und wo im Bild sie sind
+- camera: von wo die Kamera schaut (von vorne, von der Seite, von hinten) und wie nah
+- gaze: wohin jede Person schaut
+- action: was die Leute gerade tun
+
+SCHRITT 2 — PRÜFEN. Vergleiche deine Beschreibung mit Regiebuch, Plan, Sätzen und den anderen Bildern. Beantworte jede Prüfung mit pass true oder false:
+${REGIE_CHECKS.map((rule) => `- ${rule.id}: ${rule.askDe}`).join('\n')}
+
+Der Ort der Kamera ist der Raum um die Leute und um die Geräte. Was auf einer Fläche (Bildschirm, Spiegel, Tafel) zu sehen ist, gehört zum Ort, den der Plan für diese Fläche nennt. Ein Raum um ein Gerät ist kein Fehler, nur weil auf dem Gerät ein anderer Ort zu sehen ist.
+Das vorige Bild und frühere Bilder sind zum Vergleichen da. Sie können selbst falsch sein; massgebend sind Regiebuch und Plan.
+
+Nur JSON:
+{ "seen": { "people": "", "bodyParts": "", "surfaces": "", "place": "", "camera": "", "gaze": "", "action": "" },
+  "checks": [{ "id": "personen", "pass": true, "noteDe": "" }],
+  "fixEn": "", "freshRefs": false }
+checks enthält jede Prüfung genau einmal, mit ihrer id.
+noteDe nur bei pass false: ein kurzer deutscher Satz für Jean-Marie, ohne Fachwörter, was falsch ist.
+fixEn: was der Maler beim nächsten Versuch anders machen muss, englisch, konkret, mit Namen, nur zu den nicht bestandenen Prüfungen.
+freshRefs ist true, wenn das Bild den Raum oder Dinge aus einem früheren Bild eines anderen Ortes übernommen hat.`
+
+/** Die Regie schaut sich ein Bild höchstens so lange an; danach bleibt Zeit für Laden und Speichern (180 s je Anfrage). */
+export const JUDGE_TIMEOUT_MS = 110_000
+/** Vorlagen für das Urteil: verkleinert, damit es billig und schnell bleibt. */
+export const JUDGE_REF_WIDTH = 768
+export const JUDGE_MAX_REFS = 6
 
 /**
- * Die Regie schaut das fertige Bild an und vergleicht es mit Regiebuch, Satz und früheren Bildern.
- * Kein fester Satz für Videochat, See oder Ente — nur dieses Regiebuch und dieses Bild.
+ * Die Regie schaut das fertige Bild an: zuerst beschreiben, dann jede Prüfung mit ja oder nein.
+ * Kann sie nicht prüfen (Bild fehlt, Fehler, Zeitlimit), heisst das «nicht geprüft» — nie still «passt».
  */
 export async function judgeStoryStill(opts: {
   imageUrl: string
   regiebuchDe: string
-  lineDe: string
-  shotDe: string
+  linesDe: { before: string; now: string; after: string }
+  planDe: string
+  paintEn?: string
   refs: Array<{ url: string; roleDe: string }>
 }): Promise<RegieVerdict> {
-  const pass: RegieVerdict = { ok: true, noteDe: '', fixEn: '', freshRefs: false }
-  const still = await imagePart(opts.imageUrl)
-  if (!still) return pass
-  const refs: Array<{ part: { mimeType: string; data: string }; roleDe: string }> = []
-  for (const ref of opts.refs.slice(0, 4)) {
-    const part = await imagePart(ref.url)
-    if (part) refs.push({ part, roleDe: ref.roleDe })
-  }
-  const legend = [
-    'Bild 1: das neue Bild.',
-    ...refs.map((ref, index) => `Bild ${index + 2}: ${ref.roleDe}`),
-  ].join('\n')
+  const picked = opts.refs.slice(0, JUDGE_MAX_REFS)
+  const [still, ...parts] = await Promise.all([
+    imagePartFromUrl(opts.imageUrl, { timeoutMs: 15_000 }),
+    ...picked.map((ref) => imagePartFromUrl(ref.url, { timeoutMs: 8_000, maxWidth: JUDGE_REF_WIDTH })),
+  ])
+  if (!still) return uncheckedVerdict('Das Bild konnte nicht geladen werden')
+  const refs: Array<{ part: InlinePart; roleDe: string }> = []
+  parts.forEach((part, index) => {
+    if (part) refs.push({ part, roleDe: picked[index]!.roleDe })
+  })
+  const legend = ['Bild 1: das neue Bild, das du prüfst.', ...refs.map((ref, index) => `Bild ${index + 2}: ${ref.roleDe}`)].join('\n')
+  const ask = [
+    `REGIEBUCH:\n${opts.regiebuchDe || '—'}`,
+    `PLAN DER REGIE FÜR DIESES BILD: ${opts.planDe}`,
+    opts.paintEn ? `AUFTRAG AN DEN MALER (englisch): ${opts.paintEn}` : '',
+    `SATZ DAVOR: ${opts.linesDe.before || '—'}`,
+    `SATZ ZU DIESEM BILD: ${opts.linesDe.now || '—'}`,
+    `SATZ DANACH: ${opts.linesDe.after || '—'}`,
+    'Was erst im Satz danach passiert, muss hier noch nicht zu sehen sein.',
+    legend,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   try {
-    const raw = await regieJson<{ ok?: boolean; noteDe?: string; fixEn?: string; freshRefs?: boolean }>(
-      JUDGE,
-      `REGIEBUCH:\n${opts.regiebuchDe || '—'}\n\nEINSTELLUNG / PLAN: ${opts.shotDe}\nSATZ ZU DIESEM BILD: ${opts.lineDe || '—'}\n\n${legend}`,
-      [still, ...refs.map((ref) => ref.part)],
-      { temperature: 0.1, timeoutMs: 90_000, timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut.' },
-    )
-    const ok = raw.ok !== false
-    const noteDe = typeof raw.noteDe === 'string' ? raw.noteDe.trim().slice(0, 240) : ''
-    const fixEn = typeof raw.fixEn === 'string' ? raw.fixEn.trim().slice(0, 500) : ''
-    return ok ? pass : { ok, noteDe: noteDe || 'Das Bild passt nicht zum Regiebuch.', fixEn, freshRefs: raw.freshRefs === true }
-  } catch {
-    return pass
+    const { value, model } = await regieJsonWithModel<unknown>(JUDGE, ask, [still, ...refs.map((ref) => ref.part)], {
+      temperature: 0.1,
+      timeoutMs: JUDGE_TIMEOUT_MS,
+      timeoutMessage: 'Die Regie hat das Bild nicht rechtzeitig angeschaut',
+    })
+    return readJudgeAnswer(value, model)
+  } catch (err) {
+    const message = err instanceof Error ? err.message.trim() : ''
+    return uncheckedVerdict(message.slice(0, 160) || 'Die Regie hat nicht geantwortet')
   }
 }
 

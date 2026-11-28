@@ -166,7 +166,7 @@ if (!boardSrc.includes('carry?.byUser')) fail('«Bilder planen» löscht das ge�
 
 if (!contSrc.includes('aus jeder Richtung zeichnen')) fail('Orte im Regiebuch sagen, was an welcher Wand ist')
 if (!contSrc.includes('gegenüberliegende Wand')) fail('Gegenschuss zeigt die andere Wand (Regie-Satz, kein Code)')
-if (!contSrc.includes('posieren nicht')) fail('die Regie prüft, dass niemand für den Zuschauer posiert')
+if (!readFileSync('shared/film-regie-judge.ts', 'utf8').includes('posieren nicht')) fail('die Regie prüft, dass niemand für den Zuschauer posiert')
 
 const options = [
   { id: 'V1', url: 'https://example.com/lena.png', aboutDe: 'Stammbild von Lena' },

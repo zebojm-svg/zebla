@@ -1108,7 +1108,8 @@ if (!stillFn.includes('DIRECTOR FIX')) fail('Der Fehler, den die Regie sieht, ge
     fail('Nach jedem Bild schaut die Regie hin, höchstens zwei neue Versuche')
   }
   const judge = readFileSync('lib/film-continuity.ts', 'utf8')
-  if (!judge.includes('höchstens einmal zu sehen')) fail('Regie prüft: jede Person höchstens einmal')
+  const checklist = readFileSync('shared/film-regie-judge.ts', 'utf8')
+  if (!checklist.includes('jede höchstens einmal') || !judge.includes('REGIE_CHECKS')) fail('Regie prüft: jede Person höchstens einmal')
   if (/\b(videochat|ente|schwan)\b/i.test(judge.slice(judge.indexOf('const JUDGE'), judge.indexOf('/**', judge.indexOf('const JUDGE'))))) {
     fail('Die Bildprüfung kennt keine festen Orte oder Tiere')
   }
@@ -1160,7 +1161,7 @@ if (!stillGenSrc.includes('planErrorDe') || !stillGenSrc.includes('regiePlanErro
   if (judged?.[judged.length - 1]?.verdict?.noteDe !== 'Falscher Raum.') fail('Verlauf: Urteil gehört zum richtigen Versuch')
   const stillFnSrc = stillGenSrc.slice(stillGenSrc.indexOf('export async function stillFilmPanel'), stillGenSrc.indexOf('export async function saveFilmPlan'))
   if ((stillFnSrc.match(/withAttempt\(/g) ?? []).length < 3) fail('Verlauf: jeder Malweg schreibt einen Versuch')
-  if (!stillGenSrc.includes('setRegieAttemptVerdict(item.regieAttempts')) fail('Verlauf: das Urteil der Regie kommt zum Versuch')
+  if (!stillGenSrc.includes('setRegieAttemptVerdict(panel.regieAttempts')) fail('Verlauf: das Urteil der Regie kommt zum Versuch')
 }
 
 console.log('OK: Szene für Szene Standbilder, Dialog, Korrektur, Geschlecht, Sprache, Vorschau')
