@@ -4,7 +4,7 @@
  * Keine festen Regeln pro Lage — alles kommt aus Regiebuch und Dialog.
  */
 
-import type { FilmContinuity } from './film-continuity.js'
+import { placeForName, type FilmContinuity } from './film-continuity.js'
 import { isNarratorName, isStageSpeaker } from './types.js'
 
 export interface FilmRegiePlanRef {
@@ -128,7 +128,7 @@ export function readRegiePlan(
   if (!paintEn) return { errorDe: 'Die Regie hat keinen Auftrag an den Maler geschrieben.' }
   if (!cameraDe) return { errorDe: 'Die Regie hat nicht gesagt, wo die Kamera steht.' }
   const placeRaw = clip(row.place, 60)
-  const known = opts.places.find((name) => sameName(name, placeRaw))
+  const known = placeForName(opts.places, placeRaw)
   const place = known ?? placeRaw
   const placeLookEn = known ? '' : clip(row.placeLookEn, 400)
   const bodies = knownNames(row.bodies, opts.people)
@@ -208,7 +208,8 @@ export function regiePaintPromptEn(opts: {
   const people = (opts.continuity?.people ?? [])
     .filter((person) => inPlan(person.name))
     .map((person) => `${person.name}: ${person.lookEn}`)
-  const place = opts.continuity?.places.find((item) => sameName(item.name, opts.plan.place))
+  const placeName = placeForName(opts.continuity?.places.map((item) => item.name) ?? [], opts.plan.place)
+  const place = opts.continuity?.places.find((item) => item.name === placeName)
   const fix = opts.fixEn?.trim()
   return [
     fix ? `DIRECTOR FIX, the last try of this picture was wrong. This comes first: ${fix}` : '',

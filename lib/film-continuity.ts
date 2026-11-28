@@ -16,6 +16,7 @@ import {
   isRegieReading,
   fallbackContinuity,
   fallbackShots,
+  placesTooAlike,
   referenceJobs,
   regiebuchFromContinuity,
   regiebuchVorgabenDe,
@@ -41,9 +42,12 @@ Charakter, Laune, Hobbys und was die Person tut gehören NICHT in lookEn oder lo
 Keine bekannte Figur aus einem Buch oder Film.
 lookDe ist derselbe Inhalt auf Deutsch, in einfachen Sätzen. Jean-Marie liest ihn im Regiebuch.
 ORTE — konkret und unverwechselbar. lookEn und lookDe nennen bestimmte Möbel, Farben (Wände, Boden, Möbel) und Licht.
-Beschreibe jeden Ort so, dass man ihn aus jeder Richtung zeichnen kann: Wand für Wand, was an welcher Wand ist (Fenster, Tür, Regal, Bild, Möbel), wo die Person sitzt oder steht und in welche Richtung sie schaut.
+Beschreibe jeden Ort so, dass man ihn aus jeder Richtung zeichnen kann: Wand für Wand, was an welcher Wand ist (Fenster, Tür, Regal, Bild, Möbel).
+Ein Ort ist der LEERE Raum: keine Namen von Personen, keine Leute, nicht wer wo sitzt, steht oder hinschaut. Das entscheidet später der Plan für jedes einzelne Bild.
+Ein Raum ist genau EIN Ort. Ein Gegenstand, ein Detail oder eine andere Blickrichtung im selben Raum (eine Karte an der Wand, das Fenster, der Schreibtisch) ist kein eigener Ort; es steht in der Beschreibung dieses Raums. Die Ortsangaben bei den Bildern («Bild … | …») sind nur Hinweise vom Storyboard: gehören zwei Angaben zum selben Raum, ist es ein Ort mit einem Namen. Ein Bildschirm, auf dem man eine andere Person oder eine Seite sieht, darf ein eigener Ort sein.
 Ist eine Person an einem anderen Ort als die andere, bekommt jeder Ort einen eigenen Eintrag mit eigenem Namen.
-Zwei verschiedene Orte dürfen nie dieselbe Beschreibung haben. Gib jedem Ort andere Wandfarben, andere Möbel und eine andere Anordnung, so dass man auf einem Bild sofort erkennt, welcher Ort es ist. «Hell und freundlich» allein beschreibt keinen Ort.
+Zwei verschiedene Orte dürfen nie dieselbe Beschreibung haben, ausser die Geschichte sagt, dass es derselbe Raum ist. Gib jedem Ort eine andere Wandfarbe, einen anderen Boden, das Fenster an einer anderen Wand, die Möbel auf der anderen Seite und eigene, auffällige Dinge, so dass man auf einem Bild sofort erkennt, welcher Ort es ist. «Hell und freundlich» allein beschreibt keinen Ort.
+Angehängte Bilder und Raum-Vorlagen können falsch sein: oft hat der Maler einen Raum in den anderen kopiert. Sehen zwei Orte auf den Bildern gleich aus, ist das ein Fehler der Bilder; übernimm ihn nicht, sondern mach die Orte verschieden.
 Kamera-Regeln für alle Bilder: Ein Gegenschuss zeigt die gegenüberliegende Wand. Die Leute schauen ihr Gegenüber oder das an, womit sie gerade beschäftigt sind, nicht den Zuschauer, ausser der Satz spricht den Zuschauer an.
 Stehen VORGABEN VON JEAN-MARIE unter der Geschichte, gelten sie. Sie gehen dem Dialog vor, wo sie sich widersprechen.
 Nur JSON:
@@ -52,7 +56,7 @@ Nur JSON:
   "situationEn": "one English paragraph for the painter",
   "together": true,
   "people": [{ "name": "Lena", "lookEn": "woman about 30, light skin, short dark brown bob, round black glasses, green wool coat over a white shirt, blue jeans", "lookDe": "Frau um 30, helle Haut, kurzer dunkelbrauner Bob, runde schwarze Brille, grüner Wollmantel über weissem Hemd, blaue Jeans" }],
-  "places": [{ "name": "Küche", "lookEn": "kitchen with yellow walls and grey tiled floor. Left wall: white gas stove and a shelf with red pots. Back wall: window to the street with blue curtains. Right wall: wooden door. Round wooden table in the middle; Lena sits on its far side facing the window.", "lookDe": "Küche mit gelben Wänden und grauem Fliesenboden. Linke Wand: weisser Gasherd, Regal mit roten Töpfen. Hintere Wand: Fenster zur Strasse mit blauen Vorhängen. Rechte Wand: Holztür. Runder Holztisch in der Mitte; Lena sitzt auf der hinteren Seite und schaut zum Fenster." }],
+  "places": [{ "name": "Küche", "lookEn": "kitchen with yellow walls and grey tiled floor. Left wall: white gas stove and a shelf with red pots. Back wall: window to the street with blue curtains. Right wall: wooden door. Round wooden table with three chairs in the middle.", "lookDe": "Küche mit gelben Wänden und grauem Fliesenboden. Linke Wand: weisser Gasherd, Regal mit roten Töpfen. Hintere Wand: Fenster zur Strasse mit blauen Vorhängen. Rechte Wand: Holztür. Runder Holztisch mit drei Stühlen in der Mitte." }],
   "locksEn": ["same green coat in every frame"],
   "shots": [
     { "panelId": "die echte Bild-id", "viewKey": "kueche|weit", "sendViewKeys": [], "whyDe": "erster Blick auf die Küche" }
@@ -154,7 +158,7 @@ async function readStory(
     text,
     vorgabenDe.trim() ? `VORGABEN VON JEAN-MARIE:\n${vorgabenDe}` : '',
     legend.length
-      ? `SCHON GEMALTE BILDER (angehängt, von der Regie gutgeheissen):\n${legend.join('\n')}\nNimm das Aussehen der Leute und Orte aus diesen Bildern, damit das Regiebuch zum Gemalten passt. Vorgaben von Jean-Marie gehen vor.`
+      ? `SCHON GEMALTE BILDER (angehängt, von der Regie gutgeheissen):\n${legend.join('\n')}\nNimm das Aussehen der Leute aus diesen Bildern, damit das Regiebuch zum Gemalten passt. Räume nur, wenn sie zur Geschichte passen: sehen zwei verschiedene Orte auf den Bildern gleich aus, hat der Maler kopiert — beschreibe sie trotzdem verschieden. Vorgaben von Jean-Marie gehen vor.`
       : '',
   ]
     .filter(Boolean)
@@ -178,7 +182,17 @@ async function readStory(
     }
   }
   const first = await askRegie('', budget - (Date.now() - started))
-  if (first.continuity) return { continuity: first.continuity }
+  if (first.continuity) {
+    const alike = placesTooAlike(first.continuity.places)
+    const room = budget - (Date.now() - started)
+    if (!alike.length || room < REPAIR_MIN_MS) return { continuity: first.continuity }
+    const pairs = alike.map(([a, b]) => `«${a}» und «${b}»`).join(', ')
+    const better = await askRegie(
+      `DEINE LETZTE ANTWORT: die Orte ${pairs} sind fast gleich beschrieben. Es sind verschiedene Räume. Schreib das ganze JSON noch einmal und mach sie klar verschieden: andere Wandfarbe, anderer Boden, Fenster an einer anderen Wand, Möbel auf der anderen Seite, eigene auffällige Dinge.`,
+      room - 3_000,
+    )
+    return { continuity: better.continuity ?? first.continuity }
+  }
   const left = budget - (Date.now() - started)
   if ('failed' in first || left < REPAIR_MIN_MS) return { errorDe: first.errorDe as string }
   const again = await askRegie(

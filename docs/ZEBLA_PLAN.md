@@ -114,14 +114,15 @@ Bauschritte:
    **2b. Planen aus dem Regiebuch — gebaut (28. Nov 2026), live noch nicht ausprobiert.** Anlass: Videochat Amir/Lena — Amir wurde zur Frau, Leute posierten für den Zuschauer, falscher Raum hinter der Person, Gegenschuss ohne andere Wand.
    - Vor jedem Bild plant die Regie (Pro, eigene Anfrage): welcher Ort, wer körperlich da ist, wer nur auf einem Bildschirm, wo die Kamera steht und wohin sie schaut, welche Vorlagen (höchstens 3) mit und wofür.
    - Ablauf je Bild: planen → malen → anschauen → bei Fehler neu malen (Plan bleibt, Korrektur dazu), höchstens zweimal.
-   - Orte im Regiebuch sagen, was an welcher Wand ist und wohin die Person schaut. Gegenschuss = andere Wand. Niemand posiert für den Zuschauer. Das steht im Regie-Text, nicht als Regel im Programm.
+   - Orte im Regiebuch sagen, was an welcher Wand ist. Gegenschuss = andere Wand.
+   - **Ein Raum = ein Ort (28. Nov).** «Lenas Zimmer Karte» ist Lenas Zimmer, kein zweiter Ort (Regiebuch, Plan, Anschauen). Ein Ort ist der leere Raum: wer wo sitzt, steht im Plan je Bild, nicht im Ort. Zwei Zimmer verschiedener Leute sehen klar anders aus (Wandfarbe, Fenster, Möbelseite, eigene Dinge); sind sie fast gleich beschrieben, fragt Zebla die Regie einmal nach. Alte Bilder können einen Raum kopiert haben — die Regie übernimmt das nicht. Niemand posiert für den Zuschauer. Das steht im Regie-Text, nicht als Regel im Programm.
    - Mit Plan malt der Maler nur nach dem Plan: keine alten Ortsregeln, kein Heranfahren mit FLUX. «Bild ändern» mit Hinweis geht noch den alten Weg.
    - Unter jedem Bild ein Satz «Regie: …» (wo die Kamera steht).
    - Alte Regiebücher: einmal «Neu lesen», damit die Orte die Wände beschreiben.
    - Kosten: ein Pro-Aufruf mehr pro Bild (etwa 1–2 Rappen).
    - **Erster Lauf (28. Nov):** alle 6 Bilder auf dem alten Weg gemalt, der Plan griff nicht und niemand sah es. Folgen: Amir an einem zweiten Pult (Bild 2), Lena auf dem Bildschirm vor Amirs Zimmer (Bild 5).
    - **Nie mehr still:** Kann die Regie nicht planen, steht unter dem Bild «Regie konnte dieses Bild nicht planen: Grund. Gemalt wurde ohne Plan.» Auch in der Statuszeile. Jede Bild-Notiz beginnt mit «Gemalt nach dem Plan der Regie.» oder «Gemalt ohne Plan der Regie (alter Weg).»
-   - Fehlt ein Ort im Regiebuch (z.B. nur ein Ort für zwei Zimmer), darf die Regie einen neuen Ort nennen und beschreiben. Er gilt.
+   - Fehlt ein Ort im Regiebuch (z.B. nur ein Ort für zwei Zimmer), darf die Regie einen neuen Ort nennen und beschreiben. Er gilt. Ein Detail im selben Raum (Karte, Fenster) ist kein neuer Ort.
    - «Handlung», «Erzähler» sind keine Person: die Regie liest die Handlung und entscheidet, wer zu sehen ist.
    - Anschauen: die Regie bekommt ein früheres Bild vom selben Ort und eins vom anderen Ort («darf hier nicht erscheinen»). Wer auf einem Bildschirm ist, sitzt vor seinem eigenen Raum.
    - Regie-Planung darf bis 2 Minuten brauchen (vorher 1½).

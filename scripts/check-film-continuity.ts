@@ -13,6 +13,8 @@ import {
   continuitySourceKey,
   directorStillUrls,
   isRegieReading,
+  placeForName,
+  placesTooAlike,
   fallbackContinuity,
   fallbackShots,
   referenceJobs,
@@ -306,5 +308,72 @@ if (!boardSrc.includes('regieCheck?.ok && panel.regieCheck.stillUrl === url')) f
     fail('das Regiebuch sagt, wenn die Regie nicht lesen konnte, statt «hat gelesen»')
   }
 }
+
+const lenaRoom =
+  'Lenas Zimmer mit hellbeigen Wänden und hellem Holzfussboden. Links steht ein Holzschreibtisch mit Schubladen, darauf ein grauer Laptop, ein Stapel Bücher (teilweise mit persischer Schrift) und eine Tischlampe mit beigem Schirm. An der Rückwand hängt eine Korktafel mit Notizen und einem kleinen gerahmten Bild. Eine kleine grüne Zimmerpflanze steht auf einem niedrigen Holzregal rechts. Lena sitzt am Schreibtisch und schaut auf den Laptop.'
+const amirRoom =
+  'Amirs Zimmer mit hellbeigen Wänden und hellem Holzfussboden. Links steht ein Holzschreibtisch mit Schubladen, darauf ein grauer Laptop, ein Stapel Bücher (teilweise mit persischer Schrift) und eine Tischlampe mit beigem Schirm. An der Rückwand befindet sich ein Fenster mit einem Heizkörper darunter. Eine Korktafel mit Notizen und einem kleinen gerahmten Bild hängt am linken Teil der Rückwand. Rechts steht ein Holzregal. Amir sitzt am Schreibtisch und schaut auf den Laptop.'
+const twoRooms = sanitizeContinuity(
+  {
+    situationDe: 'Erste Begegnung im Videochat',
+    situationEn: 'First meeting by video call.',
+    together: false,
+    people: [
+      { name: 'Lena', lookEn: 'young woman, green t-shirt' },
+      { name: 'Amir', lookEn: 'young man, orange shirt' },
+    ],
+    places: [
+      { name: 'Lenas Zimmer', lookEn: "Lena's room, beige walls. Lena sits at the desk.", lookDe: lenaRoom },
+      { name: 'Lenas Zimmer Karte', lookEn: 'same room, map of Tehran', lookDe: lenaRoom.replace('kleinen gerahmten Bild', 'Karte von Teheran') },
+      { name: 'Amirs Zimmer', lookEn: 'Amir sits at his desk. Window on the back wall.', lookDe: amirRoom },
+      { name: 'Amirs Zimmer (Karte)', lookEn: 'map', lookDe: amirRoom },
+      { name: 'Lenas Bildschirm', lookEn: 'laptop screen with a video call', lookDe: 'Lenas Laptop-Bildschirm.' },
+    ],
+    locksEn: [],
+    shots: [
+      { panelId: 'p1', viewKey: 'lenas zimmer|weit', sendViewKeys: [] },
+      { panelId: 'p2', viewKey: 'lenas zimmer karte|weit', sendViewKeys: ['lenas zimmer karte|weit', 'lenas zimmer|weit'] },
+      { panelId: 'p3', viewKey: 'amirs-zimmer-karte|nah', sendViewKeys: [] },
+    ],
+  },
+  'x',
+  [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+)
+if (!twoRooms) fail('Regiebuch mit zwei Zimmern wird gelesen')
+if (twoRooms.places.map((place) => place.name).join() !== 'Lenas Zimmer,Amirs Zimmer,Lenas Bildschirm') {
+  fail(`ein Raum ist ein Ort, «… Karte» fällt weg: ${twoRooms.places.map((place) => place.name).join()}`)
+}
+for (const place of twoRooms.places) {
+  if (/\b(Lena|Amir)\b(?!['’]s)/.test(`${place.lookDe} ${place.lookEn}`)) fail(`Ort «${place.name}» beschreibt den leeren Raum, ohne Leute`)
+}
+if (!twoRooms.places[0]!.lookDe!.startsWith('Lenas Zimmer mit hellbeigen') || !twoRooms.places[0]!.lookEn.includes("Lena's room")) {
+  fail('«Lenas Zimmer» und «Lena\'s room» bleiben stehen, nur Sätze mit Leuten fallen weg')
+}
+const p2 = twoRooms.shots.find((shot) => shot.panelId === 'p2')!
+if (p2.viewKey !== 'lenas zimmer|karte|weit' || p2.sendViewKeys.join() !== 'lenas zimmer|karte|weit,lenas zimmer|weit') {
+  fail(`Blicke der «Karte» gehören zu Lenas Zimmer: ${p2.viewKey} / ${p2.sendViewKeys.join()}`)
+}
+if (twoRooms.shots.find((shot) => shot.panelId === 'p3')!.viewKey !== 'amirs zimmer|karte|nah') fail('auch «amirs-zimmer-karte» gehört zu Amirs Zimmer')
+if (placeForName(['Lenas Zimmer', 'Amirs Zimmer'], 'Lenas Zimmer Karte') !== 'Lenas Zimmer') fail('«Lenas Zimmer Karte» ist Lenas Zimmer')
+if (placeForName(['Lenas Zimmer', 'Amirs Zimmer'], 'Küche')) fail('ein fremder Name ist kein bekannter Ort')
+const planKarte = readRegiePlan(
+  { place: 'Lenas Zimmer Karte', placeLookEn: 'map', cameraDe: 'Nah auf die Karte.', paintEn: 'map on the wall' },
+  { places: ['Lenas Zimmer', 'Amirs Zimmer'], people: ['Lena', 'Amir'], options: [] },
+)
+if (planKarte.plan?.place !== 'Lenas Zimmer' || planKarte.plan.placeLookEn) fail('der Plan nimmt den Raum aus dem Regiebuch, keinen neuen Ort')
+if (placesTooAlike([{ name: 'Lenas Zimmer', lookEn: '', lookDe: lenaRoom }, { name: 'Amirs Zimmer', lookEn: '', lookDe: amirRoom }]).length !== 1) {
+  fail('zwei fast gleiche Zimmer werden erkannt')
+}
+if (placesTooAlike([
+  { name: 'Lenas Zimmer', lookEn: '', lookDe: lenaRoom },
+  { name: 'Amirs Zimmer', lookEn: '', lookDe: 'Amirs Zimmer mit dunkelgrünen Wänden und grauem Teppich. Rechts ein schwarzer Metalltisch vor dem Fenster, darauf ein silberner Laptop. Hinten ein volles Bücherregal bis zur Decke, daneben eine Gitarre an der Wand und ein Poster von Isfahan. Links ein ungemachtes Bett mit blauer Decke.' },
+]).length) {
+  fail('verschiedene Zimmer gelten nicht als gleich')
+}
+if (!contSrc.includes('LEERE Raum') || !contSrc.includes('genau EIN Ort') || !contSrc.includes('placesTooAlike')) {
+  fail('die Regie beschreibt leere Räume, einen Ort pro Raum, und fragt nach, wenn zwei Orte gleich sind')
+}
+if (!contSrc.includes('Maler einen Raum in den anderen kopiert')) fail('die Regie weiss, dass Vorlagen falsch sein können')
+if (!judgeFn.includes('placeForName')) fail('das Urteil zählt «Lenas Zimmer Karte» als Lenas Zimmer')
 
 console.log('OK film-continuity')

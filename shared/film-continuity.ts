@@ -231,6 +231,85 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
+function nameWords(name: string): string[] {
+  return name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+}
+
+function startsWithWords(words: string[], head: string[]): boolean {
+  return head.length > 0 && head.length <= words.length && head.every((word, index) => words[index] === word)
+}
+
+/**
+ * Ein Raum ist ein Ort. «Lenas Zimmer Karte» oder «Lenas Zimmer (Fenster)» ist «Lenas Zimmer».
+ * Ohne Treffer: undefined.
+ */
+export function placeForName(known: string[], raw: string): string | undefined {
+  const exact = known.find((name) => sameName(name, raw))
+  if (exact) return exact
+  const words = nameWords(raw)
+  return known
+    .filter((name) => startsWithWords(words, nameWords(name)))
+    .sort((a, b) => nameWords(b).length - nameWords(a).length)[0]
+}
+
+/** Sätze, in denen eine Person vorkommt, gehören nicht in die Beschreibung eines Ortes. */
+export function withoutPeople(text: string, names: string[]): string {
+  const patterns = names
+    .map((name) => name.trim())
+    .filter((name) => name.length >= 2)
+    .map((name) => new RegExp(`(^|[^\\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\p{L})(?!['’]s\\b)`, 'iu'))
+  if (!patterns.length) return text
+  const sentences = text.split(/(?<=[.!?;])\s+/)
+  const kept = sentences.filter((sentence) => !patterns.some((pattern) => pattern.test(sentence)))
+  return kept.length ? kept.join(' ').trim() : text
+}
+
+function mergePlaces(places: FilmContinuityPlace[]): FilmContinuityPlace[] {
+  const names = places.map((place) => place.name)
+  const kept: FilmContinuityPlace[] = []
+  for (const place of places) {
+    const others = names.filter((name) => !sameName(name, place.name))
+    const owner = placeForName(others, place.name) ?? place.name
+    const root = placeForName(names.filter((name) => !sameName(name, owner)), owner) ?? owner
+    if (kept.some((have) => sameName(have.name, root))) continue
+    kept.push(places.find((item) => sameName(item.name, root)) ?? place)
+  }
+  return kept
+}
+
+/** «lenas zimmer karte|weit» wird «lenas zimmer|karte|weit», wenn die Karte zu Lenas Zimmer gehört. */
+function remapViewKey(key: string, placeNames: string[], heads: Map<string, string>): string {
+  const cut = key.indexOf('|')
+  const head = cut >= 0 ? key.slice(0, cut) : key
+  const rest = cut >= 0 ? key.slice(cut) : ''
+  const place = placeForName(placeNames, head)
+  if (!place) return key
+  const words = nameWords(head)
+  const placeWords = nameWords(place)
+  if (words.length === placeWords.length) return key
+  const placeHead = heads.get(place.toLowerCase()) ?? place.toLowerCase()
+  return `${placeHead}|${words.slice(placeWords.length).join(' ')}${rest}`
+}
+
+function wordSet(text: string): Set<string> {
+  return new Set(nameWords(text).filter((word) => word.length > 3))
+}
+
+/** Zwei verschiedene Orte, die fast gleich beschrieben sind. */
+export function placesTooAlike(places: FilmContinuityPlace[], limit = 0.55): Array<[string, string]> {
+  const pairs: Array<[string, string]> = []
+  for (let i = 0; i < places.length; i++) {
+    for (let j = i + 1; j < places.length; j++) {
+      const a = wordSet(places[i]!.lookDe || places[i]!.lookEn)
+      const b = wordSet(places[j]!.lookDe || places[j]!.lookEn)
+      if (a.size < 8 || b.size < 8) continue
+      const both = [...a].filter((word) => b.has(word)).length
+      if (both / (a.size + b.size - both) >= limit) pairs.push([places[i]!.name, places[j]!.name])
+    }
+  }
+  return pairs
+}
+
 export function directorStillUrls(
   panels: Array<{ id: string; stillUrl?: string }>,
   continuity: FilmContinuity | undefined,
@@ -304,18 +383,19 @@ export function sanitizeContinuity(
         .filter((person): person is FilmContinuityPerson => Boolean(person))
         .slice(0, 8)
     : []
-  const places = Array.isArray(row.places)
+  const names = people.map((person) => person.name)
+  const read = Array.isArray(row.places)
     ? row.places
         .map((place) => {
           const item = place as Record<string, unknown>
           const name = clip(item?.name, 40)
-          const lookEn = clip(item?.lookEn, 900)
-          const lookDe = clip(item?.lookDe, 900)
+          const lookEn = withoutPeople(clip(item?.lookEn, 900), names)
+          const lookDe = withoutPeople(clip(item?.lookDe, 900), names)
           return name && lookEn ? { name, lookEn, ...(lookDe ? { lookDe } : {}) } : null
         })
         .filter((place): place is FilmContinuityPlace => Boolean(place))
-        .slice(0, 6)
     : []
+  const places = mergePlaces(read).slice(0, 6)
   const locksEn = Array.isArray(row.locksEn)
     ? row.locksEn.map((line) => clip(line, 200)).filter(Boolean).slice(0, 8)
     : []
@@ -339,6 +419,19 @@ export function sanitizeContinuity(
         })
         .filter((shot): shot is FilmShotLink => Boolean(shot))
     : []
+  const placeNames = places.map((place) => place.name)
+  const heads = new Map<string, string>()
+  for (const shot of fromAi) {
+    const head = shot.viewKey.split('|')[0] ?? ''
+    const place = placeForName(placeNames, head)
+    if (place && nameWords(head).length === nameWords(place).length && !heads.has(place.toLowerCase())) {
+      heads.set(place.toLowerCase(), head)
+    }
+  }
+  for (const shot of fromAi) {
+    shot.viewKey = remapViewKey(shot.viewKey, placeNames, heads)
+    shot.sendViewKeys = [...new Set(shot.sendViewKeys.map((key) => remapViewKey(key, placeNames, heads)))]
+  }
   const fallback = fallbackShots(panels)
   const shots = fallback.map((shot) => fromAi.find((item) => item.panelId === shot.panelId) ?? shot)
   return {
