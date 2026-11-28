@@ -111,6 +111,16 @@ const jobs = referenceJobs({
   hasPlace: () => false,
 })
 if (jobs[0]?.kind !== 'person-front') fail('zuerst das Stammbild, dann die Seitenansicht')
+const jobs2 = referenceJobs({
+  continuity: room,
+  hasFront: () => true,
+  portraitAsset: () => ({ url: 'https://example.com/x.png', description: 'green t-shirt' }),
+  hasSide: () => false,
+  hasPlace: () => false,
+})
+if (!jobs2.some((job) => job.kind === 'person-front-check')) {
+  fail('hat ein Stammbild, aber andere Kleidung im Text: Regie vergleicht zuerst')
+}
 if (!jobs.some((job) => job.kind === 'place')) fail('der Raum wird als Referenz geplant')
 if (DEFAULT_STORY_ART_STYLE !== 'filmzeichnung') fail('der Zeichenstil ist die Filmzeichnung')
 if (!paintingStyleText('photoreal').includes('animated-film')) fail('ohne bewusste Foto-Wahl wird gezeichnet')
@@ -160,6 +170,17 @@ if (!vorgaben.includes('Amir: Mann mit Headset') || !vorgaben.includes('Gilt: Am
 }
 if (sanitizeRegiebuchEdit({ people: [{ name: '' }] })?.people.length !== 0) fail('leere Namen fallen weg')
 const contSrc = readFileSync('lib/film-continuity.ts', 'utf8')
+if (!contSrc.includes('person-front-check') || !contSrc.includes('judgePortraitPlate')) {
+  fail('Stammbild wird mit Regiebuch verglichen, bei Abweichung neu gezeichnet')
+}
+if (!src.includes('redrawSpeakerPortrait')) fail('im Regiebuch kann man das Stammbild neu zeichnen')
+if (!readFileSync('shared/film-portrait-plate.ts', 'utf8').includes('portraitPaintUrl')) {
+  fail('an den Maler geht nur ein geprüftes Stammbild')
+}
+const printUi = readFileSync('src/story/FilmStoryboardPrintPage.tsx', 'utf8')
+if (!printUi.includes('window.print') || !printUi.includes('film-print-figure')) {
+  fail('Druckansicht: Bilder ganz, ein Dokument')
+}
 if (!contSrc.includes('VORGABEN VON JEAN-MARIE')) fail('Regie liest Jean-Maries Änderungen als Vorgabe')
 const boardSrc = readFileSync('lib/film-storyboard.ts', 'utf8')
 if (!boardSrc.includes('carry?.byUser')) fail('«Bilder planen» löscht das geänderte Regiebuch nicht')

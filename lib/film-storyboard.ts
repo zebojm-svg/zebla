@@ -99,6 +99,10 @@ import {
   placePlate,
   sidePlate,
   stampReferenceFaces,
+  judgePortraitPlate,
+  portraitFailedDe,
+  portraitPaintUrl,
+  portraitRefUrl,
 } from './film-continuity.js'
 import {
   directorStillUrls,
@@ -108,8 +112,14 @@ import {
   type FilmContinuity,
   type RegiebuchEdit,
 } from '../shared/film-continuity.js'
-import { identityReferenceUrl } from '../shared/library-identities.js'
 import { pickedCastUrl, type CatalogCast } from '../shared/catalog-cast.js'
+import {
+  portraitFor,
+  portraitLookKey,
+  portraitStateDe,
+  withPortraitStamp,
+  type FilmPortraitStamp,
+} from '../shared/film-portrait-plate.js'
 import type { StoryLibraryAsset } from '../shared/story-types.js'
 import { libraryForCompose, rematchFilmBoard } from '../shared/film-library-harvest.js'
 import {
@@ -1087,7 +1097,8 @@ async function askRegieForPlan(
   }
   for (const person of continuity.people) {
     offer(
-      pickedCastUrl(library, picks?.personIds, person.name) || identityReferenceUrl(library, person.name),
+      portraitPaintUrl(continuity, library, picks ?? null, person.name, person.lookEn) ||
+        portraitRefUrl(library, picks ?? null, person.name),
       `Stammbild von ${person.name}, von vorne, ohne Raum.`,
     )
     offer(sidePlate(library, person.name)?.imageUrl, `Seitenansicht von ${person.name}, ohne Raum.`)
@@ -1253,7 +1264,16 @@ function judgeRefs(opts: {
     ? [...plan.bodies, ...plan.screens]
     : [panelPersonName(panel)].filter(Boolean)
   for (const name of who.slice(0, 3)) {
-    add(pickedCastUrl(library, picks?.personIds, name) || identityReferenceUrl(library, name), `Stammbild von ${name}.`)
+    const look =
+      continuity.people.find((person) => person.name.trim().toLowerCase() === name.trim().toLowerCase())?.lookEn ?? ''
+    const paintUrl = portraitPaintUrl(continuity, library, picks ?? null, name, look)
+    const refUrl = paintUrl || portraitRefUrl(library, picks ?? null, name)
+    add(
+      refUrl,
+      paintUrl
+        ? `Stammbild von ${name}.`
+        : `Stammbild von ${name} — passt eventuell nicht zum Regiebuch; Kleidung genau vergleichen.`,
+    )
   }
   const earlier = board.panels.slice(0, index).filter((item) => item.stillUrl?.startsWith('http'))
   const usable = (item: FilmStoryboardPanel) =>
@@ -1428,6 +1448,83 @@ export async function redrawRoomPlate(
     ]
       .filter(Boolean)
       .join(' '),
+  }
+}
+
+/** «Stammbild neu zeichnen» im Regiebuch — Kleidung und Haare wie im lookEn. */
+export async function redrawSpeakerPortrait(
+  dialogId: string,
+  userId: string,
+  personName: string,
+  opts: { note?: string; styleId?: string; profile?: UserProfile | null },
+): Promise<{ dialog: Dialog; board: FilmStoryboard; noteDe: string }> {
+  const dialog = await getDialog(dialogId, userId, opts.profile)
+  if (!dialog || !isFilmStoryboard(dialog.filmStoryboard)) throw new Error('Kein Storyboard.')
+  const board = normalizeFilmStoryboard(dialog.filmStoryboard)
+  const continuity = board.continuity
+  const person = continuity?.people.find(
+    (item) => item.name.trim().toLowerCase() === personName.trim().toLowerCase(),
+  )
+  if (!continuity || !person) throw new Error(`Die Person «${personName}» steht nicht im Regiebuch.`)
+  const fromPlan = dialog.filmPlan?.scenes.find((scene) => scene.styleId)?.styleId
+  const style = paintingStyleId(
+    (opts.styleId && isStoryArtStyleId(opts.styleId) ? opts.styleId : undefined) ||
+      (fromPlan && isStoryArtStyleId(fromPlan) ? fromPlan : undefined) ||
+      DEFAULT_STORY_ART_STYLE,
+  )
+  const library0 = libraryForCompose(await listStoryAssets(userId))
+  let lookEn = person.lookEn
+  if (opts.note?.trim()) lookEn = `${lookEn}\nChange note: ${opts.note.trim()}`
+  let plated: Awaited<ReturnType<typeof ensureSpeakerPlate>>
+  try {
+    plated = await ensureSpeakerPlate({
+      userId,
+      library: library0,
+      name: person.name,
+      lookEn,
+      styleId: isStoryArtStyleId(style) ? style : undefined,
+      pickedIds: dialog.catalogCast?.personIds,
+      continuity,
+      force: true,
+    })
+  } catch (err) {
+    throw new Error(portraitFailedDe(person.name, err instanceof Error ? err.message.slice(0, 160) : ''), { cause: err })
+  }
+  const checked = plated.imageUrl
+    ? await judgePortraitPlate({ url: plated.imageUrl, name: person.name, lookEn: person.lookEn })
+  : null
+  const old = portraitFor(continuity.portraitStamps, person.name)
+  const stamp: FilmPortraitStamp = {
+    name: person.name,
+    lookKey: portraitLookKey(person.lookEn),
+    url: plated.imageUrl as string,
+    tries: (old?.tries ?? 0) + 1,
+    byUser: true,
+    ...(opts.note?.trim() ? { hintDe: opts.note.trim() } : {}),
+    at: new Date().toISOString(),
+    ...(checked
+      ? { checked: true, ok: checked.ok, noteDe: checked.noteDe, fixEn: checked.fixEn, model: checked.model }
+      : { checked: true, ok: true, noteDe: 'Neu gezeichnet. Die Regie konnte noch nicht vergleichen.' }),
+  }
+  const nextBoard: FilmStoryboard = {
+    ...board,
+    continuity: {
+      ...(plated.continuity ?? continuity),
+      portraitStamps: withPortraitStamp((plated.continuity ?? continuity).portraitStamps, stamp),
+    },
+  }
+  const updated = await updateDialog(dialogId, userId, { filmStoryboard: normalizeFilmStoryboard(nextBoard) }, opts.profile)
+  if (!updated || !isFilmStoryboard(updated.filmStoryboard)) {
+    throw new Error('Das Stammbild konnte nicht gespeichert werden.')
+  }
+  return {
+    dialog: updated,
+    board: updated.filmStoryboard,
+    noteDe: [
+      `Stammbild von ${person.name} neu gezeichnet.`,
+      portraitStateDe(stamp),
+      'Die nächsten Bilder nehmen dieses Referenzbild.',
+    ].join(' '),
   }
 }
 
@@ -1783,9 +1880,16 @@ export async function stillFilmPanel(
           lookEn: look?.lookEn || speaker,
           styleId: resolvedStyle,
           pickedIds: dialog.catalogCast?.personIds,
+          continuity: storyContinuity,
         })
         faceLibrary = plated.library
-        panelForGen = stampReferenceFaces(panelForGen, plated.library, dialog.catalogCast?.personIds)
+        if (plated.continuity) boardForGen = { ...boardForGen, continuity: plated.continuity }
+        panelForGen = stampReferenceFaces(
+          panelForGen,
+          plated.library,
+          dialog.catalogCast?.personIds,
+          boardForGen.continuity,
+        )
         boardForGen = {
           ...boardForGen,
           panels: boardForGen.panels.map((item) => (item.id === panelForGen.id ? panelForGen : item)),

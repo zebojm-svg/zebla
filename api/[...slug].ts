@@ -130,7 +130,7 @@ import type { PublicCatalogMediaKind } from '../shared/public-catalog.js'
 import { currentStillsStatus } from '../lib/story-stills-gen.js'
 import { STILL_POSES, isStillPoseId } from '../shared/story-stills.js'
 import { sanitizeRegiebuchEdit } from '../shared/film-continuity.js'
-import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary, reviewFilmScene } from '../lib/film-storyboard.js'
+import { planFilmStoryboard, resetFilmStoryboardFromDialog, tweakFilmPanel, regenerateFilmScenes, commentFilmPanel, cueFilmPanel, noteFilmScene, insertFilmPanel, insertFilmScene, removeFilmScene, removeFilmPanel, saveFilmPack, writeFilmSceneDialog, sketchFilmPanel, stillFilmPanel, prepareFilmReferences, redrawRoomPlate, redrawSpeakerPortrait, regiebuchFilm, judgeFilmPanel, planFilmPanel, planFilmPanelStillEdit, saveFilmPlan, saveFilmPanelLayout, rematchFilmLibrary, reviewFilmScene } from '../lib/film-storyboard.js'
 import { getOrCreateSceneBed, readSceneBed } from '../lib/scene-bed.js'
 import { sceneBedExists } from '../lib/audio-storage.js'
 import { generateFilmFromPrompt, regieModelHealth } from '../lib/ai.js'
@@ -2130,6 +2130,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       const result = await redrawRoomPlate(dialogId.trim(), user.uid, place.trim(), {
+        note: note?.trim(),
+        styleId: styleId?.trim(),
+        profile,
+      })
+      res.json(result)
+      return
+    }
+
+    if (route === 'film-portrait' && req.method === 'POST') {
+      const user = await requireAuth(req)
+      const profile = await requireProfile(user.uid)
+      await gateAi(user.uid)
+      const { dialogId, person, note, styleId } = req.body as {
+        dialogId?: string
+        person?: string
+        note?: string
+        styleId?: string
+      }
+      if (!dialogId?.trim() || !person?.trim()) {
+        res.status(400).json({ error: 'dialogId oder Person fehlt.' })
+        return
+      }
+      const result = await redrawSpeakerPortrait(dialogId.trim(), user.uid, person.trim(), {
         note: note?.trim(),
         styleId: styleId?.trim(),
         profile,

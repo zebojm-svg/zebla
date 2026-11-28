@@ -29,6 +29,18 @@ import {
 } from '../shared/film-continuity.js'
 import { lineStoryText } from '../shared/film-dialog-native.js'
 import {
+  portraitFailedDe,
+  portraitFor,
+  portraitLookKey,
+  portraitPaintUrl,
+  portraitRefUrl,
+  portraitStateDe,
+  portraitTextDrift,
+  readPortraitAnswer,
+  withPortraitStamp,
+  type FilmPortraitStamp,
+} from '../shared/film-portrait-plate.js'
+import {
   readRoomPlateAnswer,
   roomPlateFor,
   roomPlateNeedsRedraw,
@@ -235,6 +247,7 @@ function keepFromCached(cached?: FilmContinuity) {
     sideChecked: cached?.sideChecked,
     sideTries: cached?.sideTries,
     ...(cached?.plates?.length ? { plates: cached.plates } : {}),
+    ...(cached?.portraitStamps?.length ? { portraitStamps: cached.portraitStamps } : {}),
     ...(cached?.byUser ? { byUser: true, notesDe: cached.notesDe } : {}),
   }
 }
@@ -305,6 +318,7 @@ export async function applyRegiebuchEdit(
       sideChecked: board.continuity?.sideChecked,
       sideTries: board.continuity?.sideTries,
       plates: platesAfterEdit(board.continuity, edit),
+      portraitStamps: portraitsAfterEdit(board.continuity, edit),
       byUser: true,
       notesDe: edit.notesDe,
     },
@@ -324,8 +338,68 @@ function platesAfterEdit(cached: FilmContinuity | undefined, edit: RegiebuchEdit
   return kept.length ? kept : undefined
 }
 
+/** Hat Jean-Marie das Aussehen einer Person geändert, gilt das alte Stammbild nicht mehr. */
+function portraitsAfterEdit(
+  cached: FilmContinuity | undefined,
+  edit: RegiebuchEdit,
+): FilmPortraitStamp[] | undefined {
+  const stamps = cached?.portraitStamps
+  if (!stamps?.length) return undefined
+  const kept = stamps.filter((stamp) => {
+    const before = cached?.people.find(
+      (person) => person.name.trim().toLowerCase() === stamp.name.trim().toLowerCase(),
+    )
+    const after = edit.people.find((person) => person.name.trim().toLowerCase() === stamp.name.trim().toLowerCase())
+    if (!after) return true
+    return (before?.lookDe ?? '').trim() === after.lookDe.trim()
+  })
+  return kept.length ? kept : undefined
+}
+
 export function briefForImage(note: FilmContinuity): string {
   return continuityBriefEn(note)
+}
+
+function portraitAssetMeta(
+  library: StoryLibraryAsset[],
+  picks: string[] | undefined,
+  name: string,
+): { url: string; description?: string; assetId?: string } | undefined {
+  const chosenId = picks?.find((id) => {
+    const asset = library.find((item) => item.id === id)
+    return asset?.imageUrl?.startsWith('http') && namesMatch(asset.name || '', name)
+  })
+  if (chosenId) {
+    const asset = library.find((item) => item.id === chosenId)
+    if (asset?.imageUrl) return { url: asset.imageUrl, description: asset.description, assetId: asset.id }
+  }
+  const url = identityReferenceUrl(library, name)
+  if (!url) return undefined
+  const asset = library.find((item) => item.imageUrl === url)
+  return { url, description: asset?.description, assetId: asset?.id }
+}
+
+function namesMatch(assetName: string, want: string): boolean {
+  const left = assetName.trim().toLowerCase()
+  const right = want.trim().toLowerCase()
+  if (!left || !right) return false
+  if (left === right) return true
+  if (left.length >= 3 && right.includes(left)) return true
+  if (right.length >= 3 && left.includes(right)) return true
+  return false
+}
+
+async function retirePortraitRefs(userId: string, library: StoryLibraryAsset[], name: string): Promise<void> {
+  const stems = library.filter(
+    (asset) =>
+      asset.type === 'character' &&
+      namesMatch(asset.name, name) &&
+      (asset.tags ?? []).includes(REFERENCE_TAG) &&
+      !(asset.tags ?? []).includes('stammbild:verworfen'),
+  )
+  for (const asset of stems) {
+    await setStoryAssetTags(userId, asset.id, [...(asset.tags ?? []).filter((tag) => tag !== REFERENCE_TAG), 'stammbild:verworfen'])
+  }
 }
 
 /** Fehlt das Stammbild dieser Person, entsteht es einmal. Danach geht dasselbe Gesicht mit. */
@@ -336,11 +410,19 @@ export async function ensureSpeakerPlate(opts: {
   lookEn: string
   styleId?: string
   pickedIds?: string[]
-}): Promise<{ library: StoryLibraryAsset[]; imageUrl?: string }> {
-  const chosen = pickedCastUrl(opts.library, opts.pickedIds, opts.name)
-  if (chosen) return { library: opts.library, imageUrl: chosen }
-  const existing = identityReferenceUrl(opts.library, opts.name)
-  if (existing) return { library: opts.library, imageUrl: existing }
+  continuity?: FilmContinuity
+  force?: boolean
+}): Promise<{ library: StoryLibraryAsset[]; imageUrl?: string; continuity?: FilmContinuity }> {
+  if (!opts.force) {
+    const painted = portraitPaintUrl(
+      opts.continuity,
+      opts.library,
+      opts.pickedIds ? { personIds: opts.pickedIds, placeIds: [] } : null,
+      opts.name,
+      opts.lookEn,
+    )
+    if (painted) return { library: opts.library, imageUrl: painted, continuity: opts.continuity }
+  }
   const styleId: StoryArtStyleId | undefined = isStoryArtStyleId(opts.styleId ?? '')
     ? opts.styleId
     : undefined
@@ -358,6 +440,7 @@ export async function ensureSpeakerPlate(opts: {
     false,
     false,
   )
+  if (opts.force) await retirePortraitRefs(opts.userId, opts.library, opts.name)
   const saved = await saveStoryAsset(opts.userId, {
     type: 'character',
     name: opts.name,
@@ -370,8 +453,24 @@ export async function ensureSpeakerPlate(opts: {
     headAngleId: 'front',
     armPoseId: 'relaxed',
   })
-  return { library: [saved, ...opts.library], imageUrl: saved.imageUrl }
+  const stamp: FilmPortraitStamp = {
+    name: opts.name,
+    lookKey: portraitLookKey(opts.lookEn),
+    url: saved.imageUrl as string,
+    assetId: saved.id,
+    checked: true,
+    ok: true,
+    noteDe: 'Neu gezeichnet nach Regiebuch.',
+    tries: 1,
+    at: new Date().toISOString(),
+  }
+  const continuity = opts.continuity
+    ? { ...opts.continuity, portraitStamps: withPortraitStamp(opts.continuity.portraitStamps, stamp) }
+    : undefined
+  return { library: [saved, ...opts.library], imageUrl: saved.imageUrl, continuity }
 }
+
+export { portraitPaintUrl, portraitRefUrl, portraitStateDe, portraitFailedDe }
 
 function named(asset: StoryLibraryAsset, name: string): boolean {
   return asset.name.trim().toLowerCase() === name.trim().toLowerCase()
@@ -532,7 +631,8 @@ export function jobsForLibrary(
 ): FilmRefJob[] {
   return referenceJobs({
     continuity,
-    hasFront: (name) => Boolean(pickedCastUrl(library, picks?.personIds, name) || identityReferenceUrl(library, name)),
+    hasFront: (name) => Boolean(portraitRefUrl(library, picks, name)),
+    portraitAsset: (name) => portraitAssetMeta(library, picks?.personIds, name),
     hasSide: (name) => Boolean(sidePlate(library, name)),
     hasPlace: (name) => Boolean(roomPlateUrl(continuity, library, picks, name)),
   })
@@ -561,17 +661,90 @@ export async function runNextReferenceJob(opts: {
       lookEn: look,
       styleId,
       pickedIds: opts.picks?.personIds,
+      continuity: opts.continuity,
+      force: Boolean(job.force),
     })
     return {
       library: plated.library,
-      continuity: opts.continuity,
-      didDe: `Stammbild von ${job.name} gezeichnet.`,
+      continuity: plated.continuity ?? opts.continuity,
+      didDe: job.force
+        ? `Stammbild von ${job.name} neu gezeichnet — Kleidung und Haare wie im Regiebuch.`
+        : `Stammbild von ${job.name} gezeichnet.`,
+    }
+  }
+  if (job.kind === 'person-front-check') {
+    const asset = portraitAssetMeta(opts.library, opts.picks?.personIds, job.name)
+    const url = asset?.url
+    if (!url) {
+      return { ...opts, didDe: `Stammbild von ${job.name} fehlt noch.` }
+    }
+    if (portraitTextDrift(asset.description ?? '', look) && !portraitFor(opts.continuity.portraitStamps, job.name)?.checked) {
+      const plated = await ensureSpeakerPlate({
+        userId: opts.userId,
+        library: opts.library,
+        name: job.name,
+        lookEn: look,
+        styleId,
+        pickedIds: opts.picks?.personIds,
+        continuity: opts.continuity,
+        force: true,
+      })
+      return {
+        library: plated.library,
+        continuity: plated.continuity ?? opts.continuity,
+        didDe: `Stammbild von ${job.name} passte nicht zur Beschreibung im Regiebuch — neu gezeichnet.`,
+      }
+    }
+    const checked = await judgePortraitPlate({ url, name: job.name, lookEn: look })
+    const stamp: FilmPortraitStamp = {
+      name: job.name,
+      lookKey: portraitLookKey(look),
+      url,
+      assetId: asset.assetId,
+      tries: (portraitFor(opts.continuity.portraitStamps, job.name)?.tries ?? 0) + 1,
+      at: new Date().toISOString(),
+      ...(checked
+        ? {
+            checked: true,
+            ok: checked.ok,
+            noteDe: checked.noteDe,
+            fixEn: checked.fixEn,
+            model: checked.model,
+          }
+        : { checked: true, ok: true, noteDe: 'Die Regie konnte das Stammbild nicht anschauen; es bleibt vorerst.' }),
+    }
+    const nextCont = { ...opts.continuity, portraitStamps: withPortraitStamp(opts.continuity.portraitStamps, stamp) }
+    if (checked && !checked.ok) {
+      const plated = await ensureSpeakerPlate({
+        userId: opts.userId,
+        library: opts.library,
+        name: job.name,
+        lookEn: look,
+        styleId,
+        pickedIds: opts.picks?.personIds,
+        continuity: nextCont,
+        force: true,
+      })
+      return {
+        library: plated.library,
+        continuity: plated.continuity ?? nextCont,
+        didDe: `Stammbild von ${job.name} passte nicht (${checked.noteDe.replace(/[.\s]+$/, '')}). Neu gezeichnet.`,
+      }
+    }
+    return {
+      library: opts.library,
+      continuity: nextCont,
+      didDe: checked
+        ? checked.ok
+          ? `Stammbild von ${job.name} passt zum Regiebuch.`
+          : `Stammbild von ${job.name}: ${checked.noteDe}`
+        : `Stammbild von ${job.name}: die Regie konnte nicht vergleichen.`,
     }
   }
   if (job.kind === 'person-side') {
     const front =
-      pickedCastUrl(opts.library, opts.picks?.personIds, job.name) ||
-      identityReferenceUrl(opts.library, job.name)
+      portraitPaintUrl(opts.continuity, opts.library, opts.picks ?? null, job.name, look) ||
+      portraitRefUrl(opts.library, opts.picks ?? null, job.name)
     if (!front) return { ...opts, didDe: `Stammbild von ${job.name} fehlt noch.` }
     const drawn = await generateStoryCharacter(
       `${look}\nSame person as the attached photo. Three-quarter view, full body. Same face, hair and clothes.\n${CHARACTER_REFERENCE_LINE}`,
@@ -606,8 +779,8 @@ export async function runNextReferenceJob(opts: {
   }
   if (job.kind === 'person-check') {
     const front =
-      pickedCastUrl(opts.library, opts.picks?.personIds, job.name) ||
-      identityReferenceUrl(opts.library, job.name)
+      portraitPaintUrl(opts.continuity, opts.library, opts.picks ?? null, job.name, look) ||
+      portraitRefUrl(opts.library, opts.picks ?? null, job.name)
     const side = sidePlate(opts.library, job.name)
     const tried = hasName(opts.continuity.sideTries, job.name)
     const ok = front && side?.imageUrl ? await samePerson(front, side.imageUrl) : true
@@ -733,6 +906,39 @@ export async function paintRoomPlate(opts: {
   return { asset }
 }
 
+const PORTRAIT_PLATE_JUDGE = `Du bist die Regie einer Bildergeschichte. Bild 1 ist das STAMMBILD einer Person: Ganzkörper von vorne, neutraler Hintergrund, Referenz für alle späteren Bilder.
+Vergleiche Gesicht, Haarfarbe, Haarlänge, Frisur und Kleidung (Oberteil, Hose, Schuhe, was sie trägt) mit der Beschreibung.
+Große Abweichungen (anderes Oberteil, andere Farbe, andere Frisur) sind nicht in Ordnung. Kleinigkeiten bei Schuhen oder Accessoires sind in Ordnung, wenn der Rest passt.
+Nur JSON: { "ok": true, "noteDe": "", "fixEn": "" }
+ok ist false, wenn Kleidung oder Haare klar nicht zur Beschreibung passen. noteDe: ein kurzer deutscher Satz für Jean-Marie. fixEn: was beim Neuzeichnen anders sein muss, englisch, konkret mit Farben und Kleidungsstücken.`
+
+/** Die Regie vergleicht Stammbild und Regiebuch. null = konnte nicht anschauen. */
+export async function judgePortraitPlate(opts: {
+  url: string
+  name: string
+  lookEn: string
+  timeoutMs?: number
+}): Promise<{ ok: boolean; noteDe: string; fixEn: string; model: string } | null> {
+  const image = await imagePartFromUrl(opts.url, { timeoutMs: 15_000 })
+  if (!image) return null
+  try {
+    const { value, model } = await regieJsonWithModel<unknown>(
+      PORTRAIT_PLATE_JUDGE,
+      `PERSON: ${opts.name}\nAUSSEHEN (englisch): ${opts.lookEn}`,
+      [image],
+      {
+        temperature: 0.1,
+        timeoutMs: opts.timeoutMs ?? 90_000,
+        timeoutMessage: 'Die Regie hat das Stammbild nicht rechtzeitig angeschaut',
+      },
+    )
+    const read = readPortraitAnswer(value)
+    return read ? { ...read, model } : null
+  } catch {
+    return null
+  }
+}
+
 const ROOM_PLATE_JUDGE = `Du bist die Regie einer Bildergeschichte. Bild 1 ist das Raumbild eines Ortes: leer, die feste Einrichtung für alle späteren Bilder an diesem Ort.
 Zuerst beschreibst du nüchtern, was zu sehen ist: Wände, Fenster, Türen, jedes Möbelstück mit Anzahl und Platz im Bild (links, rechts, hinten, Mitte).
 Dann prüfst du gegen die Beschreibung des Ortes:
@@ -785,11 +991,22 @@ export function stampReferenceFaces(
   panel: FilmStoryboardPanel,
   library: StoryLibraryAsset[],
   pickedIds?: string[],
+  continuity?: FilmContinuity,
 ): FilmStoryboardPanel {
   return {
     ...panel,
     placements: panel.placements.map((placement) => {
-      const url = pickedCastUrl(library, pickedIds, placement.name) || identityReferenceUrl(library, placement.name)
+      const person = continuity?.people.find(
+        (item) => item.name.trim().toLowerCase() === placement.name.trim().toLowerCase(),
+      )
+      const url =
+        portraitPaintUrl(
+          continuity,
+          library,
+          pickedIds ? { personIds: pickedIds, placeIds: [] } : null,
+          placement.name,
+          person?.lookEn ?? '',
+        ) || portraitRefUrl(library, pickedIds ? { personIds: pickedIds, placeIds: [] } : null, placement.name)
       if (!url) return placement
       return { ...placement, imageUrl: url }
     }),

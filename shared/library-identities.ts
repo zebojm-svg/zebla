@@ -210,7 +210,10 @@ export function identityReferenceUrl(
 ): string | undefined {
   const assets = canonicalIdentityAssets(library, speakerName).filter((a) => a.imageUrl)
   const refs = assets
-    .filter((a) => (a.tags ?? []).includes(REFERENCE_TAG))
+    .filter(
+      (a) =>
+        (a.tags ?? []).includes(REFERENCE_TAG) && !(a.tags ?? []).includes('stammbild:verworfen'),
+    )
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
   const prompted = refs.filter((a) => (a.prompt ?? '').trim())
   const standing = prompted.filter((a) => (a.tags ?? []).includes('standing-front'))

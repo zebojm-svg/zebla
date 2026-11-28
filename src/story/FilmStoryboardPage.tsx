@@ -43,6 +43,8 @@ import {
   preferSceneStyle,
   type StoryArtStyleId,
 } from '../../shared/story-art-styles'
+import { estimatePrintPagesDe } from '../../shared/film-print'
+import { FilmDetails } from './FilmDetails'
 
 function matchClass(kind: string) {
   if (kind === 'reuse') return 'is-reuse'
@@ -78,6 +80,7 @@ function PanelCard({
   onRewrite,
   onSketch,
   onLayout,
+  detailsOpenOverride,
 }: {
   panel: FilmStoryboardPanel
   dialog: Dialog
@@ -102,6 +105,7 @@ function PanelCard({
   onRewrite: (lineId: string, nativeText: string) => Promise<void>
   onSketch: () => void
   onLayout: (dialog: Dialog, board: FilmStoryboard) => void
+  detailsOpenOverride?: boolean
 }) {
   const [comment, setComment] = useState(panel.comment ?? '')
   const [nativeBusy, setNativeBusy] = useState(false)
@@ -175,13 +179,14 @@ function PanelCard({
         sourceLanguage={dialog.sourceLanguage}
         nativeBusy={nativeBusy}
         onConfirmNative={(lineId, nativeText) => void confirmNative(lineId, nativeText)}
+        detailsOpenOverride={detailsOpenOverride}
         notes={
           <>
             {painting ? <p className="film-beat-count">wird neu gemalt …</p> : null}
             <FilmRegiePlanNote panel={panel} />
             <FilmRegieCheckNote panel={panel} />
             <FilmBeatNotes panel={panel} dialog={dialog} hideCues />
-            <FilmStillHistory panel={panel} />
+            <FilmStillHistory panel={panel} openOverride={detailsOpenOverride} />
             <div className="film-tweak">
               <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onSketch}>
                 {panel.sketchUrl ? 'Skizze neu' : 'Skizze'}
@@ -232,6 +237,7 @@ export function FilmStoryboardPage() {
   const [nativeBusy, setNativeBusy] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const [styles, setStyles] = useState<Record<string, string>>({})
+  const [sceneDetailsOpen, setSceneDetailsOpen] = useState<Record<string, boolean | undefined>>({})
 
   const load = async () => {
     if (!id) return
@@ -407,6 +413,11 @@ export function FilmStoryboardPage() {
         </div>
         <div className="header-actions">
           {board ? (
+            <Link className="btn btn-ghost" to={`/dialog/${dialog.id}/board/druck`} title="Alle Bilder mit Regie zum Ausdruck">
+              Druckansicht
+            </Link>
+          ) : null}
+          {board ? (
             <button
               type="button"
               className="btn btn-primary"
@@ -518,6 +529,12 @@ export function FilmStoryboardPage() {
                     />
                     <h2>{scene.title}</h2>
                   </label>
+                  <Link
+                    className="btn btn-ghost btn-sm no-print-scene"
+                    to={`/dialog/${dialog.id}/board/druck?szene=${encodeURIComponent(scene.id)}`}
+                  >
+                    Nur diese Szene drucken
+                  </Link>
                 </header>
                 {panels.length === 0 ? (
                   <p className="muted">Noch keine Bilder für diese Szene. Oben «Bilder planen».</p>
@@ -568,8 +585,11 @@ export function FilmStoryboardPage() {
                   panels={panels}
                   onDialogUpdated={setDialog}
                 />
-                <details className="film-scene-more">
-                  <summary>Zur ganzen Szene</summary>
+                <FilmDetails
+                  className="film-scene-more"
+                  summary="Zur ganzen Szene"
+                  openOverride={sceneDetailsOpen[scene.id]}
+                >
                   <textarea
                     className="input"
                     rows={2}
@@ -582,12 +602,13 @@ export function FilmStoryboardPage() {
                       }
                     }}
                   />
-                </details>
+                </FilmDetails>
                 <div className="film-panel-grid">
                   {panels.map((panel) => (
                     <PanelCard
                       key={panel.id}
                       panel={panel}
+                      detailsOpenOverride={sceneDetailsOpen[scene.id]}
                       dialog={dialog}
                       board={board}
                       sceneTitle={scene.title}

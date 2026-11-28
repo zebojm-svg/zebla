@@ -679,6 +679,16 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ dialogId, place, note, styleId }) },
         IMAGE_CLIENT_TIMEOUT_MS,
       ),
+    filmPortrait: (dialogId: string, person: string, note?: string, styleId?: string) =>
+      request<{
+        dialog: import('../types').Dialog
+        board: import('../../shared/film-storyboard').FilmStoryboard
+        noteDe: string
+      }>(
+        '/film-portrait',
+        { method: 'POST', body: JSON.stringify({ dialogId, person, note, styleId }) },
+        IMAGE_CLIENT_TIMEOUT_MS,
+      ),
     filmStill: (
       dialogId: string,
       panelId: string,

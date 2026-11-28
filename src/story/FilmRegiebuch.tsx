@@ -14,6 +14,7 @@ import {
   roomPlateFor,
   roomPlateStateDe,
 } from '../../shared/film-room-plate'
+import { portraitFor, portraitNeedsCheck, portraitStateDe } from '../../shared/film-portrait-plate'
 
 const EMPTY: RegiebuchEdit = { situationDe: '', people: [], places: [], notesDe: [] }
 
@@ -42,10 +43,11 @@ export function FilmRegiebuch({
 }) {
   const note = board.continuity ? tidyContinuity(board.continuity) : undefined
   const [draft, setDraft] = useState<{ book: RegiebuchEdit; notesText: string } | null>(null)
-  const [busy, setBusy] = useState<'' | 'read' | 'save' | `plate:${string}`>('')
+  const [busy, setBusy] = useState<'' | 'read' | 'save' | `plate:${string}` | `portrait:${string}`>('')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [plateHints, setPlateHints] = useState<Record<string, string>>({})
+  const [portraitHints, setPortraitHints] = useState<Record<string, string>>({})
   const dirty = draft !== null
   const book = draft?.book ?? (note ? regiebuchFromContinuity(note) : EMPTY)
   const notesText = draft?.notesText ?? (note?.notesDe ?? []).join('\n')
@@ -88,6 +90,24 @@ export function FilmRegiebuch({
     } catch (err) {
       setStatus('')
       setError(regiebuchFailDe(kind, err instanceof Error ? err.message : 'Grund unbekannt'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const redrawPortrait = async (personName: string) => {
+    const busyKey = `portrait:${personName}` as const
+    setBusy(busyKey)
+    setError('')
+    setStatus(`Stammbild «${personName}» …`)
+    try {
+      const hint = portraitHints[personName]?.trim()
+      const result = await api.ai.filmPortrait(dialogId, personName, hint || undefined, styleId)
+      onApplied(result.dialog, result.board)
+      setStatus(result.noteDe)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Das Stammbild konnte nicht gezeichnet werden.')
+      setStatus('')
     } finally {
       setBusy('')
     }
@@ -162,24 +182,69 @@ export function FilmRegiebuch({
           </label>
 
           {book.people.length ? <h3>Personen</h3> : null}
-          {book.people.map((person, index) => (
-            <label key={`p-${person.name}`} className="film-regiebuch-field">
-              <span>{person.name}</span>
-              <textarea
-                rows={2}
-                value={person.lookDe}
-                disabled={locked}
-                onChange={(e) =>
-                  change({
-                    ...book,
-                    people: book.people.map((item, i) =>
-                      i === index ? { ...item, lookDe: e.target.value } : item,
-                    ),
-                  })
-                }
-              />
-            </label>
-          ))}
+          {book.people.map((person, index) => {
+            const personEn =
+              note?.people.find((item) => item.name.trim().toLowerCase() === person.name.trim().toLowerCase())
+                ?.lookEn ?? ''
+            const stamp = portraitFor(note?.portraitStamps, person.name)
+            const portraitBusy = busy === `portrait:${person.name}`
+            const mismatch = Boolean(
+              note && personEn && (portraitNeedsCheck(stamp, personEn) || stamp?.ok === false),
+            )
+            return (
+              <div key={`p-${person.name}`} className="film-regiebuch-place">
+                <label className="film-regiebuch-field">
+                  <span>{person.name}</span>
+                  <textarea
+                    rows={2}
+                    value={person.lookDe}
+                    disabled={locked}
+                    onChange={(e) =>
+                      change({
+                        ...book,
+                        people: book.people.map((item, i) =>
+                          i === index ? { ...item, lookDe: e.target.value } : item,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <div className="film-room-plate-row">
+                  {stamp?.url ? (
+                    <a href={stamp.url} target="_blank" rel="noreferrer" className="film-room-plate-thumb">
+                      <img src={stamp.url} alt="" width={68} height={120} />
+                    </a>
+                  ) : (
+                    <p className="muted">Noch kein Stammbild geprüft.</p>
+                  )}
+                  <div className="film-room-plate-actions">
+                    <p className={mismatch ? 'alert alert-warn' : 'muted'}>{portraitStateDe(stamp)}</p>
+                    <input
+                      className="input"
+                      disabled={locked}
+                      placeholder="Hinweis fürs Neuzeichnen (optional)"
+                      value={portraitHints[person.name] ?? ''}
+                      onChange={(e) =>
+                        setPortraitHints((prev) => ({ ...prev, [person.name]: e.target.value }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={locked || portraitBusy}
+                      onClick={() => void redrawPortrait(person.name)}
+                    >
+                      {portraitBusy
+                        ? '…'
+                        : mismatch
+                          ? 'Stammbild passt nicht — neu zeichnen'
+                          : 'Stammbild neu zeichnen'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
 
           {book.places.length ? <h3>Orte</h3> : null}
           {book.places.map((place, index) => {

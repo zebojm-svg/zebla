@@ -32,6 +32,12 @@ import {
 import { placesMissingRoomPlate } from '../../shared/film-room-plate'
 import { sceneReviewRedoIds, sceneReviewSummaryDe } from '../../shared/film-scene-review'
 import { FilmStillPicture } from './FilmStillArrange'
+import { FilmDetails } from './FilmDetails'
+import {
+  attemptSummaryLineDe,
+  printTruncateLines,
+  regiePlanSummaryDe,
+} from '../../shared/film-print'
 
 export function FilmStyleTabs({
   value,
@@ -630,16 +636,78 @@ function HistoryThumb({ url, children }: { url: string; children: ReactNode }) {
   )
 }
 
+/** Unter «Mehr» im Druck: nur Kurzfassung Plan + Urteil der Regie. */
+export function FilmStillMehrCompact({ panel }: { panel: FilmStoryboardPanel }) {
+  const planLine = regiePlanSummaryDe(panel)
+  const paintedWithRegie = (panel.regieAttempts ?? []).some((attempt) => attempt.stillUrl === panel.stillUrl)
+  const state = regieCheckState(panel.regieCheck, panel.stillUrl, paintedWithRegie)
+  const check = panel.regieCheck
+  let verdict = ''
+  if (state === 'passt') verdict = `Regie: passt${check?.softDe ? ` — ${check.softDe}` : ''}`
+  else if (state === 'fehler' && check?.noteDe) verdict = `Regie: ${check.noteDe}`
+  else if (state === 'ungeprueft') verdict = 'Regie: nicht geprüft'
+  if (!planLine && !verdict) return null
+  return (
+    <div className="film-print-mehr-compact">
+      {planLine ? <p>{planLine}</p> : null}
+      {verdict ? <p className="muted">{verdict}</p> : null}
+    </div>
+  )
+}
+
 /** Unter jedem Bild, zugeklappt: Plan, Vorlagen und jeder Malversuch mit dem Urteil der Regie. */
-export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
+export function FilmStillHistory({
+  panel,
+  compact,
+  verbose,
+  openOverride,
+}: {
+  panel: FilmStoryboardPanel
+  /** Druck: weniger Bilder und Zeilen */
+  compact?: boolean
+  /** Druck: volle Prompts statt Kürzung */
+  verbose?: boolean
+  openOverride?: boolean
+}) {
   const plan = panel.regiePlan
   const attempts = panel.regieAttempts ?? []
   if (!plan && attempts.length === 0) return null
   const lastRefs = attempts[attempts.length - 1]?.refs ?? []
   const refs = lastRefs.length ? lastRefs : (plan?.refs ?? [])
+  const seenUrls = new Set<string>()
+  const uniqueRefs = refs.filter((ref) => {
+    if (seenUrls.has(ref.url)) return false
+    seenUrls.add(ref.url)
+    return true
+  })
+
+  if (compact && !verbose) {
+    return (
+      <FilmDetails className="film-scene-more" summary="So ist das Bild entstanden" openOverride={openOverride}>
+        {plan ? <p className="film-print-plan-one">{regiePlanSummaryDe(panel)}</p> : null}
+        {panel.regiePlanError && !plan ? (
+          <p className="muted">{regiePlanErrorLineDe(panel.regiePlanError)}</p>
+        ) : null}
+        {uniqueRefs.length ? (
+          <ul className="film-print-ref-lines">
+            {uniqueRefs.map((ref) => (
+              <li key={ref.url}>{printTruncateLines(ref.useEn, 2, 200)}</li>
+            ))}
+          </ul>
+        ) : null}
+        {attempts.length ? (
+          <ul className="film-print-attempt-lines">
+            {attempts.map((attempt, index) => (
+              <li key={`${attempt.at}-${index}`}>{attemptSummaryLineDe(attempt, index, true)}</li>
+            ))}
+          </ul>
+        ) : null}
+      </FilmDetails>
+    )
+  }
+
   return (
-    <details className="film-scene-more">
-      <summary>So ist das Bild entstanden</summary>
+    <FilmDetails className="film-scene-more" summary="So ist das Bild entstanden" openOverride={openOverride}>
       {plan ? (
         <>
           <h4>Plan der Regie</h4>
@@ -669,38 +737,52 @@ export function FilmStillHistory({ panel }: { panel: FilmStoryboardPanel }) {
         <>
           <h4>Mitgeschickt an den Maler (und wofür, englisch)</h4>
           <div className="film-still-history-grid">
-            {refs.map((ref) => (
+            {(compact ? uniqueRefs : refs).map((ref) => (
               <HistoryThumb key={ref.url} url={ref.url}>
-                {ref.useEn}
+                {compact ? printTruncateLines(ref.useEn, 4) : ref.useEn}
               </HistoryThumb>
             ))}
           </div>
         </>
       ) : null}
       {attempts.length ? (
-        <>
-          <h4>Versuche</h4>
-          <div className="film-still-history-grid">
+        compact ? (
+          <ul className="film-print-attempt-lines">
             {attempts.map((attempt, index) => (
-              <HistoryThumb key={`${attempt.at}-${index}`} url={attempt.stillUrl}>
-                <strong>Versuch {index + 1}</strong> — {attempt.planned ? 'nach Plan' : 'ohne Plan'}
-                {attempt.hintDe ? <> · Dein Hinweis: {attempt.hintDe}</> : null}
-                {attempt.fixEn ? <> · Auftrag der Regie an den Maler: {attempt.fixEn}</> : null}
-                <br />
-                {attemptVerdictDe(attempt.verdict)}
-                {attempt.copyOf ? <> · Fast gleich wie ein früheres Bild.</> : null}
-                {attempt.verdict?.seenDe ? (
-                  <>
-                    <br />
-                    <span className="muted">Die Regie sah: {attempt.verdict.seenDe}</span>
-                  </>
-                ) : null}
-              </HistoryThumb>
+              <li key={`${attempt.at}-${index}`}>{attemptSummaryLineDe(attempt, index, !verbose)}</li>
             ))}
-          </div>
-        </>
+          </ul>
+        ) : (
+          <>
+            <h4>Versuche</h4>
+            <div className="film-still-history-grid">
+              {attempts.map((attempt, index) => (
+                <HistoryThumb key={`${attempt.at}-${index}`} url={attempt.stillUrl}>
+                  <strong>Versuch {index + 1}</strong> — {attempt.planned ? 'nach Plan' : 'ohne Plan'}
+                  {attempt.hintDe ? <> · Dein Hinweis: {attempt.hintDe}</> : null}
+                  {attempt.fixEn ? (
+                    <>
+                      {' '}
+                      · Auftrag der Regie an den Maler:{' '}
+                      {verbose ? attempt.fixEn : printTruncateLines(attempt.fixEn, 4)}
+                    </>
+                  ) : null}
+                  <br />
+                  {attemptVerdictDe(attempt.verdict)}
+                  {attempt.copyOf ? <> · Fast gleich wie ein früheres Bild.</> : null}
+                  {attempt.verdict?.seenDe ? (
+                    <>
+                      <br />
+                      <span className="muted">Die Regie sah: {attempt.verdict.seenDe}</span>
+                    </>
+                  ) : null}
+                </HistoryThumb>
+              ))}
+            </div>
+          </>
+        )
       ) : null}
-    </details>
+    </FilmDetails>
   )
 }
 
@@ -801,6 +883,8 @@ export function FilmBeatColumns({
   sourceLanguage,
   nativeBusy,
   onConfirmNative,
+  detailsOpenOverride,
+  mehrCompact,
 }: {
   packNumber?: number
   picture: ReactNode
@@ -815,6 +899,9 @@ export function FilmBeatColumns({
   sourceLanguage?: string
   nativeBusy?: boolean
   onConfirmNative?: (lineId: string, nativeText: string) => void
+  detailsOpenOverride?: boolean
+  /** Druck: «Mehr» nur Kurzfassung */
+  mehrCompact?: boolean
 }) {
   return (
     <div className="film-beat">
@@ -857,10 +944,13 @@ export function FilmBeatColumns({
       </div>
       {packActions}
       {notes ? (
-        <details className="film-beat-regie">
-          <summary>Mehr</summary>
-          {notes}
-        </details>
+        mehrCompact ? (
+          <div className="film-beat-regie film-beat-regie--compact">{notes}</div>
+        ) : (
+          <FilmDetails className="film-beat-regie" summary="Mehr" openOverride={detailsOpenOverride}>
+            {notes}
+          </FilmDetails>
+        )
       ) : null}
     </div>
   )

@@ -46,7 +46,7 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
     hard: true,
     labelDe: 'Aussehen',
     askDe:
-      'Jede Person sieht aus wie im Regiebuch und auf ihrem Stammbild: Gesicht, Haare, Kleidung (Farbe und Stück), was sie trägt. Kleidung passt auch zu früheren Bildern derselben Szene und zum Stammbild — kein anderes Oberteil, keine andere Farbe.',
+      'Jede Person sieht aus wie im Regiebuch und exakt wie auf dem angehängten Stammbild dieser Person: Gesicht, Haare, Kleidung (Farbe und Stück), was sie trägt. Wenn Stammbild und Kleidung im Bild klar auseinanderlaufen, ist diese Prüfung nicht bestanden. Kleidung passt auch zu früheren Bildern derselben Szene — kein anderes Oberteil, keine andere Farbe.',
   },
   {
     id: 'ort',

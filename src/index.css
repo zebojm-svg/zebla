@@ -4465,3 +4465,142 @@ html[dir='rtl'] .slideshow-topbar {
   margin: 0.35rem 0 0;
 }
 
+.film-print-page {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.film-print-toolbar {
+  margin-bottom: 1.5rem;
+}
+
+.film-print-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.film-print-doc {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
+}
+
+.film-print-meta {
+  margin: 0 0 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.film-print-scene-title {
+  font-size: 1.35rem;
+  margin: 1.5rem 0 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.film-print-scene:first-child .film-print-scene-title {
+  border-top: none;
+  margin-top: 0;
+}
+
+.film-print-panel {
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px dashed var(--border);
+}
+
+.film-print-panel:last-child {
+  border-bottom: none;
+}
+
+.film-print-panel h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+}
+
+.film-print-figure {
+  margin: 0 0 0.75rem;
+  text-align: center;
+  background: #f1f5f9;
+  border-radius: var(--radius);
+  padding: 0.35rem;
+}
+
+.film-print-figure img {
+  display: block;
+  margin: 0 auto;
+  width: 100%;
+  max-height: min(52vh, 420px);
+  object-fit: contain;
+}
+
+.film-print-text {
+  margin-bottom: 0.75rem;
+}
+
+.film-print-open details,
+.film-print-page .film-scene-more {
+  margin-top: 0.5rem;
+}
+
+.film-print-open details > summary,
+.film-print-page .film-scene-more > summary {
+  display: none;
+}
+
+.film-print-open details[open],
+.film-print-page .film-scene-more {
+  display: block;
+}
+
+.film-print-open .film-still-history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+}
+
+.film-print-open .film-still-history-grid img {
+  width: 100%;
+  height: auto;
+  max-height: 120px;
+  object-fit: contain;
+}
+
+@media print {
+  .no-print,
+  .film-project-nav,
+  header.site-header,
+  .layout-sidebar {
+    display: none !important;
+  }
+
+  .film-print-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .film-print-doc {
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .film-print-panel {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .film-print-figure img {
+    max-height: 70vh;
+  }
+
+  .film-print-open details > summary,
+  .film-print-page .film-scene-more > summary {
+    display: none !important;
+  }
+}
+

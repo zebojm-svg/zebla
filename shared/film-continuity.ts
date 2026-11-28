@@ -1,3 +1,10 @@
+import {
+  portraitFor,
+  portraitNeedsCheck,
+  portraitNeedsRedraw,
+  portraitTextDrift,
+  type FilmPortraitStamp,
+} from './film-portrait-plate.js'
 import { roomPlateFor, roomPlateNeedsCheck, roomPlateNeedsRedraw, type FilmRoomPlate } from './film-room-plate.js'
 
 /**
@@ -58,6 +65,8 @@ export interface FilmContinuity {
   readModelNoteDe?: string
   /** Raumbild je Ort: feste Einrichtung, für diese Geschichte gezeichnet. */
   plates?: FilmRoomPlate[]
+  /** Stammbild je Person, abgeglichen mit lookEn. */
+  portraitStamps?: FilmPortraitStamp[]
 }
 
 /** Was im Regiebuch auf Deutsch steht und geändert werden kann. */
@@ -113,7 +122,8 @@ export function sanitizeRegiebuchEdit(raw: unknown): RegiebuchEdit | null {
 }
 
 export type FilmRefJob =
-  | { kind: 'person-front'; name: string }
+  | { kind: 'person-front'; name: string; force?: boolean }
+  | { kind: 'person-front-check'; name: string }
   | { kind: 'person-side'; name: string }
   | { kind: 'person-check'; name: string }
   | { kind: 'place'; name: string }
@@ -344,14 +354,30 @@ export function directorStillUrls(
 export function referenceJobs(opts: {
   continuity: FilmContinuity
   hasFront: (name: string) => boolean
+  portraitAsset?: (name: string) => { url: string; description?: string } | undefined
   hasSide: (name: string) => boolean
   hasPlace: (name: string) => boolean
 }): FilmRefJob[] {
   const jobs: FilmRefJob[] = []
   const checked = opts.continuity.sideChecked ?? []
   for (const person of opts.continuity.people) {
-    if (!opts.hasFront(person.name)) {
+    const stamp = portraitFor(opts.continuity.portraitStamps, person.name)
+    const asset = opts.portraitAsset?.(person.name)
+    const url = asset?.url
+    if (!opts.hasFront(person.name) || !url) {
       jobs.push({ kind: 'person-front', name: person.name })
+      continue
+    }
+    if (portraitNeedsRedraw(stamp) && stamp?.url === url) {
+      jobs.push({ kind: 'person-front', name: person.name, force: true })
+      continue
+    }
+    if (
+      portraitNeedsCheck(stamp, person.lookEn) ||
+      (stamp && stamp.url !== url) ||
+      portraitTextDrift(asset?.description ?? '', person.lookEn)
+    ) {
+      jobs.push({ kind: 'person-front-check', name: person.name })
       continue
     }
     if (!opts.hasSide(person.name)) {

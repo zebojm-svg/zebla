@@ -11,6 +11,8 @@ import { SlideshowPage } from './pages/SlideshowPage'
 import { ShareImportPage } from './pages/ShareImportPage'
 import { StoryPlayerPage } from './story/StoryPlayerPage'
 import { FilmStoryboardPage } from './story/FilmStoryboardPage'
+import { FilmScenePrintPage } from './story/FilmScenePrintPage'
+import { FilmStoryboardPrintPage } from './story/FilmStoryboardPrintPage'
 import { FilmLibraryPage } from './story/FilmLibraryPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { ProPage } from './pages/ProPage'
@@ -90,6 +92,22 @@ function AppRoutes() {
           element={
             <Layout>
               <FilmStoryboardPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/dialog/:id/druck"
+          element={
+            <Layout>
+              <FilmScenePrintPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/dialog/:id/board/druck"
+          element={
+            <Layout>
+              <FilmStoryboardPrintPage />
             </Layout>
           }
         />
