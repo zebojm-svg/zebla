@@ -76,6 +76,7 @@ function PanelCard({
   onInsert,
   onRemove,
   onCorrect,
+  onSaveStillMark,
   onPack,
   onRewrite,
   onSketch,
@@ -96,6 +97,7 @@ function PanelCard({
   onInsert: (text: string) => void
   onRemove: () => void
   onCorrect: (note: string) => void
+  onSaveStillMark: (note: string, mark: boolean) => void
   onPack: (fields: {
     speaker?: string | null
     imageCue?: string
@@ -129,7 +131,7 @@ function PanelCard({
   }
 
   return (
-    <article className="film-panel">
+    <article className={`film-panel${panel.stillMarkRedo ? ' film-panel--mark-redo' : ''}`}>
       <FilmBeatColumns
         packNumber={stillPackNumber(board, panel)}
         picture={
@@ -153,6 +155,7 @@ function PanelCard({
             error={error}
             status={painting ? status : undefined}
             onCorrect={onCorrect}
+            onSaveMark={onSaveStillMark}
           />
         }
         lines={lines}
@@ -662,6 +665,11 @@ export function FilmStoryboardPage() {
                           panel,
                           activeStyle,
                           note,
+                        )
+                      }
+                      onSaveStillMark={(note, mark) =>
+                        void run(() =>
+                          api.ai.filmPack(id, panel.id, { stillCorrection: note, stillMarkRedo: mark }),
                         )
                       }
                       onRemove={() => void run(() => api.ai.filmRemovePanel(id, panel.id))}

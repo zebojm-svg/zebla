@@ -30,7 +30,7 @@ import {
   stillLibraryHintDe,
 } from '../../shared/film-stills'
 import { placesMissingRoomPlate } from '../../shared/film-room-plate'
-import { sceneReviewRedoIds, sceneReviewSummaryDe } from '../../shared/film-scene-review'
+import { sceneBatchRepaintIds, sceneReviewSummaryDe } from '../../shared/film-scene-review'
 import { FilmStillPicture } from './FilmStillArrange'
 import { FilmDetails } from './FilmDetails'
 import {
@@ -129,7 +129,7 @@ export function FilmSceneGenerateBar({
   const paintingOne = Boolean(busy && progress && progress.total === 1)
   const missingPlates = placesMissingRoomPlate(board?.continuity?.places, board?.continuity?.plates)
   const review = scene.sceneReview
-  const reviewBad = sceneReviewRedoIds(review)
+  const batchRepaintIds = sceneBatchRepaintIds(panels, review)
   const label = busy
     ? paintingOne
       ? 'Bild wird neu gemalt …'
@@ -228,9 +228,9 @@ export function FilmSceneGenerateBar({
           {review ? (
             <p className={review.ok ? 'muted' : 'alert alert-warn'}>{sceneReviewSummaryDe(review)}</p>
           ) : null}
-          {reviewBad.length && onRepaintReview ? (
+          {batchRepaintIds.length && onRepaintReview ? (
             <button type="button" className="btn btn-secondary" disabled={extraDisabled || busy} onClick={onRepaintReview}>
-              Nur markierte Bilder neu malen ({reviewBad.length})
+              Markierte Bilder ändern ({batchRepaintIds.length})
             </button>
           ) : null}
         </div>
@@ -1011,19 +1011,43 @@ export function FilmStillFixBar({
   error,
   status,
   onCorrect,
+  onSaveMark,
 }: {
   panel: FilmStoryboardPanel
   busy: boolean
   error?: string
   status?: string
   onCorrect?: (note: string) => void
+  /** Hinweis und Häkchen speichern, ohne sofort zu malen. */
+  onSaveMark?: (note: string, mark: boolean) => void
 }) {
   const [note, setNote] = useState(panel.stillCorrection ?? '')
+  const [marked, setMarked] = useState(Boolean(panel.stillMarkRedo))
   const [localError, setLocalError] = useState('')
+  useEffect(() => {
+    setNote(panel.stillCorrection ?? '')
+    setMarked(Boolean(panel.stillMarkRedo))
+  }, [panel.id, panel.stillCorrection, panel.stillMarkRedo])
   if (!onCorrect) return null
   const shownError = error || localError
+  const saveDraft = (nextNote: string, nextMark: boolean) => {
+    onSaveMark?.(nextNote, nextMark)
+  }
   return (
-    <div className="film-still-fix">
+    <div className={`film-still-fix${marked ? ' film-still-fix--marked' : ''}`}>
+      <label className="film-still-fix-mark">
+        <input
+          type="checkbox"
+          checked={marked}
+          disabled={busy}
+          onChange={(e) => {
+            const nextMark = e.target.checked
+            setMarked(nextMark)
+            saveDraft(note, nextMark)
+          }}
+        />
+        Korrigieren
+      </label>
       <div className="film-tweak">
         <input
           className="input"
@@ -1031,8 +1055,14 @@ export function FilmStillFixBar({
           disabled={busy}
           placeholder="z.B. wie in Bild 3, Ramo steht am Herd"
           onChange={(e) => {
-            setNote(e.target.value)
+            const next = e.target.value
+            setNote(next)
+            if (next.trim() && !marked) setMarked(true)
             if (localError) setLocalError('')
+          }}
+          onBlur={() => {
+            const nextMark = note.trim() ? true : marked
+            saveDraft(note, nextMark)
           }}
         />
         <button
@@ -1077,6 +1107,7 @@ export function FilmStillStrip({
   status,
   canRemove,
   onCorrect,
+  onSaveStillMark,
   onInsert,
   onRemove,
   onPack,
@@ -1094,6 +1125,7 @@ export function FilmStillStrip({
   status?: string
   canRemove?: boolean
   onCorrect?: (panel: FilmStoryboardPanel, note: string) => void
+  onSaveStillMark?: (panel: FilmStoryboardPanel, note: string, mark: boolean) => void
   onInsert?: (panel: FilmStoryboardPanel, text: string) => void
   onRemove?: (panel: FilmStoryboardPanel) => void
   onPack?: (
@@ -1112,7 +1144,10 @@ export function FilmStillStrip({
         const silent = packIsSilent(lines, panel)
         const packNumber = board ? stillPackNumber(board, panel) : i + 1
         return (
-          <article key={panel.id} className="film-panel">
+          <article
+            key={panel.id}
+            className={`film-panel${panel.stillMarkRedo ? ' film-panel--mark-redo' : ''}`}
+          >
             <FilmBeatColumns
               packNumber={packNumber}
               picture={
@@ -1131,6 +1166,9 @@ export function FilmStillStrip({
                   error={errors?.[panel.id]}
                   status={busyPanelId === panel.id ? status : undefined}
                   onCorrect={onCorrect ? (note) => onCorrect(panel, note) : undefined}
+                  onSaveMark={
+                    onSaveStillMark ? (n, mark) => onSaveStillMark(panel, n, mark) : undefined
+                  }
                 />
               }
               lines={lines}

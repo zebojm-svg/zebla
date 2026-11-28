@@ -7,7 +7,7 @@ import {
   stillEditImageErrorDe,
   STILL_EDIT_PAINT_STATUS_DE,
 } from '../../shared/film-still-pack'
-import { sceneReviewRedoIds, type FilmSceneReview } from '../../shared/film-scene-review'
+import { sceneBatchRepaintIds, type FilmSceneReview } from '../../shared/film-scene-review'
 
 const REGIE_TRIES = 2
 
@@ -379,32 +379,33 @@ export function useSceneStills(
       review: FilmSceneReview | undefined,
     ) => {
       if (!dialogId) return
-      const ids = sceneReviewRedoIds(review)
+      let workPanels = panels
+      const ids = sceneBatchRepaintIds(workPanels, review)
       if (!ids.length) return
       setBusySceneId(sceneId)
       for (let i = 0; i < ids.length; i++) {
         const panelId = ids[i]!
-        const panel = panels.find((item) => item.id === panelId)
+        const panel = workPanels.find((item) => item.id === panelId)
         if (!panel) continue
         const issue = review?.issues.find((item) => item.panelId === panelId)
-        setStatus(`Neu malen (${i + 1} von ${ids.length}) …`)
+        const hint =
+          panel.stillCorrection?.trim() ||
+          issue?.fixEn?.trim() ||
+          issue?.noteDe?.trim() ||
+          ''
+        setStatus(`Markierte Bilder ändern (${i + 1} von ${ids.length}) …`)
+        if (!hint) {
+          setErrors((prev) => ({
+            ...prev,
+            [panelId]: 'Schreib kurz unter dem Bild, was anders sein soll.',
+          }))
+          continue
+        }
         try {
-          if (issue?.fixEn) {
-            await api.ai.filmStill(dialogId, panelId, styleId, undefined, {
-              fixEn: issue.fixEn,
-              freshRefs: false,
-            })
-            await api.ai.filmJudge(dialogId, panelId, true)
-          } else {
-            await stillWithRegie({
-              dialogId,
-              panelId,
-              styleId,
-              label: `Bild ${i + 1}`,
-              onStatus: setStatus,
-              onResult: (step) => apply(step.dialog, step.board),
-            })
-          }
+          await generateOne(sceneId, panel, styleId, hint)
+          const cleared = await api.ai.filmPack(dialogId, panelId, { stillMarkRedo: false })
+          apply(cleared.dialog, cleared.board)
+          workPanels = cleared.board.panels.filter((item) => item.sceneId === sceneId)
         } catch (err) {
           setErrors((prev) => ({
             ...prev,

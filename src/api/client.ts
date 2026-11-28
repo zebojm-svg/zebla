@@ -564,6 +564,8 @@ export const api = {
         directorNote?: string
         soundCue?: string
         nativeText?: string
+        stillCorrection?: string | null
+        stillMarkRedo?: boolean | null
       },
     ) =>
       request<{

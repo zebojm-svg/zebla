@@ -443,6 +443,12 @@ if (!boardSrc.includes('reviewFilmScene')) fail('Gesamtschau: ein Schritt je Anf
 if (!readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8').includes('Szene prüfen')) {
   fail('Szene prüfen: Knopf nach fertiger Szene')
 }
+if (!readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8').includes('Markierte Bilder ändern')) {
+  fail('Markierte Bilder ändern: Sammelknopf')
+}
+if (!readFileSync('shared/film-scene-review.ts', 'utf8').includes('stillMarkRedo')) {
+  fail('Markierung: stillMarkRedo nach Szene prüfen')
+}
 if (!readFileSync('api/[...slug].ts', 'utf8').includes('film-scene-review')) fail('Gesamtschau: eigene Anfrage')
 const reviewSrc = readFileSync('lib/film-scene-review.ts', 'utf8')
 if (!reviewSrc.includes('Kleidung') || !reviewSrc.includes('Schreibtisch')) {

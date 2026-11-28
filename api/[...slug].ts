@@ -1886,7 +1886,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (route === 'film-storyboard-pack' && req.method === 'POST') {
       const user = await requireAuth(req)
       const profile = await requireProfile(user.uid)
-      const { dialogId, panelId, speaker, imageCue, directorNote, soundCue, nativeText } = req.body as {
+      const { dialogId, panelId, speaker, imageCue, directorNote, soundCue, nativeText, stillCorrection, stillMarkRedo } =
+        req.body as {
         dialogId?: string
         panelId?: string
         speaker?: string | null
@@ -1894,6 +1895,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         directorNote?: string
         soundCue?: string
         nativeText?: string
+        stillCorrection?: string | null
+        stillMarkRedo?: boolean | null
       }
       if (!dialogId?.trim() || !panelId?.trim()) {
         res.status(400).json({ error: 'dialogId und panelId fehlen.' })
@@ -1903,7 +1906,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dialogId.trim(),
         user.uid,
         panelId.trim(),
-        { speaker, imageCue, directorNote, soundCue, nativeText },
+        { speaker, imageCue, directorNote, soundCue, nativeText, stillCorrection, stillMarkRedo },
         profile,
       )
       res.json(result)
