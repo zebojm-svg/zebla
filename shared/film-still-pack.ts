@@ -860,11 +860,43 @@ export function isStillEditFluxBillingError(raw: string): boolean {
   return false
 }
 
+const STILL_EDIT_REASON_HEAD = 'Das Bild konnte nicht neu gemalt werden'
+
+/** Bekannte Gründe auf Deutsch, damit Jean-Marie weiss, was los war. Leer, wenn unbekannt. */
+export function stillEditReasonDe(raw: string): string {
+  if (/throttl|rate.?limit|too many requests/i.test(raw) && /replicate|flux|fal\b/i.test(raw)) {
+    return `${STILL_EDIT_REASON_HEAD}: Die Bild-KI wurde gerade zu oft gefragt. Bitte eine Minute warten, dann noch einmal «Bild ändern».`
+  }
+  if (/sensitive|nsfw|\bE005\b|safety|flagged|blockReason|content.?polic/i.test(raw)) {
+    return `${STILL_EDIT_REASON_HEAD}: Die Bild-KI hat den Auftrag aus Vorsicht abgelehnt (Schutzfilter). Hinweis anders schreiben, dann noch einmal «Bild ändern».`
+  }
+  if (/kein standbild erhalten|lieferte kein bild|kein bild zurück/i.test(raw)) {
+    return `${STILL_EDIT_REASON_HEAD}: Die Bild-KI hat kein Bild zurückgegeben. Bitte noch einmal «Bild ändern».`
+  }
+  if (/fetch failed|failed to fetch|load failed|ECONNRESET|socket hang up|network|ENOTFOUND|EAI_AGAIN/i.test(raw)) {
+    return `${STILL_EDIT_REASON_HEAD}: Die Verbindung zur Bild-KI ist abgebrochen. Bitte noch einmal «Bild ändern».`
+  }
+  if (/firestore|INVALID_ARGUMENT|cannot use .* as a firestore value|document.*too large|exceeds the maximum/i.test(raw)) {
+    return `${STILL_EDIT_REASON_HEAD}: Das neue Bild wurde gemalt, aber nicht gespeichert. Bitte noch einmal «Bild ändern».`
+  }
+  if (/stamm-bild fehlt|kein bild zum ändern|still.*fehlt/i.test(raw)) {
+    return `${STILL_EDIT_REASON_HEAD}: Es gibt kein altes Bild, von dem die Bild-KI ausgehen kann. Zuerst «Bild malen», dann ändern.`
+  }
+  return ''
+}
+
 /** Red box only after the IMAGE call fails — never Packzettel, no Google URL. */
 export function stillEditImageErrorDe(err: unknown): string {
   const original = err instanceof Error ? err.message : String(err ?? '')
   const raw = stripVendorUrls(original)
   if (!raw.trim()) return STILL_EDIT_IMAGE_ERROR_DE
+  if (raw.startsWith(`${STILL_EDIT_REASON_HEAD}:`)) return raw
+  if (raw === STILL_EDIT_FLUX_MISSING_DE) return STILL_EDIT_FLUX_MISSING_DE
+  if (raw === STILL_EDIT_FLUX_BILLING_DE || isStillEditFluxBillingError(original) || isStillEditFluxBillingError(raw)) {
+    return STILL_EDIT_FLUX_BILLING_DE
+  }
+  const reason = stillEditReasonDe(raw)
+  if (reason) return reason
   if (raw === STILL_EDIT_PLANNER_QUOTA_DE || isStillEditPlannerQuotaError(original) || isStillEditPlannerQuotaError(raw)) {
     return STILL_EDIT_PLANNER_QUOTA_DE
   }
@@ -886,7 +918,13 @@ export function stillEditImageErrorDe(err: unknown): string {
     return STILL_EDIT_IMAGE_ERROR_DE
   }
   if (/bild ändern/i.test(raw) && !/https?:\/\//i.test(raw)) return raw
-  return STILL_EDIT_IMAGE_ERROR_DE
+  const short = raw
+    .replace(/^(?:Error:\s*)?(?:\[GoogleGenerativeAI Error\]:\s*)?/i, '')
+    .replace(/[\s.]+$/, '')
+    .slice(0, 140)
+  return short
+    ? `${STILL_EDIT_REASON_HEAD} (Grund: ${short}). Bitte noch einmal «Bild ändern».`
+    : STILL_EDIT_IMAGE_ERROR_DE
 }
 
 export type StillEditPaintJob = {
