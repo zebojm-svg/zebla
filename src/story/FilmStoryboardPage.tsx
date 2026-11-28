@@ -529,12 +529,33 @@ export function FilmStoryboardPage() {
                     />
                     <h2>{scene.title}</h2>
                   </label>
-                  <Link
-                    className="btn btn-ghost btn-sm no-print-scene"
-                    to={`/dialog/${dialog.id}/board/druck?szene=${encodeURIComponent(scene.id)}`}
-                  >
-                    Nur diese Szene drucken
-                  </Link>
+                  {panels.length > 0 ? (
+                    <div className="film-scene-actions no-print">
+                      <span className="muted film-scene-print-estimate">
+                        {estimatePrintPagesDe(panels, false)}
+                      </span>
+                      <Link
+                        className="btn btn-ghost btn-sm"
+                        to={`/dialog/${dialog.id}/board/druck?szene=${encodeURIComponent(scene.id)}`}
+                      >
+                        Druckansicht
+                      </Link>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setSceneDetailsOpen((prev) => ({ ...prev, [scene.id]: true }))}
+                      >
+                        Alle Details aufklappen
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setSceneDetailsOpen((prev) => ({ ...prev, [scene.id]: false }))}
+                      >
+                        Alle zuklappen
+                      </button>
+                    </div>
+                  ) : null}
                 </header>
                 {panels.length === 0 ? (
                   <p className="muted">Noch keine Bilder für diese Szene. Oben «Bilder planen».</p>

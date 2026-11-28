@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { I18nProvider } from './i18n/I18nContext'
 import { Layout } from './components/Layout'
@@ -11,7 +11,6 @@ import { SlideshowPage } from './pages/SlideshowPage'
 import { ShareImportPage } from './pages/ShareImportPage'
 import { StoryPlayerPage } from './story/StoryPlayerPage'
 import { FilmStoryboardPage } from './story/FilmStoryboardPage'
-import { FilmScenePrintPage } from './story/FilmScenePrintPage'
 import { FilmStoryboardPrintPage } from './story/FilmStoryboardPrintPage'
 import { FilmLibraryPage } from './story/FilmLibraryPage'
 import { ClassesPage } from './pages/ClassesPage'
@@ -24,6 +23,17 @@ import { useAuth } from './context/AuthContext'
 function FilmExportRedirect() {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={id ? `/dialog/${id}/board` : '/'} replace />
+}
+
+function FilmPrintRedirect() {
+  const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  return (
+    <Navigate
+      to={id ? `/dialog/${id}/board/druck${location.search}` : '/'}
+      replace
+    />
+  )
 }
 
 function HomeSwitch() {
@@ -95,14 +105,7 @@ function AppRoutes() {
             </Layout>
           }
         />
-        <Route
-          path="/dialog/:id/druck"
-          element={
-            <Layout>
-              <FilmScenePrintPage />
-            </Layout>
-          }
-        />
+        <Route path="/dialog/:id/druck" element={<FilmPrintRedirect />} />
         <Route
           path="/dialog/:id/board/druck"
           element={

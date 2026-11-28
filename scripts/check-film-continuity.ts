@@ -181,6 +181,13 @@ const printUi = readFileSync('src/story/FilmStoryboardPrintPage.tsx', 'utf8')
 if (!printUi.includes('window.print') || !printUi.includes('film-print-figure')) {
   fail('Druckansicht: Bilder ganz, ein Dokument')
 }
+if (!printUi.includes('Ausführlich drucken') || !printUi.includes('compact')) {
+  fail('Druckansicht: kompakt mit optional ausführlich')
+}
+const boardUi = readFileSync('src/story/FilmStoryboardPage.tsx', 'utf8')
+if (!boardUi.includes('Alle Details aufklappen') || !boardUi.includes('estimatePrintPagesDe')) {
+  fail('Bilder-Seite: Seitenschätzung und alle Details aufklappen')
+}
 if (!contSrc.includes('VORGABEN VON JEAN-MARIE')) fail('Regie liest Jean-Maries Änderungen als Vorgabe')
 const boardSrc = readFileSync('lib/film-storyboard.ts', 'utf8')
 if (!boardSrc.includes('carry?.byUser')) fail('«Bilder planen» löscht das geänderte Regiebuch nicht')

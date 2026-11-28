@@ -19,7 +19,7 @@ export function regiePlanSummaryDe(panel: FilmStoryboardPanel): string {
   const plan = panel.regiePlan
   if (plan?.cameraDe) {
     const bodies = plan.bodies.length ? plan.bodies.join(', ') : 'niemand'
-  const place = plan.place ? `${plan.place} — ` : ''
+    const place = plan.place ? `${plan.place} — ` : ''
     return `Regie: ${place}${plan.cameraDe} · Im Raum: ${bodies}`
   }
   if (panel.regiePlanError) return regiePlanErrorLineDe(panel.regiePlanError)

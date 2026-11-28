@@ -4537,6 +4537,68 @@ html[dir='rtl'] .slideshow-topbar {
   object-fit: contain;
 }
 
+.film-print-page.is-compact .film-print-figure img {
+  max-height: 300px;
+}
+
+.film-print-page.is-compact {
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.film-print-page.is-compact .film-print-doc {
+  padding: 0.75rem 1rem;
+}
+
+.film-print-page.is-compact .film-print-panel {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+}
+
+.film-print-panels {
+  display: grid;
+  gap: 0.75rem 1.25rem;
+  grid-template-columns: 1fr;
+}
+
+.film-print-page.is-compact .film-print-panels {
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+
+.film-print-ref-lines,
+.film-print-attempt-lines {
+  margin: 0.35rem 0;
+  padding-left: 1.15rem;
+  font-size: 0.82rem;
+}
+
+.film-print-mehr-compact {
+  margin: 0.35rem 0;
+  font-size: 0.85rem;
+}
+
+.film-print-mehr-compact p {
+  margin: 0.2rem 0;
+}
+
+.film-print-scene-pages,
+.film-scene-print-estimate {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.film-scene-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.film-scene-head {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .film-print-text {
   margin-bottom: 0.75rem;
 }
@@ -4571,9 +4633,27 @@ html[dir='rtl'] .slideshow-topbar {
 
 @media print {
   .no-print,
+  .no-print-scene,
+  .film-project-shell,
   .film-project-nav,
   header.site-header,
-  .layout-sidebar {
+  .layout-sidebar,
+  .film-regiebuch,
+  .film-scene-generate,
+  .film-scene-player,
+  .film-scene-preview,
+  .film-panel .btn,
+  .film-panel .input,
+  .film-panel textarea,
+  .film-panel select,
+  .film-still-fix,
+  .film-pack-actions,
+  .film-tweak,
+  .film-comment,
+  .film-matches,
+  .film-beat-regie summary,
+  .page-header .header-actions,
+  .film-board-tools {
     display: none !important;
   }
 
@@ -4594,13 +4674,26 @@ html[dir='rtl'] .slideshow-topbar {
     page-break-inside: avoid;
   }
 
-  .film-print-figure img {
-    max-height: 70vh;
+  .film-print-page.is-compact .film-print-figure img {
+    max-height: 300px;
+  }
+
+  .film-print-page.is-verbose .film-print-figure img {
+    max-height: 320px;
   }
 
   .film-print-open details > summary,
   .film-print-page .film-scene-more > summary {
     display: none !important;
+  }
+
+  .film-print-page.is-compact .film-print-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 0.75rem;
+  }
+
+  body.film-body-print .layout-main {
+    padding: 0;
   }
 }
 
