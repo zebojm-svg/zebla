@@ -219,8 +219,9 @@ if (!planFn.includes('sidePlate') || !planFn.includes('placePlate') || !planFn.i
 const judgeFn = boardSrc.slice(boardSrc.indexOf('export async function judgeFilmPanel'), boardSrc.indexOf('export async function regiebuchFilm'))
 if (!judgeFn.includes('regiePlan')) fail('das Urteil kennt den Plan der Regie')
 const stillFn = boardSrc.slice(boardSrc.indexOf('export async function stillFilmPanel'), boardSrc.indexOf('export async function saveFilmPlan'))
-if (!stillFn.includes('!correction && panel.regiePlan') || !stillFn.includes('paintRegiePlannedStill')) {
-  fail('mit Plan malt Zebla nach dem Plan, Korrekturen gehen den alten Weg')
+if (!stillFn.includes('paintRegiePlannedStill')) fail('mit Plan malt Zebla nach dem Plan')
+if (!stillFn.includes('askRegieForPlan') || !stillFn.includes('hintDe: correction')) {
+  fail('Bild ändern: Regie plant neu mit Hinweis, dann dieselben Vorlagen wie erstes Malen')
 }
 const apiSrc = readFileSync('api/[...slug].ts', 'utf8')
 if (!apiSrc.includes("'film-storyboard-plan'") || !apiSrc.includes('planFilmPanel(')) fail('Planen ist eine eigene Anfrage')
@@ -415,5 +416,12 @@ if (!readFileSync('src/story/FilmSceneGenerate.tsx', 'utf8').includes('Szene pr�
   fail('Szene prüfen: Knopf nach fertiger Szene')
 }
 if (!readFileSync('api/[...slug].ts', 'utf8').includes('film-scene-review')) fail('Gesamtschau: eigene Anfrage')
+const reviewSrc = readFileSync('lib/film-scene-review.ts', 'utf8')
+if (!reviewSrc.includes('Kleidung') || !reviewSrc.includes('Schreibtisch')) {
+  fail('Gesamtschau vergleicht Kleidung und Schreibtisch über die Szene')
+}
+if (!readFileSync('lib/film-regie-plan.ts', 'utf8').includes('hintDe')) {
+  fail('Planen bei Bild ändern: hintDe')
+}
 
 console.log('OK film-continuity')

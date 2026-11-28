@@ -84,6 +84,9 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
   if (REGIE_CHECKS.find((rule) => rule.id === 'schrift')?.hard) fail('Schrift ist weich')
   const askAll = REGIE_CHECKS.map((rule) => rule.askDe).join(' ')
   if (/videochat|laptop|webcam|headset|fussball|ente\b/i.test(askAll)) fail('die Prüfliste kennt keine bestimmten Lagen')
+  if (!askAll.includes('Vorderseite mit Inhalt') || !askAll.includes('Schreibtisch, Stuhl')) {
+    fail('harte Prüfungen: Bildschirm-Vorderseite, Schreibtisch, Kleidung über Bilder')
+  }
 }
 
 // nicht geprüft, Raum-Vorlage, bester Versuch
@@ -354,6 +357,10 @@ const answer = (changes: Record<string, { pass: boolean | string; noteDe?: strin
   if (!planSrc.includes('regieJsonWithModel<unknown>(PLAN, ask, images') || !planSrc.includes('PLAN_THUMB_WIDTH')) fail('die Regie sieht kleine Bilder der Vorlagen')
   if (!planSrc.includes('do not copy pose or framing') || !planSrc.includes('sameFraming') || !planSrc.includes('surfaces')) {
     fail('Planen: Flächen, gleicher Blick, voriges Bild nicht als Bildaufbau')
+  }
+  const paintRules = readFileSync('shared/film-regie-plan.ts', 'utf8')
+  if (!paintRules.includes('front with the planned picture content') || !paintRules.includes('clothing exactly')) {
+    fail('Maler-Auftrag: Kleidung fest, Bildschirm-Vorderseite')
   }
   if (/video|laptop|webcam|ente|duck/i.test(planSrc)) fail('die Plan-Regie hat keine Regeln für bestimmte Lagen')
 

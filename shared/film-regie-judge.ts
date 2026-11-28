@@ -39,13 +39,14 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
     hard: true,
     labelDe: 'Körper',
     askDe:
-      'Keine überzähligen oder herrenlosen Körperteile: jede Hand, jedes Bein, jeder Fuss, jeder Kopf gehört sichtbar zu einer erlaubten Person und sitzt an der richtigen Stelle.',
+      'Keine überzähligen oder herrenlosen Körperteile: jede Hand, jedes Bein, jeder Fuss, jeder Kopf gehört sichtbar zu einer erlaubten Person und sitzt an der richtigen Stelle. Sitz, Stehen und Haltung passen zum Möbel (Stuhl, Tisch): Beine unter dem Körper, Oberkörper zum Tisch — kein versetzter Torso, keine Beine ohne Sitz.',
   },
   {
     id: 'aussehen',
     hard: true,
     labelDe: 'Aussehen',
-    askDe: 'Jede Person sieht aus wie im Regiebuch und auf ihrem Stammbild: Gesicht, Haare, Kleidung, was sie trägt.',
+    askDe:
+      'Jede Person sieht aus wie im Regiebuch und auf ihrem Stammbild: Gesicht, Haare, Kleidung (Farbe und Stück), was sie trägt. Kleidung passt auch zu früheren Bildern derselben Szene und zum Stammbild — kein anderes Oberteil, keine andere Farbe.',
   },
   {
     id: 'ort',
@@ -59,20 +60,21 @@ export const REGIE_CHECKS: RegieCheckRule[] = [
     hard: true,
     labelDe: 'Einrichtung',
     askDe:
-      'Ist ein RAUMBILD angehängt: dieselben Möbel wie dort, in derselben Anzahl und an denselben Wänden, Fenster und Türen an denselben Stellen. Ein zusätzliches Möbelstück (auch ein zweites gleiches), ein fehlendes, ein verschobenes oder schräg in den Raum gedrehtes ist nicht bestanden. Erlaubt: eine andere Blickrichtung im selben Raum (dann sieht man andere Wände desselben Raums), Leute und kleine Dinge davor. Ohne Raumbild ist diese Prüfung bestanden.',
+      'Ist ein RAUMBILD angehängt: dieselben Möbel wie dort, in derselben Anzahl und an denselben Wänden, Fenster und Türen an denselben Stellen. Schreibtisch, Stuhl und feste Möbel stehen wie auf dem Raumbild und wie auf früheren Bildern desselben Ortes — nicht verschoben, nicht gedreht, kein zweites gleiches Stück. Ein zusätzliches Möbelstück (auch ein zweites gleiches), ein fehlendes, ein verschobenes oder schräg in den Raum gedrehtes ist nicht bestanden. Erlaubt: eine andere Blickrichtung im selben Raum (dann sieht man andere Wände desselben Raums), Leute und kleine Dinge davor. Ohne Raumbild ist diese Prüfung bestanden.',
   },
   {
     id: 'flaechen',
     hard: true,
     labelDe: 'Bild im Bild',
     askDe:
-      'Was auf Bildschirmen, Spiegeln, Tafeln oder Bildern zu sehen ist, zeigt das, was der Plan dafür sagt, mit dem dort genannten Ort. Solche Inhalte gibt es nur innerhalb ihres Geräts oder Rahmens; nichts schwebt frei in der Luft. Nennt der Plan keine Fläche, schwebt auch nichts frei im Raum.',
+      'Was auf Bildschirmen, Spiegeln, Tafeln oder Bildern zu sehen ist, zeigt das, was der Plan dafür sagt, mit dem dort genannten Ort. Der Zuschauer sieht die Vorderseite mit Inhalt — nicht die Rückseite eines Geräts, nicht nur Gehäuse ohne Bild. Solche Inhalte gibt es nur innerhalb ihres Geräts oder Rahmens; nichts schwebt frei in der Luft. Nennt der Plan keine Fläche, schwebt auch nichts frei im Raum.',
   },
   {
     id: 'handlung',
     hard: true,
     labelDe: 'Handlung',
-    askDe: 'Was in diesem Satz passiert (Handlung, Geste, Ausdruck), ist deutlich zu sehen.',
+    askDe:
+      'Was in diesem Satz passiert (Handlung, Geste, Ausdruck), ist deutlich zu sehen. Passt der Gesichtsausdruck zum gesprochenen oder beschriebenen Satz (Stimmung, nicht nur neutrales Lächeln, wenn der Satz etwas anderes sagt).',
   },
   {
     id: 'kamera',

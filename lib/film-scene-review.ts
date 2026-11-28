@@ -15,7 +15,8 @@ export const SCENE_REVIEW_THUMB = 384
 export const SCENE_REVIEW_BATCH = 2
 
 const SYSTEM = `Du bist die Regie einer Bildergeschichte. Du liest den Dialog einer Szene und schaust mehrere fertige Bilder nebeneinander (kleine Vorschaubilder) und die Raumbilder der Orte.
-Du suchst Fehler über die ganze Szene: gleiche Person sieht anders aus, Ort wechselt die Einrichtung, Satz passt nicht zum Bild, jemand fehlt oder ist zu oft da, etwas aus einem anderen Ort taucht hier auf.
+Du suchst Fehler über die ganze Szene: gleiche Person sieht anders aus (Kleidung, Farbe des Oberteils), Ort wechselt die Einrichtung, Schreibtisch und Stuhl springen von Bild zu Bild, Satz passt nicht zum Bild, jemand fehlt oder ist zu oft da, etwas aus einem anderen Ort taucht hier auf.
+Vergleiche dieselbe Person über alle Bilder: dieselbe Kleidung und Farbe. Vergleiche feste Möbel am selben Ort (Schreibtisch, Stuhl, Regal) mit dem Raumbild und mit früheren Bildern dort.
 Gegenschuss und Nahaufnahme im selben Raum sind erlaubt, wenn die Einrichtung zum Raumbild passt.
 Antworte nur mit JSON:
 {

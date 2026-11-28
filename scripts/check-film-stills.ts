@@ -1118,13 +1118,12 @@ if (!stillFn.includes('situationText')) {
   fail('Jedes Bild bekommt denselben Satz zur Lage')
 }
 const stillPngSrc = readFileSync(new URL('../lib/film-stills.ts', import.meta.url), 'utf8')
-if (
-  !stillPngSrc.includes('stillEditKontextPrompt') ||
-  !stillPngSrc.includes('editImageWithKontext') ||
-  !stillPngSrc.includes('stillUrlForPackRef')
-) {
-  fail('Bild ändern nutzt FLUX Kontext auf das genannte oder aktuelle Still')
+const stillFnSrc = readFileSync(new URL('../lib/film-storyboard.ts', import.meta.url), 'utf8')
+if (!stillFn.includes('askRegieForPlan') || !stillFn.includes('hintDe: correction')) {
+  fail('Bild ändern plant neu mit Hinweis statt FLUX nur auf dem alten Foto')
 }
+if (!stillFnSrc.includes('stillUrlForPackRef')) fail('Bild ändern: «wie in Bild n» als Vorlage')
+if (!stillFn.includes('paintRegiePlannedStill')) fail('Bild ändern malt mit Regie-Plan und Vorlagen')
 if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCatalog')) {
   fail('Bild ändern schickt nicht den Filmkatalog')
 }
@@ -1141,8 +1140,7 @@ if (/stillAttachmentInstruction|buildFilmStillPrompt|editImageWithKontext|cropWi
   fail('Mit Plan: keine alten Ort-Regeln, kein FLUX-Heranfahren, kein Zuschneiden')
 }
 
-const plannedBranch = stillGenSrc.slice(stillGenSrc.indexOf('!correction && panel.regiePlan'))
-if (!plannedBranch.includes('PAINTED_WITH_PLAN_DE') || !stillGenSrc.includes('PAINTED_WITHOUT_PLAN_DE')) {
+if (!stillGenSrc.includes('planForPaint') || !stillGenSrc.includes('PAINTED_WITH_PLAN_DE') || !stillGenSrc.includes('PAINTED_WITHOUT_PLAN_DE')) {
   fail('Unter jedem Bild steht, ob nach Plan oder auf dem alten Weg gemalt wurde')
 }
 if (!stillGenSrc.includes('planErrorDe') || !stillGenSrc.includes('regiePlanErrorLineDe')) {

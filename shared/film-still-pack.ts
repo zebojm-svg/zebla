@@ -1,5 +1,5 @@
 /**
- * Bild ändern = dasselbe Vorlagenpaket wie beim ersten Malen
+ * Bild ändern = Regie plant neu mit Hinweis, malt wie erstes Malen (Raumbild, Stammbilder, Nachbarbilder)
  * (stillReferencePack) plus den Hinweis wörtlich. Kein Katalog,
  * kein Packzettel-Tor, kein aktuelles Tischbild als GROUNDBILD.
  * Hinweis ist die Regie; Fotos sind Aussehen. Keine Stichwörter.

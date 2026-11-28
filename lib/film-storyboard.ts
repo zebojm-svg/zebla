@@ -144,6 +144,7 @@ import {
   stillEditImageErrorDe,
   stillEditLineDe,
   stillPackNumber,
+  stillUrlForPackRef,
   type StillEditPackzettel,
 } from '../shared/film-still-pack.js'
 import { applyLineSpeaker, speakerGender } from '../shared/speakers.js'
@@ -1074,6 +1075,7 @@ async function askRegieForPlan(
   index: number,
   continuity: FilmContinuity,
   userId: string,
+  edit?: { hintDe?: string },
 ) {
   const scenePanels = board.panels.filter((item) => item.sceneId === panel.sceneId)
   const library = libraryForCompose(await listStoryAssets(userId).catch(() => []))
@@ -1106,6 +1108,22 @@ async function askRegieForPlan(
   for (const item of recent.slice(0, 8).reverse()) {
     offer(item.stillUrl, `Früheres fertiges ${earlierPanelDe(item, board.panels.indexOf(item) + 1)}`)
   }
+  const hint = edit?.hintDe?.trim()
+  if (hint && panel.stillUrl?.startsWith('http')) {
+    offer(
+      panel.stillUrl,
+      `Das bisherige Bild zu diesem Päckchen — Jean-Marie will es ändern: ${hint}. Nicht kopieren, ausser der Hinweis verlangt «wie in Bild …».`,
+    )
+  }
+  if (hint) {
+    const named = stillUrlForPackRef(board, hint, panel.stillUrl)
+    if (named?.startsWith('http') && named !== panel.stillUrl) {
+      offer(
+        named,
+        'Ein anderes Bild-Päckchen, das Jean-Marie im Hinweis nannte — nur für Aussehen oder Haltung, nicht als Raum-Vorlage.',
+      )
+    }
+  }
   const sceneBefore = scenePanels.filter((item) => item.panelIndex < panel.panelIndex)
   const sceneAfter = scenePanels.filter((item) => item.panelIndex > panel.panelIndex)
   return planStoryPicture({
@@ -1116,6 +1134,7 @@ async function askRegieForPlan(
     shotDe: boardShotDe(panel),
     earlierDe: sceneBefore.map((item) => earlierPanelDe(item, board.panels.indexOf(item) + 1)).join('\n'),
     options,
+    hintDe: hint,
   })
 }
 
@@ -1630,8 +1649,29 @@ export async function stillFilmPanel(
         return { dialog: updated, board: withNote }
       }
     }
-    if (!correction && panel.regiePlan) {
-      const plan = panel.regiePlan
+    let planForPaint: FilmRegiePlan | undefined = !correction ? panel.regiePlan : undefined
+    if (correction) {
+      const at = working.panels.findIndex((item) => item.id === panelId)
+      const continuity = working.continuity ?? (await ensureFilmContinuity(dialog, working))
+      working = { ...working, continuity }
+      const read = await askRegieForPlan(dialog, working, panel, at, continuity, userId, { hintDe: correction })
+      if (read.plan) {
+        planForPaint = read.plan
+        working = {
+          ...working,
+          panels: working.panels.map((item) =>
+            item.id === panelId ? { ...item, regiePlan: read.plan, regiePlanError: undefined } : item,
+          ),
+        }
+        panel = working.panels.find((item) => item.id === panelId) ?? panel
+      } else if (panel.regiePlan) {
+        planForPaint = panel.regiePlan
+      } else {
+        throw new Error(read.errorDe || 'Die Regie konnte den Hinweis nicht planen.')
+      }
+    }
+    if (planForPaint) {
+      const plan = planForPaint
       const paintedUrls = new Set(working.panels.map((item) => item.stillUrl).filter(Boolean))
       const copied = regie?.fixEn ? panel.regieAttempts?.[panel.regieAttempts.length - 1]?.copyOf : undefined
       const chosen = (regie?.freshRefs ? plan.refs.filter((ref) => !paintedUrls.has(ref.url)) : plan.refs).filter(
@@ -1654,24 +1694,32 @@ export async function stillFilmPanel(
       const prevStill = at > 0 ? working.panels[at - 1]?.stillUrl : undefined
       const compareUrls = plan.sameFraming
         ? []
-        : [prevStill, ...refs.map((ref) => ref.url)].filter(
-            (url): url is string => Boolean(url?.startsWith('http')) && paintedUrls.has(url as string) && url !== panel.stillUrl,
+        : [
+            ...(correction && panel.stillUrl?.startsWith('http') ? [panel.stillUrl] : []),
+            prevStill,
+            ...refs.map((ref) => ref.url),
+          ].filter(
+            (url): url is string => Boolean(url?.startsWith('http')) && (paintedUrls.has(url as string) || url === panel.stillUrl),
           )
+      const fixEn = [regie?.fixEn, correction].filter(Boolean).join(' ')
       const painted = await paintRegiePlannedStill({
         plan: { ...plan, refs },
         continuity: working.continuity ?? (await ensureFilmContinuity(dialog, working)),
         styleId: resolvedStyle,
         targetLanguage,
-        fixEn: regie?.fixEn,
+        fixEn: fixEn || undefined,
         compareUrls,
         roomPlateUrl: cameraPlate,
       })
       const url = painted.url
+      let nextBoard = withAttempt(applyPanelStill(working, panelId, url, resolvedStyle), url, true, refs, painted.copyOf)
+      if (correction) nextBoard = finishAfterCorrection(nextBoard, panel)
       const withNote = applyPanelHarvestNote(
-        withAttempt(applyPanelStill(working, panelId, url, resolvedStyle), url, true, refs, painted.copyOf),
+        nextBoard,
         panelId,
         [
           PAINTED_WITH_PLAN_DE,
+          correction ? `Bild ändern nach Hinweis: ${correction}. Regie, Raumbild und Vorlagen wie beim ersten Malen.` : '',
           regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
           cameraPlate
             ? `Raumbild «${plan.place}» mitgeschickt: Einrichtung bleibt fest.`
@@ -1938,7 +1986,7 @@ export async function stillFilmPanel(
         regie?.fixEn ? 'Neu gemalt, weil die Regie einen Fehler gesehen hat.' : '',
         pack.noteDe,
         correction
-          ? `Neu gemalt mit FLUX nach Hinweis: ${correction}`
+          ? `Neu gemalt nach Hinweis (alter Weg ohne Plan — bitte noch einmal «Bild ändern»): ${correction}`
           : isCloseup
             ? `Nahaufnahme${speaker ? ` ${speaker}` : ''}: Kamera wechselt den Platz — man schaut der Person ins Gesicht.`
             : isInsert

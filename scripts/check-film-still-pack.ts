@@ -827,8 +827,8 @@ if (stillFn.includes('resolveStillEditPaint') || stillFn.includes('stillEditCata
 if (stillFn.includes('packFromClient') || stillFn.includes('packzettel')) {
   fail('Bild ändern nimmt keinen Packzettel')
 }
-if (!stillFn.includes('stillReferencePack')) {
-  fail('Bild ändern ruft stillReferencePack, nicht den Packzettel')
+if (!stillFn.includes('paintRegiePlannedStill') || !stillFn.includes('askRegieForPlan')) {
+  fail('Bild ändern plant neu und malt mit Regie-Vorlagen, nicht Packzettel')
 }
 if (stillFn.includes('correctFromUrlForPanel')) {
   fail('Bild ändern hängt das aktuelle Still nicht als GROUNDBILD an')
@@ -851,16 +851,9 @@ if (pngSrc.includes('opts.packzettel') || pngSrc.includes('if (opts.packzettel)'
 }
 const genFn = pngSrc.slice(pngSrc.indexOf('export async function generateFilmPanelStillImage'))
 if (!genFn.includes('stillReferencePack')) fail('Erstes Malen nutzt stillReferencePack')
-if (!genFn.includes('editImageWithKontext')) fail('Bild ändern nutzt FLUX Kontext')
-if (!genFn.includes('stillEditKontextPrompt')) fail('FLUX-Prompt aus dem Hinweis')
-if (!genFn.includes('stillUrlForPackRef')) fail('FLUX nimmt das genannte Bild-Päckchen als Foto')
-if (!genFn.includes('STILL_EDIT_FLUX_MODEL')) fail('Bild ändern ruft FLUX Max')
-if (genFn.indexOf('editImageWithKontext') > genFn.indexOf('generateStillPng')) {
-  fail('Bild ändern: FLUX vor Gemini')
-}
-if (!genFn.includes('STILL_EDIT_FLUX_MISSING_DE')) {
-  fail('Ohne FLUX-Key kein Google-Malen auf Bild ändern')
-}
+if (!stillFn.includes('hintDe: correction')) fail('Bild ändern: Hinweis an die Regie')
+if (!stillFnSrc.includes('stillUrlForPackRef')) fail('Bild ändern: «wie in Bild n» als Vorlage')
+if (!genFn.includes('editImageWithKontext')) fail('Nahaufnahme darf FLUX Kontext behalten')
 if (!pngSrc.includes('res.status')) fail('Standbild-Fehler enthält Google-HTTP-Status')
 if (!pngSrc.includes('STILL_EDIT_IMAGE_TIMEOUT_DE')) fail('Zeitlimit kommt in der roten Box')
 
@@ -969,8 +962,8 @@ const planMd = readFileSync(new URL('../docs/ZEBLA_PLAN.md', import.meta.url), '
 if (!planMd.includes('stillReferencePack')) {
   fail('ZEBLA_PLAN: erstes Malen nutzt stillReferencePack')
 }
-if (!planMd.includes('FLUX Kontext Max')) {
-  fail('ZEBLA_PLAN: Bild ändern über FLUX Kontext Max')
+if (!planMd.includes('Regie plant') || planMd.includes('FLUX Kontext Max plus den Hinweis')) {
+  fail('ZEBLA_PLAN: Bild ändern über Regie und Vorlagen, nicht FLUX nur mit altem Foto')
 }
 if (!planMd.includes('Hinweis ist die Regie')) {
   fail('ZEBLA_PLAN: Hinweis ist die Regie; Fotos sind Aussehen')

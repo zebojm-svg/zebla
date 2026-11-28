@@ -50,6 +50,8 @@ export async function planStoryPicture(opts: {
   shotDe: string
   earlierDe: string
   options: RegieRefOption[]
+  /** «Bild ändern»: Jean-Maries Hinweis hat Vorrang vor dem bisherigen Plan. */
+  hintDe?: string
 }): Promise<RegiePlanRead> {
   const shown = opts.options.slice(-PLAN_THUMBS_MAX)
   const thumbs = await Promise.all(
@@ -62,7 +64,11 @@ export async function planStoryPicture(opts: {
     images.push(part)
     thumbIds.push(shown[index]!.id)
   })
+  const hint = opts.hintDe?.trim()
   const ask = [
+    hint
+      ? `HINWEIS VON JEAN-MARIE (höchste Priorität — Plan und Auftrag daran ausrichten): ${hint}`
+      : '',
     `REGIEBUCH:\n${regiebuchForPlanning(opts.continuity)}`,
     `DAVOR:\n${opts.beforeDe || '—'}`,
     `SÄTZE ZU DIESEM BILD:\n${opts.linesDe || '—'}`,

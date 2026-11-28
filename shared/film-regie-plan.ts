@@ -359,6 +359,9 @@ export function regiePaintPromptEn(opts: {
       ? `Seen only on a screen, not as a body in the room: ${looseScreens.join(', ')}. Each of them is in their own place; what is behind them on the screen belongs to their place, not to the room the screen stands in.`
       : '',
     'Each person appears once. No twins, no extra strangers.',
+    'Keep each person’s clothing exactly as in their character reference and in earlier pictures of this story (same colors, same pieces).',
+    'One coherent pose per person: limbs belong to that person; sitting or standing must match the chair or desk.',
+    'Any screen or display shows its front with the planned picture content facing the viewer — never the back of the device.',
     'Exactly the listed people and nobody else, not even partly: no extra hands, arms, legs, feet or heads, no half figures at the edge.',
     'Images on screens, mirrors, boards or photos appear only inside their device or frame. Nothing floats in the air.',
     'Eyes fully drawn: white sclera, coloured iris, dark pupil.',
